@@ -286,7 +286,7 @@ import PalaceUtilities
                 Log.info(#file, "📱 Local Bookmark #\(index): version=\(bookmark.version), timestamp=\(bookmark.lastSavedTimeStamp ?? "nil"), annotationId=\(bookmark.annotationId.isEmpty ? "UNSYNCED" : bookmark.annotationId), chapter=\(bookmark.chapter ?? "nil"), readingOrderItem=\(bookmark.readingOrderItem ?? "nil")")
             }
 
-            self.syncBookmarks(localBookmarks: localBookmarks) { syncedBookmarks in
+            self.syncBookmarks { syncedBookmarks in
                 Log.info(#file, "☁️ SYNCED BOOKMARKS COUNT: \(syncedBookmarks.count)")
 
                 for (index, bookmark) in syncedBookmarks.enumerated() {
@@ -424,10 +424,8 @@ import PalaceUtilities
 
     // MARK: - Sync Logic
 
-    func syncBookmarks(localBookmarks: [AudioBookmark], completion: (([AudioBookmark]) -> Void)? = nil) {
-        // Boxed for the `@Sendable` Task; the values are only touched on `queue`
-        // or the main queue.
-        let localBox = AudioBookmarkListBox(localBookmarks)
+    func syncBookmarks(completion: (([AudioBookmark]) -> Void)? = nil) {
+        // Boxed for the `@Sendable` Task; only touched on the main queue.
         let completionBox = AudioBookmarkListCompletionBox(completion)
         // Atomically test-and-set `isSyncing`. If a sync is already in flight we
         // enqueue this completion under the same lock that `finalizeSync` drains
@@ -446,7 +444,7 @@ import PalaceUtilities
 
         Task { [weak self] in
             guard let self else { return }
-            await uploadUnsyncedBookmarks(localBox.bookmarks)
+            await uploadUnsyncedBookmarks()
 
             fetchServerBookmarks { [weak self] remoteBookmarks in
                 guard let strongSelf = self else { return }
@@ -459,19 +457,24 @@ import PalaceUtilities
     }
 
     private func fetchLocalBookmarks() -> [AudioBookmark] {
-        let allBookmarks: [AudioBookmark] = registry.genericBookmarksForIdentifier(book.identifier).compactMap { bookmark -> AudioBookmark? in
-            guard let dictionary = bookmark.locationStringDictionary(),
+        fetchStoredBookmarks().map(\.bookmark)
+    }
+
+    private func fetchStoredBookmarks() -> [StoredAudioBookmark] {
+        let allBookmarks: [StoredAudioBookmark] = registry.genericBookmarksForIdentifier(book.identifier).compactMap { record -> StoredAudioBookmark? in
+            guard let dictionary = record.locationStringDictionary(),
                   let localBookmark = AudioBookmark.create(locatorData: dictionary) else {
                 return nil
             }
-            return localBookmark
+            return StoredAudioBookmark(record: record, bookmark: localBookmark)
         }
 
         // Filter out bookmarks that user has deleted (belt and suspenders approach).
         // Snapshot the deleted-id set under the lock so the filter reads a stable
         // copy instead of racing concurrent inserts/removes on the live Set.
         let deletedIds = onStateQueue { deletedBookmarkIds }
-        let filteredBookmarks = allBookmarks.filter { bookmark in
+        let filteredBookmarks = allBookmarks.filter { stored in
+            let bookmark = stored.bookmark
             let isDeletedById = deletedIds.contains(bookmark.annotationId)
             let contentHash = bookmark.uniqueIdentifier
             let isDeletedByContent = !contentHash.isEmpty && deletedIds.contains("content:\(contentHash)")
@@ -517,33 +520,66 @@ import PalaceUtilities
         }
     }
 
-    private func uploadUnsyncedBookmarks(_ localBookmarks: [AudioBookmark]) async {
-        for bookmark in localBookmarks where bookmark.isUnsynced {
+    /// Uploads each stored unsynced bookmark.
+    ///
+    /// Before uploads matched stored records by identity, an upload appended a
+    /// synced copy beside the unsynced original. Such an original, at the
+    /// position of a synced record by `AudioBookmark.isSimilar`, is that same
+    /// bookmark, so it is removed instead of posted again. An unsynced bookmark
+    /// with no synced twin is always uploaded, never removed.
+    private func uploadUnsyncedBookmarks() async {
+        for candidate in fetchStoredBookmarks() where candidate.bookmark.isUnsynced {
+            // Re-read each time: an upload earlier in this loop may have synced a
+            // record at the same position, or the patron may have deleted this one.
+            let current = fetchStoredBookmarks()
+            guard current.contains(where: { $0.record.isSameRecord(as: candidate.record) }) else { continue }
+
+            if current.contains(where: { !$0.bookmark.isUnsynced && $0.bookmark.isSimilar(to: candidate.bookmark) }) {
+                Log.info(#file, "Removing unsynced copy of an already-synced bookmark: \(candidate.bookmark.uniqueIdentifier)")
+                registry.deleteGenericBookmark(identicalTo: candidate.record, forIdentifier: book.identifier)
+                continue
+            }
+
             do {
-                try await uploadBookmark(bookmark)
+                try await uploadBookmark(candidate)
             } catch {
                 Log.debug(#file, "Failed to save annotation with error: \(error.localizedDescription)")
             }
         }
     }
 
-    private func uploadBookmark(_ bookmark: AudioBookmark) async throws {
-        guard let data = bookmark.toData(),
+    private func uploadBookmark(_ stored: StoredAudioBookmark) async throws {
+        guard let data = stored.bookmark.toData(),
               let locationString = String(data: data, encoding: .utf8) else { return }
 
         guard let annotationResponse = try await annotationsManager.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: locationString) else {
             return
         }
 
-        updateLocalBookmark(bookmark, with: annotationResponse)
+        updateLocalBookmark(stored, with: annotationResponse)
     }
 
-    private func updateLocalBookmark(_ bookmark: AudioBookmark, with annotationResponse: AnnotationResponse) {
-        if let updatedBookmark = bookmark.copy() as? AudioBookmark {
-            updatedBookmark.annotationId = annotationResponse.serverId ?? ""
-            updatedBookmark.lastSavedTimeStamp = annotationResponse.timeStamp ?? ""
-            replace(oldLocation: bookmark, with: updatedBookmark)
+    /// Writes the server's annotation ID, and its time when it sent one, into
+    /// the stored record, leaving the record's other fields as stored. A
+    /// response without an ID is not a sync: the record stays unsynced so the
+    /// next sync uploads it again.
+    private func updateLocalBookmark(_ stored: StoredAudioBookmark, with annotationResponse: AnnotationResponse) {
+        guard let serverId = annotationResponse.serverId, !serverId.isEmpty else {
+            Log.warn(#file, "Bookmark upload response carried no annotation ID; keeping the bookmark unsynced")
+            return
         }
+        guard var fields = stored.record.locationStringDictionary() else { return }
+        fields[AudioBookmark.CodingKeys.annotationId.rawValue] = serverId
+        if let timeStamp = annotationResponse.timeStamp, !timeStamp.isEmpty {
+            fields[AudioBookmark.CodingKeys.timeStamp.rawValue] = timeStamp
+        }
+        guard JSONSerialization.isValidJSONObject(fields),
+              let data = try? JSONSerialization.data(withJSONObject: fields),
+              let locationString = String(data: data, encoding: .utf8),
+              let updated = TPPBookLocation(locationString: locationString, renderer: stored.record.renderer) else {
+            return
+        }
+        registry.replaceGenericBookmark(stored.record, with: updated, forIdentifier: book.identifier)
     }
 
     private func updateLocalBookmarks(with remoteBookmarks: [AudioBookmark], completion: @escaping ([AudioBookmark]) -> Void) {
@@ -638,13 +674,6 @@ import PalaceUtilities
         }
     }
 
-    private func replace(oldLocation: AudioBookmark, with newLocation: AudioBookmark) {
-        guard
-            let oldLocation = oldLocation.toTPPBookLocation(),
-            let newLocation = newLocation.toTPPBookLocation() else { return }
-        registry.replaceGenericBookmark(oldLocation, with: newLocation, forIdentifier: book.identifier)
-    }
-
     // MARK: - Helpers
 
     /// Immediately flushes any pending debounced operations
@@ -692,6 +721,14 @@ import PalaceUtilities
             )
         }
     }
+}
+
+/// A bookmark parsed from the registry, with the exact record it was read from.
+/// The record is the bookmark's identity: parsing normalizes fields (a missing
+/// `chapter` becomes "0"), so the parsed bookmark re-encoded need not match it.
+private struct StoredAudioBookmark {
+    let record: TPPBookLocation
+    let bookmark: AudioBookmark
 }
 
 private extension Array where Element == AudioBookmark {

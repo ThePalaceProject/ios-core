@@ -317,6 +317,26 @@ compare_against_baseline() {
 # Pure: takes the base run's text and the class names, echoes one verdict.
 # Kept apart so it can be tested without git, a simulator, or a 15-minute build
 # — the orchestration above is what needs a real tree, the decision is not.
+isolation_split() {
+  # Classify each failing class by whether it PASSED when re-run alone.
+  # Emits "flakes:<names>|real:<names>" with single-space-prefixed name lists.
+  #
+  # Pure, and separate from the run that produces `out`, for the same reason
+  # `baseline_verdict_from_output` is: the decision can then be tested without
+  # git, a simulator or a build, which is also what makes it runnable on the
+  # ubuntu tooling runner.
+  local out="$1" classes="$2"
+  local flakes="" real="" cls
+  for cls in $classes; do
+    if echo "$out" | grep -qE "Test Suite '$cls' passed"; then
+      flakes="$flakes $cls"
+    else
+      real="$real $cls"
+    fi
+  done
+  echo "flakes:${flakes}|real:${real}"
+}
+
 baseline_verdict_from_output() {
   local out="$1" classes="$2"
   local iso_suites new_names cls
@@ -692,17 +712,22 @@ elif [ "$DIFF_BASELINE" = "true" ] && [ "$TEST_FAIL" -gt 0 ]; then
       if [ "$ISO_SUITES" -eq 0 ]; then
         record "unit_tests" "fail" "$TEST_TALLY — isolation re-run produced no suites (build or simulator problem), so flake-vs-regression is UNDETERMINED for:$(echo "$FAILING_CLASSES" | tr '\n' ' ')"
       else
-      REAL_FAIL_NAMES=""
-      for cls in $FAILING_CLASSES; do
-        if echo "$ISOLATED_OUTPUT" | grep -qE "Test Suite '$cls' passed"; then
-          FLAKE_COUNT=$((FLAKE_COUNT + 1))
-        else
-          REAL_FAIL=$((REAL_FAIL + 1))
-          REAL_FAIL_NAMES="$REAL_FAIL_NAMES $cls"
-        fi
-      done
+      ISO_SPLIT=$(isolation_split "$ISOLATED_OUTPUT" "$FAILING_CLASSES")
+      FLAKE_NAMES="${ISO_SPLIT#flakes:}"; FLAKE_NAMES="${FLAKE_NAMES%%|real:*}"
+      REAL_FAIL_NAMES="${ISO_SPLIT#*|real:}"
+      FLAKE_COUNT=$(echo "$FLAKE_NAMES" | wc -w | tr -d ' ')
+      REAL_FAIL=$(echo "$REAL_FAIL_NAMES" | wc -w | tr -d ' ')
       if [ "$REAL_FAIL" -eq 0 ] && [ "$FLAKE_COUNT" -gt 0 ]; then
-        record "unit_tests" "pass" "$TEST_TALLY — all $FLAKE_COUNT failing classes pass in isolation (pre-existing test-isolation flakes per --diff-baseline)"
+        # NAME them here too. This was the one verdict that reported a bare count
+        # while every sibling named its classes, and it is the verdict that fires
+        # most often — so the identity of a recurring flake was unrecoverable
+        # afterwards, because the xcresult is deleted when the run ends.
+        #
+        # "pass in isolation" is also not the same as "pre-existing", which this
+        # message used to assert. A branch that newly EXPOSES order-dependent
+        # pollution produces exactly this shape, and the fix for that is not the
+        # fix for a flake someone else owns. Say what was measured.
+        record "unit_tests" "pass" "$TEST_TALLY — $FLAKE_COUNT failing class(es) pass in isolation per --diff-baseline, so they are order- or load-dependent rather than deterministic:$FLAKE_NAMES. Passing alone does NOT establish they are pre-existing — a branch can newly expose pollution. Use --baseline-compare, or scripts/find-test-polluter.sh --victim <class>"
       else
         # "Fails in isolation" does NOT mean "this branch broke it". A
         # deterministic pre-existing failure fails in isolation too, and this
@@ -1116,6 +1141,18 @@ run_phase35_detector "raising_unarchiver" "check-raising-unarchiver.py" "block" 
 run_phase35_detector "opaque_blob_egress" "check-opaque-blob-egress.py" "block" \
   "No opaque payload reaches an external sink"
 
+# Exit 0 from the enforcer can still carry rows below their recorded floor: an
+# app row within APP_FLOOR_TOLERANCE reads WITHIN, and a package row reads
+# FAIL with a fifth `advisory` column. Count both so the pass detail says so.
+coverage_pass_detail() {
+  local within advisory notes=""
+  within=$(printf '%s\n' "$1" | awk 'NF == 4 && $4 == "WITHIN" && $2 ~ /%$/ { n++ } END { print n + 0 }')
+  advisory=$(printf '%s\n' "$1" | awk 'NF == 5 && $4 == "FAIL" && $5 == "advisory" && $2 ~ /%$/ { n++ } END { print n + 0 }')
+  [ "$within" -gt 0 ] && notes="$within within tolerance"
+  [ "$advisory" -gt 0 ] && notes="${notes:+$notes, }$advisory advisory below floor"
+  echo "All blocking floors met${notes:+ ($notes)}"
+}
+
 # 4. Coverage floors
 echo "--- Coverage Floors ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
@@ -1146,10 +1183,26 @@ elif [ -f scripts/enforce_coverage_floors.py ] && [ -f scripts/coverage-floors.j
       # whole point of the leg.
       COV_OUTPUT=$(python3 scripts/enforce_coverage_floors.py "$COV_JSON" 2>&1)
       COV_RC=$?
+      # Which modules, not just "some module". The detail used to be the bare
+      # string "Coverage below module thresholds" while $COV_OUTPUT held the
+      # table, so reading the failure meant re-deriving it: find this run's
+      # coverage JSON under $TMPDIR and re-run the enforcer by hand.
+      # NF == 4 and a percent in the floor column: the enforcer's trailing
+      # "Coverage gate: FAIL" line also ends in FAIL and is not a module.
+      COV_FAILED_MODULES=$(echo "$COV_OUTPUT" | awk 'NF == 4 && $4 == "FAIL" && $2 ~ /%$/ { printf "%s %s<%s ", $1, $3, $2 }')
       if [ "$COV_RC" -eq 0 ]; then
-        record "coverage_floors" "pass" "All module floors met"
+        record "coverage_floors" "pass" "$(coverage_pass_detail "$COV_OUTPUT")"
+      elif [ "$COV_RC" -eq 1 ] && [ "${TEST_FAIL:-0}" -gt 0 ] 2>/dev/null; then
+        # Coverage from a run that lost tests is lower for that reason alone, so
+        # the number is not evidence about the diff. unit-testing.yml refuses the
+        # comparison in that case and reports the reason in its place; it can
+        # detect it from the shard plan, and this single-pass run cannot, so the
+        # failing-test count stands in. Still a failure — the floors were simply
+        # not the thing that failed.
+        record "coverage_floors" "fail" \
+          "floors NOT evaluated: $TEST_FAIL failing test(s) in the run that produced this coverage. Fix those first; below-floor modules here may be an artifact. Observed: ${COV_FAILED_MODULES:-none}"
       elif [ "$COV_RC" -eq 1 ]; then
-        record "coverage_floors" "fail" "Coverage below module thresholds"
+        record "coverage_floors" "fail" "Coverage below module thresholds: ${COV_FAILED_MODULES:-see $COV_JSON}"
       else
         record "coverage_floors" "fail" "coverage enforcement exited $COV_RC (input error) — the floor was NOT checked"
       fi

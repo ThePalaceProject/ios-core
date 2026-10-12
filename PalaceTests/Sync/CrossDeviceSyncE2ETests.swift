@@ -46,7 +46,7 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
     private var savedAccountsOverride: TPPLibraryAccountsProvider?
     private var savedDeviceAccountsOverride: TPPUserAccountResolving?
     private var savedFirebaseDeviceOverride: String?
-    private var savedAnnotationsURLOverride: URL?
+    private var savedAnnotationsURLOverride: URL??
 
     // MARK: - Setup / teardown
 

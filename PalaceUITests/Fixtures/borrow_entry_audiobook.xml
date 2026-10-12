@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<entry xmlns="http://www.w3.org/2005/Atom" xmlns:opds="http://opds-spec.org/2010/catalog" xmlns:schema="http://schema.org/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:simplified="http://librarysimplified.org/terms/" schema:additionalType="http://bib.schema.org/Audiobook">
+  <id>urn:palace-fixtures:book:still-water</id>
+  <title>Still Water</title>
+  <author><name>June Calloway</name></author>
+  <summary type="html">A two-second open-licence audiobook written for the Palace UI journeys.</summary>
+  <updated>2026-01-01T00:00:00Z</updated>
+  <published>2026-01-01T00:00:00Z</published>
+  <dcterms:language>en</dcterms:language>
+  <dcterms:publisher>Palace Fixtures</dcterms:publisher>
+  <link href="https://palace-fixtures.test/library/works/still-water/fulfill" rel="http://opds-spec.org/acquisition" type="application/vnd.librarysimplified.bearer-token+json">
+    <opds:indirectAcquisition type="application/audiobook+json"/>
+    <opds:availability status="available" since="2026-01-01T00:00:00Z" until="2099-01-01T00:00:00Z"/>
+    <opds:copies available="0" total="1"/>
+  </link>
+  <link href="https://palace-fixtures.test/library/works/still-water/revoke" rel="http://librarysimplified.org/terms/rel/revoke" type="application/atom+xml;type=entry;profile=opds-catalog"/>
+</entry>

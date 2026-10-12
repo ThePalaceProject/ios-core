@@ -75,6 +75,14 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     // MARK: - Application Lifecycle
 
     func applicationDidFinishLaunching(_ application: UIApplication) {
+        #if DEBUG
+        // Must run before the first `AppContainer.production()` call so the
+        // registry and every session start against the UI test's scenario.
+        if ProcessInfo.processInfo.environment[MockBackendLaunchRequest.scenarioKey] != nil {
+            MockBackendLaunchHook.applyFromProcessEnvironment()
+        }
+        #endif
+
         // Instrument cold-launch timing (AppLaunchTracker). `processStart` is
         // captured as early as possible so `timeToFirstFrame` / `timeToInteractive`
         // compute non-nil once `.firstFrame` (SceneDelegate) and `.catalogLoaded`

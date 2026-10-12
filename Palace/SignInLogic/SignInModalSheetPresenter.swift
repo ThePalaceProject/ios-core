@@ -78,9 +78,9 @@ final class SignInModalSheetPresenter: NSObject, SignInModalSheetPresenting, Obs
     /// Strong reference to the app container. Used so the driver can
     /// receive the same container the presenter was built with (the
     /// static API needs it for `accountsManager.isAccountSwitching`
-    /// and the `userAccount(for:)` look-up). Held strongly because
-    /// the presenter is itself held by the container — see
-    /// `AppContainer._cached`.
+    /// and the `userAccount(for:)` look-up). `AppContainer` passes its
+    /// `nonOwningCopy()`, so the presenter does not keep the container
+    /// that owns it alive.
     private let appContainer: AppContainer
 
     /// Resolves the current library account id at present-time.

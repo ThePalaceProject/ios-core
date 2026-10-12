@@ -1,10 +1,10 @@
 //  TPPBookRegistryAtomicWriteTests.swift
 //
-//  Pins atomic-write behavior of BookRegistrySync.save / saveSync: an interrupted
-//  write leaves the prior file readable (or absent), a successful save leaves one
-//  intact JSON file and no staging artifacts, and save and saveSync both honor
-//  this. Interruption is forced by making the registry directory read-only
-//  mid-save. Uses per-test temp accounts.
+//  Successful-save behavior of BookRegistrySync.save / saveSync: complete JSON,
+//  the second save replaces the first, no staging files left behind, and no
+//  torn file seen by a concurrent reader. None of these interrupt a write, so
+//  they do not show that a failed or interrupted save leaves the prior file
+//  readable; RegistryWriteFailureTests injects those failures.
 
 import XCTest
 @testable import Palace
@@ -97,12 +97,10 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
         await drainMainQueueAsync()
     }
 
-    // MARK: - Atomic-rename contract
+    // MARK: - Successful save
 
     /// saveSync must produce a complete, parseable JSON file at the canonical
-    /// path. Catches regressions that drop `options: .atomic` in favor of a partial
-    /// write (which on a sufficiently large dataset would leave a truncated
-    /// file half the time).
+    /// path. This is serialization only: a non-atomic write also passes.
     func testSaveSync_ProducesCompleteParseableJSON() throws {
         _ = seedAndSave(count: 20)
 
@@ -111,7 +109,7 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
         let json = try JSONSerialization.jsonObject(with: data)
 
         XCTAssertNotNil(json as? [String: Any],
-                        "saveSync must produce valid JSON — kills mutant that drops .atomic and leaves a truncated file")
+                        "saveSync must produce valid JSON")
         let records = (json as? [String: Any])?["records"] as? [[String: Any]]
         XCTAssertEqual(records?.count, 20,
                        "All 20 seeded records must appear in the saved file — kills mutant that truncates output")
@@ -152,10 +150,8 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
     }
 
     /// Two back-to-back saves (write a registry, then a smaller one) must
-    /// converge to the *second* file's contents — atomic rename means the
-    /// second write fully replaces the first, never blends. Catches regressions
-    /// that append instead of replace (which would survive round-trip but
-    /// double-count records).
+    /// converge to the *second* file's contents: the second write replaces the
+    /// first rather than appending to it.
     func testSaveSync_OverlappingSaves_FinalContentsOnly() async throws {
         // First save: 10 records.
         let firstIds = seedAndSave(count: 10)
@@ -176,42 +172,26 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
         await loadAndWait()
 
         XCTAssertEqual(store.allBooks.count, 1,
-                       "Second save must fully replace the first — kills mutant that appends across saves")
+                       "Second save must fully replace the first")
         XCTAssertNotNil(store.book(forIdentifier: onlyId),
                         "Only the second-save record must survive")
         for id in firstIds {
             XCTAssertNil(store.book(forIdentifier: id),
-                         "First-save records must be gone after atomic overwrite — id \(id) leaked")
+                         "First-save records must be gone after the second save — id \(id) leaked")
         }
     }
 
-    // MARK: - Interrupted write recovery
+    // MARK: - Missing directory
 
-    /// An "interrupted" save that fails because the registry directory has
-    /// been wiped (simulating the iOS "applicationSupport churn" failure
-    /// observed in the field when the user clears storage) must NOT leave a
-    /// half-written corrupted file behind. Pre-condition: a valid registry
-    /// exists. We then yank the directory and attempt to save. The save
-    /// either succeeds (write recreates the directory) or fails gracefully
-    /// — in both cases, when a subsequent reload runs, the registry must be
-    /// either intact-with-new-data OR cleanly empty (never half-written
-    /// garbage).
-    func testSave_AfterDirectoryDeleted_DoesNotLeaveCorruptedFile() async throws {
-        // Seed an initial registry on disk.
+    /// A save after the registry directory was deleted (with its backup) must
+    /// recreate the directory and write the new shelf. Nothing interrupts the
+    /// write here; the directory is gone before the save starts.
+    func testSaveSync_AfterRegistryDirectoryDeleted_RecreatesItAndWritesTheNewShelf() async throws {
         let initialIds = seedAndSave(count: 3)
         let url = sync.registryUrl(for: account)!
         let dir = url.deletingLastPathComponent()
-        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path),
-                      "Pre-condition: initial registry must exist")
-
-        // Yank the directory mid-flight. saveSync will then try to write into
-        // a non-existent directory — the production code's createDirectory
-        // call inside save() must handle this.
         try FileManager.default.removeItem(at: dir)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.path))
 
-        // Mutate in-memory and save. Production code recreates the directory
-        // when missing and writes atomically.
         store.mutateRegistrySync { registry in registry.removeAll() }
         let postId = "atomic-post-delete-\(UUID().uuidString)"
         let book = TPPBookMocker.mockBook(identifier: postId,
@@ -222,32 +202,22 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
         }
         sync.saveSync(for: account)
 
-        // Whatever state the disk is in, reload must converge — file is
-        // either valid-with-postId or fully absent.
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path),
+                      "saveSync must recreate the deleted registry directory and write the file")
         freshStoreAndSync()
         await loadAndWait()
-
-        if FileManager.default.fileExists(atPath: url.path) {
-            // Successful re-creation + write — must contain ONLY the new record.
-            XCTAssertNotNil(store.book(forIdentifier: postId),
-                            "If re-saved after directory deletion, new record must be present")
-            for id in initialIds {
-                XCTAssertNil(store.book(forIdentifier: id),
-                             "Deleted-then-recreated registry must NOT resurrect old data — kills mutant that re-reads from a cached buffer")
-            }
-        } else {
-            // Save failed — registry must be cleanly empty, not corrupt.
-            XCTAssertTrue(store.allBooks.isEmpty,
-                          "If save failed, registry must come up empty on reload — no corruption")
+        XCTAssertEqual(store.allBooks.map(\.identifier), [postId],
+                       "the reloaded registry must hold exactly the shelf saved after the deletion")
+        for id in initialIds {
+            XCTAssertNil(store.book(forIdentifier: id), "deleted records must not come back — id \(id)")
         }
     }
 
     /// Concurrent saves into the same account file from multiple queues must
-    /// converge — atomic rename guarantees the FINAL save's contents win and
-    /// no intermediate write produces a torn JSON. We're testing the
-    /// `diskWriteQueue` (serial) + atomic-rename interaction here, but from
-    /// a different angle than the persistence agent: we re-read the file at
-    /// each intermediate step and assert each read is valid JSON.
+    /// converge, and a reader polling the file mid-burst must never see torn
+    /// JSON. Whether a reader lands inside a write is timing-dependent, so a
+    /// pass is evidence of the serial `diskWriteQueue` plus atomic replace, not
+    /// proof of it.
     func testConcurrentSaves_EveryDiskStateBetweenSaves_IsValidJSON() async throws {
         _ = seedAndSave(count: 5)
 
@@ -307,7 +277,7 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
         sync.saveSync(for: account)
 
         XCTAssertEqual(corruptReads, 0,
-                       "Every concurrent read of the registry file mid-burst must parse — kills mutant that drops atomic rename")
+                       "Every concurrent read of the registry file mid-burst must parse")
 
         // Final state must reload cleanly.
         freshStoreAndSync()
@@ -316,11 +286,8 @@ class TPPBookRegistryAtomicWriteTests: PalaceWiringTestCase {
                        "After concurrent save bursts, all 5 seeded records must reload — kills mutant that drops records under contention")
     }
 
-    /// Verify the atomic-rename guarantee at the filesystem level: after a
-    /// completed save, the file's inode/contents are present in their
-    /// entirety — there is no zero-length file, no truncation. Catches regressions
-    /// that open the file with O_TRUNC then write incrementally (a torn
-    /// state visible to concurrent readers).
+    /// After a completed save the file is non-empty and holds every record.
+    /// Serialization only; it does not observe the file during the write.
     func testSaveSync_FileSizeNonZero_AndJSONComplete() throws {
         _ = seedAndSave(count: 50)
         let url = sync.registryUrl(for: account)!

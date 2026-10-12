@@ -10,12 +10,13 @@ import PalaceBookModel
 import PalaceBookRegistry
 import PalaceLogging
 
-// `@unchecked Sendable`: every stored member is an immutable `let` set once at
-// the composition root. It cannot synthesize `: Sendable` because
-// `drmAuthorizerProvider` is a non-`@Sendable` closure and several collaborators
-// (`TPPNetworkExecutor`, `AccountsManager`, …) are not Sendable-audited; forcing
-// it would cascade across the DI graph. The value holds no mutable state of its
-// own, so sharing copies across the lock slot and rebuild closure is race-free.
+// `@unchecked Sendable`: every stored member is set once at the composition
+// root (the private `var`s change only on a local copy before it is returned).
+// It cannot synthesize `: Sendable` because `drmAuthorizerProvider` is a
+// non-`@Sendable` closure and several collaborators (`TPPNetworkExecutor`,
+// `AccountsManager`, …) are not Sendable-audited; forcing it would cascade
+// across the DI graph. The only mutable state it reaches is
+// `AppContainerOwnedServices`, which is `@MainActor`-isolated.
 struct AppContainer: @unchecked Sendable {
 
     let bookRegistry: TPPBookRegistryProvider
@@ -28,6 +29,11 @@ struct AppContainer: @unchecked Sendable {
     /// MockFeatureFlagProvider; production binds RemoteFeatureFlags.shared.
     let featureFlags: FeatureFlagProviding
     let downloadCenter: MyBooksDownloadCenter
+    /// Fails `downloadCenter`'s in-flight downloads when connectivity drops.
+    /// Held for the container's lifetime. Tests that build a container around
+    /// another container's download center leave it `nil`, so one center never
+    /// gets two monitors.
+    let downloadNetworkLossMonitor: DownloadNetworkLossMonitor?
     let downloadAnnouncementService: DownloadAnnouncementService
     let debugSettings: DebugSettings
     let imageCache: ImageCacheType
@@ -45,98 +51,87 @@ struct AppContainer: @unchecked Sendable {
     let authCoordinator: AuthCoordinator
 
     /// Test-only override for `signInModalSheetPresenter`; `nil` in
-    /// production, where the computed property falls through to the static
-    /// cache. Set via `withSignInModalSheetPresenter(_:)`.
-    private let _signInModalSheetPresenterOverride: SignInModalSheetPresenter?
+    /// production. Set via `withSignInModalSheetPresenter(_:)`.
+    private var _signInModalSheetPresenterOverride: SignInModalSheetPresenter?
 
     /// Test-only override for `audiobookSessionPresenter`; `nil` in
     /// production. Set via `withAudiobookSessionPresenter(_:)`.
-    private let _audiobookSessionPresenterOverride: AudiobookSessionPresenter?
+    private var _audiobookSessionPresenterOverride: AudiobookSessionPresenter?
+
+    /// The services this container owns (see `AppContainerOwnedServices`).
+    /// Plain copies share the link, so `production()` reads and SwiftUI
+    /// environment copies resolve one set of services. `with...` copies get a
+    /// new owner link; `nonOwningCopy()` gets a weak one.
+    private var ownedServicesLink: OwnedServicesLink
+
+    /// The storage this container resolves owned services from. When a
+    /// non-owning copy outlives its owner, it gets a throwaway storage, so
+    /// each read builds a working but uncached service.
+    @MainActor
+    private var ownedServices: AppContainerOwnedServices {
+        switch ownedServicesLink {
+        case .owner(let storage):
+            return storage
+        case .nonOwning(let reference):
+            return reference.storage ?? AppContainerOwnedServices()
+        }
+    }
+
+    /// A copy that resolves this container's owned services without keeping
+    /// them alive. Services the container owns hold this form of their
+    /// container, so they do not form a retain cycle with it.
+    func nonOwningCopy() -> AppContainer {
+        var copy = self
+        switch ownedServicesLink {
+        case .owner(let storage):
+            copy.ownedServicesLink = .nonOwning(WeakOwnedServices(storage))
+        case .nonOwning:
+            break
+        }
+        return copy
+    }
 
     /// SwiftUI-observable facade over the static `SignInModalPresenter` API.
-    /// Held for app lifetime so SwiftUI consumers binding to
-    /// `$presentationState` observe the same instance across screens.
-    ///
-    /// Resolution order:
-    ///   1. Instance-local `_signInModalSheetPresenterOverride` (test seam,
-    ///      set via `withSignInModalSheetPresenter(_:)`).
-    ///   2. Static `_signInModalSheetPresenter` cache (production path).
-    ///   3. Lazy-init a fresh presenter wired to `self`, store in the
-    ///      static cache, return it.
+    /// Owned by this container, so every consumer reading through the same
+    /// container observes one instance. An override set via
+    /// `withSignInModalSheetPresenter(_:)` takes precedence.
     @MainActor
     var signInModalSheetPresenter: SignInModalSheetPresenter {
         if let override = _signInModalSheetPresenterOverride { return override }
-        if let cached = AppContainer._signInModalSheetPresenter { return cached }
-        let presenter = SignInModalSheetPresenter(appContainer: self)
-        AppContainer._signInModalSheetPresenter = presenter
+        let storage = ownedServices
+        if let cached = storage.signInModalSheetPresenter { return cached }
+        let presenter = SignInModalSheetPresenter(appContainer: nonOwningCopy())
+        storage.signInModalSheetPresenter = presenter
         return presenter
     }
 
-    @MainActor private static var _signInModalSheetPresenter: SignInModalSheetPresenter?
-
-    /// Returns a copy of this container with `signInModalSheetPresenter`
-    /// resolved from `presenter` instead of the static cache.
+    /// Returns a copy of this container whose `signInModalSheetPresenter` is
+    /// `presenter`. Test-only seam; production code must not call this.
     ///
-    /// Test-only seam; production code must not call this. Returns a struct
-    /// copy and leaves `self` and the static cache untouched.
+    /// The copy keeps every collaborator and the other override, so chained
+    /// `with...` calls preserve both. It owns new storage: its other owned
+    /// services are built against the copy, and `self`'s are left untouched.
     @MainActor
     func withSignInModalSheetPresenter(_ presenter: SignInModalSheetPresenter) -> AppContainer {
-        return AppContainer(
-            bookRegistry: self.bookRegistry,
-            networkExecutor: self.networkExecutor,
-            networkQueue: self.networkQueue,
-            reachability: self.reachability,
-            accountsManager: self.accountsManager,
-            settings: self.settings,
-            featureFlags: self.featureFlags,
-            downloadCenter: self.downloadCenter,
-            downloadAnnouncementService: self.downloadAnnouncementService,
-            debugSettings: self.debugSettings,
-            imageCache: self.imageCache,
-            imageLoader: self.imageLoader,
-            userAccountPublisher: self.userAccountPublisher,
-            opdsFeedService: self.opdsFeedService,
-            readerService: self.readerService,
-            navigationCoordinatorHub: self.navigationCoordinatorHub,
-            tabRouterHub: self.tabRouterHub,
-            drmAuthorizerProvider: self.drmAuthorizerProvider,
-            authCoordinator: self.authCoordinator,
-            signInModalSheetPresenterOverride: presenter,
-            audiobookSessionPresenterOverride: self._audiobookSessionPresenterOverride
-        )
+        var copy = withNewOwnedServices()
+        copy._signInModalSheetPresenterOverride = presenter
+        return copy
     }
 
-    /// Returns a copy of this container with `audiobookSessionPresenter`
-    /// resolved from `presenter` instead of the static cache.
-    ///
-    /// Test-only seam; production code must not call this. Chaining with
-    /// `withSignInModalSheetPresenter(_:)` preserves both overrides because
-    /// each modifier forwards the other's.
+    /// Returns a copy of this container whose `audiobookSessionPresenter` is
+    /// `presenter`. Test-only seam; production code must not call this.
+    /// Same copy semantics as `withSignInModalSheetPresenter(_:)`.
     @MainActor
     func withAudiobookSessionPresenter(_ presenter: AudiobookSessionPresenter) -> AppContainer {
-        return AppContainer(
-            bookRegistry: self.bookRegistry,
-            networkExecutor: self.networkExecutor,
-            networkQueue: self.networkQueue,
-            reachability: self.reachability,
-            accountsManager: self.accountsManager,
-            settings: self.settings,
-            featureFlags: self.featureFlags,
-            downloadCenter: self.downloadCenter,
-            downloadAnnouncementService: self.downloadAnnouncementService,
-            debugSettings: self.debugSettings,
-            imageCache: self.imageCache,
-            imageLoader: self.imageLoader,
-            userAccountPublisher: self.userAccountPublisher,
-            opdsFeedService: self.opdsFeedService,
-            readerService: self.readerService,
-            navigationCoordinatorHub: self.navigationCoordinatorHub,
-            tabRouterHub: self.tabRouterHub,
-            drmAuthorizerProvider: self.drmAuthorizerProvider,
-            authCoordinator: self.authCoordinator,
-            signInModalSheetPresenterOverride: self._signInModalSheetPresenterOverride,
-            audiobookSessionPresenterOverride: presenter
-        )
+        var copy = withNewOwnedServices()
+        copy._audiobookSessionPresenterOverride = presenter
+        return copy
+    }
+
+    private func withNewOwnedServices() -> AppContainer {
+        var copy = self
+        copy.ownedServicesLink = .owner(AppContainerOwnedServices())
+        return copy
     }
 
     // Lazy-init on MainActor: BookCellModelCache and SamplePreviewManager are
@@ -145,7 +140,8 @@ struct AppContainer: @unchecked Sendable {
     // there crashed with EXC_BREAKPOINT on background-thread first access.
     @MainActor
     var bookCellModelCache: BookCellModelCache {
-        if let cached = AppContainer._bookCellModelCache { return cached }
+        let storage = ownedServices
+        if let cached = storage.bookCellModelCache { return cached }
         let cache = BookCellModelCache(
             imageCache: imageCache,
             bookRegistry: bookRegistry,
@@ -154,7 +150,7 @@ struct AppContainer: @unchecked Sendable {
             samplePreviewManager: samplePreviewManager,
             readerService: readerService
         )
-        AppContainer._bookCellModelCache = cache
+        storage.bookCellModelCache = cache
         return cache
     }
 
@@ -331,41 +327,39 @@ struct AppContainer: @unchecked Sendable {
         return presenter
     }
 
-    // MARK: - Shared Catalog Repository / API
+    // MARK: - Catalog Repository / API
     //
-    // One process-wide `DefaultCatalogAPI` + `CatalogRepository`, so the
+    // One `DefaultCatalogAPI` + `CatalogRepository` per container, so the
     // stale-while-revalidate cache stays warm across catalog navigation instead
     // of each view building a throwaway repository. The repository is scoped by
     // account UUID so one library's catalog is never served to another.
 
     @MainActor
     var catalogAPI: DefaultCatalogAPI {
-        if let cached = AppContainer._catalogAPI { return cached }
+        let storage = ownedServices
+        if let cached = storage.catalogAPI { return cached }
         let api = DefaultCatalogAPI(
-            client: URLSessionNetworkClient(),
+            client: URLSessionNetworkClient(executor: self.networkExecutor),
             parser: OPDSParser(),
             featureFlags: self.featureFlags
         )
-        AppContainer._catalogAPI = api
+        storage.catalogAPI = api
         return api
     }
 
     @MainActor
     var catalogRepository: CatalogRepositoryProtocol {
-        if let cached = AppContainer._catalogRepository { return cached }
+        let storage = ownedServices
+        if let cached = storage.catalogRepository { return cached }
         let accountsManager = self.accountsManager
         let repository = CatalogRepository(
             api: catalogAPI,
             accountID: { [weak accountsManager] in accountsManager?.currentAccount?.uuid }
         )
-        AppContainer._catalogRepository = repository
+        storage.catalogRepository = repository
         return repository
     }
 
-    @MainActor private static var _catalogAPI: DefaultCatalogAPI?
-    @MainActor private static var _catalogRepository: CatalogRepositoryProtocol?
-
-    @MainActor private static var _bookCellModelCache: BookCellModelCache?
     @MainActor private static var _samplePreviewManager: SamplePreviewManager?
     @MainActor private static var _audiobookSession: AudiobookSessionManager?
     @MainActor private static var _audiobookSessionPresenter: AudiobookSessionPresenter?
@@ -393,8 +387,7 @@ struct AppContainer: @unchecked Sendable {
         tabRouterHub: AppTabRouterHub,
         drmAuthorizerProvider: @escaping () -> TPPDRMAuthorizing?,
         authCoordinator: AuthCoordinator,
-        signInModalSheetPresenterOverride: SignInModalSheetPresenter? = nil,
-        audiobookSessionPresenterOverride: AudiobookSessionPresenter? = nil
+        downloadNetworkLossMonitor: DownloadNetworkLossMonitor? = nil
     ) {
         self.bookRegistry = bookRegistry
         self.networkExecutor = networkExecutor
@@ -404,6 +397,7 @@ struct AppContainer: @unchecked Sendable {
         self.settings = settings
         self.featureFlags = featureFlags
         self.downloadCenter = downloadCenter
+        self.downloadNetworkLossMonitor = downloadNetworkLossMonitor
         self.downloadAnnouncementService = downloadAnnouncementService
         self.debugSettings = debugSettings
         self.imageCache = imageCache
@@ -415,8 +409,25 @@ struct AppContainer: @unchecked Sendable {
         self.tabRouterHub = tabRouterHub
         self.drmAuthorizerProvider = drmAuthorizerProvider
         self.authCoordinator = authCoordinator
-        self._signInModalSheetPresenterOverride = signInModalSheetPresenterOverride
-        self._audiobookSessionPresenterOverride = audiobookSessionPresenterOverride
+        self.ownedServicesLink = .owner(AppContainerOwnedServices())
+    }
+
+    /// Binds a network-loss monitor to `downloadCenter`'s reachability (the one
+    /// its pre-flight checks read), active-download maps, registry and failure
+    /// alert. The monitor gets those, not the center.
+    @MainActor
+    static func makeDownloadNetworkLossMonitor(
+        for downloadCenter: MyBooksDownloadCenter
+    ) -> DownloadNetworkLossMonitor {
+        DownloadNetworkLossMonitor(
+            connectivity: downloadCenter.reachability.connectivityPublisher,
+            activeTasks: downloadCenter.stateManager.taskIdentifierToBook,
+            activeDownloads: downloadCenter.stateManager.bookIdentifierToDownloadInfo,
+            bookRegistry: downloadCenter.bookRegistry,
+            failDownload: { [weak downloadCenter] book, message in
+                downloadCenter?.failDownloadWithAlert(for: book, withMessage: message)
+            }
+        )
     }
 
     static func production() -> AppContainer {
@@ -563,6 +574,9 @@ struct AppContainer: @unchecked Sendable {
             reachability: reachability,
             authCoordinator: authCoordinator
         )
+        let downloadNetworkLossMonitor = MainActor.assumeIsolated {
+            makeDownloadNetworkLossMonitor(for: downloadCenter)
+        }
         // `UserAccountPublisher.shared` is `@MainActor`; the builder only runs
         // from app launch or main-thread test setup, the same precondition
         // `authCoordinator` already asserts above.
@@ -582,13 +596,10 @@ struct AppContainer: @unchecked Sendable {
             // otherwise re-enter `AppContainer.production()` from the queue's
             // serial queue at drain time. Same reasoning as the featureFlags
             // note below: the composition root is the binding site.
-            networkQueue: NetworkQueue(
-                transport: executor.transport,
+            networkQueue: NetworkQueue.live(
+                executor: executor,
                 reachability: reachability,
-                authorizationHeaderProvider: { [accountsManager] libraryID in
-                    accountsManager.userAccount(for: libraryID)
-                        .credentialSnapshot().authToken.map { "Bearer \($0)" }
-                }
+                accountsManager: accountsManager
             ),
             reachability: reachability,
             accountsManager: accountsManager,
@@ -616,7 +627,8 @@ struct AppContainer: @unchecked Sendable {
                 return nil
                 #endif
             },
-            authCoordinator: authCoordinator
+            authCoordinator: authCoordinator,
+            downloadNetworkLossMonitor: downloadNetworkLossMonitor
         )
     }
 

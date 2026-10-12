@@ -53,16 +53,39 @@ final class ReaderNavBarVoiceOverTests: XCTestCase {
         )
     }
 
-    /// The existing accessibility-aware navbar logic in
-    /// `updateNavigationBar` must be preserved — without this guard,
-    /// future refactors could remove the
-    /// `&& !UIAccessibility.isVoiceOverRunning` clause and the product
-    /// requirement silently regresses.
-    func testUpdateNavigationBar_keepsNavBarVisibleWhenVoiceOverIsRunning() throws {
-        let source = try Self.source(for: "Palace/Reader2/UI/TPPBaseReaderViewController.swift")
+    /// The accessibility-aware navbar rule must be preserved: while VoiceOver
+    /// runs, the bar stays visible whatever the tracked value says, because it
+    /// carries the only reachable Back control. Asserted against the rule rather
+    /// than against the text of the expression — a source match would also fail
+    /// for a rename that changed nothing (PP-4326 navbar follow-up).
+    func testNavigationBarShouldHide_keepsNavBarVisibleWhenVoiceOverIsRunning() {
+        for tracked in [true, false] {
+            XCTAssertFalse(
+                TPPBaseReaderViewController.navigationBarShouldHide(
+                    navigationBarHidden: tracked, voiceOverRunning: true),
+                "the navbar must stay visible while VoiceOver is running; tracked=\(tracked)"
+            )
+        }
         XCTAssertTrue(
-            source.contains("navigationBarHidden && !UIAccessibility.isVoiceOverRunning"),
-            "updateNavigationBar must compute hidden as `navigationBarHidden && !UIAccessibility.isVoiceOverRunning` so the navbar stays visible while VoiceOver is running (PP-4326 navbar follow-up)."
+            TPPBaseReaderViewController.navigationBarShouldHide(
+                navigationBarHidden: true, voiceOverRunning: false),
+            "with VoiceOver off the bar still hides for immersive reading"
+        )
+    }
+
+    /// And `updateNavigationBar` must route through that rule, so the assertion
+    /// above is about the code the reader actually runs.
+    func testUpdateNavigationBar_routesThroughTheSharedRule() throws {
+        let source = try Self.source(for: "Palace/Reader2/UI/TPPBaseReaderViewController.swift")
+        guard let start = source.range(of: "func updateNavigationBar(") else {
+            return XCTFail("updateNavigationBar is gone from TPPBaseReaderViewController")
+        }
+        let body = source[start.upperBound...].prefix(400)
+        XCTAssertTrue(
+            body.contains("navigationBarShouldHide("),
+            "updateNavigationBar computes the bar's visibility some other way, so "
+            + "navigationBarShouldHide no longer describes what the reader does "
+            + "(PP-4326 navbar follow-up)."
         )
     }
 

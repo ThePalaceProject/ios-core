@@ -212,18 +212,27 @@ jobs:
           XCTESTRUN=$(find "$RUNNER_TEMP/dd/Build/Products" -maxdepth 1 -name "*.xctestrun" | head -1)
           [ -f "$XCTESTRUN" ] || { echo "::error::build-for-testing produced no .xctestrun"; exit 1; }
           mkdir -p "$RUNNER_TEMP/plan"
-          xcodebuild test-without-building \
-            -xctestrun "$XCTESTRUN" \
-            -destination "id=${{ steps.sim.outputs.id }}" \
-            -enumerate-tests \
-            -test-enumeration-style flat \
-            -test-enumeration-format json \
-            -test-enumeration-output-path "$RUNNER_TEMP/plan/enumeration.json"
+          # The planner runs xcodebuild -enumerate-tests itself, and once more
+          # if a bundle comes back without its tests.
           python3 scripts/ci-test-shards.py plan \
+            --xctestrun "$XCTESTRUN" \
+            --destination "id=${{ steps.sim.outputs.id }}" \
             --enumeration "$RUNNER_TEMP/plan/enumeration.json" \
             --shards "$SHARDS" \
             --out "$RUNNER_TEMP/plan/shard-plan.json"
           echo "shards=$(python3 -c "import json,sys; print(json.dumps(list(range(int(sys.argv[1])))))" "$SHARDS")" >> "$GITHUB_OUTPUT"
+
+      # build-for-testing records each local package framework in the
+      # xctestrun's coverage metadata as static, and leaves some out, so the
+      # shards' xcresults list those packages with no files. Rewrite those
+      # entries before the products ship. On failure the app coverage is
+      # unaffected and the report names every package it did not receive.
+      - name: Point coverage metadata at the package binaries
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          XCTESTRUN=$(find "$RUNNER_TEMP/dd/Build/Products" -maxdepth 1 -name "*.xctestrun" | head -1)
+          python3 scripts/ci-xctestrun-package-coverage.py "$XCTESTRUN"
 
       # Everything test-without-building needs, and nothing it does not:
       # object files, module interfaces and dSYMs stay behind (~350 MB).
@@ -497,26 +506,53 @@ jobs:
       # which packages this step covers.
       - name: Run PalaceTriageBot package tests
         if: ${{ !cancelled() && steps.plan.outputs.packages == 'true' }}
-        run: swift test --package-path Palace/Packages/PalaceTriageBot
+        run: swift test --enable-code-coverage --package-path Palace/Packages/PalaceTriageBot
 
       - name: Run PalaceAuth package tests
         if: ${{ !cancelled() && steps.plan.outputs.packages == 'true' }}
-        run: swift test --package-path Palace/Packages/PalaceAuth
+        run: swift test --enable-code-coverage --package-path Palace/Packages/PalaceAuth
 
       - name: Run PalaceLogging package tests
         if: ${{ !cancelled() && steps.plan.outputs.packages == 'true' }}
-        run: swift test --package-path Palace/Packages/PalaceLogging
+        run: swift test --enable-code-coverage --package-path Palace/Packages/PalaceLogging
 
       - name: Run PalaceReadingPosition package tests
         if: ${{ !cancelled() && steps.plan.outputs.packages == 'true' }}
-        run: swift test --package-path Palace/Packages/PalaceReadingPosition
+        run: swift test --enable-code-coverage --package-path Palace/Packages/PalaceReadingPosition
 
       # PalaceUtilities is the Phase B1 extraction: the Foundation-only core of
       # Palace/Utilities, with no package dependencies at all. 153 tests, under
       # a second.
       - name: Run PalaceUtilities package tests
         if: ${{ !cancelled() && steps.plan.outputs.packages == 'true' }}
-        run: swift test --package-path Palace/Packages/PalaceUtilities
+        run: swift test --enable-code-coverage --package-path Palace/Packages/PalaceUtilities
+
+      # One llvm-cov export per package above, for the report job. A package
+      # whose tests did not finish leaves no file, and the report then reads
+      # as incomplete rather than as that package at 0%.
+      - name: Collect package coverage
+        if: ${{ !cancelled() && steps.plan.outputs.packages == 'true' }}
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          OUT="$RUNNER_TEMP/package-coverage"
+          mkdir -p "$OUT"
+          for pkg in PalaceTriageBot PalaceAuth PalaceLogging PalaceReadingPosition PalaceUtilities; do
+            src=$(swift test --show-codecov-path --package-path "Palace/Packages/$pkg")
+            if [ -f "$src" ]; then cp "$src" "$OUT/$pkg.json"; else echo "::warning::no coverage file for $pkg at $src"; fi
+          done
+          ls -la "$OUT"
+
+      - name: Upload package coverage
+        if: ${{ !cancelled() && steps.plan.outputs.packages == 'true' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: package-coverage
+          path: ${{ runner.temp }}/package-coverage/
+          retention-days: 14
+          if-no-files-found: warn
+          overwrite: true
 
       # The package suite above runs RedactionCorpusTests, but a deny-list guard
       # is only worth its ability to fail. --self-test disables redaction to prove
@@ -561,6 +597,29 @@ jobs:
           if-no-files-found: ignore
           overwrite: true
 
+      # After an xcodebuild crash or a failed shard, TestResults.xcresult may not
+      # exist. The shard keeps the unmerged bundles (possibly unfinalized) and the
+      # raw xcodebuild log of each pass in shard-out/partial; upload them so the
+      # failure text can still be read with xcresulttool or from the log.
+      - name: Check for partial test results
+        if: always()
+        id: partial
+        run: |
+          if [ -n "$(ls -A "$RUNNER_TEMP/shard-out/partial" 2>/dev/null)" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload partial test results
+        if: always() && steps.partial.outputs.present == 'true'
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: partial-test-results-shard-${{ matrix.shard }}
+          path: ${{ runner.temp }}/shard-out/partial/
+          retention-days: 14
+          if-no-files-found: warn
+          overwrite: true
+
       # NOT continue-on-error: the gate cannot prove this shard ran its classes
       # without it, and it must then fail rather than assume.
       - name: Upload shard report
@@ -577,12 +636,13 @@ jobs:
         if: steps.tests.outcome == 'failure' || steps.tests_streaming_on.outcome == 'failure'
         run: exit 1
 
-  # The single required check. It passes when every shard passed and the shard
-  # reports together account for every planned class exactly once, or when the
-  # `changes` job found nothing that can affect the tests (build and test then
-  # report `skipped`, which this job reads as a pass only in that case).
+  # The single required check. It passes when every shard passed, the shard
+  # reports together account for every planned class exactly once, and the
+  # report job measured complete coverage that meets every floor; or when the
+  # `changes` job found nothing that can affect the tests (build, test and
+  # report then report `skipped`, which this job reads as a pass only then).
   build-and-test:
-    needs: [changes, build, test]
+    needs: [changes, build, test, report]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -594,21 +654,29 @@ jobs:
           RUN: ${{ needs.changes.outputs.run }}
           BUILD: ${{ needs.build.result }}
           TEST: ${{ needs.test.result }}
+          REPORT: ${{ needs.report.result }}
+          FLOORS: ${{ needs.report.outputs.coverage_floors }}
         run: |
-          echo "changes=$CHANGES run=$RUN build=$BUILD test=$TEST"
+          echo "changes=$CHANGES run=$RUN build=$BUILD test=$TEST report=$REPORT floors=$FLOORS"
           if [ "$CHANGES" != "success" ]; then
             echo "::error::could not decide whether the tests must run (changes job: $CHANGES)"; exit 1
           fi
           if [ "$RUN" = "false" ]; then
-            if [ "$BUILD" = "skipped" ] && [ "$TEST" = "skipped" ]; then
-              echo "No changed path can affect the unit tests; build and test were skipped."
+            if [ "$BUILD" = "skipped" ] && [ "$TEST" = "skipped" ] && [ "$REPORT" = "skipped" ]; then
+              echo "No changed path can affect the unit tests; build, test and report were skipped."
               echo "verify=false" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            echo "::error::tests were not required but build=$BUILD test=$TEST"; exit 1
+            echo "::error::tests were not required but build=$BUILD test=$TEST report=$REPORT"; exit 1
           fi
           if [ "$BUILD" != "success" ]; then echo "::error::build: $BUILD"; exit 1; fi
           if [ "$TEST" != "success" ]; then echo "::error::one or more test shards: $TEST"; exit 1; fi
+          # A floor violation and incomplete coverage both fail the floor step;
+          # an empty value means the report job ended before reaching it.
+          if [ "$FLOORS" != "success" ]; then
+            echo "::error::coverage floors: ${FLOORS:-not evaluated}; the report job's Enforce Coverage Floors step names the rows"; exit 1
+          fi
+          if [ "$REPORT" != "success" ]; then echo "::error::report job: $REPORT"; exit 1; fi
           echo "verify=true" >> "$GITHUB_OUTPUT"
 
       - name: Checkout
@@ -641,14 +709,16 @@ jobs:
           python3 scripts/ci-test-shards.py verify-union --plan plan/shard-plan.json "${REPORTS[@]}"
 
   # Merges the shard bundles and produces the same reports, PR comment and
-  # artifacts the single job did. It does not gate: the pass/fail verdict is
-  # the shards' and `build-and-test`'s. Runs on macOS only because xcresulttool
-  # does; publishing to Pages happens on Linux in `publish-report`.
+  # artifacts the single job did, and enforces the coverage floors, which
+  # `build-and-test` reads. Runs on macOS only because xcresulttool does;
+  # publishing to Pages happens on Linux in `publish-report`.
   report:
     needs: [changes, build, test]
     if: always() && needs.changes.outputs.run == 'true' && needs.build.result != 'skipped' && needs.build.result != 'cancelled'
     runs-on: macos-26
     timeout-minutes: 30
+    outputs:
+      coverage_floors: ${{ steps.coverage_gate.outcome }}
     permissions:
       contents: read
       pull-requests: write
@@ -694,6 +764,14 @@ jobs:
         with:
           pattern: shard-report-*
           path: shard-reports
+
+      - name: Download package coverage
+        if: needs.build.result == 'success'
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: package-coverage
+          path: package-coverage
 
       # Whether every planned class ran. Coverage and "all passed" mean nothing
       # over a run that lost classes to a runner failure, and without this the
@@ -839,41 +917,50 @@ jobs:
             python3 scripts/test-history.py save test-data.json .test-history || true
           fi
           
+      # Exit 0 is a complete report; exit 3 (with coverage-data.json still
+      # written) names what is missing: no result bundle, an unreadable one, a
+      # shard that lost classes, a package with no data. The steps below read
+      # the status output, not this step's outcome.
       - name: Parse Code Coverage
         if: always()
         id: coverage
+        env:
+          FOUND: ${{ steps.find_results.outputs.found }}
+          RESULT_PATH: ${{ steps.find_results.outputs.path }}
+          COMPLETE: ${{ steps.completeness.outputs.complete }}
+          REASON: ${{ steps.completeness.outputs.reason }}
         run: |
-          RESULT_PATH="${{ steps.find_results.outputs.path }}"
-          
-          # Initialize defaults
-          echo "coverage=0" >> $GITHUB_OUTPUT
-          echo "coverage_formatted=N/A" >> $GITHUB_OUTPUT
-          
-          if [ "${{ steps.find_results.outputs.found }}" != "true" ] || [ ! -d "$RESULT_PATH" ]; then
-            echo "No results for coverage"
-            exit 0
+          set -uo pipefail
+          ARGS=(--json coverage-data.json --repo-root "$GITHUB_WORKSPACE" --expect-local-packages
+                --host-package-dir package-coverage)
+          # The packages the test job runs with `swift test --enable-code-coverage`.
+          for pkg in PalaceTriageBot PalaceAuth PalaceLogging PalaceReadingPosition PalaceUtilities; do
+            ARGS+=(--expect-host-package "$pkg")
+          done
+          if [ "$COMPLETE" != "true" ]; then
+            ARGS+=(--incomplete-reason "not every planned test class ran: ${REASON:-unknown}")
           fi
-          
-          echo "Extracting code coverage..."
-
-          # Validate xcresult bundle integrity before processing — a corrupt
-          # bundle (e.g. from a timeout kill) causes xccov to fail with 0%
-          # coverage, which then trips the coverage floor gate.
-          if ! xcrun xcresulttool get test-results summary --path "$RESULT_PATH" &>/dev/null; then
-            echo "⚠️ xcresult bundle is incomplete or corrupted — skipping coverage"
-            echo "coverage=N/A" >> $GITHUB_OUTPUT
-            echo "coverage_formatted=N/A" >> $GITHUB_OUTPUT
-            exit 0
+          if [ "$FOUND" != "true" ] || [ ! -d "$RESULT_PATH" ]; then
+            ARGS+=(--incomplete-reason "no test result bundle")
+            RESULT_PATH="${RESULT_PATH:-missing.xcresult}"
+          fi
+          python3 scripts/coverage-report.py "$RESULT_PATH" "${ARGS[@]}"
+          RC=$?
+          echo "coverage-report.py exited $RC"
+          if [ "$RC" -ne 0 ] && [ "$RC" -ne 3 ]; then
+            echo "coverage_status=incomplete" >> "$GITHUB_OUTPUT"
+            echo "coverage_incomplete_reason=coverage-report.py exited $RC" >> "$GITHUB_OUTPUT"
+            exit "$RC"
           fi
 
-          python3 scripts/coverage-report.py "$RESULT_PATH" --json coverage-data.json || true
-
-      # Coverage floor gate. Runs in WARN mode (continue-on-error: true) on day one;
-      # flip to blocking by removing continue-on-error after the floors are trusted.
+      # Coverage floor gate. An app floor (overall, modules) more than the
+      # enforcer's tolerance below its floor exits 1, and incomplete data exits
+      # 3; either fails this job, and `build-and-test` reads the outcome. Package
+      # rows are advisory. The uploads below run on always() so a failure here
+      # keeps them.
       - name: Enforce Coverage Floors
-        if: always() && steps.find_results.outputs.found == 'true' && steps.coverage.outputs.coverage != 'N/A'
+        if: always()
         id: coverage_gate
-        continue-on-error: true
         env:
           COMPLETE: ${{ steps.completeness.outputs.complete }}
           REASON: ${{ steps.completeness.outputs.reason }}
@@ -885,7 +972,13 @@ jobs:
             echo "::error title=Coverage floors not evaluated::not every planned test class ran: ${REASON:-unknown}"
             exit 1
           fi
+          set +e
           python3 scripts/enforce_coverage_floors.py coverage-data.json --floors scripts/coverage-floors.json
+          RC=$?
+          if [ "$RC" -eq 3 ]; then
+            echo "::error title=Coverage incomplete::floors not compared; the Parse Code Coverage step names what is missing"
+          fi
+          exit "$RC"
 
       - name: Process Snapshot Failures
         if: always()
@@ -952,7 +1045,9 @@ jobs:
           COVERAGE="${{ steps.coverage.outputs.coverage_formatted }}"
           TOTAL_COVERAGE="${{ steps.coverage.outputs.total_coverage_formatted }}"
           EXCLUDED_FILES="${{ steps.coverage.outputs.excluded_file_count }}"
-          COVERAGE_TARGETS="${{ steps.coverage.outputs.coverage_targets }}"
+          COVERAGE_STATUS="${{ steps.coverage.outputs.coverage_status }}"
+          COVERAGE_INCOMPLETE="${{ steps.coverage.outputs.coverage_incomplete_reason }}"
+          COVERAGE_PACKAGES="${{ steps.coverage.outputs.coverage_packages }}"
           NEW_FAILURES="${{ steps.history.outputs.new_failures }}"
           FIXED_TESTS="${{ steps.history.outputs.fixed_tests }}"
           FLAKY_TESTS="${{ steps.history.outputs.flaky_tests }}"
@@ -1086,6 +1181,10 @@ jobs:
           # Unit test line coverage — testable = denominator excludes UI/lifecycle
           # files listed in scripts/coverage-exclude.json; total = every executable
           # line. We gate on testable; total is shown for continuity.
+          if [ "$COVERAGE_STATUS" != "complete" ]; then
+            echo "**Coverage: INCOMPLETE** — ${COVERAGE_INCOMPLETE:-the coverage step did not produce a report}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
           if [ "$COVERAGE" != "N/A" ] && [ -n "$COVERAGE" ]; then
             echo "**Unit Test Line Coverage (testable surfaces): $COVERAGE**" >> $GITHUB_STEP_SUMMARY
             if [ -n "$TOTAL_COVERAGE" ] && [ "$TOTAL_COVERAGE" != "N/A" ]; then
@@ -1093,12 +1192,14 @@ jobs:
               echo "_Total coverage incl. UI/lifecycle: $TOTAL_COVERAGE ($EXCLUDED_FILES files excluded from testable denominator — see \`scripts/coverage-exclude.json\`)_" >> $GITHUB_STEP_SUMMARY
             fi
             echo "" >> $GITHUB_STEP_SUMMARY
-            if [ -n "$COVERAGE_TARGETS" ]; then
-              echo "| Target | Lines Covered |" >> $GITHUB_STEP_SUMMARY
-              echo "|--------|---------------|" >> $GITHUB_STEP_SUMMARY
-              echo "$COVERAGE_TARGETS" | while IFS='|' read -r name cov covered total; do
+            # Packages are measured apart from the app line above, and the app
+            # suite (iOS) and swift test (macOS) runs are not combined.
+            if [ -n "$COVERAGE_PACKAGES" ]; then
+              echo "| Package | Measured by | Covered / executable | Testable |" >> $GITHUB_STEP_SUMMARY
+              echo "|---------|-------------|----------------------|----------|" >> $GITHUB_STEP_SUMMARY
+              echo "$COVERAGE_PACKAGES" | while IFS='|' read -r scope name covered total pct; do
                 if [ -n "$name" ]; then
-                  echo "| $name | $cov |" >> $GITHUB_STEP_SUMMARY
+                  echo "| $name | $scope | $covered / $total | $pct |" >> $GITHUB_STEP_SUMMARY
                 fi
               done
               echo "" >> $GITHUB_STEP_SUMMARY
@@ -1214,7 +1315,7 @@ jobs:
           if-no-files-found: ignore
           
       - name: Upload Snapshot Failures
-        if: steps.snapshots.outputs.found == 'true'
+        if: always() && steps.snapshots.outputs.found == 'true'
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
@@ -1237,7 +1338,7 @@ jobs:
       # archive could not be saved — which trains everyone to ignore red, and is
       # how a broken commit gate shipped here once before.
       - name: Upload Test Results
-        if: steps.find_results.outputs.found == 'true'
+        if: always() && steps.find_results.outputs.found == 'true'
         continue-on-error: true
         id: upload_results
         uses: actions/upload-artifact@v7
@@ -1286,7 +1387,9 @@ jobs:
             const coverage = '${{ steps.coverage.outputs.coverage_formatted }}';
             const totalCoverage = '${{ steps.coverage.outputs.total_coverage_formatted }}';
             const excludedFiles = '${{ steps.coverage.outputs.excluded_file_count }}';
-            const coverageTargets = `${{ steps.coverage.outputs.coverage_targets }}`;
+            const coverageStatus = '${{ steps.coverage.outputs.coverage_status }}';
+            const coverageIncomplete = `${{ steps.coverage.outputs.coverage_incomplete_reason }}`;
+            const coveragePackages = `${{ steps.coverage.outputs.coverage_packages }}`;
             const newFailures = `${{ steps.history.outputs.new_failures }}`;
             const fixedTests = `${{ steps.history.outputs.fixed_tests }}`;
             const flakyTests = `${{ steps.history.outputs.flaky_tests }}`;
@@ -1415,6 +1518,9 @@ jobs:
             // Testing Coverage Breakdown
             body += `### 📊 Testing Coverage Breakdown\n\n`;
 
+            if (coverageStatus !== 'complete') {
+              body += `**Coverage: INCOMPLETE** — ${coverageIncomplete || 'the coverage step did not produce a report'}\n\n`;
+            }
             // Unit test line coverage — testable excludes UI/lifecycle per
             // scripts/coverage-exclude.json; we gate on testable.
             if (coverage && coverage !== 'N/A' && coverage !== '') {
@@ -1422,13 +1528,13 @@ jobs:
               if (totalCoverage && totalCoverage !== 'N/A' && totalCoverage !== '') {
                 body += `_Total coverage incl. UI/lifecycle: ${totalCoverage} (${excludedFiles} files excluded from testable denominator — see \`scripts/coverage-exclude.json\`)_\n\n`;
               }
-              if (coverageTargets && coverageTargets.trim()) {
-                body += `| Target | Lines Covered |\n`;
-                body += `|--------|---------------|\n`;
-                coverageTargets.trim().split('\n').forEach(line => {
-                  const [name, cov] = line.split('|');
+              if (coveragePackages && coveragePackages.trim()) {
+                body += `| Package | Measured by | Covered / executable | Testable |\n`;
+                body += `|---------|-------------|----------------------|----------|\n`;
+                coveragePackages.trim().split('\n').forEach(line => {
+                  const [scope, name, covered, total, pct] = line.split('|');
                   if (name) {
-                    body += `| ${name} | ${cov} |\n`;
+                    body += `| ${name} | ${scope} | ${covered} / ${total} | ${pct} |\n`;
                   }
                 });
                 body += '\n';
@@ -1532,10 +1638,11 @@ jobs:
             }
           
   # Pages publishing clones the gh-pages branch, which took ~3.3 minutes of the
-  # macOS job; it needs nothing from macOS, so it runs here.
+  # macOS job; it needs nothing from macOS, so it runs here. It also runs when
+  # `report` failed on the coverage floors, since that report is the one to read.
   publish-report:
     needs: report
-    if: always() && needs.report.result == 'success'
+    if: always() && (needs.report.result == 'success' || needs.report.result == 'failure')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:

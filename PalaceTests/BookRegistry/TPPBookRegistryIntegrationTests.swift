@@ -478,7 +478,25 @@ final class TPPBookRegistryBookmarkTests: XCTestCase {
         let new = TPPBookLocation(locationString: "{\"chapter\": 1, \"page\": 50}", renderer: "R1")!
         registry.replaceGenericBookmark(old, with: new, forIdentifier: book.identifier)
 
-        XCTAssertEqual(registry.genericBookmarksForIdentifier(book.identifier).count, 1)
+        XCTAssertEqual(registry.genericBookmarksForIdentifier(book.identifier).map(\.locationString), [new.locationString])
+
+        registry.removeBook(forIdentifier: book.identifier)
+    }
+
+    /// Deleting by identity removes only the named record, not another one
+    /// that differs only in its annotation ID.
+    func testDeleteGenericBookmarkIdenticalTo_RemovesOnlyTheNamedRecord() {
+        let registry = makeTestAppContainer().bookRegistry as! TPPBookRegistry
+        let book = TPPBookMocker.mockBook(identifier: "delete-identical-\(UUID().uuidString)",
+                                          title: "Delete Identical",
+                                          distributorType: .EpubZip)
+        let unsynced = TPPBookLocation(locationString: "{\"annotationId\": \"\", \"page\": 5}", renderer: "R1")!
+        let synced = TPPBookLocation(locationString: "{\"annotationId\": \"srv-1\", \"page\": 5}", renderer: "R1")!
+        registry.addBook(book, state: .downloadSuccessful, genericBookmarks: [unsynced, synced])
+
+        registry.deleteGenericBookmark(identicalTo: unsynced, forIdentifier: book.identifier)
+
+        XCTAssertEqual(registry.genericBookmarksForIdentifier(book.identifier).map(\.locationString), [synced.locationString])
 
         registry.removeBook(forIdentifier: book.identifier)
     }

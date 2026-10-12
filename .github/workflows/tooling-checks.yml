@@ -7,8 +7,9 @@ name: Tooling Checks
 #   1. bash -n on every committed shell script  (catches syntax breaks)
 #   2. pytest on the detector suite              (catches detector logic regressions)
 #   3. the pre-commit hook fixture test          (catches hook-wiring regressions)
-# A second job (flake-lint) diff-scopes the STARVE-001 test-flakiness gate against
-# the PR's base branch — blocks NEW parallel-clone-starvation deadline-polls.
+# A second job (flake-lint) fetches the PR's base branch and runs the diff-scoped
+# gates against it: STARVE-001 (no NEW parallel-clone-starvation deadline-polls),
+# the Readium money-path gate, and doc-hygiene over the PR's added files.
 on: [ pull_request, workflow_dispatch ]
 concurrency:
   group: tooling-checks-${{ github.event.pull_request.number || github.ref }}
@@ -427,6 +428,27 @@ jobs:
 
       - name: Fetch PR base branch
         run: git fetch --no-tags origin "+refs/heads/${BASE}:refs/remotes/origin/${BASE}"
+
+      # Doc-hygiene over the files this PR adds. The tooling-integrity job runs
+      # only the checker's fixture test; this runs the checker itself against
+      # the PR. `--base` is required: with no flags it reads staged files, and a
+      # CI checkout has none, so it would always pass. The ref checks fail the
+      # step when the base is missing, because the checker discards git errors
+      # and an unresolvable base reads as "nothing added". Keep this step before
+      # the money-path step: its --depth=1 base fetch marks a base tip newer than
+      # the merge commit as shallow, after which merge-base finds nothing.
+      - name: doc-hygiene on the PR's added files
+        run: |
+          set -euo pipefail
+          if ! git rev-parse --verify --quiet "origin/${BASE}^{commit}" >/dev/null; then
+            echo "::error::origin/${BASE} is not fetched; doc-hygiene cannot diff against it."
+            exit 1
+          fi
+          if ! git merge-base "origin/${BASE}" HEAD >/dev/null; then
+            echo "::error::HEAD shares no history with origin/${BASE}; doc-hygiene cannot diff against it."
+            exit 1
+          fi
+          bash scripts/check-doc-hygiene.sh --base "origin/${BASE}"
 
       # Flag NEW deadline-poll waits on lines this PR adds vs its base. The
       # linter's --changed mode is diff-scoped (added lines of PalaceTests/*.swift

@@ -4,9 +4,9 @@
 //
 //  Exercises the two cached factory accessors on AppContainer that replace the
 //  `AudiobookSessionManager.shared` / `PlaybackBootstrapper.shared` singletons.
-//  These accessors mirror the `_bookCellModelCache` / `_samplePreviewManager`
-//  pattern: a single shared instance pinned in a `@MainActor` static cell,
-//  lazy-constructed on first read.
+//  These accessors follow the `_samplePreviewManager` pattern: a single
+//  shared instance pinned in a `@MainActor` static cell, lazy-constructed on
+//  first read.
 //
 
 import XCTest

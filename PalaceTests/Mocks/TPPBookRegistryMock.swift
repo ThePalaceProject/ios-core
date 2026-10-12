@@ -208,10 +208,20 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider, @unchecked Sendabl
         lock.withLock { _registry[bookIdentifier]?.genericBookmarks?.removeAll { $0.isSimilarTo(location) } }
     }
 
+    /// Identity match, as in the production BookmarkManager
+    /// (GenericBookmarkReplaceParityTests keeps the two in step).
     func replaceGenericBookmark(_ oldLocation: TPPBookLocation, with newLocation: TPPBookLocation, forIdentifier bookIdentifier: String) {
         lock.withLock {
-            if let index = _registry[bookIdentifier]?.genericBookmarks?.firstIndex(where: { $0.isSimilarTo(oldLocation) }) {
+            if let index = _registry[bookIdentifier]?.genericBookmarks?.firstIndex(where: { $0.isSameRecord(as: oldLocation) }) {
                 _registry[bookIdentifier]?.genericBookmarks?[index] = newLocation
+            }
+        }
+    }
+
+    func deleteGenericBookmark(identicalTo location: TPPBookLocation, forIdentifier bookIdentifier: String) {
+        lock.withLock {
+            if let index = _registry[bookIdentifier]?.genericBookmarks?.firstIndex(where: { $0.isSameRecord(as: location) }) {
+                _registry[bookIdentifier]?.genericBookmarks?.remove(at: index)
             }
         }
     }

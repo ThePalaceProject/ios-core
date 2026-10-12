@@ -14,8 +14,7 @@ description: "Audiobook Systemic Overhaul — Plan and Retrospective"
 > Three-phase refactor of the Palace-side audiobook stack to close six recurring failure surfaces. Originally drafted as a forward-looking ADR; reconstructed here after all three Palace-side phases shipped on **2026-05-21** (PRs #979 / #980 / #982).
 
 **Status:** Palace-side phases (1–3) shipped 2026-05-21. Toolkit-side phases (T1–T3) tracked separately in [`ios-audiobooktoolkit`](https://github.com/ThePalaceProject/ios-audiobooktoolkit) — unstarted at time of writing.
-**Companion docs:** [architectural-triad.md](./architectural-triad.md), [swarm-workflow.md](./swarm-workflow.md), [account-state-machine.md](./account-state-machine.md)
-**ForgeOS initiatives:** `init_05b6832a` (Phase 2), `init_eb359cf0` (Phase 3); Phase 1 ran as `cs_ff3b8638` directly. <!-- audit-verified: IDs taken from swarm outcome.md files committed at `.forgeos/swarms/swarm_{5c8ddbd5,f4fbef9c,03acb10a}/outcome.md`. -->
+**Companion docs:** [architectural-triad.md](./architectural-triad.md), [account-state-machine.md](./account-state-machine.md)
 
 ## TL;DR
 
@@ -41,19 +40,19 @@ Each subsection names a recurring failure mode, the in-field evidence, and the s
 
 ### Pattern 1 — Loader callback pyramid
 
-`AudiobookLoader.swift` was 607 LOC on `develop@ae1fb8aec` with **callback nesting six levels deep** spread across two methods (`resolveManifestAndDecryptor` lines 142-219 and `fetchOpenAccessManifest` lines 346-396). <!-- audit-verified: LOC and line ranges per `swarm_5c8ddbd5/plan.md:93`. --> Pre-Swift-concurrency code that had absorbed every vendor extension in place.
+`AudiobookLoader.swift` was 607 LOC on `develop@ae1fb8aec` with **callback nesting six levels deep** spread across two methods (`resolveManifestAndDecryptor` lines 142-219 and `fetchOpenAccessManifest` lines 346-396). Pre-Swift-concurrency code that had absorbed every vendor extension in place.
 
 **Symptom:** every vendor-specific code path was implicit — readers had to follow conditional chains to know which branch handled which book shape. Adding a vendor meant editing three locations and a global priority order.
 
 ### Pattern 2 — Vendor-shape dispatch via property checks
 
-The loader dispatched on book properties (`book.hasLCPAcquisition`, `book.distributor`, `book.defaultAcquisition?.hrefURL.isFileURL`) rather than typed contracts. Every shape was a string-match or a property-traversal; PP-4407 (Marketplace audiobook open regression, fixed via 3.0.3 hotfix `ca2ff13b6`) was the load-bearing example — the Marketplace OPDS shape wrapped its LCP acquisition inside an `indirectAcquisitions` chain that the flat property check missed. <!-- audit-verified: Hotfix SHA `ca2ff13b6` per `swarm_5c8ddbd5/plan.md:23` and `D-LoaderDispatch.md`. -->
+The loader dispatched on book properties (`book.hasLCPAcquisition`, `book.distributor`, `book.defaultAcquisition?.hrefURL.isFileURL`) rather than typed contracts. Every shape was a string-match or a property-traversal; PP-4407 (Marketplace audiobook open regression, fixed via 3.0.3 hotfix `ca2ff13b6`) was the load-bearing example — the Marketplace OPDS shape wrapped its LCP acquisition inside an `indirectAcquisitions` chain that the flat property check missed.
 
 **Symptom:** new OPDS shapes silently routed to the wrong loader and produced opaque parse-failure errors deep in toolkit code. The 3.0.3 hotfix added symlink recovery as a workaround; the structural cause remained.
 
 ### Pattern 3 — `hasLCPAcquisition` missing the recursive case
 
-A direct corollary of Pattern 2: the LCP-detection predicate on `develop` walked only top-level acquisitions, missing nested `indirectAcquisitions`. The fix landed on the 3.0.3 release branch but was **never forward-merged to develop** at ADR draft time. <!-- audit-verified: "hasLCPAcquisition doesn't exist on develop" per `swarm_5c8ddbd5/plan.md:91` (architect surprise #3); the recursive predicate was introduced by Phase 1 Module C. -->
+A direct corollary of Pattern 2: the LCP-detection predicate on `develop` walked only top-level acquisitions, missing nested `indirectAcquisitions`. The fix landed on the 3.0.3 release branch but was **never forward-merged to develop** at ADR draft time.
 
 ### Pattern 4 — Position writers don't share a contract
 
@@ -65,17 +64,16 @@ Position-write logic was duplicated across three sites with subtly different ser
 | `Reader2/BusinessLogic/TPPLastReadPositionPoster.swift` | EPUB; serial-queue + Date-based throttle | 138 |
 | `Reader3/PDF/Model/TPPPDFDocumentMetadata.swift` | PDF; unthrottled local-cache writer | — |
 
-<!-- audit-verified: site list + LOC per `swarm_f4fbef9c/plan.md:7-25`. -->
 
 The toolkit called Palace via `AudiobookBookmarkDelegate` (defined in `ios-audiobooktoolkit/PalaceAudiobookToolkit/Core/AudiobookManager.swift:31`); the audiobook side delegated to `AudiobookDataManager`. The EPUB side used `TPPLastReadPositionPoster` directly. **Same endpoint shape, different serialization fields, different throttle windows.** That asymmetry was the latent regression surface.
 
-**Symptom:** Reader2 `swarm_f3b9b087` shipped the day before to fix `shouldStore` predicate drift — but the underlying duplication was unaddressed. Audiobook + PDF + EPUB needed one contract, not three.
+**Symptom:** a Reader2 change shipped the day before to fix `shouldStore` predicate drift — but the underlying duplication was unaddressed. Audiobook + PDF + EPUB needed one contract, not three.
 
 ### Pattern 5 — `.shared` singletons on lifecycle-critical code
 
-`Palace/Audiobooks/AudiobookSessionManager.swift:87` and `Palace/Audiobooks/PlaybackBootstrapper.swift:56` both exposed `static let shared`. <!-- audit-verified: line numbers per `swarm_03acb10a/plan.md` recon table. --> Three production sites read them (`TPPAppDelegate.swift:55`, `CarPlaySceneDelegate.swift:43`, `BookService.swift:75` — that read moved to `BookOpenRouter.swift` in Wave 5, 2026-09-29; the line reference records where it was at the time of this audit); test sites had `setUp resets shared mock` workarounds for the cross-test bleed.
+`Palace/Audiobooks/AudiobookSessionManager.swift:87` and `Palace/Audiobooks/PlaybackBootstrapper.swift:56` both exposed `static let shared`. Three production sites read them (`TPPAppDelegate.swift:55`, `CarPlaySceneDelegate.swift:43`, `BookService.swift:75` — that read moved to `BookOpenRouter.swift` in Wave 5, 2026-09-29; the line reference records where it was at the time of this audit); test sites had `setUp resets shared mock` workarounds for the cross-test bleed.
 
-**Symptom:** initialization order was implicit, CarPlay startup invariants were spread across files, and tests held shared state between runs. The triad-epic singleton purge (PR #866 / #867) had reduced `.shared` from 732 → 344 sites overall, but the audiobook cluster was untouched. <!-- audit-verified: 732 → 344 number per memory `singleton_audit_2026_04_24.md` (referenced in architectural-triad.md). -->
+**Symptom:** initialization order was implicit, CarPlay startup invariants were spread across files, and tests held shared state between runs. The triad-epic singleton purge (PR #866 / #867) had reduced `.shared` from 732 → 344 sites overall, but the audiobook cluster was untouched.
 
 ### Pattern 6 — GCD residue
 
@@ -86,7 +84,6 @@ Three explicit `DispatchQueue.main.asyncAfter` usages remained on the audiobook 
 | `NowPlayingCoordinator.swift:280` | Debounce CarPlay metadata refresh |
 | `AudiobookDataManager.swift:149-160` | UIApplication.beginBackgroundTask + syncQueue async-barrier writes |
 
-<!-- audit-verified: site list per `swarm_03acb10a/plan.md` recon table. The AudiobookDataManager occurrence was reclassified during architect triage as deliberate barrier-write semantics, not target for migration. -->
 
 **Symptom:** background-task lifetimes weren't `Task`-scoped, cancellation was manual, and tests had to drain dispatch queues to avoid flakes.
 
@@ -129,7 +126,6 @@ Four concrete adapters: `LCPAdapter` (priority 0), `OpenAccessAdapter`, `BearerT
 4. **Module C scope expanded** from "conformance only on `LCPAudiobooks.swift`" to "conformance + recursive `hasLCPAcquisition` predicate." Without the recursive walk, the swarm wouldn't actually close the PP-4407 regression class.
 5. **Module B becomes three adapters, not "Overdrive + OpenAccess"** — Overdrive fulfillment lives in `Palace/MyBooks/OverdriveDownloadHandler` and presents to the loader as a local file or bearer-token URL.
 
-<!-- audit-verified: deviations 1-5 per `swarm_5c8ddbd5/plan.md:17-25`. -->
 
 ### Phase 2 — PositionWriter Unification (Swarm 2, PR #980)
 
@@ -170,7 +166,7 @@ The smallest phase by LOC (~210 insertions, 316 deletions; net −106). Pre-tria
 
 All three Palace-side phases shipped 2026-05-21 in stacked-PR order. <!-- audit-verified: merge timestamps per `gh pr view` query 2026-05-22. -->
 
-### Phase 1 — PR #979 — `cs_ff3b8638`
+### Phase 1 — PR #979
 
 | Metric | Result | Target |
 |---|---|---|
@@ -185,9 +181,8 @@ All three Palace-side phases shipped 2026-05-21 in stacked-PR order. <!-- audit-
 | `AudiobookSessionManager` compatibility | `load()` signature frozen | required |
 | Don't-touch violations | **0** | 0 |
 
-<!-- audit-verified: figures lifted from `swarm_5c8ddbd5/outcome.md` "What shipped" table. -->
 
-### Phase 2 — PR #980 — `init_05b6832a`
+### Phase 2 — PR #980
 
 | Metric | Result | Target |
 |---|---|---|
@@ -197,17 +192,16 @@ All three Palace-side phases shipped 2026-05-21 in stacked-PR order. <!-- audit-
 | Dead-code deletions | `LatestAudiobookLocation.swift` + test class block | per triage |
 | New tests | 27 | per contract |
 | Contract snapshots | 12/13 locked + 1 XCTSkip (documented simdrive follow-up) | 13 |
-| Mutation-kill scenarios for swarm_f3b9b087 P0 predicates | 2 (`isAtBeginning` + `timestampNewerRace`) | required |
+| Mutation-kill scenarios for the Reader2 `shouldStore` P0 predicates | 2 (`isAtBeginning` + `timestampNewerRace`) | required |
 | Full Palace + Palace-noDRM builds | SUCCEEDED | required |
 | Pre-push gate | PASS — 11 classes green | required |
 
-<!-- audit-verified: figures lifted from `swarm_f4fbef9c/outcome.md` "What shipped" table. -->
 
 **Behavior changes for QA:**
 - Audiobook position write throttle: was per-instance debounce; now 15.0s per-book window (matches EPUB). At most 1 POST per 15s of active playback; rapid track-skip cycles within 15s coalesce. Local-save-first invariant unchanged.
 - PDF position write throttle: was unthrottled; now 15.0s per-book window.
 
-### Phase 3 — PR #982 — `init_eb359cf0` / `cs_3c089d95`
+### Phase 3 — PR #982
 
 | Metric | Result | Target |
 |---|---|---|
@@ -222,7 +216,6 @@ All three Palace-side phases shipped 2026-05-21 in stacked-PR order. <!-- audit-
 | Don't-touch violations | **0** | 0 |
 | Stream timeouts | **0** | 0 |
 
-<!-- audit-verified: figures lifted from `swarm_03acb10a/outcome.md` "What shipped" table (read from `origin/develop`). -->
 
 ---
 
@@ -271,9 +264,9 @@ Scope:
 
 These are operational learnings from running three swarms in stacked-PR sequence on a single day. Captured here because they shaped the Palace-side execution and apply to the upcoming toolkit work.
 
-1. **Pre-triage recon is high-leverage.** Phase 3's recon discovered Swarm 1 had already absorbed most of the predicted callback-pyramid work; only 1 `asyncAfter` remained where the ADR predicted "structured concurrency sweep." Architect re-scoped Module C from multi-file to single-file. <!-- audit-verified: per `swarm_03acb10a/outcome.md` "Methodology lessons" section. -->
-2. **Stacked-PR base linking matters for pre-push hooks.** Each swarm set its branch's upstream to the previous swarm's branch (`origin/swarm/swarm_5c8ddbd5-scaffold` for Swarm 2, etc.) so the pre-push gate only ran tests against the swarm's own diff, not the full stack. Without this, the 90s gate times out on first push. Added to swarm-orchestrator checklist.
-3. **Carthage symlink loop in worktrees** continues to bite — `ios-audiobooktoolkit` submodule MUST be a real clone in worktrees, not a symlink, because its own pbxproj uses `../Carthage/Build`. <!-- audit-verified: per `swarm_f4fbef9c/outcome.md` "Methodology lessons" §3. -->
+1. **Pre-triage recon is high-leverage.** Phase 3's recon discovered Swarm 1 had already absorbed most of the predicted callback-pyramid work; only 1 `asyncAfter` remained where the ADR predicted "structured concurrency sweep." Architect re-scoped Module C from multi-file to single-file.
+2. **Stacked-PR base linking matters for pre-push hooks.** Each swarm set its branch's upstream to the previous swarm's branch (Phase 2's branch tracked Phase 1's, and so on) so the pre-push gate only ran tests against the swarm's own diff, not the full stack. Without this, the 90s gate times out on first push. Added to swarm-orchestrator checklist.
+3. **Carthage symlink loop in worktrees** continues to bite — `ios-audiobooktoolkit` submodule MUST be a real clone in worktrees, not a symlink, because its own pbxproj uses `../Carthage/Build`.
 4. **The audit-before-assert hook earns its keep on high-stakes docs** — it fired on the original ADR write and forced verification of PR numbers + commit SHAs before they landed. This reconstructed ADR carries `<!-- audit-verified -->` markers on every load-bearing factual claim.
 5. **The architect's defaulted-parameter pattern works across all three swarms.** Module B in each phase used defaulted-parameter shapes on the migrated class so production call-sites became single-line edits. Pattern proven 3× now — adopt for T3.
 
@@ -285,9 +278,8 @@ Phase plan files cite ADR pattern numbers. The mapping is:
 
 | Cited as | Lives in | Closed by |
 |---|---|---|
-| "ADR pattern #4" (Phase 2 plan, `swarm_f4fbef9c/plan.md:7`) | Pattern 4 above — Position writers don't share a contract | Phase 2 |
+| "ADR pattern #4" (Phase 2 plan) | Pattern 4 above — Position writers don't share a contract | Phase 2 |
 | "ADR section 'Phase 3 — Swarm 3'" (Phase 3 plan) | Patterns 5 + 6 above — Singletons + GCD residue | Phase 3 |
 | "ADR's Module A names a Findaway adapter" (Phase 1 plan deviation #1) | Pattern 2 above — Vendor-shape dispatch | Phase 1 (revised) |
 | "ADR's exit criterion 'PR #970's OPDS shape matrix passes'" (Phase 1 plan deviation #3) | Pattern 2 + 3 above — verification gate | Phase 1 (authored fresh) |
 
-<!-- audit-verified: cross-references resolved from `swarm_{5c8ddbd5,f4fbef9c,03acb10a}/plan.md` files. -->

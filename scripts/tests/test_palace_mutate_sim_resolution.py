@@ -21,17 +21,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import palace_mutate as pm  # noqa: E402
 
 
-# A realistic `xcrun simctl list devices available` excerpt.
+# A realistic `xcrun simctl list devices available` excerpt. The UDIDs are
+# synthetic, as in test_sim_lock.py: resolution consults the simulator lock
+# store, so a fixture naming a UDID that really exists in a machine's pool fails
+# whenever another checkout happens to hold that one device.
 AVAILABLE = """== Devices ==
 -- iOS 18.0 --
-    iPhone 12 (31CF5C43-DD55-4889-B3B2-9A6810B4E98F) (Shutdown)
+    iPhone 12 (11111111-1111-2222-3333-444444444444) (Shutdown)
 -- iOS 26.1 --
-    iPhone 17 Pro Max (B7EEED61-B0B2-45B7-A2E7-6F8DF12FEEA1) (Booted)
-    iPad Air 11-inch (M3) (50DF78E7-1544-4886-A3AF-65B4E6C0FE3F) (Shutdown)
+    iPhone 17 Pro Max (BBBBBBBB-1111-2222-3333-444444444444) (Booted)
+    iPad Air 11-inch (M3) (22222222-1111-2222-3333-444444444444) (Shutdown)
 """
 
-DEAD_UDID = "DF4A2A27-9888-429D-A749-2E157A049A37"
-LIVE_UDID = "B7EEED61-B0B2-45B7-A2E7-6F8DF12FEEA1"
+DEAD_UDID = "DDDDDDDD-1111-2222-3333-444444444444"
+LIVE_UDID = "BBBBBBBB-1111-2222-3333-444444444444"
 
 
 def test_wantedUDIDPresent_isHonored():
@@ -50,12 +53,12 @@ def test_noDeviceListing_resolvesToNothing():
 
 def test_onlyUnmatchedHardware_resolvesToNothing():
     """An iPhone 12-only host has no destination CLAUDE.md's matrix accepts."""
-    listing = "-- iOS 18.0 --\n    iPhone 12 (31CF5C43-DD55-4889-B3B2-9A6810B4E98F) (Shutdown)\n"
+    listing = "-- iOS 18.0 --\n    iPhone 12 (11111111-1111-2222-3333-444444444444) (Shutdown)\n"
     assert pm.resolve_sim_id(None, listing) is None
 
 
 def test_iPadsAreNotSelected():
-    listing = "    iPad Air 11-inch (M3) (50DF78E7-1544-4886-A3AF-65B4E6C0FE3F) (Shutdown)\n"
+    listing = "    iPad Air 11-inch (M3) (22222222-1111-2222-3333-444444444444) (Shutdown)\n"
     assert pm.resolve_sim_id(None, listing) is None
 
 
@@ -72,7 +75,10 @@ def test_requireSimID_whenNothingResolves_exitsTwoAndSaysNothingWasMeasured(monk
     assert "not 'mutants survived'" in err.replace("NOT", "not")
 
 
-def test_requireSimID_resolves_andMemoizes(monkeypatch):
+def test_requireSimID_resolves_andMemoizes(monkeypatch, tmp_path):
+    # An empty lock directory, so the result does not depend on which simulators
+    # other checkouts hold while this suite runs.
+    monkeypatch.setenv(pm.sim_lock.LOCK_DIR_ENV, str(tmp_path))
     monkeypatch.setattr(pm, "_RESOLVED_SIM_ID", None)
     calls = []
 

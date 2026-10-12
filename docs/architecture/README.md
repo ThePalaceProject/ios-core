@@ -27,13 +27,12 @@ where a new document belongs.
 |---|---|
 | [`architectural-triad.md`](./architectural-triad.md) | The post-modernization "honesty epic": closing the gap between the refactor's claimed state and its actual state, across DI adoption, the Store reducer pattern, and the singleton/god-class purge. Plan, phases, exit criteria, decision log. |
 | [`state-management-doctrine.md`](./state-management-doctrine.md) | Accepted rules for where state lives and who may mutate it. Supersedes the ambient convention that preceded it. |
-| [`critical-path-review-policy.md`](./critical-path-review-policy.md) | What counts as a critical path, and the review bar a change to one must clear. |
 | [`release-merge-policy.md`](./release-merge-policy.md) | Why merges into `main` use `--no-ff` and never squash — with the 296-conflict forensic that established the rule, and the recovery recipe. |
 
 ## Area verification checklists
 
 What to re-verify when you touch an area, and which seams are load-bearing.
-Refresh the relevant one before a swarm or rigorous-fix run.
+Refresh the relevant one before changing code in that area.
 
 | Area | Checklist |
 |---|---|
@@ -87,7 +86,7 @@ Refresh the relevant one before a swarm or rigorous-fix run.
 | [`testing-rules-rationale.md`](./testing-rules-rationale.md) | The incidents behind the full-suite, green-board, mutation and detector-admission rules in `CLAUDE.md`. |
 | [`mutation-testing.md`](./mutation-testing.md) | First-principles rationale for the mutation-testing system (`palace_mutate.py` and friends) — and what a mutation score cannot tell you. |
 | [`critical-path-mutation-coverage.md`](./critical-path-mutation-coverage.md) | The regex methodology for deciding which surfaces are critical-path, with the recorded run that established the baseline. |
-| [`phase-3.5-class-scan.md`](./phase-3.5-class-scan.md) | The wall-as-detector pattern: turning a class of failure into a mechanical pre-commit check. |
+| [`phase-3.5-class-scan.md`](./phase-3.5-class-scan.md) | The class-scan detectors: what each flags and where it runs. |
 | [`runtime-quiescence-gate.md`](./runtime-quiescence-gate.md) | The runtime-quiescence gate: what it asserts and why a timeout is a failure even at zero assertions. |
 | [`runtime-quiescence-gate-backlog.md`](./runtime-quiescence-gate-backlog.md) | Land-ready quiescence designs not blocking the current release. |
 | [`pr-report-contract.md`](./pr-report-contract.md) | Principles for the CI-generated PR comments. Its authored-body format is superseded by the short PR template and the writing conventions in `CLAUDE.md`. |
@@ -99,12 +98,8 @@ Refresh the relevant one before a swarm or rigorous-fix run.
 
 | Doc | What it covers |
 |---|---|
-| [`swarm-workflow.md`](./swarm-workflow.md) | The `/swarm` multi-module orchestration loop: triage, dispatch, integrate, promote. |
-| [`swarm-rigor-followups.md`](./swarm-rigor-followups.md) | The backlog of rigor gaps swarm runs exposed. |
 | [`parallel-agent-rebase-walkthrough.md`](./parallel-agent-rebase-walkthrough.md) | How five concurrent refactor agents on disjoint file partitions were merged into one linear stack via cherry-pick + rebase. The recipe, the conflict-avoidance strategy, and what we would change. |
-| [`triad-retro-2026-04-27.md`](./triad-retro-2026-04-27.md) | Retrospective on the triad work after the PRs landed. |
 | [`pp4156-retro-2026-05-04.md`](./pp4156-retro-2026-05-04.md) | Retrospective on the PP-4156 audiobook download indicator. |
-| [`session-observability-context.md`](./session-observability-context.md) | How session observability feeds session-start context. |
 | [`reviews/2026-08-remedy-ladder-review.md`](./reviews/2026-08-remedy-ladder-review.md) | The remedy-ladder review, recovered verbatim from the reviewing agent's transcript on 2026-08-14. Kept as the input the remedy design was distilled from. |
 
 ## Why these are public
@@ -117,7 +112,7 @@ their own app. The PRs that delivered the triad work are public:
 [#867](https://github.com/ThePalaceProject/ios-core/pull/867).
 
 Governance and planning artifacts — risk-scored changesets, gate evidence, agent
-run records, intent files, wall-failure write-ups — are **not** architecture and
-are not kept in this repository. They live in the maintainer's local harness;
-their history up to 2026-09-30 is under `.forgeos/` in the repo history. Config
+run records, intent files, postmortem write-ups — are **not** architecture and
+are not kept in this repository. Their history up to 2026-09-30 is under
+`.forgeos/` in the repo history. Config
 that CI reads lives in [`config/ci/`](../../config/ci/README.md).

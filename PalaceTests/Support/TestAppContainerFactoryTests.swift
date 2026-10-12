@@ -117,4 +117,15 @@ final class TestAppContainerFactoryTests: PalaceTestCase {
       "Factory MUST hand back the injected bookRegistry, not a freshly-minted one"
     )
   }
+
+  /// An injected executor must reach the container (and so the network
+  /// queue's transport); otherwise a test's stubbed session is bypassed.
+  func testMakeTestAppContainer_acceptsNetworkExecutorOverride() {
+    let explicitExecutor = TPPNetworkExecutor(cachingStrategy: .fallback)
+    let container = makeTestAppContainer(networkExecutor: explicitExecutor)
+    XCTAssertTrue(container.networkExecutor === explicitExecutor,
+                  "Factory MUST hand back the injected network executor")
+    XCTAssertFalse(makeTestAppContainer().networkExecutor === explicitExecutor,
+                   "Without an override the factory MUST build its own executor")
+  }
 }

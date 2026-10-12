@@ -478,4 +478,195 @@ final class AppContainerIsolationLintTests: XCTestCase {
     XCTAssertEqual(vios.count, 1,
                    "A real `AppContainer.production()` call must still be flagged even when the same line also mentions it inside a string")
   }
+
+  // MARK: - Rule 3 — production code reads owned services through its container
+
+  /// `Palace/`, scanned by the owned-service rule. `Palace/Packages/` is
+  /// skipped: package targets cannot see `AppContainer`.
+  private static let palaceSourceRoot: URL = repoRoot.appendingPathComponent("Palace")
+
+  /// Entries the owned-service baseline holds. Lowered together with the
+  /// baseline when a listed read is removed; a raise needs both edits.
+  static let ownedServiceBaselineCeiling = 11
+
+  /// The services `AppContainerOwnedServices` stores, read from its source so
+  /// a service added there is covered without editing this lint.
+  static func ownedServiceNames(inOwnedServicesSource source: String) -> [String] {
+    let pattern = try! NSRegularExpression(pattern: #"^\s*var\s+(\w+)\s*:"#, options: [.anchorsMatchLines])
+    let range = NSRange(source.startIndex..., in: source)
+    return pattern.matches(in: source, range: range).compactMap { match in
+      Range(match.range(at: 1), in: source).map { String(source[$0]) }
+    }
+  }
+
+  /// `source` with comment lines blanked, string-literal contents blanked and
+  /// trailing `//` comments removed, keeping line structure.
+  static func codeOnly(_ source: String) -> String {
+    source.split(separator: "\n", omittingEmptySubsequences: false).map { rawLine -> String in
+      let trimmed = rawLine.trimmingCharacters(in: .whitespaces)
+      if trimmed.hasPrefix("//") || trimmed.hasPrefix("/*") || trimmed.hasPrefix("*") { return "" }
+      var out = ""
+      var inString = false
+      let chars = Array(rawLine)
+      var i = 0
+      while i < chars.count {
+        let c = chars[i]
+        if inString {
+          if c == "\\" { i += 2; continue }
+          if c == "\"" { inString = false; out.append(c) }
+          i += 1
+          continue
+        }
+        if c == "\"" { inString = true; out.append(c); i += 1; continue }
+        if c == "/", i + 1 < chars.count, chars[i + 1] == "/" { break }
+        out.append(c)
+        i += 1
+      }
+      return out
+    }.joined(separator: "\n")
+  }
+
+  /// One entry per `AppContainer.production().<service>` read in `source`,
+  /// including a chain split across lines.
+  static func ownedServiceReads(in source: String, services: [String]) -> [String] {
+    guard !services.isEmpty else { return [] }
+    let alternation = services.map(NSRegularExpression.escapedPattern(for:)).joined(separator: "|")
+    let pattern = try! NSRegularExpression(
+      pattern: #"AppContainer\s*\.\s*production\(\)\s*\.\s*("# + alternation + #")\b"#
+    )
+    let code = codeOnly(source)
+    let range = NSRange(code.startIndex..., in: code)
+    return pattern.matches(in: code, range: range).compactMap { match in
+      Range(match.range(at: 1), in: code).map { String(code[$0]) }
+    }
+  }
+
+  /// Multiset difference between the reads found and the baseline entries:
+  /// reads with no entry, and entries with no read.
+  static func ownedServiceBaselineDiff(found: [String], baseline: [String]) -> (unlisted: [String], stale: [String]) {
+    var remaining = Dictionary(baseline.map { ($0, 1) }, uniquingKeysWith: +)
+    var unlisted: [String] = []
+    for entry in found {
+      if let count = remaining[entry], count > 0 {
+        remaining[entry] = count - 1
+      } else {
+        unlisted.append(entry)
+      }
+    }
+    let stale = remaining.sorted { $0.key < $1.key }.flatMap { Array(repeating: $0.key, count: $0.value) }
+    return (unlisted.sorted(), stale)
+  }
+
+  private static func ownedServiceBaseline() throws -> [String] {
+    let url = baselinesRoot.appendingPathComponent("owned-service-production-reads.txt")
+    let contents = try String(contentsOf: url, encoding: .utf8)
+    return contents.split(separator: "\n")
+      .map { $0.trimmingCharacters(in: .whitespaces) }
+      .filter { !$0.isEmpty && !$0.hasPrefix("#") }
+      .map { $0.split(separator: " ", omittingEmptySubsequences: true).joined(separator: " ") }
+  }
+
+  /// Production code must read the services a container owns through the
+  /// container it was given. `AppContainer.production().<service>` reaches the
+  /// process container's instance instead, so a test or preview container's
+  /// collaborators are bypassed (#1593). Reads that predate the rule are listed
+  /// in `Baselines/owned-service-production-reads.txt`.
+  func testProductionCodeReadsOwnedServicesThroughItsContainer() throws {
+    let ownedSource = try String(
+      contentsOf: Self.palaceSourceRoot.appendingPathComponent("AppInfrastructure/AppContainerOwnedServices.swift"),
+      encoding: .utf8
+    )
+    let services = Self.ownedServiceNames(inOwnedServicesSource: ownedSource)
+    XCTAssertTrue(services.contains("signInModalSheetPresenter"),
+                  "Could not read the owned services from AppContainerOwnedServices.swift; found \(services)")
+
+    let fm = FileManager.default
+    let enumerator = try XCTUnwrap(fm.enumerator(
+      at: Self.palaceSourceRoot,
+      includingPropertiesForKeys: [.isRegularFileKey],
+      options: [.skipsHiddenFiles]
+    ), "Could not enumerate \(Self.palaceSourceRoot.path)")
+    let packagesPrefix = Self.palaceSourceRoot.standardizedFileURL.path + "/Packages/"
+    var scanned = 0
+    var found: [String] = []
+    for case let url as URL in enumerator where url.pathExtension == "swift" {
+      guard !url.standardizedFileURL.path.hasPrefix(packagesPrefix),
+            let source = contents(of: url) else { continue }
+      scanned += 1
+      let path = repoRelativePath(for: url)
+      found += Self.ownedServiceReads(in: source, services: services).map { "\(path) \($0)" }
+    }
+    XCTAssertGreaterThan(scanned, 100, "Expected to scan the app sources under \(Self.palaceSourceRoot.path)")
+
+    let baseline = try Self.ownedServiceBaseline()
+    XCTAssertEqual(baseline.count, Self.ownedServiceBaselineCeiling,
+                   "The owned-service baseline may only shrink; set ownedServiceBaselineCeiling to its entry count")
+
+    let diff = Self.ownedServiceBaselineDiff(found: found, baseline: baseline)
+    XCTAssertTrue(diff.unlisted.isEmpty,
+                  "Read the owned service through the container this type was given, not AppContainer.production():\n"
+                  + diff.unlisted.joined(separator: "\n"))
+    XCTAssertTrue(diff.stale.isEmpty,
+                  "These baseline entries no longer match a read; remove them and lower ownedServiceBaselineCeiling:\n"
+                  + diff.stale.joined(separator: "\n"))
+  }
+
+  /// The scanner finds a read on one line and one whose member access starts
+  /// on the next line, and reports the service each one reads.
+  func testOwnedServiceScanner_FindsSameLineAndChainedReads() {
+    let source = """
+    func sut() {
+        let cache = AppContainer.production().bookCellModelCache
+        AppContainer.production()
+            .signInModalSheetPresenter
+            .presentSignInModalForCurrentAccount(completion: nil)
+    }
+    """
+    XCTAssertEqual(
+      Self.ownedServiceReads(in: source, services: ["bookCellModelCache", "signInModalSheetPresenter"]),
+      ["bookCellModelCache", "signInModalSheetPresenter"]
+    )
+  }
+
+  /// Comments, string literals and collaborators the container does not own
+  /// are not owned-service reads.
+  func testOwnedServiceScanner_IgnoresCommentsStringsAndOtherMembers() {
+    let source = """
+    // AppContainer.production().catalogAPI is the process instance.
+    /// `AppContainer.production().catalogAPI`
+    let executor = AppContainer.production().networkExecutor
+    log("AppContainer.production().catalogAPI") // AppContainer.production().catalogAPI
+    let cache = AppContainer.production().catalogAPIs
+    """
+    XCTAssertEqual(Self.ownedServiceReads(in: source, services: ["catalogAPI"]), [])
+  }
+
+  /// A reintroduced read is reported as unlisted, and a removed one as stale,
+  /// counting repeated reads in one file separately.
+  func testOwnedServiceBaselineDiff_ReportsUnlistedAndStaleReads() {
+    let baseline = ["A.swift presenter", "A.swift presenter", "B.swift cache"]
+
+    let diff = Self.ownedServiceBaselineDiff(
+      found: ["A.swift presenter", "C.swift presenter", "A.swift presenter", "A.swift presenter"],
+      baseline: baseline
+    )
+
+    XCTAssertEqual(diff.unlisted, ["A.swift presenter", "C.swift presenter"])
+    XCTAssertEqual(diff.stale, ["B.swift cache"])
+  }
+
+  /// The service list comes from the stored properties of
+  /// `AppContainerOwnedServices`, skipping its initializer.
+  func testOwnedServiceNames_ReadsStoredPropertiesOnly() {
+    let source = """
+    final class AppContainerOwnedServices {
+        var signInModalSheetPresenter: SignInModalSheetPresenter?
+        var catalogAPI: DefaultCatalogAPI?
+
+        nonisolated init() {}
+    }
+    """
+    XCTAssertEqual(Self.ownedServiceNames(inOwnedServicesSource: source),
+                   ["signInModalSheetPresenter", "catalogAPI"])
+  }
 }

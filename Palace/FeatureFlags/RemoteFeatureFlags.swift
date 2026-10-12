@@ -486,6 +486,139 @@ final class RemoteFeatureFlags: @unchecked Sendable {
       defaults.object(forKey: Self.appRatingForceEligibleLocalOverrideKey) as? Bool ?? false
     }
 
+    // MARK: - OIDC stub callback (test seam)
+
+#if DEBUG
+    /// UserDefaults key holding a canned OIDC callback URL. When set,
+    /// `oidcLogIn()` delivers it to `handleOIDCCallback` instead of presenting
+    /// an `ASWebAuthenticationSession`.
+    ///
+    /// This exists because the sign-in path above the callback is otherwise
+    /// undrivable: a unit test cannot dismiss a system browser, and a simdrive
+    /// journey lands on a live IdP consent page it has no credentials for. So
+    /// `handleOIDCCallback` is well covered while everything that reaches it is
+    /// not covered at all.
+    ///
+    /// It injects a CALLBACK, not a session. The token still goes through
+    /// `validateCredentials()` against the Circulation Manager, so a fabricated
+    /// token grants no access — this makes the client path exercisable, it does
+    /// not authenticate anyone. DEBUG-only, so it is absent from release builds.
+    static let oidcStubCallbackLocalOverrideKey = "RemoteFeatureFlags.oidcStubCallbackOverride"
+
+    /// Second key a QA driver must set to arm the seam outside XCTest.
+    ///
+    /// Deliberately a UserDefaults key and NOT a launch argument: the simulator
+    /// driver used for UI journeys launches apps with `simctl launch <udid>
+    /// <bundle-id>` and passes no arguments, so a launch-argument gate could not be
+    /// armed by the driver this seam exists to serve — the seam would be reachable
+    /// only from XCTest, which does not need it. The driver can, however, write an
+    /// app's UserDefaults, which is why the arm is a key.
+    static let oidcStubSeamArmedKey = "RemoteFeatureFlags.oidcStubSeamArmed"
+
+    /// The store the seam reads. Tests point this at an isolated suite in
+    /// `setUp` and restore it in `tearDown`.
+    ///
+    /// It exists because `oidcLogIn()` reads the seam with no arguments, so a
+    /// test that drives the real sign-in path cannot pass a scoped store at the
+    /// call site. Without this the override key lands in the app's persistent
+    /// domain on that simulator, where `setUp`/`tearDown` clear it but a crash or
+    /// an interrupted run does not — and a leftover callback key next to a
+    /// leftover armed key is a DEBUG build that signs in without an identity
+    /// provider for whoever picks that simulator up next.
+    /// `nonisolated(unsafe)` follows the existing test-override idiom in this
+    /// codebase (`TPPAnnotations.accountsManagerOverride` and its siblings): a
+    /// value written once from `setUp` before the code under test runs, never
+    /// mutated concurrently. It is additionally inside `#if DEBUG`, so unlike
+    /// those it does not exist in a shipped build.
+    nonisolated(unsafe) static var oidcStubDefaults: UserDefaults = .standard
+
+    /// Whether this process is allowed to use the stub at all.
+    ///
+    /// Three conditions must hold together, not one: a DEBUG build (Release
+    /// configurations carry no DEBUG, so the code is absent from TestFlight), a
+    /// context that explicitly armed it (an XCTest run, or a driver that set
+    /// `oidcStubSeamArmedKey`), and a callback actually set. A developer running
+    /// a DEBUG build from Xcode satisfies none of the last two, so the seam
+    /// stays inert for them.
+    ///
+    /// `environment` and `defaults` are parameters rather than direct
+    /// `ProcessInfo`/`.standard` reads so a test can observe BOTH branches. Read
+    /// from `ProcessInfo` directly, the XCTest branch always wins inside a test
+    /// run and the driver branch is unreachable — the arm that QA depends on
+    /// would be the one arm no test covers.
+    ///
+    /// The eager defaults below are free: this function is declared inside
+    /// `#if DEBUG`, so a shipped build contains neither it nor any call to it, and
+    /// a default argument is only ever evaluated at a call site. `oidcStubCallback`
+    /// is declared unconditionally and therefore cannot do the same — see the note
+    /// on its own parameters.
+    static func isOIDCStubSeamPermitted(
+      environment: [String: String] = ProcessInfo.processInfo.environment,
+      defaults: UserDefaults? = nil
+    ) -> Bool {
+      if environment["XCTestConfigurationFilePath"] != nil { return true }
+      // `?? oidcStubDefaults`, not `.standard`: the seam must have ONE answer to
+      // "which store do I read". A `.standard` default would let a future caller
+      // that omits the argument read the app's real domain instead, and because it
+      // is a default argument the `UserDefaults.standard` lint cannot see it.
+      return (defaults ?? oidcStubDefaults).bool(forKey: oidcStubSeamArmedKey)
+    }
+
+    /// Arm or disarm the seam. Mirrors what the UI-journey driver does when it
+    /// writes the app's defaults, so a test exercises the same key QA writes.
+    static func setOIDCStubSeamArmedForTesting(_ armed: Bool,
+                                               in defaults: UserDefaults? = nil) {
+      let defaults = defaults ?? oidcStubDefaults
+      if armed {
+        defaults.set(true, forKey: oidcStubSeamArmedKey)
+      } else {
+        defaults.removeObject(forKey: oidcStubSeamArmedKey)
+      }
+    }
+
+    /// Set or clear the stub. Separate from a plain `defaults.set` so tests and
+    /// the Developer Settings row cannot drift from the key above.
+    static func setOIDCStubCallbackForTesting(_ url: URL?,
+                                              in defaults: UserDefaults? = nil) {
+      let defaults = defaults ?? oidcStubDefaults
+      if let url {
+        defaults.set(url.absoluteString, forKey: oidcStubCallbackLocalOverrideKey)
+      } else {
+        defaults.removeObject(forKey: oidcStubCallbackLocalOverrideKey)
+      }
+    }
+#endif
+
+    /// The canned OIDC callback URL, or nil when the seam is off.
+    ///
+    /// Declared unconditionally so the sign-in call site needs no `#if` of its
+    /// own — one place owns the gating and the read site stays plain. In release
+    /// builds the body is literally `nil`: the override key is never read and
+    /// the seam cannot be armed.
+    ///
+    /// Static, and reading `defaults` directly rather than through an instance:
+    /// this is DEBUG-only test scaffolding, not product configuration, so it has
+    /// no business travelling through the production flags singleton. Reading it
+    /// as `RemoteFeatureFlags.shared.…` added a `.shared` read on the sign-in
+    /// path, which new code is not supposed to do.
+    static func oidcStubCallback(
+      environment: [String: String]? = nil,
+      defaults: UserDefaults? = nil
+    ) -> URL? {
+#if DEBUG
+      let store = defaults ?? oidcStubDefaults
+      guard isOIDCStubSeamPermitted(
+              environment: environment ?? ProcessInfo.processInfo.environment,
+              defaults: store),
+            let raw = store.string(forKey: oidcStubCallbackLocalOverrideKey),
+            !raw.isEmpty
+      else { return nil }
+      return URL(string: raw)
+#else
+      nil
+#endif
+    }
+
     // MARK: - EPUB Chapter Scrubber (PP-5006)
 
     /// UserDefaults key for the chapter-scrubber prototype toggle in the

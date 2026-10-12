@@ -254,6 +254,15 @@ class TPPReaderBookmarksBusinessLogic: NSObject, @unchecked Sendable {
     }
 
     private func performSyncBookmarks(completion: @escaping (Bool, [TPPReadiumBookmark]) -> Void) {
+        // Sync off (signed out, no library support, or the patron's toggle) ends
+        // here with the local list. Going on would reach `handleBookmarksSyncFail`,
+        // which can start re-authentication for a patron who turned sync off.
+        guard TPPAnnotations.syncIsPossibleAndPermitted() else {
+            bookmarks = bookRegistry.readiumBookmarks(forIdentifier: book.identifier)
+            completion(false, bookmarks)
+            return
+        }
+
         guard AppContainer.production().reachability.isConnectedToNetwork() else {
             self.handleBookmarksSyncFail(message: "Error: host was not reachable for bookmark sync attempt.",
                                          completion: completion,
@@ -368,7 +377,8 @@ class TPPReaderBookmarksBusinessLogic: NSObject, @unchecked Sendable {
         Log.info(#file, message)
 
         // Check if we should attempt re-authentication
-        let userAccount = AppContainer.production().accountsManager.currentUserAccount
+        // The account the sync gate checked, so the two never disagree.
+        let userAccount = TPPAnnotations.currentAccountsManager.currentUserAccount
         let isCredentialsStale = userAccount.authState == .credentialsStale
 
         if shouldAttemptReauth && isCredentialsStale && !hasAttemptedReauthDuringSync {

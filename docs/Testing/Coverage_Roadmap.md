@@ -1,7 +1,11 @@
 # Test Quality Posture (not a coverage roadmap)
 
-**There is no line-coverage target and no coverage gate.** An earlier version of
-this file laid out a 6-week plan to hit 80% line coverage. That target has been
+**There is no line-coverage target.** CI measures coverage against
+per-module and per-package floors (`scripts/coverage-floors.json`). An app
+floor more than 1.5 points below its value, or incomplete coverage data, fails
+the required `build-and-test` check; package floors are advisory because their
+measurements vary between runs of identical code. Details are in
+`scripts/README_coverage_floors.md`. An earlier version of this file laid out a 6-week plan to hit 80% line coverage. That target has been
 retired: it contradicted the repo's actual quality posture and encouraged
 coverage-only tests, which are explicitly banned (see `CLAUDE.md` →
 "TDD & Test Quality"). Coverage is a byproduct of good tests, not a goal.
@@ -64,5 +68,3 @@ Pick an uncovered branch that could actually regress, write a behavior test that
 kills a mutant on it, and verify with `palace_mutate.py`. Do not write tests
 whose only purpose is to execute a line. If a line has no testable behavior
 (fire-and-forget analytics, empty delegate method), leave it uncovered.
-</content>
-</invoke>

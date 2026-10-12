@@ -15,12 +15,12 @@ survive the admission test below, index them, and delete the rest**.
 | Why the code is shaped this way — a decision and its rationale | [`architecture/`](./architecture/) — start at its [index](./architecture/README.md) |
 | Whether an area is safe to change, and what to re-verify | `architecture/areas/<area>/verification-checklist.md` |
 | How this project tests, and what a good test looks like | [`Testing/`](./Testing/) — [`TESTING_POSTURE.md`](./Testing/TESTING_POSTURE.md) first |
-| The release regression pass | [`regression-suite/DESIGN.md`](./regression-suite/DESIGN.md), [`Testing/REGRESSION_TEST_MATRIX.md`](./Testing/REGRESSION_TEST_MATRIX.md) |
+| The release regression pass | [`Testing/REGRESSION_TEST_MATRIX.md`](./Testing/REGRESSION_TEST_MATRIX.md) |
 | A recurring failure and its class | [`regressions/recurrence-classes.md`](./regressions/recurrence-classes.md) |
 | How to run something operationally | [`Operations/`](./Operations/) |
 | Adding or changing a user-facing string | [`Operations/localization-workflow.md`](./Operations/localization-workflow.md) |
 | How to investigate a reported bug | [`bug-investigation-process.md`](./bug-investigation-process.md) |
-| **A case where verification passed while the bug was live** | The area's verification-checklist, which distils them; the full wall-failure catalog is kept in the maintainer harness |
+| **A case where verification passed while the bug was live** | The area's verification-checklist, as a numbered lesson |
 | Build, test, and workflow rules that bind every change | [`../CLAUDE.md`](../CLAUDE.md) |
 
 **Search order for an agent.** `CLAUDE.md` → this map → the area's
@@ -41,8 +41,8 @@ recoverable from the diff.
 |---|---|---|
 | A decision and why the alternatives lost | `architecture/<topic>.md`, **added to the architecture index** | — |
 | What to re-verify when touching an area | `architecture/areas/<area>/verification-checklist.md` | — |
-| A verification that passed while the defect was live | The area's verification-checklist, as a numbered lesson; the full write-up goes to the maintainer harness's wall-failure catalog | — |
-| A pre-change contract (claims / anti-claims / files) | | Not here. The PR description, or the maintainer harness via `/intent`. |
+| A verification that passed while the defect was live | The area's verification-checklist, as a numbered lesson | — |
+| A pre-change contract (claims / anti-claims / files) | | Not here. The PR description. |
 | A plan for work about to start | | Nowhere. Put it in the Jira ticket. A landed plan is exhaust; an unlanded one is a ticket. |
 | A run log, agent transcript, or campaign handoff | | Nowhere. `check-doc-hygiene.sh` blocks it. Distill the durable part into an ADR. |
 | A raw review dump | | Nowhere. The ADR is the distillation; the review is the input. |
@@ -52,11 +52,12 @@ recoverable from the diff.
 ## What keeps this honest
 
 Prose is the only layer in this repo that can lie, so three mechanical gates hold
-it to account. All three run in `tooling-checks.yml` on every PR, and the first
-two also run in `verify-pr.sh`:
+it to account. All three run in `tooling-checks.yml` on every PR and in
+`verify-pr.sh`:
 
 - **`check-doc-hygiene.sh`** — blocks process and generated artifacts from being
-  committed at all. Denied classes are listed in the script.
+  committed at all. Denied classes are listed in the script. It reads only the
+  files a change adds: in CI, the PR's added files against its base branch.
 - **`check-doc-references-resolve.py`** — every script, workflow, and source path
   a doc names must exist. Pre-existing breakage is baselined in
   `scripts/doc-references-baseline.json`; nothing new may be added, and a

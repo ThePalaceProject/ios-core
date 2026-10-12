@@ -175,10 +175,20 @@ class TPPSignInOutBusinessLogicUIDelegateMock: NSObject, TPPSignInOutBusinessLog
         isLoading = true
     }
 
+    /// Recorded so a test can assert the error arm RAN. Without these, a test
+    /// of a failure path can only assert that no credentials appeared — which
+    /// is equally true when the code under test never executed at all.
+    var didEncounterValidationError = false
+    var validationErrorTitle: String?
+    var validationErrorMessage: String?
+
     func businessLogic(_ logic: TPPSignInBusinessLogic,
                        didEncounterValidationError error: Error?,
                        userFriendlyErrorTitle title: String?,
                        andMessage message: String?) {
+        didEncounterValidationError = true
+        validationErrorTitle = title
+        validationErrorMessage = message
     }
 
     func dismiss(animated flag: Bool, completion: (() -> Void)?) {

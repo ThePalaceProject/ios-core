@@ -39,7 +39,11 @@ jobs:
           source ./scripts/xcode-settings.sh
           echo "VERSION_NUM=$VERSION_NUM" >> "$GITHUB_ENV"
           echo "version=$VERSION_NUM" >> "$GITHUB_OUTPUT"
-          if gh release view "$VERSION_NUM" > /dev/null 2>&1; then
+          # Captured OUTSIDE the `if`: bash disables errexit while evaluating an
+          # `if` condition, so an indeterminate probe inside one would read as
+          # "no release" and skip the cleanup below without failing the step.
+          RELEASE_STATE="$(./scripts/gh-release-exists.sh "$VERSION_NUM")"
+          if [ "$RELEASE_STATE" = exists ]; then
             IS_PRERELEASE=$(gh release view "$VERSION_NUM" --json isPrerelease --jq .isPrerelease)
             if [ "$IS_PRERELEASE" != "true" ]; then
               echo "::error::Release $VERSION_NUM already exists and is NOT a prerelease. Bump VERSION_NUM on this branch before re-running."

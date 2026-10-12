@@ -34,7 +34,8 @@ final class CatalogLaneMoreViewModelTests: XCTestCase {
             title: title,
             url: url,
             bookRegistry: appContainer.bookRegistry,
-            bookCellModelCache: appContainer.bookCellModelCache
+            bookCellModelCache: appContainer.bookCellModelCache,
+            api: appContainer.catalogAPI
         )
     }
 

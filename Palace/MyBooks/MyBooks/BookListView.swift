@@ -1,5 +1,6 @@
 import SwiftUI
 import PalaceBookModel
+import PalaceUtilities
 
 /// Carrier box that lets a read-only `[TPPBook]` snapshot cross into a
 /// `@Sendable` detached prefetch task. `TPPBook` is a non-Sendable
@@ -67,6 +68,7 @@ struct BookListView: View {
                 .applyBorderStyle()
                 .accessibilityLabel(book.voiceOverLabel)
                 .accessibilityHint(Strings.Accessibility.opensBookDetails)
+                .accessibilityIdentifier(AccessibilityID.BookList.cell(book.identifier))
                 .onAppear {
                     handleCellAppear(book: book)
                 }

@@ -246,7 +246,8 @@ extension TPPSignInBusinessLogic {
                     }
                 }
 
-                logIn()
+                // DRM callback boundary: synchronous, so the await needs a Task.
+                Task { await logIn() }
             }
         }
     }

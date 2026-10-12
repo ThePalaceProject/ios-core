@@ -4,6 +4,7 @@ import UIKit
 import PalaceNetwork
 import PalaceCatalog
 import PalaceBookModel
+import PalaceBookRegistry
 import PalaceUtilities
 
 // MARK: - Accessibility focus target
@@ -42,39 +43,41 @@ struct CatalogSearchView: View {
     let books: [TPPBook]
     let onBookSelected: (TPPBook) -> Void
     let downloadCenter: MyBooksDownloadCenter
+    private let bookRegistry: TPPBookRegistryProvider
 
     init(
         repository: CatalogRepositoryProtocol,
         baseURL: @escaping () -> URL?,
         books: [TPPBook],
         onBookSelected: @escaping (TPPBook) -> Void,
-        downloadCenter: MyBooksDownloadCenter = AppContainer.production().downloadCenter
+        appContainer: AppContainer
     ) {
         self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(
             repository: repository,
             baseURL: baseURL,
-            bookCellModelCache: AppContainer.production().bookCellModelCache
+            bookRegistry: appContainer.bookRegistry,
+            bookCellModelCache: appContainer.bookCellModelCache
         ))
         self.books = books
         self.onBookSelected = onBookSelected
-        self.downloadCenter = downloadCenter
+        self.downloadCenter = appContainer.downloadCenter
+        self.bookRegistry = appContainer.bookRegistry
     }
 
+    /// Searches through `appContainer`'s catalog repository, so results share
+    /// the feed cache of the catalog screens built from the same container.
     init(
         books: [TPPBook],
-        onBookSelected: @escaping (TPPBook) -> Void
+        onBookSelected: @escaping (TPPBook) -> Void,
+        appContainer: AppContainer
     ) {
-
-        // Use AppContainer's shared, cached CatalogRepository rather than a
-        // throwaway per-init instance.
-        self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(
-            repository: AppContainer.production().catalogRepository,
+        self.init(
+            repository: appContainer.catalogRepository,
             baseURL: { nil },
-            bookCellModelCache: AppContainer.production().bookCellModelCache
-        ))
-        self.books = books
-        self.onBookSelected = onBookSelected
-        self.downloadCenter = AppContainer.production().downloadCenter
+            books: books,
+            onBookSelected: onBookSelected,
+            appContainer: appContainer
+        )
     }
 
     var body: some View {
@@ -111,12 +114,17 @@ struct CatalogSearchView: View {
 
     // MARK: - Publishers
 
+    /// Identifier of each book whose registry state changes, unthrottled.
+    var registryChanges: AnyPublisher<String, Never> {
+        bookRegistry.bookStatePublisher
+            .map { $0.0 }
+            .eraseToAnyPublisher()
+    }
+
     private var registryChangePublisher: AnyPublisher<String, Never> {
         // Emit the changed identifier so just the affected result row
-        // refreshes. Resolved from the shared graph to
-        // match this view's existing `AppContainer.production()` defaults.
-        AppContainer.production().bookRegistry.bookStatePublisher
-            .map { $0.0 }
+        // refreshes.
+        registryChanges
             .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)
             .eraseToAnyPublisher()
     }

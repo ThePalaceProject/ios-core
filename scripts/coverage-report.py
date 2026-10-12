@@ -1,331 +1,351 @@
 #!/usr/bin/env python3
 """
-Parse code coverage data from xcresult bundle.
-Usage: python3 coverage-report.py <path-to-xcresult> [--json <output.json>]
+Build the coverage report from an xcresult bundle and host package runs.
 
-Outputs coverage metrics to GITHUB_OUTPUT and optionally a JSON file.
+Usage:
+  coverage-report.py <path-to-xcresult> [--json OUT] [options]
+  coverage-report.py --xccov-json <xccov-report.json> [--json OUT] [options]
+
+Options:
+  --repo-root DIR             checkout root used to make source paths relative
+                              (default: current directory)
+  --expect-package NAME       a local package the app suite must measure; may repeat
+  --expect-local-packages     expect every Palace/Packages/*/Package.swift (CI, where
+                              ci-xctestrun-package-coverage.py has pointed coverage
+                              at the package binaries; a local Xcode run lacks that)
+  --host-package NAME=FILE    llvm-cov export from `swift test --enable-code-coverage`
+  --host-package-dir DIR      every DIR/<NAME>.json as --host-package NAME=...
+  --expect-host-package NAME  a host package run whose data must be present
+  --incomplete-reason TEXT    mark the report incomplete (e.g. a shard lost classes)
+
+Three measurements are kept apart, each with raw executable/covered counts:
+  app            source under Palace/ outside Palace/Packages, from the app suite.
+                 The top-level fields (testable_coverage, total_coverage, ...)
+                 are this measurement, so the gated app metric keeps the
+                 denominator it had before package source was collected.
+  packages_app_suite  Palace/Packages/<P>/Sources, from the same app suite.
+  packages_host       Palace/Packages/<P>/Sources, from `swift test` on macOS.
+                 Different instrumentation and platform conditionals, so it is
+                 never added to the app-suite numbers.
+Files matched by coverage-exclude.json are reported as excluded in each scope.
+
+A source path seen in more than one target (packages link into both the app
+and the test bundle) is counted once: the entry with the most covered lines,
+a lower bound of the union. Each such path is listed under `duplicates`.
+
+Exit status: 0 complete, 3 incomplete (the JSON is still written, with
+`status: incomplete` and the reasons), 2 usage error.
 """
+import argparse
+import fnmatch
 import json
+import os
 import subprocess
 import sys
-import os
-import re
-import fnmatch
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+EXIT_COMPLETE = 0
+EXIT_USAGE = 2
+EXIT_INCOMPLETE = 3
+
+PACKAGES_PREFIX = "Palace/Packages/"
 
 
-def load_exclude_patterns() -> List[str]:
-    """Load path patterns from scripts/coverage-exclude.json.
-    Paths matched here are excluded from 'testable coverage' — the metric we
-    gate on — but still counted in 'total coverage'. See the file's _comment
-    for criteria on when to add an entry.
-    """
+def load_exclude_config() -> Tuple[List[str], Dict[str, str]]:
+    """Path patterns and named package exemptions from coverage-exclude.json."""
     here = os.path.dirname(os.path.abspath(__file__))
     exclude_path = os.path.join(here, 'coverage-exclude.json')
     if not os.path.exists(exclude_path):
-        return []
+        return [], {}
     try:
         with open(exclude_path) as f:
             data = json.load(f)
-        return list(data.get('paths', []))
+        return list(data.get('paths', [])), dict(data.get('unmeasured_packages', {}))
     except (json.JSONDecodeError, OSError) as e:
         print(f"Warning: could not read {exclude_path}: {e}", file=sys.stderr)
+        return [], {}
+
+
+def load_exclude_patterns() -> List[str]:
+    return load_exclude_config()[0]
+
+
+def is_path_excluded(rel_path: str, patterns: List[str]) -> bool:
+    """fnmatch the repo-relative path. fnmatch's `*` also matches `/`, so `**`
+    and `*` behave the same; patterns keep `**` for readability."""
+    if not rel_path:
+        return False
+    return any(fnmatch.fnmatchcase(rel_path, p) for p in patterns)
+
+
+def repo_relative(path: str, repo_root: Optional[str]) -> str:
+    """Stable identity for a source file: its path relative to the checkout.
+    A path outside the checkout is returned unchanged (absolute), so it can
+    never be classified as app or package source. CI builds and reports from
+    the same checkout path; pass --repo-root to read a bundle built elsewhere."""
+    if not path:
+        return ""
+    if repo_root:
+        root = repo_root.rstrip('/') + '/'
+        if path.startswith(root):
+            return path[len(root):]
+    return path
+
+
+def classify(rel_path: str) -> Tuple[str, Optional[str]]:
+    """('app', None), ('package', name) or ('other', None)."""
+    if rel_path.startswith(PACKAGES_PREFIX):
+        parts = rel_path[len(PACKAGES_PREFIX):].split('/')
+        if len(parts) >= 3 and parts[1] == 'Sources':
+            return 'package', parts[0]
+        return 'other', None
+    if rel_path.startswith('Palace/'):
+        return 'app', None
+    return 'other', None
+
+
+def discover_packages(repo_root: str) -> List[str]:
+    base = os.path.join(repo_root, *PACKAGES_PREFIX.rstrip('/').split('/'))
+    if not os.path.isdir(base):
         return []
+    return sorted(d for d in os.listdir(base)
+                  if os.path.isfile(os.path.join(base, d, 'Package.swift')))
 
 
-def is_path_excluded(file_path: str, patterns: List[str]) -> bool:
-    """Match a file path against fnmatch-style patterns.
-    ** is expanded to match across path segments; a single * matches within
-    one segment (standard fnmatch semantics). The xccov `path` field is an
-    absolute path — we anchor matching to the Palace/ repo substring so
-    patterns can be written relative to the repo root.
-    """
-    if not file_path:
-        return False
-    # Anchor to the repo-relative path starting at Palace/
-    rel = file_path
-    idx = rel.find('Palace/')
-    if idx >= 0:
-        rel = rel[idx:]
-    for pattern in patterns:
-        # fnmatch does not treat ** specially — translate **/ to a regex-like
-        # wildcard before passing to fnmatch via a simple substitution loop.
-        # fnmatch.fnmatchcase with a pattern containing * already matches '/'
-        # in most implementations, so ** and * are effectively equivalent for
-        # path matching; keep the distinction for readability.
-        if fnmatch.fnmatchcase(rel, pattern):
-            return True
-        # Also try matching the original path in case someone wrote an
-        # absolute-style pattern.
-        if fnmatch.fnmatchcase(file_path, pattern):
-            return True
-    return False
+def _pct(covered: int, executable: int) -> float:
+    return (covered / executable) * 100 if executable else 0.0
 
-def run_command(cmd: List[str], timeout: int = 120) -> Optional[str]:
-    """Run a command and return stdout."""
+
+class Tally:
+    """Raw line counts for one scope, split into testable and excluded."""
+
+    def __init__(self) -> None:
+        self.c = {'file_count': 0, 'covered_lines': 0, 'executable_lines': 0,
+                  'testable_covered_lines': 0, 'testable_executable_lines': 0,
+                  'excluded_file_count': 0, 'excluded_covered_lines': 0,
+                  'excluded_executable_lines': 0}
+
+    def add(self, covered: int, executable: int, excluded: bool) -> None:
+        c = self.c
+        c['file_count'] += 1
+        c['covered_lines'] += covered
+        c['executable_lines'] += executable
+        if excluded:
+            c['excluded_file_count'] += 1
+            c['excluded_covered_lines'] += covered
+            c['excluded_executable_lines'] += executable
+        else:
+            c['testable_covered_lines'] += covered
+            c['testable_executable_lines'] += executable
+
+    def as_dict(self) -> Dict[str, Any]:
+        d = dict(self.c)
+        d['total_coverage'] = _pct(d['covered_lines'], d['executable_lines'])
+        d['testable_coverage'] = _pct(d['testable_covered_lines'], d['testable_executable_lines'])
+        return d
+
+
+def _int(v: Any) -> int:
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-        if result.returncode == 0:
-            return result.stdout
-        else:
-            print(f"Command failed: {' '.join(cmd)}", file=sys.stderr)
-            print(f"stderr: {result.stderr}", file=sys.stderr)
-    except subprocess.TimeoutExpired:
-        print(f"Command timed out: {' '.join(cmd)}", file=sys.stderr)
-    except Exception as e:
-        print(f"Error running command: {e}", file=sys.stderr)
-    return None
+        return int(v or 0)
+    except (TypeError, ValueError):
+        return 0
 
-def get_coverage_from_xcresult(xcresult_path: str) -> Optional[Dict]:
-    """Extract coverage data from xcresult using xccov."""
-    # First, try to get coverage report using xccov
-    cmd = ['xcrun', 'xccov', 'view', '--report', '--json', xcresult_path]
-    output = run_command(cmd)
-    
-    if output:
+
+def _collect_app_suite(raw: Dict, repo_root: Optional[str]) -> Tuple[Dict[str, Dict], List[Dict], List[Dict]]:
+    """One entry per repo-relative path across every target, plus the target
+    rows and the duplicates found."""
+    by_path: Dict[str, Dict] = {}
+    seen_in: Dict[str, List[str]] = {}
+    targets_out = []
+    for target in raw.get('targets', []) or []:
+        if not isinstance(target, dict):
+            continue
+        tname = str(target.get('name', 'Unknown'))
+        t_cov, t_exe = _int(target.get('coveredLines')), _int(target.get('executableLines'))
+        targets_out.append({'name': tname, 'covered_lines': t_cov, 'executable_lines': t_exe,
+                            'coverage': _pct(t_cov, t_exe),
+                            'coverage_formatted': f"{_pct(t_cov, t_exe):.1f}%"})
+        for f in target.get('files', []) or []:
+            if not isinstance(f, dict):
+                continue
+            executable = _int(f.get('executableLines'))
+            if executable == 0:
+                continue
+            covered = _int(f.get('coveredLines'))
+            rel = repo_relative(str(f.get('path', '')), repo_root)
+            seen_in.setdefault(rel, []).append(tname)
+            prev = by_path.get(rel)
+            if prev is None or (covered, executable) > (prev['covered_lines'], prev['executable_lines']):
+                by_path[rel] = {'name': f.get('name') or os.path.basename(rel), 'path': rel,
+                                'target': tname, 'covered_lines': covered,
+                                'executable_lines': executable}
+    duplicates = [{'path': p, 'targets': ts, 'kept_target': by_path[p]['target']}
+                  for p, ts in sorted(seen_in.items()) if len(ts) > 1]
+    return by_path, targets_out, duplicates
+
+
+def _host_package_tally(name: str, export: Any, repo_root: Optional[str],
+                        patterns: List[str]) -> Optional[Tally]:
+    """Package source lines from an llvm-cov export; None when it holds none."""
+    try:
+        files = export['data'][0]['files']
+    except (KeyError, IndexError, TypeError):
+        return None
+    tally = Tally()
+    for f in files:
         try:
-            return json.loads(output)
-        except json.JSONDecodeError:
-            print("Failed to parse xccov JSON output", file=sys.stderr)
-    
-    return None
+            lines = f['summary']['lines']
+            rel = repo_relative(f['filename'], repo_root)
+        except (KeyError, TypeError):
+            continue
+        scope, pkg = classify(rel)
+        if scope != 'package' or pkg != name:
+            continue
+        executable = _int(lines.get('count'))
+        if executable == 0:
+            continue
+        tally.add(_int(lines.get('covered')), executable, is_path_excluded(rel, patterns))
+    return tally if tally.c['file_count'] else None
 
-def extract_value(obj: Any, *keys) -> Any:
-    """Safely extract nested value."""
-    for key in keys:
-        if isinstance(obj, dict):
-            obj = obj.get(key, {})
+
+def build_report(raw: Any,
+                 exclude_patterns: Optional[List[str]] = None,
+                 repo_root: Optional[str] = None,
+                 expected_packages: Optional[List[str]] = None,
+                 package_exemptions: Optional[Dict[str, str]] = None,
+                 host_packages: Optional[Dict[str, Any]] = None,
+                 expected_host_packages: Optional[List[str]] = None,
+                 incomplete_reasons: Optional[List[str]] = None) -> Dict[str, Any]:
+    patterns = exclude_patterns or []
+    exemptions = package_exemptions or {}
+    reasons: List[str] = list(incomplete_reasons or [])
+
+    app = Tally()
+    other = Tally()
+    packages: Dict[str, Tally] = {}
+    files_out: List[Dict] = []
+    targets_out: List[Dict] = []
+    duplicates: List[Dict] = []
+
+    if not isinstance(raw, dict) or not isinstance(raw.get('targets'), list):
+        reasons.append("the app-suite coverage could not be read (xccov produced no report)")
+    else:
+        by_path, targets_out, duplicates = _collect_app_suite(raw, repo_root)
+        for rel, entry in by_path.items():
+            scope, pkg = classify(rel)
+            excluded = scope != 'other' and is_path_excluded(rel, patterns)
+            cov, exe = entry['covered_lines'], entry['executable_lines']
+            if scope == 'app':
+                app.add(cov, exe, excluded)
+            elif scope == 'package':
+                packages.setdefault(pkg, Tally()).add(cov, exe, excluded)
+            else:
+                other.add(cov, exe, False)
+                continue
+            files_out.append(dict(entry, package=pkg, excluded_from_testable=excluded,
+                                  coverage=_pct(cov, exe),
+                                  coverage_formatted=f"{_pct(cov, exe):.1f}%"))
+        if app.c['executable_lines'] == 0:
+            reasons.append("no application source in the coverage data")
+        elif app.c['covered_lines'] == 0:
+            reasons.append("the app suite recorded no executed line, so no test ran against an instrumented build")
+
+    for name in expected_packages or []:
+        if name not in packages and name not in exemptions:
+            reasons.append(f"package {name} has no source in the app-suite coverage")
+
+    host_out: Dict[str, Dict] = {}
+    for name, export in sorted((host_packages or {}).items()):
+        tally = _host_package_tally(name, export, repo_root, patterns) if export is not None else None
+        if tally is None:
+            reasons.append(f"host package {name}: no readable package source in its swift test coverage")
         else:
-            return None
-    return obj if obj else None
+            host_out[name] = tally.as_dict()
+    for name in expected_host_packages or []:
+        if name not in (host_packages or {}):
+            reasons.append(f"host package {name}: swift test coverage file missing")
 
-def parse_coverage_data(data: Dict) -> Dict:
-    """Parse coverage JSON into simplified structure.
-
-    Emits two coverage numbers:
-      - `total_coverage` — every executable line in included targets. Preserved
-        for continuity with historical CI reports.
-      - `testable_coverage` — denominator excludes files matched by
-        scripts/coverage-exclude.json (SwiftUI views, UIKit VCs, lifecycle).
-        This is the honest 'lines we can actually unit-test' metric we gate on.
-    """
-    result = {
-        'total_coverage': 0.0,
-        'line_coverage': 0.0,
-        'covered_lines': 0,
-        'executable_lines': 0,
-        'testable_coverage': 0.0,
-        'testable_covered_lines': 0,
-        'testable_executable_lines': 0,
-        'excluded_file_count': 0,
-        'excluded_executable_lines': 0,
-        'targets': [],
-        'files': []
+    a = app.as_dict()
+    return {
+        'status': 'incomplete' if reasons else 'complete',
+        'incomplete_reasons': reasons,
+        # What this run was required to measure. The floor step compares
+        # package floors only for these; a local run expects none.
+        'expected_packages': sorted(expected_packages or []),
+        'expected_host_packages': sorted(expected_host_packages or []),
+        # App measurement, under the field names the gate and reports read.
+        'total_coverage': a['total_coverage'],
+        'line_coverage': a['total_coverage'],
+        'covered_lines': a['covered_lines'],
+        'executable_lines': a['executable_lines'],
+        'testable_coverage': a['testable_coverage'],
+        'testable_covered_lines': a['testable_covered_lines'],
+        'testable_executable_lines': a['testable_executable_lines'],
+        'excluded_file_count': a['excluded_file_count'],
+        'excluded_executable_lines': a['excluded_executable_lines'],
+        'app': a,
+        'packages_app_suite': {n: t.as_dict() for n, t in sorted(packages.items())},
+        'packages_host': host_out,
+        'unmeasured_packages': {n: r for n, r in exemptions.items() if n not in packages},
+        'unattributed': other.as_dict(),
+        'duplicates': duplicates,
+        'targets': sorted(targets_out, key=lambda t: t['name']),
+        'files': sorted(files_out, key=lambda f: f['coverage']),
     }
-    
-    if not data:
-        return result
-    
-    # Parse targets - we'll calculate coverage from app target only
-    targets = data.get('targets', [])
-    
-    # Filter to only include main app target(s), exclude:
-    # - Test targets (ends with Tests)
-    # - SPM packages (usually have reverse-DNS names or are third-party)
-    # - Framework targets we don't own
-    APP_TARGETS = ['Palace']  # Add other app targets if needed
-    EXCLUDED_PATTERNS = [
-        'Tests',           # Test targets
-        'Mock',            # Mock targets
-        '.build',          # SPM build artifacts
-        'SourcePackages',  # SPM packages
-        'Pods',            # CocoaPods
-        'Carthage',        # Carthage
-    ]
-    
-    def should_include_target(name: str) -> bool:
-        """Check if target should be included in coverage calculation."""
-        # First check exclusions - if it matches any exclusion pattern, skip it
-        for pattern in EXCLUDED_PATTERNS:
-            if pattern in name:
-                return False
-        
-        # Include if it's an explicit app target
-        if name in APP_TARGETS:
-            return True
-        
-        # Include Palace-prefixed targets (like PalaceAudiobooks) but not Tests
-        if name.startswith('Palace') and not name.endswith('Tests'):
-            return True
-        
-        # Include targets containing "Palace" (case-insensitive) but not tests/mocks
-        name_lower = name.lower()
-        if 'palace' in name_lower and 'test' not in name_lower and 'mock' not in name_lower:
-            return True
-        
-        return False
-    
-    # Calculate coverage from filtered targets only
-    total_covered = 0
-    total_executable = 0
-    testable_covered = 0
-    testable_executable = 0
-    excluded_file_count = 0
-    excluded_executable_lines = 0
-    exclude_patterns = load_exclude_patterns()
-    included_targets = []
-    excluded_targets = []
 
-    for target in targets:
-        target_name = target.get('name', 'Unknown')
-        target_coverage = target.get('lineCoverage', 0.0) * 100
-        covered = target.get('coveredLines', 0)
-        executable = target.get('executableLines', 0)
 
-        # Check if this target should be included
-        include_in_total = should_include_target(target_name)
+def _row(label: str, d: Dict) -> str:
+    return (f"  {label:<28} {d['testable_coverage']:5.1f}%  "
+            f"{d['testable_covered_lines']:>6} / {d['testable_executable_lines']:<6}  "
+            f"excluded {d['excluded_covered_lines']} / {d['excluded_executable_lines']}")
 
-        if include_in_total:
-            total_covered += covered
-            total_executable += executable
-            included_targets.append(f"{target_name}: {covered}/{executable} lines ({target_coverage:.1f}%)")
-        else:
-            excluded_targets.append(target_name)
-
-        result['targets'].append({
-            'name': target_name,
-            'coverage': target_coverage,
-            'covered_lines': covered,
-            'executable_lines': executable,
-            'coverage_formatted': f"{target_coverage:.1f}%",
-            'included_in_total': include_in_total
-        })
-
-        # Parse files in target (only for included targets)
-        if include_in_total:
-            files = target.get('files', [])
-            for file_data in files:
-                file_name = file_data.get('name', 'Unknown')
-                file_path = file_data.get('path', '')
-                file_coverage = file_data.get('lineCoverage', 0.0) * 100
-                file_covered = file_data.get('coveredLines', 0)
-                file_executable = file_data.get('executableLines', 0)
-
-                # Skip files with no executable lines
-                if file_executable == 0:
-                    continue
-
-                # Files matched by the exclude list still count toward
-                # `total_coverage` (via the target rollup above) but are
-                # subtracted from the testable denominator.
-                excluded = is_path_excluded(file_path, exclude_patterns)
-                if excluded:
-                    excluded_file_count += 1
-                    excluded_executable_lines += file_executable
-                else:
-                    testable_covered += file_covered
-                    testable_executable += file_executable
-
-                result['files'].append({
-                    'name': file_name,
-                    'path': file_path,
-                    'target': target_name,
-                    'coverage': file_coverage,
-                    'covered_lines': file_covered,
-                    'executable_lines': file_executable,
-                    'coverage_formatted': f"{file_coverage:.1f}%",
-                    'excluded_from_testable': excluded
-                })
-    
-    # Debug output
-    print(f"\n=== Coverage Target Analysis ===", file=sys.stderr)
-    print(f"Total targets in report: {len(targets)}", file=sys.stderr)
-    print(f"Included targets ({len(included_targets)}):", file=sys.stderr)
-    for t in included_targets:
-        print(f"  ✓ {t}", file=sys.stderr)
-    print(f"Excluded targets ({len(excluded_targets)}): {', '.join(excluded_targets[:10])}", file=sys.stderr)
-    if len(excluded_targets) > 10:
-        print(f"  ... and {len(excluded_targets) - 10} more", file=sys.stderr)
-    print(f"=================================\n", file=sys.stderr)
-
-    # Calculate total coverage from filtered targets
-    if total_executable > 0:
-        result['line_coverage'] = (total_covered / total_executable) * 100
-    else:
-        result['line_coverage'] = 0.0
-
-    result['covered_lines'] = total_covered
-    result['executable_lines'] = total_executable
-    result['total_coverage'] = result['line_coverage']
-
-    # Testable coverage: denominator excludes UI/lifecycle files listed in
-    # scripts/coverage-exclude.json. When no files are excluded this collapses
-    # to the same number as total_coverage.
-    if testable_executable > 0:
-        result['testable_coverage'] = (testable_covered / testable_executable) * 100
-    else:
-        result['testable_coverage'] = result['total_coverage']
-    result['testable_covered_lines'] = testable_covered
-    result['testable_executable_lines'] = testable_executable
-    result['excluded_file_count'] = excluded_file_count
-    result['excluded_executable_lines'] = excluded_executable_lines
-    
-    # Sort targets by name, showing included targets first
-    result['targets'].sort(key=lambda t: (not t.get('included_in_total', False), t['name']))
-    
-    # Sort files by coverage (ascending - worst first)
-    result['files'].sort(key=lambda f: f['coverage'])
-    
-    return result
 
 def format_coverage_summary(coverage: Dict) -> str:
-    """Generate human-readable coverage summary."""
-    lines = []
-    lines.append("=" * 60)
-    lines.append("CODE COVERAGE REPORT")
-    lines.append("=" * 60)
-    lines.append(f"Testable Coverage: {coverage['testable_coverage']:.1f}%  "
-                 f"({coverage['testable_covered_lines']} / {coverage['testable_executable_lines']} lines)")
-    lines.append(f"Total Coverage:    {coverage['total_coverage']:.1f}%  "
-                 f"({coverage['covered_lines']} / {coverage['executable_lines']} lines, incl. UI surfaces)")
-    if coverage.get('excluded_file_count'):
-        lines.append(f"Excluded from testable: {coverage['excluded_file_count']} files, "
-                     f"{coverage['excluded_executable_lines']} lines (see scripts/coverage-exclude.json)")
+    lines = ["=" * 72, "CODE COVERAGE REPORT", "=" * 72]
+    if coverage.get('status') != 'complete':
+        lines.append("STATUS: INCOMPLETE — these numbers are not a measurement of the change")
+        for r in coverage.get('incomplete_reasons', []):
+            lines.append(f"  - {r}")
+        lines.append("")
+    lines.append("Measurement                  testable  covered / executable  "
+                 "(excluded covered / executable)")
+    lines.append(_row("app (Palace/)", coverage['app']))
+    lines.append(f"  {'app, total incl. excluded':<28} {coverage['total_coverage']:5.1f}%  "
+                 f"{coverage['covered_lines']:>6} / {coverage['executable_lines']}")
+    pkgs = coverage.get('packages_app_suite', {})
+    if pkgs:
+        lines.append("Packages, app suite (iOS simulator):")
+        for name, d in pkgs.items():
+            lines.append(_row(name, d))
+    host = coverage.get('packages_host', {})
+    if host:
+        lines.append("Packages, swift test (macOS host; not combined with the app suite):")
+        for name, d in host.items():
+            lines.append(_row(name, d))
+    for name, why in coverage.get('unmeasured_packages', {}).items():
+        lines.append(f"  UNMEASURED {name}: {why}")
+    u = coverage.get('unattributed', {})
+    if u.get('executable_lines'):
+        lines.append(f"Not counted (tests, third-party, generated): "
+                     f"{u['covered_lines']} / {u['executable_lines']} lines in {u['file_count']} files")
+    if coverage.get('duplicates'):
+        lines.append(f"Source paths in more than one target, counted once: {len(coverage['duplicates'])}")
     lines.append("")
-    
-    if coverage['targets']:
-        # Separate included vs excluded targets
-        included = [t for t in coverage['targets'] if t.get('included_in_total', False)]
-        excluded = [t for t in coverage['targets'] if not t.get('included_in_total', False)]
-        
-        if included:
-            lines.append("INCLUDED TARGETS (counted in coverage):")
-            for target in included:
-                bar = "█" * int(target['coverage'] / 5) + "░" * (20 - int(target['coverage'] / 5))
-                lines.append(f"  ✓ {target['name']}: {target['coverage_formatted']} [{bar}]")
-                lines.append(f"      ({target['covered_lines']} / {target['executable_lines']} lines)")
-        
-        if excluded:
-            lines.append("")
-            lines.append(f"EXCLUDED TARGETS ({len(excluded)} third-party/test targets not counted):")
-            for target in excluded[:5]:  # Show first 5
-                lines.append(f"  ✗ {target['name']}: {target['coverage_formatted']}")
-            if len(excluded) > 5:
-                lines.append(f"  ... and {len(excluded) - 5} more")
-    
-    lines.append("")
-    lines.append("LOWEST COVERAGE FILES (Palace only):")
-    for file_data in coverage['files'][:10]:
-        lines.append(f"  {file_data['coverage_formatted']:>6} - {file_data['name']}")
-    
-    lines.append("=" * 60)
+    lines.append("LOWEST COVERAGE FILES (app and packages):")
+    for f in coverage.get('files', [])[:10]:
+        lines.append(f"  {f['coverage_formatted']:>6} - {f['path']}")
+    lines.append("=" * 72)
     return "\n".join(lines)
 
-def output_github_actions(coverage: Dict, output_file: str):
-    """Write coverage results in GitHub Actions output format."""
+
+def output_github_actions(coverage: Dict, output_file: str) -> None:
+    def one_line(s: str) -> str:
+        return s.replace('\n', ' ').replace('\r', ' ')
+
     with open(output_file, 'a') as f:
-        # `coverage` is the headline metric — testable coverage is what we gate
-        # on. total_coverage is preserved as a secondary field for continuity.
+        f.write(f"coverage_status={coverage['status']}\n")
+        f.write(f"coverage_incomplete_reason={one_line('; '.join(coverage['incomplete_reasons']))}\n")
         f.write(f"coverage={coverage['testable_coverage']:.1f}\n")
         f.write(f"coverage_formatted={coverage['testable_coverage']:.1f}%\n")
         f.write(f"covered_lines={coverage['testable_covered_lines']}\n")
@@ -334,69 +354,105 @@ def output_github_actions(coverage: Dict, output_file: str):
         f.write(f"total_coverage_formatted={coverage['total_coverage']:.1f}%\n")
         f.write(f"total_covered_lines={coverage['covered_lines']}\n")
         f.write(f"total_executable_lines={coverage['executable_lines']}\n")
-        f.write(f"excluded_file_count={coverage.get('excluded_file_count', 0)}\n")
-        f.write(f"excluded_executable_lines={coverage.get('excluded_executable_lines', 0)}\n")
+        f.write(f"excluded_file_count={coverage['excluded_file_count']}\n")
+        f.write(f"excluded_executable_lines={coverage['excluded_executable_lines']}\n")
+        # measurement|name|testable covered|testable executable|percent
+        f.write("coverage_packages<<EOF\n")
+        for scope, key in (('app-suite', 'packages_app_suite'), ('host', 'packages_host')):
+            for name, d in coverage[key].items():
+                f.write(f"{scope}|{name}|{d['testable_covered_lines']}|"
+                        f"{d['testable_executable_lines']}|{d['testable_coverage']:.1f}%\n")
+        f.write("EOF\n")
 
-        # Target summary for PR comment - only show included targets
-        included_targets = [t for t in coverage['targets'] if t.get('included_in_total', False)]
-        if included_targets:
-            f.write("coverage_targets<<EOF\n")
-            for target in included_targets:
-                f.write(f"{target['name']}|{target['coverage_formatted']}|{target['covered_lines']}|{target['executable_lines']}\n")
-            f.write("EOF\n")
 
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: coverage-report.py <path-to-xcresult> [--json <output.json>]", file=sys.stderr)
-        sys.exit(1)
-    
-    xcresult_path = sys.argv[1]
-    json_output_path = None
-    
-    # Parse arguments
-    if '--json' in sys.argv:
-        json_idx = sys.argv.index('--json')
-        if json_idx + 1 < len(sys.argv):
-            json_output_path = sys.argv[json_idx + 1]
-    
-    if not json_output_path:
-        json_output_path = 'coverage-data.json'
-    
-    if not os.path.exists(xcresult_path):
-        print(f"Error: {xcresult_path} not found", file=sys.stderr)
-        sys.exit(1)
-    
-    print(f"Extracting coverage from: {xcresult_path}", file=sys.stderr)
-    
-    # Get coverage data
-    raw_coverage = get_coverage_from_xcresult(xcresult_path)
-    
-    if not raw_coverage:
-        print("Warning: Could not extract coverage data", file=sys.stderr)
-        coverage = {
-            'total_coverage': 0.0,
-            'line_coverage': 0.0,
-            'covered_lines': 0,
-            'executable_lines': 0,
-            'targets': [],
-            'files': []
-        }
+def _read_json(path: str) -> Any:
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"Warning: could not read {path}: {e}", file=sys.stderr)
+        return None
+
+
+def get_coverage_from_xcresult(xcresult_path: str) -> Any:
+    cmd = ['xcrun', 'xccov', 'view', '--report', '--json', xcresult_path]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    except (subprocess.TimeoutExpired, OSError) as e:
+        print(f"xccov failed: {e}", file=sys.stderr)
+        return None
+    if result.returncode != 0:
+        print(f"xccov failed ({result.returncode}): {result.stderr.strip()}", file=sys.stderr)
+        return None
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        print("xccov output is not JSON", file=sys.stderr)
+        return None
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument('xcresult', nargs='?')
+    p.add_argument('--xccov-json')
+    p.add_argument('--json', default='coverage-data.json')
+    p.add_argument('--repo-root', default=os.getcwd())
+    p.add_argument('--expect-package', action='append', default=[])
+    p.add_argument('--expect-local-packages', action='store_true')
+    p.add_argument('--host-package', action='append', default=[])
+    p.add_argument('--host-package-dir')
+    p.add_argument('--expect-host-package', action='append', default=[])
+    p.add_argument('--incomplete-reason', action='append', default=[])
+    args = p.parse_args(argv)
+
+    if bool(args.xcresult) == bool(args.xccov_json):
+        p.print_usage(sys.stderr)
+        print("give exactly one of <xcresult> or --xccov-json", file=sys.stderr)
+        return EXIT_USAGE
+
+    reasons = [r for r in args.incomplete_reason if r]
+    if args.xccov_json:
+        raw = _read_json(args.xccov_json)
+    elif not os.path.exists(args.xcresult):
+        print(f"Error: {args.xcresult} not found", file=sys.stderr)
+        raw = None
     else:
-        coverage = parse_coverage_data(raw_coverage)
-    
-    # Print summary
+        print(f"Extracting coverage from: {args.xcresult}", file=sys.stderr)
+        raw = get_coverage_from_xcresult(args.xcresult)
+
+    host: Dict[str, Any] = {}
+    if args.host_package_dir and os.path.isdir(args.host_package_dir):
+        for fn in sorted(os.listdir(args.host_package_dir)):
+            if fn.endswith('.json'):
+                host[fn[:-5]] = _read_json(os.path.join(args.host_package_dir, fn))
+    for spec in args.host_package:
+        name, sep, path = spec.partition('=')
+        if not sep:
+            print(f"--host-package expects NAME=FILE, got {spec!r}", file=sys.stderr)
+            return EXIT_USAGE
+        host[name] = _read_json(path)
+
+    patterns, exemptions = load_exclude_config()
+    expected = list(args.expect_package)
+    if args.expect_local_packages:
+        local = discover_packages(args.repo_root)
+        if not local:
+            reasons.append(f"no local packages found under {args.repo_root}/{PACKAGES_PREFIX}")
+        expected += local
+    coverage = build_report(raw, exclude_patterns=patterns, repo_root=args.repo_root,
+                            expected_packages=expected, package_exemptions=exemptions,
+                            host_packages=host, expected_host_packages=args.expect_host_package,
+                            incomplete_reasons=reasons)
+
     print(format_coverage_summary(coverage), file=sys.stderr)
-    
-    # Output to GitHub Actions if available
     github_output = os.environ.get('GITHUB_OUTPUT', '')
     if github_output:
         output_github_actions(coverage, github_output)
-        print(f"Wrote GitHub Actions output", file=sys.stderr)
-    
-    # Write JSON
-    with open(json_output_path, 'w') as f:
+    with open(args.json, 'w') as f:
         json.dump(coverage, f, indent=2)
-    print(f"Wrote coverage data to: {json_output_path}", file=sys.stderr)
+    print(f"Wrote coverage data to: {args.json} (status: {coverage['status']})", file=sys.stderr)
+    return EXIT_COMPLETE if coverage['status'] == 'complete' else EXIT_INCOMPLETE
+
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

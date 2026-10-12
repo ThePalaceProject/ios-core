@@ -127,5 +127,5 @@ git diff HEAD origin/release/X.Y.Z
 
 ## Related
 
-- [Forward-port discipline (memory: `feedback_hotfix_then_port.md`)](https://github.com/ThePalaceProject/ios-core/blob/develop/) — hotfixes are merged to main first, then forward-ported to develop. This policy preserves identity through that loop so the next release branch absorbs everything cleanly.
+- Forward-port discipline: hotfixes are merged to main first, then forward-ported to develop. This policy preserves identity through that loop so the next release branch absorbs everything cleanly.
 - The fact that release/3.1.0's tree was a strict superset of main's intended content (modulo squash-merge SHAs) is *only* true because of disciplined forward-port. Without it, tree-from-theirs would not be safe.

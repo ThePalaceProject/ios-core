@@ -103,18 +103,18 @@ final class EpubSampleFactoryTests: XCTestCase {
 
     // MARK: - createSample Error Handling Tests
 
-    func testCreateSample_withBookWithoutSample_returnsError() {
+    @MainActor
+    func testCreateSample_withBookWithoutSample_throwsNoSampleAvailable() async {
         // Create a book without a sample (hasSample: false is the default)
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
 
-        let completed = XCTestExpectation(description: "createSample completion fires")
-        var receivedError: Error?
-        EpubSampleFactory.createSample(book: book) { _, error in
-            receivedError = error
-            completed.fulfill()
+        do {
+            _ = try await EpubSampleFactory.createSample(book: book)
+            XCTFail("A book without a sample must not produce a sample location")
+        } catch SamplePlayerError.noSampleAvailable {
+            // expected
+        } catch {
+            XCTFail("expected .noSampleAvailable, got \(error)")
         }
-        wait(for: [completed], timeout: 3.0)
-        XCTAssertNotNil(receivedError,
-                        "A book without a sample must yield an error via the completion")
     }
 }

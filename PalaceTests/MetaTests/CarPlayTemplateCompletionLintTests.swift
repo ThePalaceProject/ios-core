@@ -83,12 +83,25 @@ final class CarPlayTemplateCompletionLintTests: XCTestCase {
     }
 
     /// Every Swift file under `root`, recursively, keyed by path relative to `root`.
+    ///
+    /// `enumerator(atPath:)` yields paths that are already relative to the root,
+    /// which is the whole reason it is used here. Deriving them instead from the
+    /// absolute URLs of `enumerator(at:)` required subtracting the root, and that
+    /// arithmetic was wrong in two ways at once: `#filePath` records the root as
+    /// written at compile time while the enumerator reports it resolved, and the
+    /// subtraction used `replacingOccurrences`, which matches anywhere rather
+    /// than only at the start. Under a worktree below `/tmp` — a symlink to
+    /// `private/tmp` — a root of `/tmp/…/Palace/` matched the reported
+    /// `/private/tmp/…/Palace/…` after `/private` and left that as residue, so
+    /// every key was mangled, the navigator went unrecognised, and the test
+    /// reported its own files as offenders. Relative keys have no root to
+    /// subtract and no spelling to agree on.
     private func swiftSources(under root: URL) throws -> [String: [String]] {
-        let enumerator = try XCTUnwrap(FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil))
+        let enumerator = try XCTUnwrap(FileManager.default.enumerator(atPath: root.path))
         var sources: [String: [String]] = [:]
-        for case let url as URL in enumerator where url.pathExtension == "swift" {
-            let relative = url.path.replacingOccurrences(of: root.path + "/", with: "")
-            sources[relative] = try String(contentsOf: url, encoding: .utf8).components(separatedBy: .newlines)
+        for case let relative as String in enumerator where relative.hasSuffix(".swift") {
+            sources[relative] = try String(contentsOf: root.appendingPathComponent(relative), encoding: .utf8)
+                .components(separatedBy: .newlines)
         }
         XCTAssertGreaterThan(sources.count, 100, "resolved too few Swift files under \(root.path)")
         return sources

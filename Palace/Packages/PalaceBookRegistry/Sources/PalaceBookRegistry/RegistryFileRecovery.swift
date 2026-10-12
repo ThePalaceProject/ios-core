@@ -133,12 +133,22 @@ enum RegistryFileRecovery {
     }
   }
 
-  /// Persists `data` as the last-good `.bak` sidecar using a durable
-  /// write-new → fsync → rename sequence: the bytes are written to a temporary
-  /// file, flushed to stable storage with `fsync`, then atomically renamed over
-  /// the existing backup. A crash mid-write can never leave a half-written
-  /// `.bak` (the rename is atomic; the temp file is discarded).
-  static func writeBackup(data: Data, for registryURL: URL) throws {
+  /// Persists `data` as the last-good `.bak` sidecar: the bytes are written to a
+  /// temporary file, flushed with `fsync`, then moved into place. A failure
+  /// while writing the temporary file leaves the previous `.bak` untouched.
+  ///
+  /// The move is not a single atomic replace: the previous `.bak` is removed
+  /// first, so a failure between the remove and the move leaves no `.bak` until
+  /// the next successful save. The caller writes the primary afterwards, so
+  /// that gap alone does not lose the shelf.
+  ///
+  /// - Parameter beforeWrite: called before each write step; a thrown error
+  ///   aborts the step. Production passes a no-op.
+  static func writeBackup(
+    data: Data,
+    for registryURL: URL,
+    beforeWrite: (RegistryWriteStep, URL) throws -> Void = { _, _ in }
+  ) throws {
     let backup = backupURL(for: registryURL)
     let tempURL = backup.appendingPathExtension("tmp")
 
@@ -149,6 +159,7 @@ enum RegistryFileRecovery {
       try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     }
 
+    try beforeWrite(.backupStaging, tempURL)
     try data.write(to: tempURL, options: .atomic)
 
     // fsync the temp file so its bytes are durable before we rename it into
@@ -161,6 +172,7 @@ enum RegistryFileRecovery {
     if FileManager.default.fileExists(atPath: backup.path) {
       try FileManager.default.removeItem(at: backup)
     }
+    try beforeWrite(.backupReplace, backup)
     try FileManager.default.moveItem(at: tempURL, to: backup)
   }
 

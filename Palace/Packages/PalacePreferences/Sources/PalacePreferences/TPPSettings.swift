@@ -54,7 +54,9 @@ public final class TPPSettings {
     static private let useBetaLibrariesKey = "NYPLUseBetaLibrariesKey"
     public static let settingsLibraryAccountsKey = "NYPLSettingsLibraryAccountsKey"
     static private let versionKey = "NYPLSettingsVersionKey"
-    static private let customLibraryRegistryKey = "TPPSettingsCustomLibraryRegistryKey"
+    // PUBLIC_INTENT: the DEBUG UI-test launch hook registers this key in the
+    // app's registration domain, the same way `settingsLibraryAccountsKey` is read.
+    public static let customLibraryRegistryKey = "TPPSettingsCustomLibraryRegistryKey"
     static private let enterLCPPassphraseManually = "TPPSettingsEnterLCPPassphraseManually"
     public static let showDeveloperSettingsKey = "showDeveloperSettings"
     public static let downloadOnlyOnWiFiKey = "TPPSettingsDownloadOnlyOnWiFi"

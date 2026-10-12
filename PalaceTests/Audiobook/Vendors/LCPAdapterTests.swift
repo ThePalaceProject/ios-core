@@ -48,14 +48,11 @@ final class LCPAdapterTests: XCTestCase {
         private(set) var capturedURL: URL?
         private(set) var getCallCount = 0
 
-        func GET(
-            _ reqURL: URL,
-            completion: @escaping (_ result: Data?, _ response: URLResponse?, _ error: Error?) -> Void
-        ) -> URLSessionDataTask? {
+        func fetchLicense(from reqURL: URL) async throws -> (Data, URLResponse?) {
             getCallCount += 1
             capturedURL = reqURL
-            completion(stubbedData, stubbedResponse, stubbedError)
-            return nil
+            if let stubbedError { throw stubbedError }
+            return (stubbedData ?? Data(), stubbedResponse)
         }
     }
 
@@ -179,7 +176,7 @@ final class LCPAdapterTests: XCTestCase {
     /// factory to return nil (instantiation failure) so the test never
     /// reaches Readium — what matters is *which URL the factory was asked
     /// about*, not what it returned.
-    func testResolveManifest_localLCPAFile_usesLocalFile() {
+    func testResolveManifest_localLCPAFile_usesLocalFile() async {
         let book = makeBook(
             acquisitionType: lcpLicenseMIME,
             indirect: [indirect(audiobookLCPMIME)]
@@ -202,9 +199,7 @@ final class LCPAdapterTests: XCTestCase {
             }
         )
 
-        let expectation = expectation(description: "resolveManifest completes")
-        adapter.resolveManifest(for: book) { _ in expectation.fulfill() }
-        wait(for: [expectation], timeout: 1.0)
+        _ = await adapter.resolveManifest(for: book)
 
         XCTAssertEqual(capturedFactoryURL, localURL,
                        "Local file path must be passed to LCPAudiobooks factory")
@@ -215,7 +210,7 @@ final class LCPAdapterTests: XCTestCase {
     /// No local `.lcpa`, but a `.lcpl` license sibling file exists. The
     /// adapter must reach for that license file as the LCP source. We force
     /// the factory to nil for the same reason as the previous test.
-    func testResolveManifest_licenseFileExists_usesLicenseFile() {
+    func testResolveManifest_licenseFileExists_usesLicenseFile() async {
         let book = makeBook(
             acquisitionType: lcpLicenseMIME,
             indirect: [indirect(audiobookLCPMIME)]
@@ -240,9 +235,7 @@ final class LCPAdapterTests: XCTestCase {
             }
         )
 
-        let expectation = expectation(description: "resolveManifest completes")
-        adapter.resolveManifest(for: book) { _ in expectation.fulfill() }
-        wait(for: [expectation], timeout: 1.0)
+        _ = await adapter.resolveManifest(for: book)
 
         XCTAssertEqual(capturedFactoryURL, licenseURL,
                        "When only .lcpl exists, that license URL must be the LCP source")
@@ -254,7 +247,7 @@ final class LCPAdapterTests: XCTestCase {
     /// network to re-download the license. We stub a success response so
     /// the test can also assert the license file lands at the expected
     /// path; the factory still returns nil to keep Readium out of the loop.
-    func testResolveManifest_neitherLocalNorLicense_redownloadsLicense() {
+    func testResolveManifest_neitherLocalNorLicense_redownloadsLicense() async {
         let book = makeBook(
             acquisitionType: lcpLicenseMIME,
             indirect: [indirect(audiobookLCPMIME)]
@@ -280,9 +273,7 @@ final class LCPAdapterTests: XCTestCase {
             }
         )
 
-        let expectation = expectation(description: "resolveManifest completes")
-        adapter.resolveManifest(for: book) { _ in expectation.fulfill() }
-        wait(for: [expectation], timeout: 1.0)
+        _ = await adapter.resolveManifest(for: book)
 
         XCTAssertEqual(network.getCallCount, 1, "Network re-download path must be entered")
         XCTAssertEqual(network.capturedURL, book.defaultAcquisition?.hrefURL,
@@ -296,7 +287,7 @@ final class LCPAdapterTests: XCTestCase {
     /// License re-download fails at the network layer. The adapter must
     /// surface `.licenseDownloadFailed` — NOT `.lcpInstantiationFailed` and
     /// NOT swallow the error silently.
-    func testResolveManifest_redownloadFailure_failsWithLicenseDownloadFailed() {
+    func testResolveManifest_redownloadFailure_failsWithLicenseDownloadFailed() async {
         let book = makeBook(
             acquisitionType: lcpLicenseMIME,
             indirect: [indirect(audiobookLCPMIME)]
@@ -314,15 +305,11 @@ final class LCPAdapterTests: XCTestCase {
             networkExecutor: network
         )
 
-        let expectation = expectation(description: "resolveManifest completes")
         var observedError: AudiobookLoadError?
-        adapter.resolveManifest(for: book) { result in
+        let result = await adapter.resolveManifest(for: book)
             if case .failure(let err) = result {
                 observedError = err
             }
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 1.0)
 
         guard case .licenseDownloadFailed = observedError else {
             XCTFail("Expected .licenseDownloadFailed, got \(String(describing: observedError))")
@@ -334,7 +321,7 @@ final class LCPAdapterTests: XCTestCase {
     /// returns nil — typically because the file isn't a valid LCP package.
     /// The adapter must surface `.lcpInstantiationFailed` distinctly so
     /// the caller can distinguish "no source" from "source unusable".
-    func testResolveManifest_lcpInstantiationFailure_failsWithLcpInstantiationFailed() {
+    func testResolveManifest_lcpInstantiationFailure_failsWithLcpInstantiationFailed() async {
         let book = makeBook(
             acquisitionType: lcpLicenseMIME,
             indirect: [indirect(audiobookLCPMIME)]
@@ -352,15 +339,11 @@ final class LCPAdapterTests: XCTestCase {
             lcpAudiobooksFactory: { _ in nil } // forces instantiation failure
         )
 
-        let expectation = expectation(description: "resolveManifest completes")
         var observedError: AudiobookLoadError?
-        adapter.resolveManifest(for: book) { result in
+        let result = await adapter.resolveManifest(for: book)
             if case .failure(let err) = result {
                 observedError = err
             }
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 1.0)
 
         guard case .lcpInstantiationFailed = observedError else {
             XCTFail("Expected .lcpInstantiationFailed, got \(String(describing: observedError))")

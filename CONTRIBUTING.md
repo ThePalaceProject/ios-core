@@ -56,18 +56,31 @@ Carthage; Apple Silicon builds DRM natively, no Rosetta needed).
 
 This repo has two layers of automation.
 
-### CI gates (run on every PR, enforced by GitHub)
+### CI gates (run on every PR)
 
-The workflows under [`.github/workflows/`](./.github/workflows) gate every
-pull request:
+The workflows under [`.github/workflows/`](./.github/workflows) run on every
+pull request. Build, unit tests and coverage floors make up the
+`build-and-test` check; tooling checks fail their own check; the rest report
+without failing a run:
 
 - Build (Palace and Palace-noDRM targets)
 - Unit tests
-- Coverage floors (`scripts/enforce_coverage_floors.py`)
-- Snapshot tests
-- Lint / accessibility lint
+- Coverage floors (`scripts/enforce_coverage_floors.py`): an app floor (overall
+  or per-module) more than 1.5 points below its value fails `build-and-test`,
+  and so does incomplete coverage data (for example a missing result bundle or
+  a planned test class that did not run), which is reported as INCOMPLETE
+  rather than as a pass. Package floors are reported but advisory, because
+  their measurements vary between runs of identical code. See
+  [`scripts/README_coverage_floors.md`](./scripts/README_coverage_floors.md).
+- Screenshot captures, stored as artifacts with no comparison gate (the JSON
+  contract-snapshot tests run with the unit tests and do block)
+- Tooling checks (`tooling-checks.yml`: test-quality lint, doc reference,
+  index and hygiene checks), which fail the run on a violation
+- Accessibility lint, reported through the ledger (non-blocking)
 
-A red CI run blocks merge regardless of who opened the PR.
+A red CI run means do not merge, regardless of who opened the PR. GitHub does
+not enforce this: `develop` and `main` have no branch protection, so the rule
+holds only if whoever merges checks CI first (`CLAUDE.md`, "Red means stop").
 
 Mutation testing and simulator-driven E2E are **not** CI gates. Both need
 something CI does not have — a booted simulator for E2E, and a long serial run

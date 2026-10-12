@@ -180,7 +180,7 @@ final class AudiobookBookmarkBusinessLogicConcurrencyTests: XCTestCase {
         // back up behind a saturated main queue on a heavily loaded host; a slow
         // drain must not be misread as a lost completion.
         DispatchQueue.concurrentPerform(iterations: n) { i in
-            sut.syncBookmarks(localBookmarks: []) { _ in
+            sut.syncBookmarks { _ in
                 if tracker.recordFire(i) { expectations[i].fulfill() }
             }
         }

@@ -77,7 +77,7 @@ extension TPPSignInBusinessLogic {
     ///
     /// Logout is best-effort: any server error calls `completion` without
     /// surfacing anything to the patron, since local credentials are already cleared.
-    func oidcLogOut(accessToken: String?, completion: @escaping () -> Void) {
+    func oidcLogOut(accessToken: String?, completion: @escaping @Sendable () -> Void) {
         guard let logoutHref = selectedAuthentication?.oidcLogoutHref else {
             completion()
             return
@@ -117,7 +117,16 @@ extension TPPSignInBusinessLogic {
         Log.debug(#file, "OIDC logout: calling CM end-session endpoint: \(logoutURL)")
 
         // PP-4986: built for `libraryAccountID`, not necessarily the current library.
-        networker.executeRequest(request, enableTokenRefresh: false, accountId: libraryAccountID) { result in
+        // PP-5301: `await`, not a completion — a completion arrives off the main
+        // actor while this closure inherits the enclosing `@MainActor`
+        // isolation, which is the shape that crashed in 3.3.0. The `Task`
+        // inherits that isolation and the await resumes inside it, which the
+        // `@MainActor` below states at the site rather than leaving it to the
+        // class annotation in another file — `completion()` is a caller's
+        // closure and must not be delivered off the main actor.
+        Task { @MainActor in
+            let result = await networker.execute(
+                request, enableTokenRefresh: false, accountId: libraryAccountID)
             switch result {
             case .success:
                 Log.debug(#file, "OIDC logout: CM session invalidated successfully")
@@ -191,6 +200,28 @@ extension TPPSignInBusinessLogic {
             return
         }
 
+        // Test seam. With a canned callback armed, deliver it and present
+        // nothing: a unit test cannot dismiss a system browser and a simdrive
+        // journey has no credentials for a live IdP consent page, so without
+        // this the path from URL composition to credential handling is
+        // undrivable. `finalURL` is composed above either way, so the
+        // composition this flow gets wrong in practice stays exercised.
+        //
+        // All the gating lives in `oidcStubCallback`, which is nil in
+        // release builds and nil unless a driver explicitly armed it. This
+        // injects a callback, not a session: the token below still goes through
+        // `validateCredentials()` against the CM, so a fabricated token grants
+        // no access.
+        if let stub = RemoteFeatureFlags.oidcStubCallback() {
+            // Deliberately not describing the mechanism: the branch is dead in
+            // Release but the literal can survive into the shipped binary, and
+            // naming a sign-in bypass there tells anyone running `strings` what
+            // to look for, for no functional benefit.
+            Log.info(#file, "OIDC: delivering an injected callback")
+            handleOIDCCallback(stub)
+            return
+        }
+
         let session = ASWebAuthenticationSession(
             url: finalURL,
             callbackURLScheme: Self.oidcCallbackScheme
@@ -253,6 +284,14 @@ extension TPPSignInBusinessLogic {
         }
     }
 
+    /// Decode an `application/x-www-form-urlencoded` value.
+    ///
+    /// `removingPercentEncoding` alone is not enough: form encoding writes a space
+    /// as `+`, which percent-decoding leaves as a literal plus.
+    static func formDecoded(_ raw: String) -> String? {
+        raw.replacingOccurrences(of: "+", with: " ").removingPercentEncoding
+    }
+
     /// Parses the OIDC callback URL returned by the CM after the IdP
     /// authentication completes. Extracts `access_token` and `patron_info`
     /// from query parameters or fragment, then validates credentials.
@@ -282,18 +321,37 @@ extension TPPSignInBusinessLogic {
             kvpairs[key] = value
         }
 
-        if let rawError = kvpairs["error"],
-           let error = rawError
-            .replacingOccurrences(of: "+", with: " ")
-            .removingPercentEncoding,
-           let parsedError = error.parseJSONString as? [String: Any] {
+        // Two shapes arrive here. The circulation manager sends a JSON object with
+        // a `title`; an identity provider following RFC 6749 section 4.1.2.1 sends a
+        // bare `error=<code>` plus an optional `error_description`, which is not
+        // JSON. This arm used to require the value to parse as a JSON object, so a
+        // bare code fell through to the access_token guard below, logged, and
+        // returned — a patron who declined consent was left on the sheet with no
+        // message at all.
+        if let rawError = kvpairs["error"], !rawError.isEmpty {
+            let error = Self.formDecoded(rawError) ?? rawError
+            let message: String
+            if let parsedError = error.parseJSONString as? [String: Any],
+               let title = parsedError["title"] as? String {
+                message = title
+            } else if let description = kvpairs["error_description"]
+                        .flatMap(Self.formDecoded), !description.isEmpty {
+                message = description
+            } else {
+                // The code is the only information the response carries. Showing it
+                // is not friendly, and it is what the provider said.
+                message = error
+            }
+            // Provider-supplied text with no length contract: an unbounded
+            // error_description renders an unreadable alert.
+            let bounded = String(message.prefix(300))
             TPPMainThreadRun.asyncIfNeeded { [weak self] in
                 guard let self = self else { return }
                 self.uiDelegate?.businessLogic(
                     self,
                     didEncounterValidationError: NSError(domain: "OIDC", code: 0),
                     userFriendlyErrorTitle: Strings.Error.loginErrorTitle,
-                    andMessage: parsedError["title"] as? String ?? error)
+                    andMessage: bounded)
             }
             return
         }
@@ -301,9 +359,7 @@ extension TPPSignInBusinessLogic {
         guard
             let authToken = kvpairs["access_token"],
             let patronInfo = kvpairs["patron_info"],
-            let patron = patronInfo
-                .replacingOccurrences(of: "+", with: " ")
-                .removingPercentEncoding,
+            let patron = Self.formDecoded(patronInfo),
             let parsedPatron = patron.parseJSONString as? [String: Any]
         else {
             TPPErrorLogger.logError(
@@ -319,7 +375,8 @@ extension TPPSignInBusinessLogic {
 
         self.dispatch(.bearerTokenReceived(token: authToken, expiration: nil))
         self.patron = parsedPatron
-        validateCredentials()
+        // OIDC callback handler is synchronous, so the await needs a Task.
+        startSignInTask { await self.validateCredentials() }
     }
 }
 

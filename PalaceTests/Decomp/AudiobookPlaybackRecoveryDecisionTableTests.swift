@@ -76,6 +76,7 @@ final class AudiobookPlaybackRecoveryDecisionTableTests: XCTestCase {
         error: Error? = nil,
         book: TPPBook? = nil,
         isAwaitingContentDownload: Bool = false,
+        overdriveInFlight: Bool = false,
         overdriveAttempted: Bool = true,
         bearerAttempted: Bool = true,
         coldLoadAttempted: Bool = true,
@@ -87,7 +88,8 @@ final class AudiobookPlaybackRecoveryDecisionTableTests: XCTestCase {
             book: book,
             userAccount: userAccount,
             isAwaitingContentDownload: isAwaitingContentDownload,
-            overdriveRefulfillAlreadyAttempted: overdriveAttempted,
+            isOverdriveRefulfillInFlight: overdriveInFlight,
+            overdriveRefulfillAlreadyAttempted: overdriveAttempted || overdriveInFlight,
             bearerTokenRefulfillAlreadyAttempted: bearerAttempted,
             coldLoadReopenAlreadyAttempted: coldLoadAttempted,
             hasEverStartedPlayback: hasEverStartedPlayback,
@@ -295,15 +297,98 @@ final class AudiobookPlaybackRecoveryDecisionTableTests: XCTestCase {
         XCTAssertTrue(out.keepsPlayerLoading)
     }
 
-    /// Per-arm bound, same property as the bearer-token fall-through.
-    func testPrecedence_overdriveExhausted_fallsThroughToColdLoadReopen() throws {
+    // MARK: OverDrive link expiry around the one re-fulfilment (PP-4967)
+    //
+    // Re-fulfilment state × failure, for an OverDrive title. "expiry" is a 410
+    // or a -1008; "other" is any other failure.
+    //
+    //   state      | expiry                        | other
+    //   -----------+-------------------------------+--------------------------
+    //   available  | overdriveRefulfill, loading   | the other arms
+    //   inFlight   | suppressed                    | suppressed
+    //   spent      | overdriveRefulfillExhausted   | the other arms
+    //
+    // available × expiry is `testDecide_overdriveSignedURLExpiry_selectsOverdriveRefulfill`
+    // and `testPrecedence_overdriveBeatsColdLoadReopen` above.
+
+    /// spent × expiry. This used to fall through to a cold-load re-open, which
+    /// re-read the same manifest and failed the same way before the generic
+    /// alert. The re-fulfilment already re-opened once; another re-open cannot
+    /// change the outcome, and the patron needs to be told what to do.
+    func testSpent_expiry_isExhaustedEvenWithAColdLoadAttemptLeft() throws {
         let out = try XCTUnwrap(published(
             context(error: httpError(410), book: overdriveBook(),
                     overdriveAttempted: true,
                     coldLoadAttempted: false, hasEverStartedPlayback: false)))
-        XCTAssertEqual(out.recovery, .coldLoadReopen)
-        // OverDrive term now false (attempt spent); coldLoad term carries it.
-        XCTAssertTrue(out.keepsPlayerLoading)
+        XCTAssertEqual(out.recovery, .overdriveRefulfillExhausted)
+        XCTAssertFalse(out.keepsPlayerLoading,
+            "exhaustion is terminal; holding the loading shell would leave the patron watching a spinner")
+    }
+
+    func testSpent_resourceUnavailable_midListen_isExhausted() throws {
+        let minus1008 = NSError(domain: NSURLErrorDomain, code: NSURLErrorResourceUnavailable)
+        let out = try XCTUnwrap(published(
+            context(error: minus1008, book: overdriveBook(), overdriveAttempted: true,
+                    hasEverStartedPlayback: true)))
+        XCTAssertEqual(out.recovery, .overdriveRefulfillExhausted)
+        XCTAssertFalse(out.keepsPlayerLoading)
+    }
+
+    func testSpent_otherFailure_isNotExhausted() throws {
+        let out = try XCTUnwrap(published(
+            context(error: plainError(), book: overdriveBook(), overdriveAttempted: true,
+                    coldLoadAttempted: false, hasEverStartedPlayback: false)))
+        XCTAssertEqual(out.recovery, .coldLoadReopen,
+            "a failure that is not a link expiry says nothing about the link and keeps the other arms")
+    }
+
+    /// 403 is excluded from the OverDrive expiry signal (ambiguous with an
+    /// entitlement refusal), so it must not claim the link could not be renewed.
+    func testSpent_403_isNotExhausted() throws {
+        let out = try XCTUnwrap(published(
+            context(error: httpError(403), book: overdriveBook(), overdriveAttempted: true,
+                    hasEverStartedPlayback: true)))
+        XCTAssertEqual(out.recovery, .terminal(dismissAndAlert: false))
+    }
+
+    func testSpent_expiryOnANonOverdriveTitle_isNotExhausted() throws {
+        let out = try XCTUnwrap(published(
+            context(error: httpError(410), book: plainBook(), overdriveAttempted: true,
+                    hasEverStartedPlayback: true)))
+        XCTAssertEqual(out.recovery, .terminal(dismissAndAlert: false))
+    }
+
+    func testAvailable_otherFailure_isNotRefulfilled() throws {
+        let out = try XCTUnwrap(published(
+            context(error: plainError(), book: overdriveBook(), overdriveAttempted: false,
+                    hasEverStartedPlayback: true)))
+        XCTAssertEqual(out.recovery, .terminal(dismissAndAlert: false))
+    }
+
+    /// inFlight × expiry. The streaming player reports one failed open more than
+    /// once. While the re-fulfilment runs, a follow-on failure must neither start
+    /// a second re-fulfilment nor dismiss the player under the one in flight.
+    func testInFlight_expiry_isSuppressed() {
+        let outcome = AudiobookPlaybackRecoveryReducer.decide(
+            context(error: httpError(410), book: overdriveBook(), overdriveInFlight: true,
+                    coldLoadAttempted: false, hasEverStartedPlayback: false))
+        XCTAssertEqual(outcome, .suppressFollowOnFailure)
+    }
+
+    func testInFlight_otherFailure_isSuppressed() {
+        let outcome = AudiobookPlaybackRecoveryReducer.decide(
+            context(error: plainError(), book: overdriveBook(), overdriveInFlight: true,
+                    coldLoadAttempted: false, hasEverStartedPlayback: false))
+        XCTAssertEqual(outcome, .suppressFollowOnFailure,
+            "a cold-load re-open started now would race the re-fulfilment's own re-open")
+    }
+
+    func testSaml_beatsExhaustion() throws {
+        makeAccountSAMLWithCredentials()
+        let out = try XCTUnwrap(published(
+            context(error: authRequiredError(extraUserInfo: ["httpStatusCode": 410]),
+                    book: overdriveBook(), overdriveAttempted: true)))
+        XCTAssertEqual(out.recovery, .samlReauth)
     }
 #endif
 

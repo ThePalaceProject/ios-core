@@ -56,7 +56,8 @@ struct NavigationHostView<Content: View>: View {
                             onBookSelected: { book in
                                 coordinator.store(book: book)
                                 coordinator.push(.bookDetail(BookRoute(id: book.identifier)))
-                            }
+                            },
+                            appContainer: appContainer
                         )
                     case .pdf(let bookRoute):
                         // Readium-backed LCP PDF path takes precedence when a

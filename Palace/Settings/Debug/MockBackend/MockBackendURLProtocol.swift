@@ -26,10 +26,34 @@ private final class MockBackendConfigStore: @unchecked Sendable {
     private var _fixtureBundle: Bundle = .main
     private var _fixtureDirectoryPath: String?
     private var _requestCount = 0
+    private var _flags: Set<String> = []
+    private var _flagsDidChange: (@Sendable (Set<String>) -> Void)?
 
+    /// Changing the scenario clears its flags: they belong to one scenario run.
     var activeScenario: MockScenario? {
         get { lock.lock(); defer { lock.unlock() }; return _activeScenario }
-        set { lock.lock(); defer { lock.unlock() }; _activeScenario = newValue }
+        set {
+            lock.lock(); defer { lock.unlock() }
+            _activeScenario = newValue
+            _flags = []
+        }
+    }
+    var flags: Set<String> {
+        get { lock.lock(); defer { lock.unlock() }; return _flags }
+        set { lock.lock(); defer { lock.unlock() }; _flags = newValue }
+    }
+    var flagsDidChange: (@Sendable (Set<String>) -> Void)? {
+        get { lock.lock(); defer { lock.unlock() }; return _flagsDidChange }
+        set { lock.lock(); defer { lock.unlock() }; _flagsDidChange = newValue }
+    }
+    /// Raises `flag` and reports the new set outside the lock.
+    func raise(_ flag: String) {
+        lock.lock()
+        let inserted = _flags.insert(flag).inserted
+        let snapshot = _flags
+        let observer = _flagsDidChange
+        lock.unlock()
+        if inserted { observer?(snapshot) }
     }
     var scopedHost: String? {
         get { lock.lock(); defer { lock.unlock() }; return _scopedHost }
@@ -100,6 +124,19 @@ final class MockBackendURLProtocol: URLProtocol, @unchecked Sendable {
         set { config.fixtureDirectoryPath = newValue }
     }
 
+    /// Flags raised by routes with `setsFlag` during the active scenario.
+    static var flags: Set<String> {
+        get { config.flags }
+        set { config.flags = newValue }
+    }
+
+    /// Called with the full flag set whenever a route raises a new flag, so a
+    /// launch-time activation can carry the flags across an app relaunch.
+    static var flagsDidChange: (@Sendable (Set<String>) -> Void)? {
+        get { config.flagsDidChange }
+        set { config.flagsDidChange = newValue }
+    }
+
     // MARK: - URLProtocol Overrides
 
     override class func canInit(with request: URLRequest) -> Bool {
@@ -118,7 +155,8 @@ final class MockBackendURLProtocol: URLProtocol, @unchecked Sendable {
         // Only intercept requests that match an explicit route.
         // Unmatched requests pass through to the real server so the
         // catalog, cover images, and other non-mocked endpoints work normally.
-        let matched = scenario.routes.contains { $0.matches(request) }
+        let flags = config.flags
+        let matched = scenario.routes.contains { $0.matches(request, flags: flags) }
         if !matched, let url = request.url?.absoluteString {
             Log.debug(#file, "MockBackend: pass-through (no route matched) \(request.httpMethod ?? "?") \(url)")
         }
@@ -143,7 +181,8 @@ final class MockBackendURLProtocol: URLProtocol, @unchecked Sendable {
         Log.info(#file, "MockBackend [\(requestNum)] \(method) \(url.absoluteString)")
 
         // Find matching route
-        guard let route = scenario.routes.first(where: { $0.matches(request) }) else {
+        let flags = Self.config.flags
+        guard let route = scenario.routes.first(where: { $0.matches(request, flags: flags) }) else {
             Log.warn(#file, "MockBackend [\(requestNum)] No route matched, returning 404")
             deliverResponse(statusCode: 404,
                            contentType: "application/problem+json",
@@ -154,6 +193,10 @@ final class MockBackendURLProtocol: URLProtocol, @unchecked Sendable {
         }
 
         Log.info(#file, "MockBackend [\(requestNum)] Matched route: \(route.fixtureName) → \(route.statusCode)")
+
+        if let flag = route.setsFlag {
+            Self.config.raise(flag)
+        }
 
         // Load fixture data
         guard let fixtureData = loadFixture(route: route) else {
@@ -194,13 +237,19 @@ final class MockBackendURLProtocol: URLProtocol, @unchecked Sendable {
         // Priority 0: embedded fixtures (always available, no bundle needed)
         data = EmbeddedFixtures.data(for: name)
 
-        // Priority 1: direct file system path (set by tests)
+        // Priority 1: direct file system path (set by tests). A name that
+        // already carries its extension (a binary fixture such as an EPUB) is
+        // read as-is.
         if let dirPath = Self.fixtureDirectoryPath {
-            for ext in possibleExtensions {
-                let path = "\(dirPath)/\(name).\(ext)"
-                if let d = FileManager.default.contents(atPath: path) {
-                    data = d
-                    break
+            if let d = Self.regularFileContents(atPath: "\(dirPath)/\(name)") {
+                data = d
+            } else {
+                for ext in possibleExtensions {
+                    let path = "\(dirPath)/\(name).\(ext)"
+                    if let d = FileManager.default.contents(atPath: path) {
+                        data = d
+                        break
+                    }
                 }
             }
         }
@@ -243,6 +292,13 @@ final class MockBackendURLProtocol: URLProtocol, @unchecked Sendable {
         }
 
         return fixtureData
+    }
+
+    private static func regularFileContents(atPath path: String) -> Data? {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
+              !isDirectory.boolValue else { return nil }
+        return FileManager.default.contents(atPath: path)
     }
 
     // MARK: - Response Delivery

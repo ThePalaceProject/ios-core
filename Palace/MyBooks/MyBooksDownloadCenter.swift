@@ -59,8 +59,6 @@ private final class RedirectCompletionBox: @unchecked Sendable {
 ///   actor, precisely so it is reachable synchronously from any thread), and
 ///   `TPPUserAccount` serializes its own keychain access on `accountInfoQueue`. It
 ///   writes no MBDC state. Do not read the main-queue guarantee as universal.
-///     • `reachabilityCancellable` — installed once by `bindReachability()` during
-///       main-thread wiring.
 ///   The concurrent teardown/scheduling hops the class performs run through
 ///   `Task { }` / `runOnMainAsync` and touch only the actor-serialized
 ///   `stateManager` (`SafeDictionary` + `DownloadCoordinator` actor) or hop back
@@ -219,19 +217,6 @@ private final class RedirectCompletionBox: @unchecked Sendable {
     let errorActivityTracker: ErrorActivityTracker
     let userRetryTracker: UserRetryTracker
     let reachability: Reachability
-    /// Holds the connectivityPublisher subscription installed by
-    /// `bindReachability()`. PP-4114 follow-up: lets a mid-flight reachability
-    /// drop trigger `failActiveDownloadsForNetworkLoss()` without parking the
-    /// subscription on a Set we don't otherwise need.
-    private var reachabilityCancellable: AnyCancellable?
-    /// Handle to the most recent `failActiveDownloadsForNetworkLoss()` Task.
-    /// That method does its state-transition + alert work inside a
-    /// fire-and-forget `Task { }`; retaining the handle lets callers — and
-    /// tests — `await lastNetworkLossFailureTask?.value` to join that work
-    /// deterministically instead of polling the registry for `.downloadFailed`
-    /// against a wall-clock deadline. Behavior is unchanged: the same Task is
-    /// created and runs exactly as before; only a reference is now kept.
-    private(set) var lastNetworkLossFailureTask: Task<Void, Never>?
     let memoryPressureMonitor: MemoryPressureMonitor
     let bookmarkDeletionLog: TPPBookmarkDeletionLog
     let deviceSpecificErrorMonitor: DeviceSpecificErrorMonitoring
@@ -1030,103 +1015,12 @@ private final class RedirectCompletionBox: @unchecked Sendable {
         // lives on the throttlingService which holds the handle for cleanup.
         self.throttlingService.setupNetworkMonitoring()
 
-        // follow-up: react to mid-flight reachability drops. PR #901
-        // fixed the borrow path on BookCellModel; the parallel gap on this
-        // side was that an in-progress URLSession download could sit in
-        // flight for up to 60 s (per-request default) or longer (no resource
-        // timeout set on the background session) before iOS surfaced
-        // didCompleteWithError. Result: spinner forever, no alert. Mirror
-        // the BookCellModel pattern — dropFirst() skips the
-        // CurrentValueSubject's initial-value replay so we only act on real
-        // transitions.
-        self.bindReachability()
-
         // Reconcile persisted download records against live
         // URLSession tasks once the registry has loaded. Production only — an
         // injected/mock session or the test harness opts out so the suite stays
         // hermetic (the reconciler is driven directly in tests instead).
         if urlSession == nil && !TPPProcessInfo.isRunningTests {
             scheduleReconcileDownloadsAtLaunch()
-        }
-    }
-
-    // MARK: - PP-4114: mid-flight network drop handling
-
-    /// Subscribe to reachability transitions and fail any in-flight downloads
-    /// when connectivity drops. Mirrors the BookCellModel.bindReachability()
-    /// pattern from PR #901, but covers the in-progress-download case rather
-    /// than the borrow-button case.
-    ///
-    /// `dropFirst()` skips the `CurrentValueSubject`'s replay of its initial
-    /// `true` value so the suite of regression tests around fresh init don't
-    /// trip the failure path on a fully-online sim. `.filter { !$0 }` only
-    /// admits actual offline transitions.
-    private func bindReachability() {
-        reachabilityCancellable = reachability.connectivityPublisher
-            .dropFirst()
-            .filter { !$0 }
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in
-                self?.failActiveDownloadsForNetworkLoss()
-            }
-    }
-
-    /// For every active download, transition the book to `.downloadFailed`,
-    /// surface a retryable alert, and cancel the URLSession task so iOS
-    /// frees the connection. The cancelled completion that fires later is
-    /// filtered by `DownloadTaskLifecycleService.handleTaskCompletionError`,
-    /// so there's no double-alert.
-    func failActiveDownloadsForNetworkLoss() {
-        lastNetworkLossFailureTask = Task { [weak self] in
-            guard let self else { return }
-            // Snapshot active state before mutations — failDownloadWithAlert
-            // empties the dicts asynchronously.
-            let activePairs = await self.stateManager.taskIdentifierToBook.allPairs()
-            let activeInfos = await self.stateManager.bookIdentifierToDownloadInfo.values()
-            guard !activePairs.isEmpty else { return }
-
-            // Filter to books that are *genuinely* in flight. `taskIdentifierToBook`
-            // can retain stale entries from previously-completed downloads (the
-            // success path doesn't always clear it), and without this guard
-            // airplane-mode flips already-downloaded books to .downloadFailed —
-            // the regression of PP-4114 reported on iPad. Only states that
-            // represent an in-progress URLSession task warrant the failure
-            // transition; everything else (e.g. .downloadSuccessful, .used)
-            // must be left alone.
-            // Read each book's registry state on the main actor. We capture
-            // `self` (already-clean across this file's MainActor hops — see the
-            // failDownloadWithAlert loop below) rather than the `bookRegistry`
-            // existential: `TPPBookRegistryProvider` is a shared, non-Sendable
-            // protocol that must NOT be made Sendable, and capturing it directly
-            // trips the strict-concurrency Sendable-capture check.
-            let booksToFail: [TPPBook] = await MainActor.run { [weak self] in
-                guard let self else { return [] }
-                return activePairs.compactMap { (_, book) -> TPPBook? in
-                    let state = self.bookRegistry.state(for: book.identifier)
-                    return (state == .downloading || state == .SAMLStarted) ? book : nil
-                }
-            }
-
-            // Cancel pending URLSession tasks first so iOS stops trying to
-            // drive them. Safe to cancel all active infos here — cancel is a
-            // no-op for tasks the system has already finished.
-            for info in activeInfos {
-                info.downloadTask.cancel()
-            }
-
-            guard !booksToFail.isEmpty else { return }
-
-            // Surface the alert + state transition for each book.
-            let message = NSLocalizedString(
-                "The connection was lost during the download.",
-                comment: "Body for the network-loss alert that fires when reachability drops mid-download (PP-4114)."
-            )
-            await MainActor.run { [weak self] in
-                guard let self else { return }
-                for book in booksToFail {
-                    self.failDownloadWithAlert(for: book, withMessage: message)
-                }
-            }
         }
     }
 

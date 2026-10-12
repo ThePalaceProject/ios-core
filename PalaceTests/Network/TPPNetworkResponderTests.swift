@@ -180,4 +180,74 @@ class TPPNetworkResponderTests: XCTestCase {
         XCTAssertFalse(r.canRetry(url: url),
                        "Responder with fallback caching must track retried URLs")
     }
+
+    // MARK: - Fallback caching (willCacheResponse)
+
+    private func proposedCache(headers: [String: String]?, data: Data = Data("body".utf8)) -> CachedURLResponse {
+        let url = URL(string: "https://example.com/feed")!
+        let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: headers)!
+        return CachedURLResponse(response: response, data: data)
+    }
+
+    private func cachedResponse(from r: TPPNetworkResponder, proposing proposed: CachedURLResponse) -> CachedURLResponse? {
+        let session = URLSession.stubbedSession()
+        let task = session.dataTask(with: URL(string: "https://example.com/feed")!)
+        var delivered: CachedURLResponse?
+        var calls = 0
+        r.urlSession(session, dataTask: task, willCacheResponse: proposed) { response in
+            delivered = response
+            calls += 1
+        }
+        XCTAssertEqual(calls, 1, "The cache decision must be delivered exactly once")
+        return delivered
+    }
+
+    /// With fallback caching on, a response the server sent without caching
+    /// headers is cached with a 3-hour window, so feeds load offline.
+    func testWillCacheResponse_FallbackOnAndNoCachingHeaders_AddsCachingHeaders() {
+        let r = TPPNetworkResponder(credentialsProvider: nil, useFallbackCaching: true)
+        let proposed = proposedCache(headers: ["Content-Type": "application/json"])
+
+        let delivered = cachedResponse(from: r, proposing: proposed)
+
+        let http = delivered?.response as? HTTPURLResponse
+        XCTAssertEqual(http?.value(forHTTPHeaderField: "Cache-Control"), "public, max-age=10800")
+        XCTAssertNotNil(http?.value(forHTTPHeaderField: "Expires"))
+        XCTAssertEqual(http?.value(forHTTPHeaderField: "Content-Type"), "application/json")
+        XCTAssertEqual(delivered?.data, Data("body".utf8))
+    }
+
+    /// Server caching headers that already allow caching are left alone.
+    func testWillCacheResponse_FallbackOnAndSufficientHeaders_CachesProposedResponseUnchanged() {
+        let r = TPPNetworkResponder(credentialsProvider: nil, useFallbackCaching: true)
+        let proposed = proposedCache(headers: ["Cache-Control": "private, max-age=60",
+                                               "Last-Modified": "Wed, 01 Jan 2026 00:00:00 GMT"])
+
+        let delivered = cachedResponse(from: r, proposing: proposed)
+
+        XCTAssertTrue(delivered === proposed)
+        XCTAssertNil((delivered?.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Expires"))
+    }
+
+    /// Without fallback caching the server's (missing) headers decide.
+    func testWillCacheResponse_FallbackOff_CachesProposedResponseUnchanged() {
+        let r = TPPNetworkResponder(credentialsProvider: nil, useFallbackCaching: false)
+        let proposed = proposedCache(headers: nil)
+
+        let delivered = cachedResponse(from: r, proposing: proposed)
+
+        XCTAssertTrue(delivered === proposed)
+        XCTAssertNil((delivered?.response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Cache-Control"))
+    }
+
+    func testWillCacheResponse_NonHTTPResponse_CachesProposedResponseUnchanged() {
+        let r = TPPNetworkResponder(credentialsProvider: nil, useFallbackCaching: true)
+        let response = URLResponse(url: URL(string: "file:///tmp/x")!, mimeType: "text/plain",
+                                   expectedContentLength: 4, textEncodingName: nil)
+        let proposed = CachedURLResponse(response: response, data: Data("body".utf8))
+
+        let delivered = cachedResponse(from: r, proposing: proposed)
+
+        XCTAssertTrue(delivered === proposed)
+    }
 }

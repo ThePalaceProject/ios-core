@@ -1,0 +1,23 @@
+{
+  "title": "Fixture Public Library",
+  "service_description": "Local fixtures for UI journeys",
+  "id": "https://palace-fixtures.test/library/authentication_document",
+  "authentication": [
+    {
+      "type": "http://opds-spec.org/auth/basic",
+      "description": "Library Card",
+      "labels": { "login": "Barcode", "password": "PIN" },
+      "inputs": {
+        "login": { "keyboard": "DEFAULT", "maximum_length": 14 },
+        "password": { "keyboard": "NUMBER_PAD" }
+      }
+    }
+  ],
+  "links": [
+    { "rel": "start", "href": "https://palace-fixtures.test/library/", "type": "application/atom+xml;profile=opds-catalog" },
+    { "rel": "http://opds-spec.org/shelf", "href": "https://palace-fixtures.test/library/loans/", "type": "application/atom+xml;profile=opds-catalog" },
+    { "rel": "http://librarysimplified.org/terms/rel/user-profile", "href": "https://palace-fixtures.test/library/patrons/me/", "type": "vnd.librarysimplified/user-profile+json" }
+  ],
+  "features": { "enabled": [], "disabled": [] },
+  "announcements": []
+}

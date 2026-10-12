@@ -302,6 +302,10 @@ struct AudiobookMorphingPlayerView: View {
         }
         // Loading spinner → 30s timeout → error+retry, over the whole player.
         .overlay { loadingOverlay }
+        .overlay(alignment: .topLeading) {
+            AudiobookPlayerCloseAboveLoadingOverlay(
+                presenter: presenter, overlayState: loadingOverlayCurrentState, topInset: topSafeInset)
+        }
         // Transient bookmark-added / playback-error toast.
         .overlay(alignment: .bottom) { toastOverlay }
         .accessibilityElement(children: .contain)
@@ -426,7 +430,6 @@ struct AudiobookMorphingPlayerView: View {
     /// drag zone.
     private var coverArt: some View {
         coverImageOrPlaceholder
-            .aspectRatio(1, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
             .matchedGeometryEffect(id: Self.coverMatchID, in: morphNamespace)
@@ -456,15 +459,10 @@ struct AudiobookMorphingPlayerView: View {
                 // non-obvious pull-down-to-minimize gesture, so this ✕ is the
                 // discoverable way out. In the slot the Help entry point used to
                 // hold — Help now lives on book-detail + sign-in only.
-                // `.plain` hit-tests only the glyph; the content shape makes the
-                // whole 44 pt layout frame touchable without moving anything (PP-5294).
-                Button { presenter.closePlayer() } label: {
-                    abGlyph(Self.icClose, size: 17)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain).tint(.primary)
-                .accessibilityLabel(Strings.Generic.close)
+                // While a loading overlay covers this row, the copy drawn above
+                // it is the one VoiceOver reaches, so this one stays out.
+                AudiobookPlayerCloseButton(presenter: presenter)
+                    .accessibilityHidden(Self.loadingOverlayCoversControls(loadingOverlayCurrentState))
                 Spacer()
                 Button { showChaptersBookmarks = true } label: {
                     // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - glyph geometry inside a fixed 44pt hit target, not text
@@ -638,7 +636,7 @@ struct AudiobookMorphingPlayerView: View {
     /// Asset names for Alissa's revised audiobook icon set (PP-4911), vectorized
     /// from her design exports into template imagesets so they tint by appearance
     /// and stay crisp at any size — replacing the SF Symbols that didn't match.
-    private static let icClose = "ABPlayerClose"
+    static let icClose = "ABPlayerClose"
     private static let icSkipBack = "ABPlayerSkipBack"
     private static let icSkipForward = "ABPlayerSkipForward"
     private static let icPlay = "ABPlayerPlay"
@@ -1195,7 +1193,6 @@ struct AudiobookMorphingPlayerView: View {
             VStack(spacing: 24) {
                 Spacer(minLength: 24)
                 coverImageOrPlaceholder
-                    .aspectRatio(1, contentMode: .fit)
                     .frame(maxWidth: 240)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
@@ -1449,21 +1446,8 @@ struct AudiobookMorphingPlayerView: View {
 
     // MARK: - Shared cover
 
-    @ViewBuilder
     private var coverImageOrPlaceholder: some View {
-        if let cover = presenter.coverImage {
-            Image(uiImage: cover)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .accessibilityLabel(Strings.Generic.bookCover)
-        } else {
-            Image(systemName: "book.closed")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .foregroundStyle(.secondary)
-                .padding(8)
-                .accessibilityLabel(Strings.Generic.bookCover)
-        }
+        AudiobookCoverArt(image: presenter.coverImage)
     }
 
     // MARK: - Gestures

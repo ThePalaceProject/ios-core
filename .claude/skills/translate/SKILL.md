@@ -182,9 +182,9 @@ Two consequences, both non-negotiable:
 Palace survives most misses because its keys *are* the English text: a missing `"Borrow"` renders
 `Borrow`, which is wrong but readable. That mercy does not extend to the identifier-shaped keys
 the glossary lists — a missing `CarPlay.Error.offline` renders the literal string
-`CarPlay.Error.offline` on a dashboard screen while the patron is driving. Live proof already in
-the tree: `fr.lproj/Localizable.stringsdict` has no `year_suffix_short`, so French renders that
-key verbatim wherever the short duration form is used.
+`CarPlay.Error.offline` on a dashboard screen while the patron is driving. The same applies to
+the identifier keys in `Localizable.stringsdict` (`day_suffix_long`, `year_suffix_short`, ...):
+a language missing one renders the key verbatim wherever that form is used.
 
 ### Step 4b — Format specifiers are printf, and a mismatch is a crash
 
@@ -296,9 +296,9 @@ omit. For Palace's integer counts:
 - **French treats 0 as `one`.** French's `one` category is `i = 0 or 1`, so zero days renders the
   `one` string. Therefore the French `one` value must read correctly at both 0 and 1, which means
   it must keep its `%d` rather than hard-coding the numeral: `%d jour` gives `0 jour` and
-  `1 jour`; the hard-coded `1 journée` renders **`1 journée` for a zero-day count**. That defect
-  is in the tree today across every `_suffix_long` entry in `fr.lproj/Localizable.stringsdict` —
-  do not copy the pattern, and fix it if a task brings you into that file.
+  `1 jour`; a hard-coded `1 journée` would render **`1 journée` for a zero-day count**. Every
+  French `_suffix_long` and `_suffix_short` entry in `fr.lproj/Localizable.stringsdict` keeps
+  `%d` in `one`; keep it that way.
   Note also that French agrees with this at zero and the other three languages do not: German,
   Spanish, and Italian put 0 in `other` (`0 Tage`, `0 días`, `0 giorni`).
 - The `NSStringFormatValueTypeKey` (`d`) and the variable name (`day`) are structure, not

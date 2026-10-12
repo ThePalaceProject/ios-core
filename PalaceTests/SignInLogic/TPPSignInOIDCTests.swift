@@ -313,30 +313,30 @@ final class OIDCLoginRoutingTests: XCTestCase {
         super.tearDown()
     }
 
-    func testLogIn_withOIDC_callsWillSignIn() {
+    func testLogIn_withOIDC_callsWillSignIn() async {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
 
-        businessLogic.logIn()
+        await businessLogic.logIn()
 
         XCTAssertTrue(uiDelegate.didCallWillSignIn,
                       "OIDC logIn should trigger businessLogicWillSignIn")
     }
 
-    func testLogIn_withOIDC_doesNotValidateCredentialsDirectly() {
+    func testLogIn_withOIDC_doesNotValidateCredentialsDirectly() async {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
 
-        businessLogic.logIn()
+        await businessLogic.logIn()
 
         XCTAssertFalse(businessLogic.isValidatingCredentials,
                        "OIDC flow should NOT directly call validateCredentials; it uses ASWebAuthenticationSession")
     }
 
-    func testLogIn_withOIDC_capturesCredentials() {
+    func testLogIn_withOIDC_capturesCredentials() async {
         uiDelegate.username = "oidc-user"
         uiDelegate.pin = nil
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
 
-        businessLogic.logIn()
+        await businessLogic.logIn()
 
         XCTAssertEqual(businessLogic.capturedBarcode, "oidc-user")
     }
@@ -531,7 +531,7 @@ final class OIDCCallbackHandlingTests: XCTestCase {
     }
 
     /// Callback URL uses the custom scheme with query parameters (like Android).
-    func testHandleOIDCCallback_withQueryParams_extractsTokenAndValidates() {
+    func testHandleOIDCCallback_withQueryParams_extractsTokenAndValidates() async {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
 
         let patronJSON = "{\"name\":\"OIDC+User\"}"
@@ -544,8 +544,12 @@ final class OIDCCallbackHandlingTests: XCTestCase {
                        "OIDC callback should extract access_token")
         XCTAssertEqual(businessLogic.patron?["name"] as? String, "OIDC User",
                        "OIDC callback should extract patron_info")
-        XCTAssertTrue(businessLogic.isValidatingCredentials,
-                      "After callback, should be validating credentials against the CM")
+        // The callback handler is synchronous and starts validation in a task,
+        // so the hand-off is observed by joining that task and checking the
+        // request it fired, not by the in-flight validating flag (PP-5301).
+        await businessLogic._awaitSignInWorkForTesting()
+        XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
+                       "the extracted token must be validated against the CM")
     }
 
     /// CM may also provide tokens as a URL fragment (same as OAuth).
@@ -917,6 +921,201 @@ final class OIDCCallbackEdgeCaseTests: XCTestCase {
         super.tearDown()
     }
 
+    // MARK: - RFC 6749 plain error codes
+
+    /// An identity provider that follows RFC 6749 §4.1.2.1 sends `error=<code>`,
+    /// not JSON. That is what a patron who declines consent produces.
+    ///
+    /// The error arm required the value to parse as a JSON object, so a bare code
+    /// fell through to the access_token guard, logged, and returned — the patron
+    /// was left on the sheet with no message at all.
+    func testHandleOIDCCallback_withPlainErrorCode_tellsThePatron() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback?error=access_denied")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertNil(businessLogic.authToken,
+                     "an error response must not produce a token")
+        XCTAssertTrue(uiDelegate.didEncounterValidationError,
+                      "a plain error code must reach the patron; silence leaves them "
+                      + "on the sheet with no idea the sign-in failed")
+        XCTAssertEqual(uiDelegate.validationErrorTitle, Strings.Error.loginErrorTitle)
+    }
+
+    /// `error_description` is the human-readable half of the same RFC response and
+    /// is what the patron should see when the provider supplies it.
+    func testHandleOIDCCallback_withErrorDescription_showsIt() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let desc = "The+user+denied+the+request"
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback"
+                      + "?error=access_denied&error_description=\(desc)")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertEqual(uiDelegate.validationErrorMessage, "The user denied the request",
+                       "error_description should be shown, plus-decoded")
+    }
+
+    /// With no description, the code itself is shown rather than nothing.
+    func testHandleOIDCCallback_withPlainErrorCodeOnly_showsTheCode() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback?error=temporarily_unavailable")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertEqual(uiDelegate.validationErrorMessage, "temporarily_unavailable",
+                       "absent a description, the code is the only information there is")
+    }
+
+    /// The JSON form the circulation manager sends must keep working: its `title`
+    /// is the message, not the raw JSON.
+    func testHandleOIDCCallback_withJSONError_stillPrefersTitle() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let errorJSON = #"{"title":"Your card has expired"}"#
+        let encoded = errorJSON.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback?error=\(encoded)")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertEqual(uiDelegate.validationErrorMessage, "Your card has expired",
+                       "the JSON form must still surface its title")
+    }
+
+    /// An empty `error=` is not an error report. Treating it as one would show the
+    /// patron an alert with no text whenever a provider appends the key with no
+    /// value, so this pins the boundary the guard draws.
+    func testHandleOIDCCallback_withEmptyErrorValue_doesNotClaimAnError() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let patronJSON = #"{"name":"Empty Error"}"#
+        let encoded = patronJSON.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback"
+                      + "?error=&access_token=tok&patron_info=\(encoded)")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertFalse(uiDelegate.didEncounterValidationError,
+                       "an empty error value must not surface an empty alert")
+        // The negative above would also hold if the whole error arm were deleted,
+        // so assert the POSITIVE consequence: an empty error does not block an
+        // otherwise good sign-in. That distinguishes "fell through correctly" from
+        // "returned early for some other reason".
+        XCTAssertEqual(businessLogic.authToken, "tok",
+                       "an empty error must not block a valid sign-in")
+    }
+
+    /// An empty `error_description` is not a message.
+    ///
+    /// Without the emptiness check the patron gets the login-failed title with a
+    /// blank body — the same defect the empty-`error=` case guards on the other
+    /// half of this RFC response, so if one is reachable so is this.
+    func testHandleOIDCCallback_withEmptyErrorDescription_fallsBackToTheCode() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback"
+                      + "?error=access_denied&error_description=")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertEqual(uiDelegate.validationErrorMessage, "access_denied",
+                       "an empty description must fall back to the code, not show a "
+                       + "blank alert body")
+    }
+
+    /// A JSON object with no usable `title` must not put raw JSON in front of the
+    /// patron when the response also carries a description.
+    func testHandleOIDCCallback_withJSONLackingTitle_prefersTheDescription() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let errorJSON = #"{"code":"expired"}"#
+        let encoded = errorJSON.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback"
+                      + "?error=\(encoded)&error_description=Your+session+expired")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertEqual(uiDelegate.validationErrorMessage, "Your session expired",
+                       "a JSON object without a title should yield the description "
+                       + "rather than the raw blob")
+    }
+
+    /// A `title` that is not a String is not a title. It must fall through rather
+    /// than crash or surface something unreadable.
+    func testHandleOIDCCallback_withNonStringJSONTitle_fallsBack() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let errorJSON = #"{"title":42}"#
+        let encoded = errorJSON.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback"
+                      + "?error=\(encoded)&error_description=Numeric+title")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertEqual(uiDelegate.validationErrorMessage, "Numeric title")
+    }
+
+    /// A percent escape that decodes to invalid UTF-8 makes `formDecoded` return
+    /// nil, and the raw value is shown — undecoded, but not silence, which is what
+    /// this used to be.
+    ///
+    /// The vector matters. `%ZZ` does NOT reach the fallback: `URL(string:)`
+    /// normalizes the stray `%` to `%25`, so `formDecoded` succeeds and returns
+    /// `access%ZZdenied`. A test built on that passes with the fallback deleted.
+    /// `%FF` is a syntactically valid escape whose byte is not valid UTF-8, so
+    /// `removingPercentEncoding` returns nil and the fallback is the only path to a
+    /// message.
+    ///
+    /// Asserting the MESSAGE, not merely that an error surfaced: the boolean is
+    /// satisfied by the ordinary decode path too, so it cannot tell the fallback
+    /// from its absence.
+    func testHandleOIDCCallback_withUndecodableEscape_showsTheRawValue() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback?error=bad%FFcode")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertEqual(uiDelegate.validationErrorMessage, "bad%FFcode",
+                       "an undecodable value must still reach the patron, raw")
+    }
+
+    /// A real error must not permit a sign-in — the dual of "an empty error must
+    /// not block one".
+    ///
+    /// This pins the error arm's TERMINALITY. Before this change the arm was
+    /// entered only for JSON errors, so its `return` was narrow; widening entry to
+    /// any non-empty error makes it load-bearing. Without the `return`, control
+    /// falls to the access_token guard, and a response carrying both a denial and a
+    /// complete valid grant would show the patron the error AND sign them in on a
+    /// grant the provider rejected.
+    ///
+    /// No other test covers it: the only other `error=` URL with an access_token
+    /// carries an EMPTY error, so it never enters the arm.
+    func testHandleOIDCCallback_withErrorAndValidToken_doesNotSignIn() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let patronJSON = #"{"name":"Rejected Grant"}"#
+        let encoded = patronJSON.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback"
+                      + "?error=access_denied&access_token=tok&patron_info=\(encoded)")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        XCTAssertTrue(uiDelegate.didEncounterValidationError,
+                      "the denial must reach the patron")
+        XCTAssertNil(businessLogic.authToken,
+                     "a denial must not also sign the patron in on the rejected grant")
+    }
+
+    /// Provider text has no length contract; an unbounded description must not
+    /// become an unreadable alert.
+    func testHandleOIDCCallback_withVeryLongDescription_isBounded() {
+        businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
+        let long = String(repeating: "x", count: 900)
+        let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback"
+                      + "?error=access_denied&error_description=\(long)")!
+
+        businessLogic.handleOIDCCallback(url)
+
+        let shown = uiDelegate.validationErrorMessage ?? ""
+        XCTAssertEqual(shown.count, 300, "the message should be clamped to 300 characters")
+    }
+
     func testHandleOIDCCallback_withOnlyAccessToken_doesNotSetToken() {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
         let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback?access_token=only-token")!
@@ -1145,7 +1344,7 @@ final class OAuthSAMLRedirectRegressionTests: XCTestCase {
         super.tearDown()
     }
 
-    func testRegression_oauthRedirect_stillUsesUniversalLinksPrefix() {
+    func testRegression_oauthRedirect_stillUsesUniversalLinksPrefix() async {
         businessLogic.selectedAuthentication = libraryMock.oauthAuthentication
 
         let patronJSON = "{\"name\":\"OAuth+User\"}"
@@ -1160,10 +1359,15 @@ final class OAuthSAMLRedirectRegressionTests: XCTestCase {
 
         XCTAssertEqual(businessLogic.authToken, "oauth-tok",
                        "OAuth redirect through handleRedirectURL must still work")
-        XCTAssertTrue(businessLogic.isValidatingCredentials)
+        // The callback handler is synchronous and starts validation in a task,
+        // so the hand-off is observed by joining that task and checking the
+        // request it fired, not by the in-flight validating flag (PP-5301).
+        await businessLogic._awaitSignInWorkForTesting()
+        XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
+                       "the extracted token must be validated against the CM")
     }
 
-    func testRegression_samlRedirect_stillUsesUniversalLinksPrefix() {
+    func testRegression_samlRedirect_stillUsesUniversalLinksPrefix() async {
         businessLogic.selectedAuthentication = libraryMock.samlAuthentication
 
         let patronJSON = "{\"name\":\"SAML+User\"}"
@@ -1178,7 +1382,12 @@ final class OAuthSAMLRedirectRegressionTests: XCTestCase {
 
         XCTAssertEqual(businessLogic.authToken, "saml-tok",
                        "SAML redirect through handleRedirectURL must still work")
-        XCTAssertTrue(businessLogic.isValidatingCredentials)
+        // The callback handler is synchronous and starts validation in a task,
+        // so the hand-off is observed by joining that task and checking the
+        // request it fired, not by the in-flight validating flag (PP-5301).
+        await businessLogic._awaitSignInWorkForTesting()
+        XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
+                       "the extracted token must be validated against the CM")
     }
 
     func testRegression_oauthRedirect_withError_stillHandlesError() {
@@ -1259,7 +1468,7 @@ final class OIDCSignOutRegressionTests: XCTestCase {
         super.tearDown()
     }
 
-    func testSignOut_withOIDC_clearsAuthToken() {
+    func testSignOut_withOIDC_clearsAuthToken() async {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
         businessLogic.updateUserAccount(
             forDRMAuthorization: true,
@@ -1276,8 +1485,8 @@ final class OIDCSignOutRegressionTests: XCTestCase {
             exp.fulfill()
         }
 
-        businessLogic.performLogOut()
-        waitForExpectations(timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertNil(businessLogic.userAccount.authToken,
                      "OIDC sign-out must clear the auth token")
@@ -1288,7 +1497,7 @@ final class OIDCSignOutRegressionTests: XCTestCase {
     /// OIDC sign-out now triggers an explicit browser-based logout (the
     /// ASWebAuthenticationSession step is skipped in the test runner, so this
     /// verifies the rest of the pipeline still completes cleanly).
-    func testSignOut_withOIDC_triggersExplicitLogoutFlowAndCompletesDeauthorization() {
+    func testSignOut_withOIDC_triggersExplicitLogoutFlowAndCompletesDeauthorization() async {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
         businessLogic.updateUserAccount(
             forDRMAuthorization: true,
@@ -1304,15 +1513,15 @@ final class OIDCSignOutRegressionTests: XCTestCase {
             exp.fulfill()
         }
 
-        businessLogic.performLogOut()
-        waitForExpectations(timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertTrue(uiDelegate.didCallDidFinishDeauthorizing,
                       "OIDC sign-out must notify the UI delegate when complete")
         XCTAssertNil(businessLogic.selectedIDP)
     }
 
-    func testSignOut_withOIDC_clearsPatronInfo() {
+    func testSignOut_withOIDC_clearsPatronInfo() async {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
         businessLogic.updateUserAccount(
             forDRMAuthorization: true,
@@ -1328,14 +1537,14 @@ final class OIDCSignOutRegressionTests: XCTestCase {
             exp.fulfill()
         }
 
-        businessLogic.performLogOut()
-        waitForExpectations(timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertNil(businessLogic.userAccount.patron,
                      "OIDC sign-out must clear patron info")
     }
 
-    func testRegression_signOut_withOAuth_stillClearsToken() {
+    func testRegression_signOut_withOAuth_stillClearsToken() async {
         businessLogic.selectedAuthentication = libraryMock.oauthAuthentication
         businessLogic.updateUserAccount(
             forDRMAuthorization: true,
@@ -1351,14 +1560,14 @@ final class OIDCSignOutRegressionTests: XCTestCase {
             exp.fulfill()
         }
 
-        businessLogic.performLogOut()
-        waitForExpectations(timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertNil(businessLogic.userAccount.authToken,
                      "OAuth sign-out must still work after OIDC changes")
     }
 
-    func testRegression_signOut_withSAML_stillClearsCookies() {
+    func testRegression_signOut_withSAML_stillClearsCookies() async {
         businessLogic.selectedAuthentication = libraryMock.samlAuthentication
         let cookies = [HTTPCookie(properties: [
             .domain: "idp.example.com", .path: "/",
@@ -1378,14 +1587,14 @@ final class OIDCSignOutRegressionTests: XCTestCase {
             exp.fulfill()
         }
 
-        businessLogic.performLogOut()
-        waitForExpectations(timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertNil(businessLogic.userAccount.authToken,
                      "SAML sign-out must still clear tokens after OIDC changes")
     }
 
-    func testSignOut_resetsInFlightAuthState() {
+    func testSignOut_resetsInFlightAuthState() async {
         // performLogOut now dispatches .signOutCompleted after userAccount.removeAll().
         // Verifies the in-flight reducer state (authToken, capturedBarcode, ignoreSignedInState,
         // isLoggingInAfterSignUp) is fully reset — the next sign-in starts from a clean slate.
@@ -1406,8 +1615,8 @@ final class OIDCSignOutRegressionTests: XCTestCase {
 
         let exp = expectation(description: "Sign-out completes")
         uiDelegate.didFinishDeauthorizingHandler = { exp.fulfill() }
-        businessLogic.performLogOut()
-        waitForExpectations(timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertNil(businessLogic.authToken, "signOut must clear in-flight authToken")
         XCTAssertNil(businessLogic.capturedBarcode)
@@ -1815,67 +2024,6 @@ final class OIDCReauthOnExpiredTokenTests: XCTestCase {
 
         XCTAssertEqual(businessLogic.userAccount.authToken, "new-fresh-token")
         XCTAssertTrue(businessLogic.isSignedIn())
-    }
-}
-
-// MARK: - Tests: AccountDetailViewModel Sign-In with Stale Credentials
-
-@MainActor
-final class OIDCViewModelSignInTests: XCTestCase {
-
-    /// Per-test isolated container — built via `makeTestAppContainer()` so
-    /// each test method gets a fresh service graph (no cross-test pollution
-    /// through `AppContainer._cached`).
-    private var appContainer: AppContainer!
-
-    override func setUp() {
-        super.setUp()
-        appContainer = makeTestAppContainer()
-    }
-
-    override func tearDown() {
-        appContainer = nil
-        super.tearDown()
-    }
-
-    func testSignIn_withStaleOIDCCredentials_proceedsToLogin() {
-        guard let libraryID = appContainer.accountsManager.currentAccountId else {
-            return
-        }
-
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: appContainer)
-
-        let userAccount = viewModel.selectedUserAccount
-        let originalState = userAccount.authState
-
-        // The signIn guard should allow stale credentials through:
-        // guard !isSignedIn || needsReauth else { ... }
-        let isSignedIn = userAccount.hasCredentials() && userAccount.authState != .loggedOut
-        let needsReauth = userAccount.authState == .credentialsStale
-
-        if isSignedIn && needsReauth {
-            XCTAssertTrue(true, "Stale credentials should bypass the sign-out guard")
-        } else if !isSignedIn {
-            XCTAssertTrue(true, "Not signed in - normal sign-in flow")
-        }
-
-        _ = originalState
-    }
-
-    func testSignIn_withActiveCredentials_showsSignOutAlert() {
-        guard let libraryID = appContainer.accountsManager.currentAccountId else {
-            return
-        }
-
-        let viewModel = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: appContainer)
-
-        let isSignedIn = viewModel.isSignedIn
-        let isStale = viewModel.selectedUserAccount.authState == .credentialsStale
-
-        if isSignedIn && !isStale {
-            // This should trigger presentSignOutAlert, not the login flow
-            XCTAssertTrue(true, "Active (non-stale) credentials should show sign-out alert")
-        }
     }
 }
 

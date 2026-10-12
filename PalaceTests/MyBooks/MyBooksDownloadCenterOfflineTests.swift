@@ -1,8 +1,8 @@
 //
 //  PP-4114 follow-up to PR #901 (which fixed the borrow path in BookCellModel).
 //  An in-progress download could sit in flight for the 60s request timeout when
-//  reachability dropped, with the spinner stuck and no alert. MyBooksDownloadCenter
-//  now subscribes to `connectivityPublisher.dropFirst().filter { !$0 }` and, on a
+//  reachability dropped, with the spinner stuck and no alert. The app container's
+//  DownloadNetworkLossMonitor subscribes to `connectivityPublisher.dropFirst().filter { !$0 }` and, on a
 //  drop, fails every active download with a retryable alert and cancels the task.
 //
 
@@ -59,14 +59,26 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
         return task
     }
 
+    /// A download center plus the network-loss monitor the app container binds
+    /// to it, both on this test's registry, state manager and reachability.
+    private func makeMonitoredCenter() -> (MyBooksDownloadCenter, DownloadNetworkLossMonitor) {
+        let center = MyBooksDownloadCenter(
+            bookRegistry: mockRegistry,
+            stateManager: stateManager,
+            reachability: mockReachability
+        )
+        let monitor = AppContainer.makeDownloadNetworkLossMonitor(for: center)
+        return (center, monitor)
+    }
+
     /// Deterministically joins the network-loss failure handling instead of
     /// polling the registry against a wall-clock deadline (which starves under
     /// CI oversubscription). The reachability sink is scheduled on
     /// `RunLoop.main` (`.receive(on:)`), so one main-queue drain flushes the
-    /// sink → `failActiveDownloadsForNetworkLoss()` spawns its Task and
-    /// retains it on `lastNetworkLossFailureTask`; awaiting that Task's
+    /// sink → `failActiveDownloads()` spawns its Task and
+    /// retains it on `lastFailureTask`; awaiting that Task's
     /// `.value` joins the state-transition + alert work to completion.
-    private func awaitNetworkLossHandling(on center: MyBooksDownloadCenter) async {
+    private func awaitNetworkLossHandling(on monitor: DownloadNetworkLossMonitor) async {
         // Two drains: the reachability sink is delivered via
         // `.receive(on: RunLoop.main)` (a RunLoop.perform source), scheduled by
         // `simulate(...)` BEFORE this helper's own DispatchQueue.main.async
@@ -77,7 +89,7 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
         // retained by the time we read it. Then join it to completion.
         await drainMainQueueAsync()
         await drainMainQueueAsync()
-        await center.lastNetworkLossFailureTask?.value
+        await monitor.lastFailureTask?.value
     }
 
     // MARK: - Mid-flight drop
@@ -91,17 +103,13 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
         mockRegistry.addBook(book, state: .downloading)
         let task = await registerActiveDownload(book: book)
 
-        let center = MyBooksDownloadCenter(
-            bookRegistry: mockRegistry,
-            stateManager: stateManager,
-            reachability: mockReachability
-        )
+        let (center, monitor) = makeMonitoredCenter()
         await drainMainQueueAsync()
         XCTAssertEqual(mockRegistry.state(for: book.identifier), .downloading,
                        "precondition: book starts downloading")
 
         mockReachability.simulate(connected: false)
-        await awaitNetworkLossHandling(on: center)
+        await awaitNetworkLossHandling(on: monitor)
 
         XCTAssertEqual(mockRegistry.state(for: book.identifier), .downloadFailed,
                        "PP-4114: mid-flight network drop must transition active downloads to .downloadFailed")
@@ -120,15 +128,11 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
         let taskA = await registerActiveDownload(book: bookA, taskIdentifier: 100)
         let taskB = await registerActiveDownload(book: bookB, taskIdentifier: 101)
 
-        let center = MyBooksDownloadCenter(
-            bookRegistry: mockRegistry,
-            stateManager: stateManager,
-            reachability: mockReachability
-        )
+        let (center, monitor) = makeMonitoredCenter()
         await drainMainQueueAsync()
 
         mockReachability.simulate(connected: false)
-        await awaitNetworkLossHandling(on: center)
+        await awaitNetworkLossHandling(on: monitor)
 
         XCTAssertEqual(mockRegistry.state(for: bookA.identifier), .downloadFailed)
         XCTAssertEqual(mockRegistry.state(for: bookB.identifier), .downloadFailed)
@@ -145,11 +149,7 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
         mockRegistry.addBook(book, state: .downloading)
         _ = await registerActiveDownload(book: book)
 
-        let center = MyBooksDownloadCenter(
-            bookRegistry: mockRegistry,
-            stateManager: stateManager,
-            reachability: mockReachability
-        )
+        let (center, monitor) = makeMonitoredCenter()
         // dropFirst() suppresses the CurrentValueSubject's initial `true`, so
         // NO failure Task is ever spawned — assert the absence of the effect
         // by draining the main queue (flushes any RunLoop.main-scheduled sink)
@@ -157,7 +157,7 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
         // sleep: if the guard regressed and a Task WAS spawned, the join would
         // run it and the assertion would then catch the flip.
         await drainMainQueueAsync()
-        await center.lastNetworkLossFailureTask?.value
+        await monitor.lastFailureTask?.value
 
         XCTAssertEqual(mockRegistry.state(for: book.identifier), .downloading,
                        "Initial replay of connectivityPublisher's true value must NOT trip the failure path")
@@ -210,17 +210,13 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
         // MISSING-001-OK: crash-guard — verifies the empty-active-set branch
         // is a no-op (does NOT crash on empty dictionary lookup). Observable
         // contract is "no crash, no state mutation".
-        let center = MyBooksDownloadCenter(
-            bookRegistry: mockRegistry,
-            stateManager: stateManager,
-            reachability: mockReachability
-        )
+        let (center, monitor) = makeMonitoredCenter()
         await drainMainQueueAsync()
 
         mockReachability.simulate(connected: false)
         // Join the failure handling (drains the sink, then awaits the spawned
         // Task which early-returns on the empty active set) instead of sleeping.
-        await awaitNetworkLossHandling(on: center)
+        await awaitNetworkLossHandling(on: monitor)
         // No expectations — this test passes if nothing crashes or asserts.
         _ = center
     }
@@ -235,7 +231,7 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
     ///
     /// Root cause: `taskIdentifierToBook` is never cleaned up on download
     /// success, so completed books leave stale `(taskId, book)` entries.
-    /// `failActiveDownloadsForNetworkLoss()` iterates that map and calls
+    /// `DownloadNetworkLossMonitor` iterates that map and calls
     /// `failDownloadWithAlert` on every entry — regardless of whether the
     /// book is actually downloading. A `.downloadSuccessful` book with a
     /// stale entry gets flipped to `.downloadFailed`.
@@ -253,11 +249,7 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
         // successful download.
         await stateManager.taskIdentifierToBook.set(7, value: book)
 
-        let center = MyBooksDownloadCenter(
-            bookRegistry: mockRegistry,
-            stateManager: stateManager,
-            reachability: mockReachability
-        )
+        let (center, monitor) = makeMonitoredCenter()
         await drainMainQueueAsync()
         XCTAssertEqual(mockRegistry.state(for: book.identifier), .downloadSuccessful,
                        "precondition: book is downloaded and readable offline")
@@ -268,7 +260,7 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
         // the .downloadSuccessful book. If the defensive filter regressed, the
         // joined Task would flip the state and the assertion below would catch
         // it — deterministically, not on a timing guess.
-        await awaitNetworkLossHandling(on: center)
+        await awaitNetworkLossHandling(on: monitor)
 
         XCTAssertEqual(mockRegistry.state(for: book.identifier), .downloadSuccessful,
                        "Airplane mode must NOT flip a previously-downloaded book to .downloadFailed just because a stale taskIdentifierToBook entry exists")
@@ -289,15 +281,11 @@ final class MyBooksDownloadCenterOfflineTests: XCTestCase {
         // Genuine in-flight download for the active one.
         _ = await registerActiveDownload(book: activeBook, taskIdentifier: 12)
 
-        let center = MyBooksDownloadCenter(
-            bookRegistry: mockRegistry,
-            stateManager: stateManager,
-            reachability: mockReachability
-        )
+        let (center, monitor) = makeMonitoredCenter()
         await drainMainQueueAsync()
 
         mockReachability.simulate(connected: false)
-        await awaitNetworkLossHandling(on: center)
+        await awaitNetworkLossHandling(on: monitor)
 
         XCTAssertEqual(mockRegistry.state(for: activeBook.identifier), .downloadFailed,
                        "PP-4114 intent preserved: genuinely in-flight downloads still fail on network loss")

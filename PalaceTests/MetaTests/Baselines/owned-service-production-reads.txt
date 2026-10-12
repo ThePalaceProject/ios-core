@@ -1,0 +1,22 @@
+# Production reads of `AppContainer.production().<owned service>` in Palace/
+# that predate the AppContainerIsolationLintTests owned-service rule. One line
+# per read: `<repo-relative path> <service>`. The list may only shrink: a read
+# not listed here fails the lint, and so does a listed read that is gone.
+#
+# Built in the composition root before the container exists, or a process-wide
+# singleton, so there is no container to hold:
+Palace/AppInfrastructure/DLNavigator.swift signInModalSheetPresenter
+Palace/Network/TPPNetworkExecutor.swift signInModalSheetPresenter
+Palace/SignInLogic/SignInModalPresenter+SignInModalPresenting.swift signInModalSheetPresenter
+Palace/MyBooks/MyBooksDownloadCenter.swift signInModalSheetPresenter
+Palace/MyBooks/MyBooksDownloadCenter.swift signInModalSheetPresenter
+Palace/MyBooks/TokenRefreshInterceptor.swift signInModalSheetPresenter
+#
+# View models built with a container, whose sign-in branch runs only for a
+# signed-out account that needs auth. Tests cannot build that account without
+# the keychain, and each designated init has 8-38 direct test callers:
+Palace/Holds/HoldsViewModel.swift signInModalSheetPresenter
+Palace/MyBooks/MyBooks/MyBooksViewModel.swift signInModalSheetPresenter
+Palace/Book/UI/BookDetail/BookDetailViewModel.swift signInModalSheetPresenter
+Palace/MyBooks/MyBooks/BookCell/BookCellModel.swift signInModalSheetPresenter
+Palace/MyBooks/MyBooks/BookCell/BookCellModel.swift signInModalSheetPresenter

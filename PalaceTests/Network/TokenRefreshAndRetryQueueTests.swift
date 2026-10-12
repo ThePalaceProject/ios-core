@@ -52,8 +52,10 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // `self.userAccount` can't crash on the IUO unwrap. The closure holds
         // its own strong reference to the mock; tearDown's `userAccount = nil`
         // safely drops only the test class's property.
+        // `@Sendable` because the executor resolves the account from its
+        // refresh Task, off the main actor this closure would otherwise inherit.
         let resolvedUserAccount: TPPUserAccountMock = userAccount
-        libraryAccount.userAccountResolver = { _ in resolvedUserAccount }
+        libraryAccount.userAccountResolver = { @Sendable _ in resolvedUserAccount }
 
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [HTTPStubURLProtocol.self]
@@ -140,10 +142,13 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
     /// non-async context where `wait()` is allowed) on a Dispatch thread — never
     /// a cooperative-pool thread — and resuming a continuation when it returns is
     /// the correct off-pool bridge. Resumes the instant the semaphore is
-    /// signaled, never on a wall-clock deadline.
-    private func awaitSemaphore(_ sem: DispatchSemaphore) async {
-        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            DispatchQueue.global().async { sem.wait(); cont.resume() }
+    /// signaled. The 60s bound is a hang guard, not a deadline: a signal that
+    /// never comes (a dropped retry) fails the test instead of stalling the run.
+    private func awaitSemaphore(_ sem: DispatchSemaphore,
+                                file: StaticString = #filePath,
+                                line: UInt = #line) async {
+        if await awaitSemaphore(sem, timeout: .now() + 60.0) == .timedOut {
+            XCTFail("the awaited signal never arrived within the 60s hang guard", file: file, line: line)
         }
     }
 
@@ -180,12 +185,14 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         }
 
         let finished = expectation(description: "refresh completion fired")
-        var observedFailure = false
+        let observedFailure = LockIsolated(false)
 
-        executor.refreshTokenAndResume(task: nil, accountId: nil) { result in
+        // `@Sendable`: the executor calls this from its refresh Task. Formed
+        // here without it, the closure is main-actor isolated and traps.
+        executor.refreshTokenAndResume(task: nil, accountId: nil) { @Sendable result in
             switch result {
             case .success: break
-            case .failure: observedFailure = true
+            case .failure: observedFailure.value = true
             }
             finished.fulfill()
         }
@@ -199,7 +206,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // has already been applied — the completion is the deterministic join to
         // the stale-mark, no fixed-deadline `waitForCondition` needed.
 
-        XCTAssertTrue(observedFailure,
+        XCTAssertTrue(observedFailure.value,
                       "401 from /token must surface as a .failure to the caller")
         XCTAssertEqual(userAccount.authState, .credentialsStale,
                        "A 401 from /token must mark the user's credentials stale (kills `==` → `!=` on the 401-check, and deletion of markCredentialsStale)")
@@ -233,10 +240,10 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         }
 
         let finished = expectation(description: "refresh completion fired")
-        var observedFailure = false
+        let observedFailure = LockIsolated(false)
 
-        executor.refreshTokenAndResume(task: nil, accountId: nil) { result in
-            if case .failure = result { observedFailure = true }
+        executor.refreshTokenAndResume(task: nil, accountId: nil) { @Sendable result in
+            if case .failure = result { observedFailure.value = true }
             finished.fulfill()
         }
 
@@ -249,7 +256,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // wall-clock sleep only widened the CI-starvation window without adding
         // any additional happens-before we don't already have from the completion.
 
-        XCTAssertTrue(observedFailure,
+        XCTAssertTrue(observedFailure.value,
                       "Non-401 refresh failure must still surface to caller")
         XCTAssertEqual(userAccount.authState, .loggedIn,
                        "A non-401 token-refresh failure (e.g. 500) must NOT mark credentials stale — kills any mutation that broadens the `code == 401` guard")
@@ -283,16 +290,16 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         }
 
         let finished = expectation(description: "refresh completion fired")
-        var observedFailure = false
+        let observedFailure = LockIsolated(false)
 
-        executor.refreshTokenAndResume(task: nil, accountId: nil) { result in
-            if case .failure = result { observedFailure = true }
+        executor.refreshTokenAndResume(task: nil, accountId: nil) { @Sendable result in
+            if case .failure = result { observedFailure.value = true }
             finished.fulfill()
         }
 
         await fulfillment(of: [finished], timeout: 5.0)
 
-        XCTAssertTrue(observedFailure,
+        XCTAssertTrue(observedFailure.value,
                       "Missing credentials must surface as .failure (kills deletion of completion(.failure) in the missing-creds branch)")
         XCTAssertEqual(tokenEndpointCalls.value, 0,
                        "No HTTP call to /token can occur without credentials (kills inversion of the credentials guard)")
@@ -308,14 +315,15 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // we just observed. The second refresh must surface a NEW
         // failure with the same message, not a coalescence message.
         let finished2 = expectation(description: "second refresh completion fired")
-        var secondMessage: String?
-        executor.refreshTokenAndResume(task: nil, accountId: nil) { result in
+        let secondFailure = LockIsolated<String?>(nil)
+        executor.refreshTokenAndResume(task: nil, accountId: nil) { @Sendable result in
             if case .failure(let err, _) = result {
-                secondMessage = (err as NSError).localizedDescription
+                secondFailure.value = (err as NSError).localizedDescription
             }
             finished2.fulfill()
         }
         await fulfillment(of: [finished2], timeout: 5.0)
+        let secondMessage = secondFailure.value
 
         XCTAssertNotNil(secondMessage)
         XCTAssertFalse(secondMessage?.contains("in progress") ?? false,
@@ -378,11 +386,11 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
             // First caller passes nil task; other callers pass real
             // tasks so they take the queueing branch.
             if i == 0 {
-                executor.refreshTokenAndResume(task: nil, accountId: nil) { _ in }
+                executor.refreshTokenAndResume(task: nil, accountId: nil) { @Sendable _ in }
             } else {
                 let task = makeQueueableTask()
                 tasks.append(task)
-                executor.refreshTokenAndResume(task: task, accountId: nil) { _ in }
+                executor.refreshTokenAndResume(task: task, accountId: nil) { @Sendable _ in }
             }
         }
 
@@ -515,7 +523,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         }
 
         let first = expectation(description: "first refresh")
-        executor.refreshTokenAndResume(task: nil, accountId: nil) { _ in first.fulfill() }
+        executor.refreshTokenAndResume(task: nil, accountId: nil) { @Sendable _ in first.fulfill() }
         await fulfillment(of: [first], timeout: 5.0)
 
         // No wall-clock gap needed: the task==nil success completion is invoked
@@ -526,7 +534,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // sleep here only added a starvation surface under parallel-CI contention.
 
         let second = expectation(description: "second refresh")
-        executor.refreshTokenAndResume(task: nil, accountId: nil) { _ in second.fulfill() }
+        executor.refreshTokenAndResume(task: nil, accountId: nil) { @Sendable _ in second.fulfill() }
         await fulfillment(of: [second], timeout: 5.0)
 
         let attempts = await executor.refreshAttemptCount
@@ -650,7 +658,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         delReq.httpMethod = "DELETE"
 
         let done = expectation(description: "delete completes")
-        executor.DELETE(delReq, useTokenIfAvailable: false) { _, _, _ in
+        executor.DELETE(delReq, useTokenIfAvailable: false) { @Sendable _, _, _ in
             done.fulfill()
         }
 
@@ -687,11 +695,11 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         }
 
         let exp = expectation(description: "completion fires on success/no-task")
-        var sawSuccess = false
-        var callCount = 0
-        executor.refreshTokenAndResume(task: nil, accountId: nil) { result in
-            callCount += 1
-            if case .success = result { sawSuccess = true }
+        let sawSuccess = LockIsolated(false)
+        let callCount = LockIsolated(0)
+        executor.refreshTokenAndResume(task: nil, accountId: nil) { @Sendable result in
+            callCount.withValue { $0 += 1 }
+            if case .success = result { sawSuccess.value = true }
             exp.fulfill()
         }
         await fulfillment(of: [exp], timeout: 5.0)
@@ -702,9 +710,59 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // barrier, not a fixed 0.4s wall-clock sleep.
         await drainPendingRefreshWork()
 
-        XCTAssertTrue(sawSuccess,
+        XCTAssertTrue(sawSuccess.value,
                       "task == nil + refresh success must emit a .success completion (kills deletion of the success-callback branch)")
-        XCTAssertEqual(callCount, 1,
+        XCTAssertEqual(callCount.value, 1,
                        "Completion must fire EXACTLY once (kills mutation that emits both success-and-failure)")
+    }
+
+    // MARK: - Test 10: the delivery executor is characterized, not assumed (PP-5299)
+    //
+    // This completion is NOT delivered on the main actor. It fires from inside
+    // the refresh `Task`, i.e. the global concurrent executor, and has since at
+    // least 3.2.4 — the 3.3.0 language-mode flip (876f7637f: SWIFT_VERSION 5.0
+    // -> 6.0, SWIFT_STRICT_CONCURRENCY = complete) only promoted the
+    // consumer-side isolation check from a warning to an assert.
+    //
+    // Who depends on that fact changed with PP-5301. It used to be the
+    // main-actor hop in `AudiobookLoader.refreshTokenIfNeeded`, which is gone:
+    // that caller awaits `refreshToken(accountId:)` and resumes on its own
+    // actor. What depends on it now is that wrapper itself — it bridges this
+    // completion to a continuation — plus the four callers still on the
+    // completion form (`TPPMigrationManager`, `TPPNetworkQueue`,
+    // `BackgroundDownloadHandler`, `TPPNetworkResponder`), all of which are
+    // nonisolated types and so are unaffected either way.
+    //
+    // Characterization, not a preference. If someone later marshals delivery
+    // inside the executor, this goes red and names the transition rather than
+    // letting the async wrapper's continuation hop become silently redundant.
+
+    func testRefresh_CompletionIsDeliveredOffTheMainActor() async throws {
+        await executor.resetRefreshAttemptCount()
+        HTTPStubURLProtocol.register { @Sendable [tokenURL] request in
+            guard request.url == tokenURL else { return nil }
+            return .init(statusCode: 200,
+                         headers: nil,
+                         body: Self.tokenResponseJSON(accessToken: "ok"))
+        }
+
+        let exp = expectation(description: "completion fires")
+        executor.refreshTokenAndResume(task: nil, accountId: nil) { @Sendable _ in
+            XCTAssertFalse(
+                Thread.isMainThread,
+                "refreshTokenAndResume delivered on the main thread. If that is now "
+                + "intended, the @MainActor hop in AudiobookLoader.refreshTokenIfNeeded "
+                + "is redundant and this characterization must be updated with it "
+                + "(PP-5299)."
+            )
+            exp.fulfill()
+        }
+        await fulfillment(of: [exp], timeout: 5.0) // STARVE-001-OK: awaiting `refreshToken(accountId:)` would characterize the async wrapper instead of the completion form this test is about, so the wait cannot be replaced by it; drainPendingRefreshWork cannot substitute either, because it is a bounded eight-yield step rather than a join of the refresh Task and that chain contains real suspensions — the sibling test at Test 9 keeps its wait for the same reason and drains only afterwards
+
+        // Drain afterwards, matching the siblings above: the wait returns when the
+        // completion fires, which is not the same moment the refresh's remaining
+        // work finishes. Without this, that work outlives the test and lands in
+        // whichever test runs next on the shared executor.
+        await drainPendingRefreshWork()
     }
 }

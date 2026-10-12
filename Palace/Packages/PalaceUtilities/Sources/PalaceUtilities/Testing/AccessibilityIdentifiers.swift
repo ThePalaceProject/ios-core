@@ -153,6 +153,15 @@ public enum AccessibilityID {
         public static let relatedBooksSection = "bookDetail.relatedBooksSection"
     }
 
+    // MARK: - Book List
+
+    /// Rows of `BookListView`, which both the ungrouped catalog and My Books
+    /// use. Scope a query to the screen's container to count one screen's rows.
+    public enum BookList {
+        public static let cellPrefix = "bookList.cell."
+        public static func cell(_ bookID: String) -> String { cellPrefix + bookID }
+    }
+
     // MARK: - My Books Screen
 
     /// My Books/Library screen identifiers

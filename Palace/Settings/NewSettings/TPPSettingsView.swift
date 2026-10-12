@@ -272,59 +272,36 @@ struct TPPSettingsView: View {
     private static let fallbackURL = URL(string: "https://thepalaceproject.org")!
 
     @ViewBuilder private var aboutRow: some View {
-        let viewController = RemoteHTMLViewController(
-            URL: URL(string: TPPSettings.TPPAboutPalaceURLString) ?? Self.fallbackURL,
-            title: Strings.Settings.aboutApp,
-            failureMessage: Strings.Error.loadFailedError
-        )
-
-        let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
-            .navigationBarTitle(Text(DisplayStrings.aboutApp))
-
-        row(title: DisplayStrings.aboutApp, index: 2, selection: self.$selectedView, destination: wrapper.anyView())
+        webPageRow(title: DisplayStrings.aboutApp, urlString: TPPSettings.TPPAboutPalaceURLString, index: 2)
             .accessibilityIdentifier(AccessibilityID.Settings.aboutPalaceButton)
     }
 
     @ViewBuilder private var privacyRow: some View {
-        let viewController = RemoteHTMLViewController(
-            URL: URL(string: TPPSettings.TPPPrivacyPolicyURLString) ?? Self.fallbackURL,
-            title: Strings.Settings.privacyPolicy,
-            failureMessage: Strings.Error.loadFailedError
-        )
-
-        let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
-            .navigationBarTitle(Text(DisplayStrings.privacyPolicy))
-
-        row(title: DisplayStrings.privacyPolicy, index: 3, selection: self.$selectedView, destination: wrapper.anyView())
+        webPageRow(title: DisplayStrings.privacyPolicy, urlString: TPPSettings.TPPPrivacyPolicyURLString, index: 3)
             .accessibilityIdentifier(AccessibilityID.Settings.privacyPolicyButton)
     }
 
     @ViewBuilder private var userAgreementRow: some View {
-        let viewController = RemoteHTMLViewController(
-            URL: URL(string: TPPSettings.TPPUserAgreementURLString) ?? Self.fallbackURL,
-            title: Strings.Settings.eula,
-            failureMessage: Strings.Error.loadFailedError
-        )
-
-        let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
-            .navigationBarTitle(Text(DisplayStrings.eula))
-
-        row(title: DisplayStrings.eula, index: 4, selection: self.$selectedView, destination: wrapper.anyView())
+        webPageRow(title: DisplayStrings.eula, urlString: TPPSettings.TPPUserAgreementURLString, index: 4)
             .accessibilityIdentifier(AccessibilityID.Settings.userAgreementButton)
     }
 
     @ViewBuilder private var softwareLicenseRow: some View {
-        let viewController = RemoteHTMLViewController(
-            URL: URL(string: TPPSettings.TPPSoftwareLicensesURLString) ?? Self.fallbackURL,
-            title: Strings.Settings.softwareLicenses,
+        webPageRow(title: DisplayStrings.softwareLicenses, urlString: TPPSettings.TPPSoftwareLicensesURLString, index: 5)
+            .accessibilityIdentifier(AccessibilityID.Settings.softwareLicensesButton)
+    }
+
+    /// `RemoteHTMLPage` defers the web view to navigation time; `body` runs on
+    /// every `@AppStorage` change, so nothing here may build one.
+    private func webPageRow(title: String, urlString: String, index: Int) -> some View {
+        let page = RemoteHTMLPage(
+            url: URL(string: urlString) ?? Self.fallbackURL,
+            title: title,
             failureMessage: Strings.Error.loadFailedError
         )
+        .navigationBarTitle(Text(title))
 
-        let wrapper = UIViewControllerWrapper(viewController, updater: { _ in })
-            .navigationBarTitle(Text(DisplayStrings.softwareLicenses))
-
-        row(title: DisplayStrings.softwareLicenses, index: 5, selection: self.$selectedView, destination: wrapper.anyView())
-            .accessibilityIdentifier(AccessibilityID.Settings.softwareLicensesButton)
+        return row(title: title, index: index, selection: self.$selectedView, destination: page.anyView())
     }
 
     /// PP-4788: always-visible Advanced menu (no gesture required) hosting the

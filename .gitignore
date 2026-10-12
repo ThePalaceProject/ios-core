@@ -167,3 +167,16 @@ Signing.local.xcconfig
 .claude/skills/forge-review/
 .claude/skills/intent/
 .claude/agents/forge-blast-radius-reviewer.md
+
+# simdrive recordings and session artifacts stay LOCAL and are never committed.
+#
+# A recording persists every typed string verbatim — simdrive has no redaction —
+# so a recorded sign-in contains the test library's barcode and PIN in plaintext.
+# Recordings are kept on the machine that made them (~/.simdrive/recordings/) and
+# replayed there.
+#
+# Consequence worth knowing: this makes the per-PR chaos-replay workflow, which
+# expects a curated corpus under .simdrive/replays/chaos/, permanently inert. That
+# is the intended trade — the corpus cannot be committed without committing
+# credentials.
+.simdrive/

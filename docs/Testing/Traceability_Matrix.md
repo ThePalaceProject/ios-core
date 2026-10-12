@@ -1,7 +1,9 @@
 # Traceability Matrix
 
 **Document Version:** 1.0
-**Last Updated:** 2026-01-29
+**Last Updated:** 2026-01-29 (rows that claimed missing tests corrected 2026-10-05)
+
+> **Status:** the requirement rows, test counts and coverage percentages are a 2026-01-29 snapshot and are not maintained. On 2026-10-05 each row that said a file or behavior had no tests was checked against `PalaceTests/` and corrected to name the test file; other rows, the summary statistics in section 13 and the appendix in section 15 were not re-measured. Some implementing files listed below have since moved or been removed (for example `Palace/Utilities/FileCleanup.swift`, `Palace/Reader2/BusinessLogic/PositionSync.swift`, `Palace/PDF/Model/TPPEncryptedPDFDocument.swift`).
 
 ---
 
@@ -32,10 +34,10 @@ This document maps requirements to their implementing code and corresponding tes
 
 | File | Test File | Test Methods | Coverage |
 |------|-----------|--------------|----------|
-| `TPPKeychainManager.swift` | None | - | 0% |
+| `TPPKeychainManager.swift` | `Keychain/TPPKeychainManagerTests.swift`; credential storage in `Palace/Packages/PalaceKeychain/Tests/PalaceKeychainTests/` | 9 tests (archive decoding, error logging); package: 17 tests | Not measured |
 | `TPPUserAccount.swift` | `TPPUserAccountTests.swift` (partial) | - | ~20% |
 | `TPPNetworkExecutor.swift` | `NetworkClientTests.swift` | Limited | ~15% |
-| `TPPSAMLHelper.swift` | None | - | 0% |
+| `TPPSAMLHelper.swift` | `SignInLogic/TPPSAMLFlowTests.swift` | 31 tests | Not measured |
 | `TPPAgeCheck.swift` | `TPPAgeCheckTests.swift` | 5 tests | ~60% |
 | `TPPSignInBusinessLogic.swift` | `TPPSignInBusinessLogicTests.swift` | 3 tests | ~25% |
 
@@ -43,10 +45,10 @@ This document maps requirements to their implementing code and corresponding tes
 
 | Req ID | Gap Description | Priority |
 |--------|-----------------|----------|
-| AUTH-001 | No keychain mock - tests skip credential storage | P0 |
-| AUTH-002 | Token refresh retry queue untested | P0 |
-| AUTH-003 | SAML flow has no automated tests | P1 |
-| AUTH-005 | DRM preservation on sign-out untested | P0 |
+| AUTH-001 | Credential store/read round trips are covered in `Palace/Packages/PalaceKeychain/Tests/PalaceKeychainTests/` (for example `test_setObject_roundtripsStringAndNumber`); `PalaceTests/Keychain/TPPKeychainManagerTests.swift` covers archive decoding and error logging. `validateKeychain`, `updateKeychainForBackgroundFetch` and the keychain cleanup path have no tests | P0 |
+| AUTH-002 | Retry queue covered by `Network/TokenRefreshAndRetryQueueTests.swift` (single-flight refresh, queued retry with new bearer, 401 and network-error paths); not re-audited for completeness | P0 |
+| AUTH-003 | SAML sign-in, logout and helper covered by `TPPSAMLFlowTests.swift`, `TPPSAMLSignInTests.swift`, `TPPSAMLLogoutTests.swift`; the IdP web page itself is not exercised | P1 |
+| AUTH-005 | Covered by `SignInLogic/TPPSignInBusinessLogicSignOutTests.swift` (deauthorize ordering, Adobe activation preserved on a stale callback); not re-audited for completeness | P0 |
 
 ---
 
@@ -75,7 +77,7 @@ This document maps requirements to their implementing code and corresponding tes
 | `TPPOPDSFeed.swift` | `OPDSFeedParsingTests.swift` | 8 tests | ~50% |
 | `OPDS2CatalogsFeed.swift` | `OPDS2CatalogsFeedTests.swift` | 6 tests | ~60% |
 | `CatalogRepository.swift` | `CatalogRepositoryTests.swift` (partial) | 2 tests | ~20% |
-| `CatalogSearchViewModel.swift` | None | - | 0% |
+| `CatalogSearchViewModel.swift` | `CatalogUI/CatalogSearchViewModelTests.swift` | 67 tests | Not measured |
 | `CatalogViewModel.swift` | `CatalogViewModelTests.swift` | 15 tests | ~70% |
 | `CatalogSortService.swift` | `CatalogSortServiceTests.swift` | 4 tests | ~80% |
 
@@ -83,9 +85,9 @@ This document maps requirements to their implementing code and corresponding tes
 
 | Req ID | Gap Description | Priority |
 |--------|-----------------|----------|
-| CAT-003 | Stale-while-revalidate logic in AccountsManager untested | P0 |
-| CAT-005 | CatalogSearchViewModel debouncing untested | P1 |
-| CAT-008 | Pagination flow untested | P2 |
+| CAT-003 | Cache freshness covered by `Accounts/AccountsManagerCacheTests.swift` (stale and expired thresholds) and `CatalogDomain/CatalogRepositoryStaleWhileRevalidateTests.swift`; not re-audited for completeness | P0 |
+| CAT-005 | Debouncing covered by `CatalogSearchViewModelTests.swift` (`testSearch_Debounces_*`, `testSearch_CancelsDebounce_OnNewQuery`) | P1 |
+| CAT-008 | `ViewModels/CatalogLaneMoreViewModelTests.swift` covers pagination state (`nextPageURL`, `isLoadingMore`); no test name refers to fetching the next page | P2 |
 
 ---
 
@@ -120,9 +122,9 @@ This document maps requirements to their implementing code and corresponding tes
 
 | Req ID | Gap Description | Priority |
 |--------|-----------------|----------|
-| BOOK-002 | JSON persistence round-trip untested | P1 |
-| BOOK-005 | Concurrent limit enforcement untested | P1 |
-| BOOK-007 | File cleanup completeness untested | P2 |
+| BOOK-002 | Round trip covered by `BookRegistry/TPPBookRegistryPersistenceTests.swift` (save then cold-start load, corrupted and truncated JSON) | P1 |
+| BOOK-005 | `Decomp/DownloadThrottlingContractTests.swift` (2 tests) covers cap propagation and re-pumping the pending queue; enforcement under load is not covered | P1 |
+| BOOK-007 | `Palace/Utilities/FileCleanup.swift` no longer exists; requirement needs re-mapping | P2 |
 
 ---
 
@@ -149,15 +151,15 @@ This document maps requirements to their implementing code and corresponding tes
 | `TPPReaderBookmarksBusinessLogic.swift` | `BookmarkBusinessLogicTests.swift` | 4 tests | ~40% |
 | `TPPAnnotations.swift` | Partial mocking | - | ~20% |
 | `PositionSync.swift` | `PositionSyncTests.swift` | 3 tests | ~50% |
-| `EPUBSearchViewModel.swift` | None | - | 0% |
+| `EPUBSearchViewModel.swift` | `Reader2/EPUBSearchViewModelTests.swift` | 18 tests | Not measured |
 | `LCPLibraryService.swift` | `LCPLibraryServiceTests.swift` | 4 tests | ~60% |
 
 ### Test Gaps
 
 | Req ID | Gap Description | Priority |
 |--------|-----------------|----------|
-| EPUB-002 | Server sync roundtrip untested | P0 |
-| EPUB-005 | EPUBSearchViewModel completely untested | P1 |
+| EPUB-002 | Sync decision logic in `Crawl/CrossDeviceBookmarkSyncTests.swift`; save/delete call order in `Contract/Reader2BookmarkContractTests.swift`; a round trip against a server response is not covered | P0 |
+| EPUB-005 | `EPUBSearchViewModelTests.swift` covers query handling, results, errors, cancellation and batch fetch | P1 |
 
 ---
 
@@ -181,17 +183,17 @@ This document maps requirements to their implementing code and corresponding tes
 |------|-----------|--------------|----------|
 | `AudiobookSessionManager.swift` | `AudiobookPlaybackTests.swift` | 5 tests | ~40% |
 | `AudiobookBookmarkBusinessLogic.swift` | `AudiobookBookmarkBusinessLogicTests.swift` | 4 tests | ~50% |
-| `NowPlayingCoordinator.swift` | None | - | 0% |
-| `CarPlayTemplateManager.swift` | None | - | 0% |
+| `NowPlayingCoordinator.swift` | `Audiobooks/NowPlayingCoordinatorTests.swift`, `NowPlayingCoordinatorBackgroundTests.swift` | 19 + 6 tests | Not measured |
+| `CarPlayTemplateManager.swift` | `CarPlay/CarPlayTests.swift` (partial) | `shouldShowOpenAppAlert` only | Not measured |
 | `TrackPosition.swift` (toolkit) | `TrackPositionTests.swift` | 6 tests | ~70% |
 
 ### Test Gaps
 
 | Req ID | Gap Description | Priority |
 |--------|-----------------|----------|
-| AUDIO-001 | State machine transitions incomplete | P0 |
-| AUDIO-005 | NowPlayingCoordinator untested | P1 |
-| AUDIO-006 | CarPlay integration untested | P2 |
+| AUDIO-001 | State machine transitions incomplete; see `Audiobooks/AudiobookSessionStateTests.swift` and `Audiobook/AudiobookSessionManagerTests.swift` for current coverage | P0 |
+| AUDIO-005 | Covered by `NowPlayingCoordinatorTests.swift` and `NowPlayingCoordinatorBackgroundTests.swift`; not re-audited for completeness | P1 |
+| AUDIO-006 | `CarPlay/CarPlayTests.swift` and `CarPlayAuthHelperReadinessTests.swift` cover CarPlay helpers; template construction in `CarPlayTemplateManager` is largely not covered | P2 |
 
 ---
 
@@ -218,8 +220,8 @@ This document maps requirements to their implementing code and corresponding tes
 
 | Req ID | Gap Description | Priority |
 |--------|-----------------|----------|
-| PDF-001 | LCP-encrypted PDF decryption untested | P0 |
-| PDF-002 | Thumbnail generation untested | P2 |
+| PDF-001 | `PDF/LCPPDFDiskExtractTests.swift` covers validating the extracted PDF on disk; decryption itself is not covered | P0 |
+| PDF-002 | Covered by `PDF/PDFKitThumbnailProviderTests.swift` (5 tests) | P2 |
 
 ---
 
@@ -243,17 +245,17 @@ This document maps requirements to their implementing code and corresponding tes
 |------|-----------|--------------|----------|
 | `TPPNetworkExecutor.swift` | `NetworkClientTests.swift` | 3 tests | ~15% |
 | `URLSessionNetworkClient.swift` | `NetworkClientTests.swift` | 2 tests | ~40% |
-| `TPPNetworkQueue.swift` | None | - | 0% |
-| `Reachability.swift` | None | - | 0% |
+| `TPPNetworkQueue.swift` | `Network/NetworkQueueTests.swift` | 22 tests | Not measured |
+| `Reachability.swift` | `Network/ReachabilityTests.swift` | 10 tests | Not measured |
 | `TPPCaching.swift` | `TPPCachingTests.swift` | 4 tests | ~60% |
 
 ### Test Gaps
 
 | Req ID | Gap Description | Priority |
 |--------|-----------------|----------|
-| NET-002 | Retry queue completely untested | P0 |
-| NET-003 | Offline queue SQLite logic untested | P1 |
-| NET-004 | Reachability untested | P2 |
+| NET-002 | Covered by `Network/TokenRefreshAndRetryQueueTests.swift`; see AUTH-002 | P0 |
+| NET-003 | Covered by `Network/NetworkQueueTests.swift` (insert failures, credential stripping, per-row drain); not re-audited for completeness | P1 |
+| NET-004 | `Network/ReachabilityTests.swift` covers status reporting by interface type | P2 |
 
 ---
 
@@ -282,7 +284,7 @@ This document maps requirements to their implementing code and corresponding tes
 | Req ID | Gap Description | Priority |
 |--------|-----------------|----------|
 | DRM-002 | Adobe DRM in external module - hard to test | P1 |
-| DRM-004 | License expiry scenarios untested | P1 |
+| DRM-004 | `ErrorHandling/LoanExpiryHandlingTests.swift` covers loan-term problem detection and expiry messages; LCP license expiry in `LicensesService` is not covered | P1 |
 
 ---
 
@@ -300,15 +302,15 @@ This document maps requirements to their implementing code and corresponding tes
 
 | File | Test File | Test Methods | Coverage |
 |------|-----------|--------------|----------|
-| `HoldsViewModel.swift` | `HoldsSnapshotTests.swift` | Snapshot only | ~10% |
+| `HoldsViewModel.swift` | `Holds/HoldsViewModelTests.swift`, `ViewModels/HoldsReducerTests.swift`, `HoldsSnapshotTests.swift` | 52 + 11 tests + snapshots | Not measured |
 
 ### Test Gaps
 
 | Req ID | Gap Description | Priority |
 |--------|-----------------|----------|
-| HOLD-001 | Hold placement logic untested | P1 |
-| HOLD-002 | Hold cancellation untested | P1 |
-| HOLD-003 | Notification trigger untested | P2 |
+| HOLD-001 | `HoldsViewModelTests.swift` covers listing, filtering and badge counts, not placement; reserve-state transitions are in `ViewModels/BorrowReducerTests.swift`. Not re-audited end to end | P1 |
+| HOLD-002 | `BorrowReducerTests.swift` covers the manage-hold and return-confirmed transitions; the cancel request itself is not re-audited | P1 |
+| HOLD-003 | Hold classification of incoming notifications covered by `Notifications/NotificationServiceTests.swift`; the trigger that schedules a hold-ready notification is not re-audited | P2 |
 
 ---
 
@@ -327,15 +329,15 @@ This document maps requirements to their implementing code and corresponding tes
 
 | File | Test File | Test Methods | Coverage |
 |------|-----------|--------------|----------|
-| `TPPSettings.swift` | None | - | 0% |
-| `DebugSettings.swift` | None | - | 0% |
+| `TPPSettings.swift` | `Settings/TPPSettingsTests.swift` | 6 tests | Not measured |
+| `DebugSettings.swift` | `Settings/DebugSettingsTests.swift` | 33 tests | Not measured |
 
 ### Test Gaps
 
 | Req ID | Gap Description | Priority |
 |--------|-----------------|----------|
-| SET-001 | Settings persistence completely untested | P1 |
-| SET-002 | Beta toggle effect untested | P1 |
+| SET-001 | `Settings/TPPSettingsTests.swift` exists (6 tests); persistence across launches is not re-audited | P1 |
+| SET-002 | `TPPSettingsTests.swift` covers the `useBetaLibraries` publisher and notification; the effect on the library list in `AccountsManager` is not covered | P1 |
 
 ---
 
@@ -399,13 +401,7 @@ This document maps requirements to their implementing code and corresponding tes
 
 ### Files with Zero Test Coverage
 
-| Category | Files |
-|----------|-------|
-| ViewModels | `CatalogSearchViewModel.swift`, `EPUBSearchViewModel.swift` |
-| Singletons | `TPPSettings.swift`, `DebugSettings.swift` |
-| Networking | `TPPNetworkQueue.swift`, `Reachability.swift` |
-| Features | `NowPlayingCoordinator.swift`, `CarPlayTemplateManager.swift` |
-| Auth | `TPPSAMLHelper.swift`, `TPPKeychainManager.swift` |
+Every file this table listed on 2026-01-29 now has a test file; see the corrected rows above.
 
 ---
 

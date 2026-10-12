@@ -1,0 +1,18 @@
+{
+  "metadata": { "title": "Palace Fixture Registry", "numberOfItems": 1 },
+  "links": [],
+  "catalogs": [
+    {
+      "metadata": {
+        "id": "urn:uuid:7f1d8a52-3b0e-4c86-9a5e-1f2a3b4c5d6e",
+        "title": "Fixture Public Library",
+        "description": "Local fixtures for UI journeys",
+        "updated": "2026-01-01T00:00:00Z"
+      },
+      "links": [
+        { "rel": "http://opds-spec.org/catalog", "href": "https://palace-fixtures.test/library/", "type": "application/atom+xml;profile=opds-catalog;kind=acquisition" },
+        { "href": "https://palace-fixtures.test/library/authentication_document", "type": "application/vnd.opds.authentication.v1.0+json" }
+      ]
+    }
+  ]
+}

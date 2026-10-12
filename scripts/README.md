@@ -63,10 +63,11 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 | `pre-push-test-gate.sh` | Pre-push hook that runs the changed-file test selection before allowing `git push`. | local git hook |
 | `resolve-tests-for.py` | Maps a changed production-file path to the XCTest class selectors that cover it. | `verify-pr.sh`, `palace_mutate.py` |
 | `parse-xcresult.py` | Parses an `.xcresult` bundle into JSON for downstream reporting. | `unit-testing.yml` |
-| `coverage-report.py` | Extracts code coverage from `.xcresult` and writes JSON. | `unit-testing.yml` |
+| `coverage-report.py` | Builds app, package and excluded-source coverage from `.xcresult` and `swift test` exports; marks missing data INCOMPLETE. | `unit-testing.yml` |
+| `ci-xctestrun-package-coverage.py` | Points the xctestrun's coverage metadata at the local package binaries so xccov reports their files. | `unit-testing.yml` |
 | `coverage-floors.json` | Per-target coverage thresholds (see `README_coverage_floors.md`). | `enforce_coverage_floors.py` |
 | `coverage-exclude.json` | Files excluded from the testable-coverage denominator (UI/lifecycle). | `coverage-report.py` |
-| `enforce_coverage_floors.py` | Fails CI if any target drops below its floor. | `unit-testing.yml` |
+| `enforce_coverage_floors.py` | Compares app, module and package coverage to their floors; exit 3 on incomplete data. | `unit-testing.yml` |
 | `test_coverage_classifier.py` | Classifies coverage gaps by surface type. | `coverage-report.py` |
 | `test-history.py` | Compares this run against historical results to flag flakes/regressions. | `unit-testing.yml` |
 | `generate-test-report.py` | Renders a Markdown test report from parsed JSON. | `unit-testing.yml` |
