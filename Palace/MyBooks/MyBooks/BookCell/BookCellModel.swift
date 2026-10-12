@@ -902,33 +902,36 @@ extension BookCellModel {
             return
         }
         samplePreviewManager.close()
-        EpubSampleFactory.createSample(book: book) { sampleURL, error in
-            self.isLoading = false
-            if let error = error {
-                Log.debug("Sample generation error for \(self.book.title): \(error.localizedDescription)", "")
-                return
-            }
-            if let sampleWebURL = sampleURL as? EpubSampleWebURL {
-                if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate, let top = appDelegate.topViewController() {
-                    let safari = SFSafariViewController(url: sampleWebURL.url)
-                    top.present(safari, animated: true)
+        // PP-5301: this closure was main-actor-isolated (the type is
+        // `@MainActor`) while `createSample` handed every failure back on the
+        // network executor's own thread and hopped only its success case. The
+        // first statement below reads `isLoading` and the branches present
+        // view controllers, so a sample whose download failed reached
+        // main-actor-only work from a background thread. Awaiting puts every
+        // arm here.
+        Task { @MainActor in
+            defer { self.isLoading = false }
+            do {
+                let sampleURL = try await EpubSampleFactory.createSample(book: self.book)
+                if let sampleWebURL = sampleURL as? EpubSampleWebURL {
+                    if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate, let top = appDelegate.topViewController() {
+                        let safari = SFSafariViewController(url: sampleWebURL.url)
+                        top.present(safari, animated: true)
+                    }
+                    return
                 }
-                return
-            }
-            if let url = sampleURL?.url {
-                // Check if this is an EPUB sample
-                let isEpubSample = self.book.sample?.type == .contentTypeEpubZip
-
-                if isEpubSample {
-                    // Use Readium EPUB reader for EPUB samples
-                    self.readerService.openSample(self.book, url: url)
+                if self.book.sample?.type == .contentTypeEpubZip {
+                    // Readium EPUB reader for EPUB samples
+                    self.readerService.openSample(self.book, url: sampleURL.url)
                 } else {
-                    // Use WebKit for HTML/web samples
-                    let web = BundledHTMLViewController(fileURL: url, title: self.book.title)
+                    // WebKit for HTML/web samples
+                    let web = BundledHTMLViewController(fileURL: sampleURL.url, title: self.book.title)
                     if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate, let top = appDelegate.topViewController() {
                         top.present(web, animated: true)
                     }
                 }
+            } catch {
+                Log.debug("Sample generation error for \(self.book.title): \(error.localizedDescription)", "")
             }
         }
     }

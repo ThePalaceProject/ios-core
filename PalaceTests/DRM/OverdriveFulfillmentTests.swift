@@ -483,10 +483,9 @@ final class OverdriveFulfillmentTests: XCTestCase {
         init(manifestJSON: [String: Any]) { self.manifestJSON = manifestJSON }
         func canHandle(_ book: TPPBook) -> Bool { true }
         func resolveManifest(
-            for book: TPPBook,
-            completion: @escaping (Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError>) -> Void
-        ) {
-            completion(.success((json: manifestJSON, decryptor: nil)))
+            for book: TPPBook
+        ) async -> Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError> {
+            .success((json: manifestJSON, decryptor: nil))
         }
     }
 
@@ -504,22 +503,17 @@ final class OverdriveFulfillmentTests: XCTestCase {
         ]
     }
 
-    private func firstTrackURL(loadingManifestWithHref href: String) throws -> String? {
+    private func firstTrackURL(loadingManifestWithHref href: String) async throws -> String? {
         let spy = ManifestSpyAdapter(manifestJSON: openAccessManifest(firstTrackHref: href))
         let loader = AudiobookLoader(adapters: [spy])
-        let done = expectation(description: "load completes")
         var url: String?
-        loader.load(makeOverdriveBook()) { result in
-            if case .success(let loaded) = result {
-                url = loaded.audiobook.tableOfContents.allTracks.first?.urls?.first?.absoluteString
-            }
-            done.fulfill()
+        if case .success(let loaded) = await loader.load(makeOverdriveBook()) {
+            url = loaded.audiobook.tableOfContents.allTracks.first?.urls?.first?.absoluteString
         }
-        wait(for: [done], timeout: 5.0)
         return url
     }
 
-    func testRefulfill_freshManifestURL_isConsumedIntoBuiltAudiobook() throws {
+    func testRefulfill_freshManifestURL_isConsumedIntoBuiltAudiobook() async throws {
         try KeychainAvailability.skipIfUnavailable()
         // The loader's refreshTokenIfNeeded reads the production shared account
         // BEFORE the adapter chain; clear it so a leftover expired token doesn't
@@ -529,7 +523,7 @@ final class OverdriveFulfillmentTests: XCTestCase {
         let freshURL = "https://od.test/FRESH/track-1.mp3"
         let staleURL = "https://od.test/STALE/track-1.mp3"
 
-        let builtFromFresh = try firstTrackURL(loadingManifestWithHref: freshURL)
+        let builtFromFresh = try await firstTrackURL(loadingManifestWithHref: freshURL)
         XCTAssertEqual(builtFromFresh, freshURL,
                        "The re-fulfilled (fresh) manifest URL must be CONSUMED into the built audiobook's first track — proves recovery yields fresh signed URLs, not a cached-manifest replay (PP-4553 sibling / WS-3)")
         XCTAssertNotEqual(builtFromFresh, staleURL, "Built track URL must be the FRESH one, not stale")
@@ -537,7 +531,7 @@ final class OverdriveFulfillmentTests: XCTestCase {
         // Control: a stale-href manifest builds a stale track — proves the loader
         // faithfully carries whichever URL the (re-)fulfill resolved, so the FRESH
         // assertion above is meaningful (not a constant).
-        let builtFromStale = try firstTrackURL(loadingManifestWithHref: staleURL)
+        let builtFromStale = try await firstTrackURL(loadingManifestWithHref: staleURL)
         XCTAssertEqual(builtFromStale, staleURL, "Loader must carry the resolved manifest's URL into the built audiobook")
         XCTAssertNotEqual(builtFromStale, freshURL, "Stale-manifest build must NOT yield the fresh URL")
     }
