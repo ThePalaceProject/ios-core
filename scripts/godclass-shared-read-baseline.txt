@@ -35,4 +35,7 @@
 #   AudiobookOpenFailureAlert, which takes the tracker as an init argument. Its
 #   production factory passes `retryTracker: .shared`, one remaining reach that
 #   this pattern does not count because the implicit member has no type prefix.
-159
+# 159 -> 158: ReadiumPDFReaderView deleted. The Readium PDF navigator path it
+#   hosted had no caller since PR #1008; its LCPPDFOpenProgress.shared read went
+#   with it.
+158

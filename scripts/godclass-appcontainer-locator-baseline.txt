@@ -57,4 +57,6 @@
 #   above, so the total is the composition of both, measured rather than added by hand.
 # 228 -> 226: TPPNetworkResponder's 401 handling reads the accounts manager and
 #   the classifier's host set through the executor that owns the responder.
-226
+# 226 -> 225: ReadiumPDFReaderView deleted. The Readium PDF navigator path it
+#   hosted had no caller since PR #1008; its readerService read went with it.
+225

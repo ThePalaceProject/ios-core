@@ -40,7 +40,7 @@ final class ReaderServiceRouteOwnershipTests: XCTestCase {
     /// The ordinary abort: the loading route this open pushed is still on top,
     /// so it is ours to remove.
     func testPopRouteIfStillOwned_RouteStillPending_PopsIt() {
-        coordinator.markReadiumPDFPending(forBookId: bookId)
+        coordinator.markLCPPDFExtractPending(forBookId: bookId)
         coordinator.push(.pdf(BookRoute(id: bookId)))
 
         let popped = service.popRouteIfStillOwned(forBookIdentifier: bookId, on: coordinator)
@@ -52,10 +52,10 @@ final class ReaderServiceRouteOwnershipTests: XCTestCase {
     /// The regression: patron backed out (pending cleared) and pushed their own
     /// screen. A late abort must leave it alone.
     func testPopRouteIfStillOwned_PatronBackedOutAndPushedTheirOwn_DoesNotPop() {
-        coordinator.markReadiumPDFPending(forBookId: bookId)
+        coordinator.markLCPPDFExtractPending(forBookId: bookId)
         coordinator.push(.pdf(BookRoute(id: bookId)))
         // Backing out of the loading view tears the open down…
-        coordinator.removeReadiumPDF(forBookId: bookId)
+        coordinator.clearLCPPDFExtractPending(forBookId: bookId)
         coordinator.popToRoot(animated: false)
         // …and the patron navigates somewhere else on the same stack.
         coordinator.push(.bookDetail(BookRoute(id: "some-other-book")))
@@ -69,7 +69,7 @@ final class ReaderServiceRouteOwnershipTests: XCTestCase {
 
     /// A different book's open must not pop this book's route.
     func testPopRouteIfStillOwned_PendingForAnotherBook_DoesNotPop() {
-        coordinator.markReadiumPDFPending(forBookId: "a-different-book")
+        coordinator.markLCPPDFExtractPending(forBookId: "a-different-book")
         coordinator.push(.pdf(BookRoute(id: "a-different-book")))
 
         let popped = service.popRouteIfStillOwned(forBookIdentifier: bookId, on: coordinator)
@@ -81,7 +81,7 @@ final class ReaderServiceRouteOwnershipTests: XCTestCase {
     /// Pending but nothing on the stack — nothing to pop, and no crash on the
     /// empty-path edge.
     func testPopRouteIfStillOwned_EmptyPath_DoesNotPop() {
-        coordinator.markReadiumPDFPending(forBookId: bookId)
+        coordinator.markLCPPDFExtractPending(forBookId: bookId)
 
         let popped = service.popRouteIfStillOwned(forBookIdentifier: bookId, on: coordinator)
 
@@ -107,7 +107,7 @@ final class ReaderServiceRouteOwnershipTests: XCTestCase {
     /// flight from the previous open must recognise itself as stale — otherwise
     /// its cleanup lands on the open that replaced it.
     func testIsSupersededOpen_AfterTeardown_OldGenerationIsSuperseded() {
-        service.releaseReadiumPDF(forBookIdentifier: bookId)
+        service.releaseLCPPDFOpen(forBookIdentifier: bookId)
 
         XCTAssertTrue(service.isSupersededOpen(forBookIdentifier: bookId, generation: 0),
                       "A completion from before the teardown must not act")
@@ -118,7 +118,7 @@ final class ReaderServiceRouteOwnershipTests: XCTestCase {
     /// Staleness is per book: tearing down book A must not make book B's
     /// in-flight completion look superseded.
     func testIsSupersededOpen_IsScopedToTheBook() {
-        service.releaseReadiumPDF(forBookIdentifier: "another-book")
+        service.releaseLCPPDFOpen(forBookIdentifier: "another-book")
 
         XCTAssertFalse(service.isSupersededOpen(forBookIdentifier: bookId, generation: 0),
                        "Another book's teardown must not supersede this book's open")

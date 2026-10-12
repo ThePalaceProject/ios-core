@@ -2,8 +2,8 @@
 //  ReadiumPDFLoadingView.swift
 //  Palace
 //
-//  Shown while an LCP PDF open and first-page render is in flight, which can
-//  take a while on large containers. Title watermark behind a dark overlay,
+//  Shown while an LCP PDF is opened and decrypted to disk, which can take a
+//  while on large containers. Title watermark behind a dark overlay,
 //  with the cover, the current pipeline phase and a progress bar in front.
 //
 
@@ -154,7 +154,7 @@ private final class ProgressBridge: ObservableObject {
             return NSLocalizedString("Loading…", comment: "")
         case .preparing, .openingPublication:
             return NSLocalizedString("Preparing book…", comment: "")
-        case .decryptingContent, .extractingToDisk, .loadingFirstPage:
+        case .decryptingContent, .extractingToDisk:
             if percent >= 99 {
                 return NSLocalizedString("Finishing up…", comment: "")
             }

@@ -309,11 +309,9 @@ class LocalBookContentService {
                     Log.info(#file, "Content file already missing (nothing to delete): \(bookURL.lastPathComponent)")
                 }
                 #if LCP
-                // Drop the on-disk TOC snapshot AND the decrypted PDF
-                // extract so a re-borrow doesn't reuse stale cached
-                // content against a potentially different loan.
+                // Drop the decrypted PDF extract so a re-borrow doesn't reuse
+                // stale cached content against a potentially different loan.
                 if book.defaultBookContentType == .pdf, let acct = currentAccount {
-                    ReadiumPDFTOCCache.invalidate(bookIdentifier: book.identifier, account: acct)
                     LCPPDFDiskExtract.invalidate(bookIdentifier: book.identifier, account: acct)
                 }
                 #endif

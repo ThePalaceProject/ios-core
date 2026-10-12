@@ -8,11 +8,12 @@ import PalaceLogging
 import UIKit
 
 /// Per-process LRU cache of decrypted blocks, keyed by the ciphertext
-/// bytes. PDFNavigator walks the PDF cross-ref table on every open,
-/// and many blocks (especially the cross-ref index and font tables)
-/// are requested repeatedly within the same render pass — caching the
-/// decrypted output skips the AES work for every repeat hit, which is
-/// what dominates open time on large Marketplace LCP PDFs.
+/// bytes. Added while LCP PDFs rendered through Readium's PDF navigator,
+/// whose cross-ref walk requested the same blocks (cross-ref index, font
+/// tables) repeatedly within one pass; caching the decrypted output skips
+/// the AES work for every repeat hit. LCP PDFs now decrypt to disk in one
+/// linear pass (`LCPPDFDiskExtract`), and the cache still serves every LCP
+/// decrypt.
 ///
 /// `NSCache` auto-evicts under memory pressure (matched against
 /// `totalCostLimit`), so the cache cannot itself contribute to an OOM
