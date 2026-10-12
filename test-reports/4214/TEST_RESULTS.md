@@ -1,6 +1,6 @@
 # 🧪 Palace iOS Unit Test Results
 
-**Generated:** 2026-10-12 15:34:10 UTC
+**Generated:** 2026-10-12 15:54:15 UTC
 **Commit:** `f24be791c505`
 **Branch:** `ci/interrupted-shard-coverage`
 
