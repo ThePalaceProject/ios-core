@@ -74,8 +74,6 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 | `generate-html-report.py` | Renders an interactive HTML test report. | `unit-testing.yml` |
 | `process-snapshots.py` | Generates a snapshot-failure viewer with diff images. | `unit-testing.yml` |
 | `record-snapshots.sh` | Records baseline snapshots for snapshot-test classes. | dev/local |
-| `wire_orphan_tests.py` | Adds orphaned test files into the `PalaceTests` Sources phase. | dev/local (after extracting tests) |
-| `wire_untracked_tests.py` | Wires fully-untracked test files into the Xcode project. | dev/local |
 
 
 ### Mutation and test-quality
