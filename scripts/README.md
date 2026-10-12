@@ -74,8 +74,6 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 | `generate-html-report.py` | Renders an interactive HTML test report. | `unit-testing.yml` |
 | `process-snapshots.py` | Generates a snapshot-failure viewer with diff images. | `unit-testing.yml` |
 | `record-snapshots.sh` | Records baseline snapshots for snapshot-test classes. | dev/local |
-| `wire_orphan_tests.py` | Adds orphaned test files into the `PalaceTests` Sources phase. | dev/local (after extracting tests) |
-| `wire_untracked_tests.py` | Wires fully-untracked test files into the Xcode project. | dev/local |
 
 
 ### Mutation and test-quality
@@ -94,6 +92,7 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 | `snapshot-library-registry.py` | Snapshots the library registry JSON and diffs against live; surfaces account/auth-doc drift. | dev/local, drift-investigation |
 | `check_registry_snapshot_freshness.sh` | CI guard that fails if the committed registry snapshot is older than the live registry. | `ledger.yml` |
 | `crashlytics-sentinel.py` | Compares Crashlytics issue counts week-over-week and alerts on new top issues. | `crashlytics-sentinel.yml` |
+| `check-swift-sources-compiled.py` | Fails when a tracked Swift file under `Palace/`, `PalaceTests/` or `PalaceUITests/` is not compiled by a target, or a Swift reference in `Palace.xcodeproj` is dangling or duplicated. | `tooling-checks.yml`, `verify-pr.sh`, `pre-commit-phase35-detectors.sh` |
 
 ### Release and TestFlight
 
