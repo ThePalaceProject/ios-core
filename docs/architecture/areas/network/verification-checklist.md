@@ -177,7 +177,7 @@ Responder behavior:
 
 Executor / transport / queue:
 - `PalaceTests/Network/TPPNetworkExecutorTests.swift`
-- `PalaceTests/Network/NetworkClientTests.swift`
+- `PalaceTests/Network/URLSessionNetworkClientCancellationTests.swift` (cancelling the awaiting Task frees a hung request)
 - `PalaceTests/Network/NetworkQueueTests.swift`
 - `PalaceTests/Network/NetworkQueueTokenRefreshTests.swift` (queued 401 refresh and resend; challenge answered with the row's library)
 - `PalaceTests/Network/NetworkRetryTests.swift`
