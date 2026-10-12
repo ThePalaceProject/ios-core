@@ -398,9 +398,6 @@
 
 "Couldn't send" = "Senden nicht möglich";
 
-/* Book cover accessibility */
-"Cover image for %@" = "Coverbild von %@";
-
 "Create Card" = "Ausweis erstellen";
 
 /* VoiceOver announcement when the current reading position cannot be determined */

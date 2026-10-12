@@ -21,6 +21,7 @@ private enum StorageKey: String {
     case authDefinition = "TPPAccountAuthDefinitionKey"
     case cookies = "TPPAccountAuthCookiesKey"
     case authState = "TPPAccountAuthStateKey"
+    case adobeActivationConnectorGeneration = "TPPAccountAdobeActivationConnectorGenerationKey"
 
     func keyForLibrary(uuid libraryUUID: String?) -> String {
         guard
@@ -139,6 +140,7 @@ private enum StorageKey: String {
         _provider = StorageKey.provider.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
         _userID = StorageKey.userID.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
         _deviceID = StorageKey.deviceID.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
+        _adobeActivationConnectorGeneration = StorageKey.adobeActivationConnectorGeneration.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
         _credentials = StorageKey.credentials.keyForLibrary(uuid: libraryUUID).asKeychainCodableVariable(with: queue)
         _authDefinition = StorageKey.authDefinition.keyForLibrary(uuid: libraryUUID).asKeychainCodableVariable(with: queue)
         _cookies = StorageKey.cookies.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
@@ -300,6 +302,7 @@ private enum StorageKey: String {
     private let _provider: TPPKeychainVariable<String>
     private let _userID: TPPKeychainVariable<String>
     private let _deviceID: TPPKeychainVariable<String>
+    private let _adobeActivationConnectorGeneration: TPPKeychainVariable<NSNumber>
     private let _credentials: TPPKeychainCodableVariable<TPPCredentials>
     private let _authDefinition: TPPKeychainCodableVariable<AccountDetails.Authentication>
     private let _cookies: TPPKeychainVariable<[HTTPCookie]>
@@ -353,6 +356,14 @@ private enum StorageKey: String {
     var needsAgeCheck: Bool { UserAccountAuthHelper.needsAgeCheck(authDefinition: authDefinition) }
 
     var deviceID: String? { _deviceID.read() }
+
+    /// The connector generation that performed this library's device activation,
+    /// or nil when no activation has been recorded by a build that writes it.
+    /// Nil is NOT "never activated": a device activated before this marker shipped
+    /// also reads nil, which is precisely the population the migration targets.
+    var adobeActivationConnectorGeneration: Int? {
+        _adobeActivationConnectorGeneration.read()?.intValue
+    }
     var userID: String? { _userID.read() }
     var adobeVendor: String? { _adobeVendor.read() }
     var provider: String? { _provider.read() }
@@ -471,6 +482,25 @@ private enum StorageKey: String {
         notifyAccountDidChange()
     }
 
+    /// Records an Adobe activation as one unit: the identifiers Adobe returned
+    /// plus the connector generation that produced them.
+    ///
+    /// The identifiers and the generation describe the same event. One
+    /// transaction keeps a reader from observing a half-written record; it does
+    /// not make the three keychain writes durable as a unit.
+    func setAdobeActivation(userID: String, deviceID: String, generation: Int) {
+        keychainTransaction.perform {
+            _userID.write(userID)
+            _deviceID.write(deviceID)
+            _adobeActivationConnectorGeneration.write(NSNumber(value: generation))
+        }
+        // The setters this replaces each posted this, so an activation used to
+        // notify twice. Once, after the transaction, keeps the signal while
+        // matching the single logical change — dropping it would silently stop
+        // telling observers that an activation landed.
+        notifyAccountDidChange()
+    }
+
     func setAuthState(_ state: TPPAccountAuthState) {
         Log.debug(#file, "Auth state changing from \(authState) to \(state)")
         _authState.write(state)
@@ -515,6 +545,7 @@ private enum StorageKey: String {
         _provider.invalidateCache()
         _userID.invalidateCache()
         _deviceID.invalidateCache()
+        _adobeActivationConnectorGeneration.invalidateCache()
         _credentials.invalidateCache()
         _authDefinition.invalidateCache()
         _cookies.invalidateCache()
@@ -652,6 +683,7 @@ private enum StorageKey: String {
             _provider.write(nil)
             _userID.write(nil)
             _deviceID.write(nil)
+            _adobeActivationConnectorGeneration.write(nil)
             _authState.write(nil)
 
             keychainTransaction.perform {

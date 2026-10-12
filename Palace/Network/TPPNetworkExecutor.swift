@@ -422,14 +422,6 @@ struct RefreshOutcomeBox: @unchecked Sendable {
         _ = executeRequest(req, enableTokenRefresh: useTokenIfAvailable, completion: completion)
     }
 
-    @objc func pauseAllTasks() {
-        transport.pauseAllTasks()
-    }
-
-    @objc func resumeAllTasks() {
-        transport.resumeAllTasks()
-    }
-
     /// Cancels all active tasks that are not related to audiobook streaming.
     /// Called during account switches to prevent requests from completing with
     /// the wrong account's credentials. Synchronous on purpose — see
