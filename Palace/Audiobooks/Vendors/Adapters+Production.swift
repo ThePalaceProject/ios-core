@@ -5,13 +5,15 @@
 //  Production conformances for the vendor adapters' collaborator protocols
 //  (AudiobookManifestNetworkFetching, BearerTokenManifestFetching,
 //  AudiobookFileReading, BearerTokenRefreshing) plus the BearerTokenMIMEGate
-//  that controls when BearerTokenAdapter claims a book. Each is a thin
-//  delegating wrapper; behavior is tested through the adapters.
+//  that controls when BearerTokenAdapter claims a book. The bearer-token
+//  manifest fetcher owns its request and is tested directly (ManifestFetchTests);
+//  the rest are thin delegating wrappers tested through the adapters.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
 import Foundation
+import PalaceLogging
 @preconcurrency import PalaceAudiobookToolkit
 import PalaceBookModel
 
@@ -81,11 +83,18 @@ final class ProductionBearerTokenRefresher: BearerTokenRefreshing {
     }
 }
 
-/// Production conformance for `BearerTokenManifestFetching`. Wraps the
-/// static `BookService.fetchManifestWithBearerToken` second-leg call so
-/// BearerTokenAdapter tests can stub the recursion without spinning up
-/// URLSession.
+/// Production conformance for `BearerTokenManifestFetching`: the second leg of
+/// the two-step fulfill flow. With the book-specific bearer token from the CM
+/// fulfill endpoint, fetch the real audiobook manifest from the token's
+/// `location` URL. Any failure (transport, empty body, non-2xx, non-object
+/// JSON) yields nil, which `BearerTokenAdapter` maps to `.manifestFetchFailed`.
 final class ProductionBearerTokenManifestFetcher: BearerTokenManifestFetching {
+    private let session: URLSession
+
+    init(session: URLSession = .shared) {
+        self.session = session
+    }
+
     func fetchManifest(
         with token: MyBooksSimplifiedBearerToken,
         for book: TPPBook
@@ -93,11 +102,49 @@ final class ProductionBearerTokenManifestFetcher: BearerTokenManifestFetching {
         // `[String: Any]` is not `Sendable`, so the continuation carries it in
         // `ManifestJSONBox`; the resumption lands back on this actor.
         let boxed: ManifestJSONBox? = await withCheckedContinuation { continuation in
-            BookService.fetchManifestWithBearerToken(token, for: book) { json in
+            fetchManifest(token) { json in
                 continuation.resume(returning: json.map(ManifestJSONBox.init))
             }
         }
         return boxed?.value
+    }
+
+    private func fetchManifest(
+        _ token: MyBooksSimplifiedBearerToken,
+        completion: @escaping @Sendable ([String: Any]?) -> Void
+    ) {
+        var request = URLRequest(url: token.location)
+        request.setValue("Bearer \(token.accessToken)", forHTTPHeaderField: "Authorization")
+        request.applyCustomUserAgent()
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+
+        Log.info(#file, "  📡 Fetching manifest from bearer token location: \(token.location.host ?? "unknown")")
+
+        let task = session.dataTask(with: request) { data, response, error in
+            if let error = error {
+                Log.error(#file, "  ❌ Network error fetching manifest via bearer token: \(error.localizedDescription)")
+                completion(nil)
+                return
+            }
+            guard let data = data, !data.isEmpty else {
+                Log.error(#file, "  ❌ No data received from bearer token manifest fetch")
+                completion(nil)
+                return
+            }
+            if let httpResponse = response as? HTTPURLResponse, !httpResponse.isSuccess() {
+                Log.error(#file, "  ❌ Bearer token manifest fetch failed with HTTP \(httpResponse.statusCode)")
+                completion(nil)
+                return
+            }
+            guard let json = (try? JSONSerialization.jsonObject(with: data, options: [])) as? [String: Any] else {
+                Log.error(#file, "  ❌ Failed to parse bearer token manifest as JSON")
+                completion(nil)
+                return
+            }
+            Log.info(#file, "  ✅ Successfully fetched manifest via bearer token (\(data.count) bytes)")
+            completion(json)
+        }
+        task.resume()
     }
 }
 

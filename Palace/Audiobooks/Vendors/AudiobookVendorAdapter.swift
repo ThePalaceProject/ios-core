@@ -66,8 +66,8 @@ protocol AudiobookVendorAdapter {
 /// reference-typed), and a checked continuation requires a `Sendable` payload.
 /// The adapters' own hops are gone now that `resolveManifest` is `async`, so
 /// the one remaining crossing is inside the production conformers that bridge
-/// a legacy completion-handler API to `async` — `BookService`'s second-leg
-/// manifest fetch and `LCPAudiobooks.contentDictionary`.
+/// a legacy completion-handler API to `async` — the second-leg manifest fetch in
+/// `ProductionBearerTokenManifestFetcher` and `LCPAudiobooks.contentDictionary`.
 ///
 /// - Sendable invariant: `value` is set once at init and only read thereafter.
 ///   The dictionary is not mutated after boxing, so there is no shared

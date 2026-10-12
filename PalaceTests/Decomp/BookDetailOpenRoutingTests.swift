@@ -185,9 +185,9 @@ final class BookDetailOpenRoutingTests: XCTestCase {
 
 // MARK: - Recording session double
 
-/// Minimal `AudiobookSessionManaging` that records the open call BookService
+/// Minimal `AudiobookSessionManaging` that records the open call BookOpenRouter
 /// routes to it. Overrides the 3-arg `openAudiobook` witness (the variant
-/// `BookService.dispatchOpen` invokes) so the routing decision is observable.
+/// `BookOpenRouter.dispatch` invokes) so the routing decision is observable.
 /// Mirrors the compiling `HookRecordingSession` in
 /// `PalaceTests/Book/BookServiceAudiobookOpenTests.swift`.
 ///

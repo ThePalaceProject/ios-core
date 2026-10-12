@@ -297,7 +297,7 @@ final class BookDetailOpenRoutingDecisionTableTests: XCTestCase {
 
 // MARK: - Recording session double
 
-/// Records the open call `BookService.dispatchOpen` routes to the audiobook arm.
+/// Records the open call `BookOpenRouter.dispatch` routes to the audiobook arm.
 /// Distinct from `BookDetailOpenRoutingTests`' private double so neither file's
 /// assertions can drift into the other's fixture.
 @MainActor

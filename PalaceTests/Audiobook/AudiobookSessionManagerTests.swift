@@ -337,8 +337,8 @@ final class AudiobookNetworkValidationTests: XCTestCase {
 
 /// Covers which errors surface a user-facing alert on the phone when emitted
 /// through `errorPublisher`, and which are intentionally suppressed because
-/// they have another dedicated presentation path (BookService.
-/// showAudiobookTryAgainError or the cold-load alert branch).
+/// they have another dedicated presentation path (`AudiobookOpenFailureAlert`
+/// or the cold-load alert branch).
 @MainActor
 final class AudiobookPhoneAlertContentTests: XCTestCase {
 
@@ -373,7 +373,7 @@ final class AudiobookPhoneAlertContentTests: XCTestCase {
     func testLoaderAndUnknownErrors_returnNil_toAvoidDoubleAlerts() {
         // These errors are already alerted through other paths:
         //   - .manifestLoadFailed / .playerCreationFailed → loader path calls
-        //     BookService.showAudiobookTryAgainError
+        //     AudiobookOpenFailureAlert
         //   - .unknown("Playback failed") → cold-load branch in
         //     handleManagerState(.playbackFailed)
         //   - .alreadyLoading → programmer-facing signal, not user-facing
