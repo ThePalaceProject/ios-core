@@ -37,6 +37,17 @@ private final class AccountChangeRecorder {
 
 final class AdobeConnectorGenerationTests: XCTestCase {
 
+    /// Held by the test case rather than a local, so `tearDown` removes the
+    /// observer even when a test throws before its own cleanup runs. An
+    /// observer that outlives its test counts every later post in this process.
+    private var accountChangeRecorder: AccountChangeRecorder?
+
+    override func tearDown() {
+        accountChangeRecorder?.stop()
+        accountChangeRecorder = nil
+        super.tearDown()
+    }
+
     /// The defect class this exists to prevent. A marker that survives sign-out
     /// reports "activated under this connector" for a device that is no longer
     /// activated at all, so the migration would skip a patron who needs it.
@@ -124,7 +135,7 @@ final class AdobeConnectorGenerationTests: XCTestCase {
         // this process post the same notification, so an unbound observer is
         // satisfied by whoever happens to post first.
         let recorder = AccountChangeRecorder(account: account)
-        defer { recorder.stop() }
+        accountChangeRecorder = recorder
 
         account.setAdobeActivation(userID: "user", deviceID: "device",
                                    generation: AdobeConnectorGeneration.current)
