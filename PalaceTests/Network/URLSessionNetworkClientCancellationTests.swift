@@ -29,9 +29,11 @@ final class URLSessionNetworkClientCancellationTests: XCTestCase {
         config.protocolClasses = [HangingURLProtocol.self]
         let executor = TPPNetworkExecutor(cachingStrategy: .ephemeral, sessionConfiguration: config)
         let client = URLSessionNetworkClient(executor: executor)
-        let req = NetworkRequest(method: .GET, url: URL(string: "https://example.com/hang")!)
-
-        let sendTask = Task<Void, Error> { _ = try await client.send(req) }
+        // Built inside the Task: NetworkRequest is not Sendable, so capturing one
+        // from the main actor and passing it to the nonisolated send is rejected.
+        let sendTask = Task<Void, Error> {
+            _ = try await client.send(NetworkRequest(method: .GET, url: URL(string: "https://example.com/hang")!))
+        }
 
         // Let the hanging request actually start before we cancel.
         try? await Task.sleep(nanoseconds: 300_000_000)
