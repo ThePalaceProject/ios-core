@@ -111,12 +111,6 @@ final class ReaderService {
 
     @MainActor
     func openEPUB(_ book: TPPBook) {
-        // Polish-phase (in-app-nav-polish-2026-06-01): record wall-clock
-        // open time so RecentlyReadingService's Continue Reading row
-        // sort is correct. EPUB location JSON does NOT embed a
-        // timeStamp; without this record the row falls back to
-        // `book.updated` (OPDS catalog date) and shows the wrong book.
-        AppContainer.production().bookOpenTracker.recordOpened(book.identifier)
         // Polish-phase ("should close" UX): switching from audiobook to
         // ebook fully closes the audiobook session — not just suppresses
         // the mini-player chrome. User explicitly asked for this: opening
@@ -139,17 +133,14 @@ final class ReaderService {
     /// plain downloaded PDF (an open-access title) drove it through the LCP
     /// extract pipeline and failed with a spurious "unable to open" alert.
     ///
-    /// The shared prologue — `bookOpenTracker.recordOpened` +
-    /// `stopActiveAudiobookSessionIfNeeded()` — runs for BOTH routes, matching
-    /// `openEPUB` and audiobook opens: opening a reader is a content switch, so
-    /// it records recency and stops any playing audiobook regardless of PDF
-    /// encryption. NOTE: plain PDFs opened from BookDetail/My Books previously
-    /// bypassed this method and did neither; routing them through the single
-    /// seam intentionally unifies that behavior.
+    /// The shared prologue — `stopActiveAudiobookSessionIfNeeded()` — runs for
+    /// BOTH routes, matching `openEPUB`: opening a reader is a content switch, so
+    /// it stops any playing audiobook regardless of PDF encryption. NOTE: plain
+    /// PDFs opened from BookDetail/My Books previously bypassed this method and
+    /// did not stop the audiobook; routing them through the single seam
+    /// intentionally unifies that behavior.
     @MainActor
     func openPDF(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
-        // Polish-phase (in-app-nav-polish-2026-06-01) — see openEPUB.
-        AppContainer.production().bookOpenTracker.recordOpened(book.identifier)
         Self.stopActiveAudiobookSessionIfNeeded()
 
         switch Self.pdfOpenRoute(for: book) {
