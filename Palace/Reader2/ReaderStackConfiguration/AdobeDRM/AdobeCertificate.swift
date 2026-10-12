@@ -477,22 +477,20 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
         guard let account = AppContainer.production().accountsManager.currentAccount else {
             return nil
         }
-        return await boundedLicensor(timeout: profileDocumentTimeout) { done in
+        return await boundedLicensor(timeout: profileDocumentTimeout, awaiting: {
             // `enableTokenRefresh: true`. This fetch is the whole point of the
             // PP-3649 refresh, and the case it exists for — a session old
             // enough that the stored licensor died — is also the case where the
             // bearer token has expired. Sending it as-is earns a 401 and a
             // fallback to the stale licensor, i.e. no refresh at all.
-            account.getProfileDocument(enableTokenRefresh: true) { document in
-                guard let drm = document?.drm?.first,
-                      let vendor = drm.vendor, !vendor.isEmpty,
-                      let clientToken = drm.clientToken, !clientToken.isEmpty else {
-                    done(nil)
-                    return
-                }
-                done(drm.licensor)
+            let document = await account.getProfileDocument(enableTokenRefresh: true)
+            guard let drm = document?.drm?.first,
+                  let vendor = drm.vendor, !vendor.isEmpty,
+                  let clientToken = drm.clientToken, !clientToken.isEmpty else {
+                return nil
             }
-        }.licensor
+            return drm.licensor
+        }).licensor
     }
 
     /// How long the borrow path will wait for the profile-document fetch before
@@ -504,13 +502,12 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
     /// borrow takes.
     static let profileDocumentTimeout: TimeInterval = 20
 
-    /// Awaits a callback-style licensor producer under a wall-clock deadline.
+/// Awaits a licensor producer under a wall-clock deadline.
     ///
     /// Bounded because this sits on the BORROW path and OUTSIDE the activation
     /// deadline below — `resolve` runs before `activationCoordinator.activate`,
-    /// so nothing downstream would ever have rescued it. `getProfileDocument`
-    /// hands its completion to `URLSession` via the executor, and this branch
-    /// has already shipped one ten-hour hang from an await with no bound; an
+    /// so nothing downstream would ever have rescued it. This branch has
+    /// already shipped one ten-hour hang from an await with no bound; an
     /// unresumed continuation here would wedge the borrow the same way, with
     /// the added cruelty that the fallback it is guarding (activate with the
     /// stored licensor) works perfectly well.
@@ -519,8 +516,18 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
     /// below records why the group cannot work: it awaits every child on scope
     /// exit and `cancelAll()` is only cooperative, so a continuation nobody
     /// resumes keeps the group — and the caller — suspended forever. Whichever
-    /// arrives first here, the producer's completion or the deadline, claims
-    /// the continuation and the caller genuinely unwinds.
+    /// arrives first here, the producer's answer or the deadline, claims the
+    /// continuation and the caller genuinely unwinds.
+    ///
+    /// The producer is `async` rather than callback-shaped because
+    /// `Account.getProfileDocument` is awaited now (PP-5301). There was briefly
+    /// a second, callback-shaped overload beside this one so the existing tests
+    /// could keep driving the old shape; it is gone, because it had no
+    /// production caller and its deadline race was a verbatim copy of this one.
+    /// Only the continuation latch was shared, so the two could have drifted
+    /// with the suite green — which is what a comment here previously claimed
+    /// was impossible.
+    ///
     /// - Returns: the licensor the producer supplied, and whether the DEADLINE
     ///   is what released the await.
     ///
@@ -533,7 +540,7 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
     ///   report to the caller, where it is observable.
     static func boundedLicensor(
         timeout: TimeInterval,
-        produce: @escaping (@escaping ([String: Any]?) -> Void) -> Void
+        awaiting produce: @escaping @Sendable () async -> [String: Any]?
     ) async -> (licensor: [String: Any]?, timedOut: Bool) {
         let box: LicensorBox = await withCheckedContinuation { (continuation: CheckedContinuation<LicensorBox, Never>) in
             let once = OneShotValueContinuation(continuation)
@@ -553,7 +560,8 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
                 once.finish(nil, timedOut: true)
             }
 
-            produce { licensor in
+            Task {
+                let licensor = await produce()
                 deadline.cancel()
                 once.finish(licensor, timedOut: false)
             }
@@ -563,7 +571,6 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
         }
         return (box.licensor, box.timedOut)
     }
-
     /// Reads `account.licensor`, and if it is absent, re-reads it until it
     /// appears or `budget` is exhausted.
     ///
@@ -827,7 +834,7 @@ private final class LicensorBox: @unchecked Sendable {
 
 /// Resumes a non-throwing continuation exactly once.
 ///
-/// Two producers race for it: `getProfileDocument`'s completion handler and the
+/// Two producers race for it: the awaited licensor producer and the
 /// refresh deadline. A completion handler invoked twice, or a deadline that
 /// fires after the fetch landed, would resume a `CheckedContinuation` twice — a
 /// hard runtime trap, not a recoverable error. Sibling of `OneShotContinuation`
