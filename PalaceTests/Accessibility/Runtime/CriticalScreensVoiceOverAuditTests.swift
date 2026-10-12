@@ -110,6 +110,30 @@ final class CriticalScreensVoiceOverAuditTests: XCTestCase {
         )
     }
 
+    // MARK: - Book covers
+
+    /// PP-3968 / PP-4326: the detail cover and its audiobook badge are decorative
+    /// (title and author are read from the text below), so VoiceOver neither
+    /// stops on the badge nor reads a cover label or text off the artwork.
+    func testBookDetail_audiobookCover_isNotAVoiceOverStop() {
+        let (container, _) = makeDetailContainer()
+        let book = TPPBookMocker.snapshotAudiobook()
+        let root = NavigationStack { BookDetailView(book: book) }
+            .environment(\.appContainer, container)
+        let host = mount(UIHostingController(rootView: root))
+        host.settle(0.6)
+
+        let elements = AccessibilityTraversalAudit.traverse(host.window)
+
+        XCTAssertTrue(elements.contains { $0.label.contains(book.title) },
+                      "the detail screen must be in the tree, or the absence below proves nothing")
+        let badge = Strings.Generic.audiobook
+        let cover = elements.filter {
+            $0.label == badge || $0.label.hasPrefix("Cover image for") || $0.traits.contains(.image)
+        }
+        XCTAssertEqual(cover.map(\.displayName), [], "cover or badge is a VoiceOver stop")
+    }
+
     // MARK: - EPUB reader chrome
 
     func testEPUBReaderChrome_withVoiceOverChromeShown_everyControlIsReachableLabeledAndActivates() throws {
