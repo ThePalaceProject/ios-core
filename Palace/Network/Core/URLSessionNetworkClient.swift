@@ -69,8 +69,10 @@ final class URLSessionNetworkClient: NetworkClient {
                 case .PATCH:
                     // The executor has no PATCH verb method, so dispatch the
                     // request as-is through addBearerAndExecute. That skips the
-                    // proactive near-expiry refresh; a 401 still goes through
-                    // the responder's refresh-and-retry.
+                    // proactive near-expiry refresh. A 401 is still offered to
+                    // the responder's reactive refresh, which declines for
+                    // browser (SAML/OIDC) auth among other cases; see
+                    // `handleExpiredTokenIfNeeded`.
                     var patched = urlRequest
                     patched.httpMethod = "PATCH"
                     dataTask = self.executor.addBearerAndExecute(patched) { resume($0, $1, $2) }
