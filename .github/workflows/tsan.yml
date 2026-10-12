@@ -14,9 +14,19 @@ name: Thread Sanitizer
 #     ignores a name that matches nothing.
 on:
   pull_request:
+    # A race needs Swift to introduce it, so a diff that touches none is 32
+    # macos-26 minutes that cannot change the answer. GitHub skips only when
+    # EVERY changed path matches, so any Swift file still runs the lane.
+    #
+    # `scripts/tsan-suites.txt` is deliberately NOT ignored: it is the suite
+    # list, so adding or renaming a suite still exercises the lane. Editing
+    # this file alone does skip it — `scripts/tests/test_tsan_lane.py` pins the
+    # wiring and `workflow_dispatch` covers an ad-hoc run.
     paths-ignore:
       - '**.md'
       - 'docs/**'
+      - 'scripts/tests/**'
+      - '.github/workflows/**'
   workflow_dispatch:
 concurrency:
   group: tsan-${{ github.event.pull_request.number || github.ref }}
