@@ -112,26 +112,32 @@ final class CriticalScreensVoiceOverAuditTests: XCTestCase {
 
     // MARK: - Book covers
 
-    /// PP-3968 / PP-4326: the detail cover and its audiobook badge are decorative
-    /// (title and author are read from the text below), so VoiceOver neither
-    /// stops on the badge nor reads a cover label or text off the artwork.
+    /// PP-3968 / PP-4326: the detail cover and badge are decorative, so VoiceOver has no stop on them.
+    /// Without its hidden flag the `.ignore` cover container is an unlabeled cover-sized stop, hence the empty-label check.
     func testBookDetail_audiobookCover_isNotAVoiceOverStop() {
         let (container, _) = makeDetailContainer()
         let book = TPPBookMocker.snapshotAudiobook()
+        book.coverImage = UIGraphicsImageRenderer(size: CGSize(width: 20, height: 30)).image { context in
+            UIColor.gray.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 20, height: 30))
+        }
         let root = NavigationStack { BookDetailView(book: book) }
             .environment(\.appContainer, container)
         let host = mount(UIHostingController(rootView: root))
         host.settle(0.6)
 
         let elements = AccessibilityTraversalAudit.traverse(host.window)
+        let tree = elements.map { "\($0.displayName) traits=\($0.traits.rawValue) frame=\($0.frame.integral)" }
+            .joined(separator: "\n")
 
         XCTAssertTrue(elements.contains { $0.label.contains(book.title) },
                       "the detail screen must be in the tree, or the absence below proves nothing")
         let badge = Strings.Generic.audiobook
-        let cover = elements.filter {
-            $0.label == badge || $0.label.hasPrefix("Cover image for") || $0.traits.contains(.image)
+        let coverStops = elements.filter {
+            $0.label.isEmpty || $0.label == badge || $0.label.hasPrefix("Cover image for") || $0.traits.contains(.image)
         }
-        XCTAssertEqual(cover.map(\.displayName), [], "cover or badge is a VoiceOver stop")
+        XCTAssertEqual(coverStops.map(\.displayName), [],
+                       "the cover or badge is a VoiceOver stop (unlabeled, labelled as cover or badge, or an image)\n\(tree)")
     }
 
     // MARK: - EPUB reader chrome
