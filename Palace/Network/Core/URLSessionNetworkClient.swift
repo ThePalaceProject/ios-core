@@ -67,7 +67,10 @@ final class URLSessionNetworkClient: NetworkClient {
                     dataTask = self.executor.PUT(request: urlRequest, useTokenIfAvailable: true) { resume($0, $1, $2) }
 
                 case .PATCH:
-                    // Executor has no PATCH; emulate via POST with method override header
+                    // The executor has no PATCH verb method, so dispatch the
+                    // request as-is through addBearerAndExecute. That skips the
+                    // proactive near-expiry refresh; a 401 still goes through
+                    // the responder's refresh-and-retry.
                     var patched = urlRequest
                     patched.httpMethod = "PATCH"
                     dataTask = self.executor.addBearerAndExecute(patched) { resume($0, $1, $2) }

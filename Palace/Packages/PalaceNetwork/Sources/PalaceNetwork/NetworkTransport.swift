@@ -3,7 +3,7 @@
 //  The Palace Project
 //
 //  Pure-transport HTTP layer: owns the URLSession and active tasks
-//  (pause / resume / cancel on account switch) and exposes send/download.
+//  (cancelled on account switch) and exposes send/download.
 //  Credentials and sign-in live in the app target's TPPNetworkExecutor,
 //  which wraps a Transport and can reach AccountsManager / TPPUserAccount.
 //
@@ -32,23 +32,6 @@ public final class ActiveTasksStore {
         if let index = tasks.firstIndex(of: task) {
             tasks.remove(at: index)
         }
-    }
-
-    public func pauseNonAudioTasks() {
-        lock.lock(); defer { lock.unlock() }
-        for task in tasks {
-            if let url = task.originalRequest?.url,
-               Self.isAudiobookRelated(url: url) {
-                Log.info(#function, "Preserving audiobook network task: \(url.absoluteString)")
-                continue
-            }
-            task.suspend()
-        }
-    }
-
-    public func resumeAll() {
-        lock.lock(); defer { lock.unlock() }
-        tasks.forEach { $0.resume() }
     }
 
     /// Number of registered tasks that are not yet finished or cancelling.
@@ -193,14 +176,6 @@ public final class ActiveTasksStore {
     }
 
     // MARK: - Active tasks control
-
-    @objc public func pauseAllTasks() {
-        activeTasksStore.pauseNonAudioTasks()
-    }
-
-    @objc public func resumeAllTasks() {
-        activeTasksStore.resumeAll()
-    }
 
     /// Cancels all active tasks not related to audiobook streaming. Called
     /// during account switches to prevent in-flight requests from completing
