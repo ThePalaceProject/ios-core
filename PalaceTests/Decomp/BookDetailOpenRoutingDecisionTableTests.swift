@@ -7,7 +7,7 @@
 //    .audiobook     → session opened once, completion invoked
 //    .streamingHTML → route pushed once, completion invoked
 //    .unsupported   → format error, completion NOT invoked (a caller's spinner stays)
-//  EPUB/PDF go through `BookService` and the non-injected reader service, so their
+//  EPUB/PDF go through `BookOpenRouter` and the non-injected reader service, so their
 //  cells are covered by the pure `BookOpenRouter` table instead.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
@@ -59,7 +59,7 @@ final class BookDetailOpenRoutingDecisionTableTests: XCTestCase {
     // MARK: - The table, one test per (format, state) row
 
     // `.epub` and `.pdf` are DELIBERATELY not driven here. Both arms run
-    // `BookService` -> `AppContainer.production().readerService`, and a unit
+    // `BookOpenRouter` -> `AppContainer.production().readerService`, and a unit
     // context has a presenter, so the open actually executes: a measured run of
     // an earlier draft of this file logged "Content Protection Error on first
     // open - attempting transparent re-download", added the fixture to the

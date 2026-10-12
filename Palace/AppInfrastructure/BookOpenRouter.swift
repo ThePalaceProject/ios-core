@@ -6,7 +6,7 @@
 //
 //  `destination(for:)` is the pure, table-testable decision; `open(_:...)`
 //  performs it, including the per-identifier lock that stops a second tap from
-//  starting a parallel open. `BookService.open` forwards here.
+//  starting a parallel open. Callers pass the registry they were built with.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -97,9 +97,9 @@ enum BookOpenRouter {
     }
 
     /// Pushes the streaming-HTML route after storing the book payload so the
-    /// destination resolver can look it up. Shared by `BookService`/this router's
-    /// dispatch and by `BookDetailViewModel`'s direct `.readStreaming` action,
-    /// which reaches the shell without going through the open lock.
+    /// destination resolver can look it up. Shared by this router's dispatch and
+    /// by `BookDetailViewModel`'s direct `.readStreaming` action, which reaches
+    /// the shell without going through the open lock.
     static func presentStreamingReader(_ book: TPPBook) {
         guard let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator else {
             // PP-5022 — a warn line is not a patron-visible outcome.

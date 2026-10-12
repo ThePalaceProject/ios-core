@@ -1124,7 +1124,7 @@ final class BookDetailViewModelTests: XCTestCase {
     // testBookDetailViewModel_handleAction_readStreaming_callsDidSelectReadStreaming
     // (asserts showHalfSheet flips false). The .read/.listen completion runs
     // through TPPSignInBusinessLogic.ensureAuthenticationDocumentIsLoaded
-    // (async + auth doc load + possible sign-in modal) and BookService.open,
+    // (async + auth doc load + possible sign-in modal) and BookOpenRouter.open,
     // which have no deterministic VM-level seam, so those two remain covered by
     // on-device verification (iPhone + iPad), consistent with the existing
     // (untested) .reserve/.return dismissals.

@@ -46,4 +46,6 @@
 # 236 -> 233: BookOpenTracker deleted. Its three recordOpened call sites
 #   (ReaderService x2, AudiobookSessionManager) each read the tracker through
 #   AppContainer.production(); the tracker had no reader after PP-4910.
-233
+# 233 -> 232: BookService retired. Its open forwarder's default registry
+#   argument read AppContainer.production(); callers now pass their own registry.
+232

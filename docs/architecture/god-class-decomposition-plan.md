@@ -46,7 +46,7 @@ ceiling gate's own code-line counter:
 | file | before | after |
 |---|---|---|
 | `BookDetailViewModel.swift` | 971 | **867** |
-| `BookService.swift` | 167 | **97** |
+| `BookService.swift` (retired 2026-10-12, see below) | 167 | **97** |
 | `BookOpenRouter.swift` (new, AppInfrastructure) | — | 101 |
 | `BookMetadataService.swift` (new) | — | 58 |
 | `RelatedBooksService.swift` (new) | — | 54 |
@@ -57,20 +57,20 @@ across all of `Palace/Book/` now returns **zero**. Format routing lives in
 `BookOpenRouter` in the Application layer, which is where a component that knows
 every reader belongs.
 
-**`BookService` is now only the `open` forwarder.** Wave 5 left it two
-audiobook-domain helpers; both have since moved to the audiobook layer. The
+**`BookService` is retired (2026-10-12).** Wave 5 left it two audiobook-domain
+helpers and an `open` forwarder. The helpers moved to the audiobook layer: the
 open-failure alert is `AudiobookOpenFailureAlert` (`Palace/Audiobooks/`), which
 `AudiobookSessionManager` receives as an injected closure and whose Retry reopens
-through `BookOpenRouter` with the manager's registry. The second-leg bearer-token
-manifest fetch is owned by `ProductionBearerTokenManifestFetcher`
-(`Palace/Audiobooks/Vendors/Adapters+Production.swift`). `open` still forwards with
-an unchanged signature, which is what bought the zero-existing-tests-modified
-property §5 requires. The remaining removal condition: `BookDetailViewModel`
-(lines 909 and 929) and `BookCellModel` (lines 778 and 784) call
-`BookOpenRouter.open` with their own registries, and `BookServiceAudiobookOpenTests`
-is retargeted to the router. Sequence that after #1642, which edits
-`BookDetailViewModel`; otherwise the forwarder becomes a permanent one-line
-indirection.
+through `BookOpenRouter` with the manager's registry, and the second-leg
+bearer-token manifest fetch is owned by `ProductionBearerTokenManifestFetcher`
+(`Palace/Audiobooks/Vendors/Adapters+Production.swift`). The forwarder's removal
+condition was met once #1642 merged: `BookDetailViewModel` and `BookCellModel` now
+call `BookOpenRouter.open` with the registry they were built with, the router's
+audiobook tests are `BookOpenRouterAudiobookOpenTests`, and the file is deleted.
+In production both registries are the AppContainer's, so the open resolves the same
+book as before; a test that injects a registry now gets its open resolved through
+that registry, which `BookDetailOpenRoutingTests` and
+`BookCellModelAudiobookOpenTests` pin.
 
 **Cycle 7's navigation inversion is NOT done, and is deferred to Wave 7.** §6 risk 7
 already concedes this cycle ends gate-enforced rather than compiler-enforced while
