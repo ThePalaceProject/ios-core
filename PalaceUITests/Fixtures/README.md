@@ -11,3 +11,7 @@ an EPUB 3 with three chapters of original text written for these tests. It is
 dedicated to the public domain under
 [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/), as its
 `dc:rights` also states. The author name is fictional.
+
+*Still Water* is a bearer-token audiobook manifest with one track, also
+written for these tests. Its track URL is never fetched: AVFoundation loads
+audio outside `URLSession`, where the mock backend cannot answer.
