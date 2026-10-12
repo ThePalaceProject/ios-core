@@ -14,6 +14,27 @@ import PalaceBookModel
 
 extension AudiobookSessionManager {
 
+    /// Maps session errors to phone-alert (title, message) pairs. Returns nil
+    /// for errors that have other dedicated presentation paths — keep this
+    /// switch aligned with those paths so no case is alerted twice.
+    static func phoneAlertContent(for error: AudiobookSessionError) -> (title: String, message: String)? {
+        switch error {
+        case .wifiRequired:
+            return (Strings.Settings.wifiRequired, Strings.Settings.downloadRestrictedToWiFi)
+        case .notAuthenticated:
+            return (Strings.Error.signInErrorTitle, error.localizedDescription)
+        case .notDownloaded:
+            return (Strings.Generic.error, error.localizedDescription)
+        case .networkUnavailable:
+            return (Strings.Error.networkUnavailableErrorTitle, error.localizedDescription)
+        case .manifestLoadFailed, .playerCreationFailed, .alreadyLoading, .unknown:
+            // Loader failures → BookService.showAudiobookTryAgainError.
+            // Cold-load .unknown("Playback failed") → cold-load alert branch.
+            // .alreadyLoading is a programmer-facing signal, not user-facing.
+            return nil
+        }
+    }
+
     static func mapLoadError(_ error: AudiobookLoadError) -> AudiobookSessionError {
         switch error {
         case .cancelled:

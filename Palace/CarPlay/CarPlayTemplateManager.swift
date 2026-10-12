@@ -381,33 +381,11 @@ final class CarPlayTemplateManager: NSObject {
 
     /// Handles specific playback errors with appropriate UI
     private func handlePlaybackError(_ error: CarPlayPlaybackError) {
-        switch error {
-        case .authenticationRequired:
-            showErrorAlert(
-                title: Strings.CarPlay.Error.authRequired,
-                message: Strings.CarPlay.Error.authMessage
-            )
-        case .networkError:
-            showErrorAlert(
-                title: Strings.CarPlay.Error.offline,
-                message: Strings.CarPlay.Error.offlineMessage
-            )
-        case .drmError:
-            showErrorAlert(
-                title: Strings.CarPlay.Error.playbackFailed,
-                message: Strings.CarPlay.Error.drmMessage
-            )
-        case .notDownloaded:
-            showErrorAlert(
-                title: Strings.CarPlay.Error.notDownloaded,
-                message: Strings.CarPlay.Error.downloadRequired
-            )
-        case .unknown:
-            showErrorAlert(
-                title: Strings.CarPlay.Error.playbackFailed,
-                message: Strings.CarPlay.Error.tryAgain
-            )
+        guard let content = error.alertContent else {
+            Log.info(#file, "CarPlay: open superseded by a stop or a newer open — no alert")
+            return
         }
+        showErrorAlert(title: content.title, message: content.message)
     }
 
     private func isFullyDownloaded(_ book: TPPBook) -> Bool {

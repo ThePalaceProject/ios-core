@@ -26,13 +26,32 @@ final class ProductionAudiobookManifestFetcher: AudiobookManifestNetworkFetching
         self.executor = executor
     }
 
-    func fetchData(
-        from url: URL,
-        completion: @escaping (Data?, URLResponse?, Error?) -> Void
-    ) {
-        _ = executor.GET(url, cachePolicy: .useProtocolCachePolicy, useTokenIfAvailable: true) { data, response, error in
-            completion(data, response, error)
-        }
+    func fetchData(from url: URL) async throws -> (Data, URLResponse?) {
+        // `request(for:)`, not a bare `URLRequest(url:)`. It is what stamps the
+        // `Authorization: Bearer` header, the custom User-Agent, the SAML
+        // cookies, `Accept-Language` and the HTTP/3 opt-out; the request-taking
+        // overload dispatches what it is handed, and `useTokenIfAvailable` only
+        // controls the proactive refresh rather than adding the header.
+        //
+        // What a bare request costs, stated precisely because an earlier
+        // version of this comment said "terminal 401" and that is wrong for the
+        // common case: the 401 repair is gated on `snapshot.hasCredentials`
+        // (`TPPNetworkResponder.swift:615`), not on having sent a header, and
+        // the retry is rebuilt through `request(for:)`
+        // (`TPPNetworkExecutor.swift:1001`). So for token and OAuth libraries
+        // the fetch still succeeds — after a wasted round trip, a spurious
+        // token exchange, the per-URL retry budget (`maxRetryAttempts = 1`) and
+        // `markCredentialsStale()`, which can surface as an unprompted
+        // re-login. It is terminal where the repair declines: basic auth,
+        // browser reauth (`TPPNetworkResponder.swift:659`), and — the worst
+        // case rather than the mild one — a token or OAuth library missing a
+        // `tokenURL`, barcode or pin, because `markCredentialsStale()` fires at
+        // `:695` before `canRefreshToken` is evaluated at `:697`, so those land
+        // on `return false` with credentials already marked and no retry to
+        // heal them.
+        try await executor.GET(request: executor.request(for: url),
+                               cachePolicy: .useProtocolCachePolicy,
+                               useTokenIfAvailable: true)
     }
 }
 
@@ -53,11 +72,12 @@ final class ProductionAudiobookFileReader: AudiobookFileReading {
 /// `MyBooksSimplifiedBearerToken.refreshToken(from:completion:)` so the
 /// refresh seam is substitutable from the LocalFileAdapter test surface.
 final class ProductionBearerTokenRefresher: BearerTokenRefreshing {
-    func refreshToken(
-        from fulfillURL: URL,
-        completion: @escaping @Sendable (MyBooksSimplifiedBearerToken?) -> Void
-    ) {
-        MyBooksSimplifiedBearerToken.refreshToken(from: fulfillURL, completion: completion)
+    func refreshToken(from fulfillURL: URL) async -> MyBooksSimplifiedBearerToken? {
+        await withCheckedContinuation { continuation in
+            MyBooksSimplifiedBearerToken.refreshToken(from: fulfillURL) { token in
+                continuation.resume(returning: token)
+            }
+        }
     }
 }
 
@@ -68,10 +88,16 @@ final class ProductionBearerTokenRefresher: BearerTokenRefreshing {
 final class ProductionBearerTokenManifestFetcher: BearerTokenManifestFetching {
     func fetchManifest(
         with token: MyBooksSimplifiedBearerToken,
-        for book: TPPBook,
-        completion: @escaping ([String: Any]?) -> Void
-    ) {
-        BookService.fetchManifestWithBearerToken(token, for: book, completion: completion)
+        for book: TPPBook
+    ) async -> [String: Any]? {
+        // `[String: Any]` is not `Sendable`, so the continuation carries it in
+        // `ManifestJSONBox`; the resumption lands back on this actor.
+        let boxed: ManifestJSONBox? = await withCheckedContinuation { continuation in
+            BookService.fetchManifestWithBearerToken(token, for: book) { json in
+                continuation.resume(returning: json.map(ManifestJSONBox.init))
+            }
+        }
+        return boxed?.value
     }
 }
 
@@ -95,9 +121,8 @@ final class BearerTokenMIMEGate: AudiobookVendorAdapter {
     }
 
     func resolveManifest(
-        for book: TPPBook,
-        completion: @escaping (Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError>) -> Void
-    ) {
-        wrapped.resolveManifest(for: book, completion: completion)
+        for book: TPPBook
+    ) async -> Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError> {
+        await wrapped.resolveManifest(for: book)
     }
 }

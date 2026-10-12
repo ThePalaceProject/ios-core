@@ -269,6 +269,34 @@ def test_workflow_runsOnPullRequests():
     assert "pull_request" in on
 
 
+def test_workflow_ignoreListCannotSwallowSwiftOrTheSuiteManifest():
+    """The skip list may only hold paths that cannot introduce a data race.
+
+    `paths-ignore` skips the lane when EVERY changed path matches, so the list
+    is the one place a careless addition turns a 32-minute race detector off
+    for real diffs without anything going red. Two things must stay out of it:
+    Swift sources, and `scripts/tsan-suites.txt` — the suite manifest, so that
+    adding or renaming a suite still exercises the lane that runs it.
+    """
+    on = _workflow().get("on", _workflow().get(True))
+    ignored = on["pull_request"]["paths-ignore"]
+
+    assert "scripts/tsan-suites.txt" not in ignored, (
+        "the suite manifest must not be ignored, or a new suite lands unexercised"
+    )
+    for pattern in ignored:
+        assert not pattern.endswith(".swift"), f"{pattern!r} would skip the lane for Swift changes"
+        assert pattern != "**", "'**' would disable the lane entirely"
+        assert not pattern.startswith("Palace"), (
+            f"{pattern!r} covers production or test Swift; the lane must run for it"
+        )
+    # The manifest lives under scripts/ but outside scripts/tests/, so the
+    # broad test-directory skip cannot reach it.
+    assert not any(p in ("scripts/**", "scripts/*") for p in ignored), (
+        "ignoring all of scripts/ would swallow scripts/tsan-suites.txt"
+    )
+
+
 def test_workflow_enablesTSanAndChecksLogAndSuites():
     run = _tsan_step()["run"]
     assert "-enableThreadSanitizer YES" in run

@@ -49,7 +49,8 @@ class JourneyTestCase: XCTestCase {
 
     /// Launches the app with `scenario` active. `resetState` wipes defaults,
     /// app files and the keychain first; a relaunch passes `false` to keep them.
-    func launch(scenario: String, resetState: Bool) {
+    /// `arguments` are appended to the launch arguments, e.g. a defaults override.
+    func launch(scenario: String, resetState: Bool, arguments: [String] = []) {
         guard let fixtures = Self.fixturesDirectory else {
             XCTFail("the test bundle has no Fixtures folder")
             return
@@ -58,7 +59,7 @@ class JourneyTestCase: XCTestCase {
         app.launchEnvironment["PALACE_MOCK_BACKEND_SCENARIO"] = scenario
         app.launchEnvironment["PALACE_MOCK_BACKEND_FIXTURES"] = fixtures
         app.launchEnvironment["PALACE_MOCK_BACKEND_RESET"] = resetState ? "1" : "0"
-        app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"] + arguments
         app.launch()
         self.app = app
         registerCleanup()
