@@ -97,6 +97,29 @@ def test_workflow_stays_manually_dispatchable():
     assert "workflow_dispatch" in _triggers()
 
 
+def test_superseded_runs_are_cancelled():
+    """A re-push must not leave the previous macos-26 build running.
+
+    This job averaged ~19 minutes and was the only macOS workflow in the repo
+    without a `concurrency` block, so every push to an open PR started a fresh
+    build while the old one ran to completion against a commit nobody would
+    merge. macOS minutes bill at 10x, so the waste is the expensive kind and
+    it is invisible: both runs go green and the board looks healthy.
+
+    The group must key on the PR (or ref) rather than being a constant, or one
+    PR's push would cancel another PR's build.
+    """
+    concurrency = _doc().get("concurrency")
+    assert concurrency, "workflow has no `concurrency:` block; a re-push would run two builds"
+    assert concurrency.get("cancel-in-progress") is True, (
+        f"cancel-in-progress must be true, got {concurrency.get('cancel-in-progress')!r}"
+    )
+    group = concurrency.get("group", "")
+    assert "github.event.pull_request.number" in group or "github.ref" in group, (
+        f"the group must be per-PR or per-ref, else PRs cancel each other: {group!r}"
+    )
+
+
 # --- 2. checkout ------------------------------------------------------------
 
 def _checkout_steps() -> list[dict]:
