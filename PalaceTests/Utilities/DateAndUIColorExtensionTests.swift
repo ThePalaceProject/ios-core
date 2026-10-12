@@ -35,7 +35,9 @@ final class DateExtensionsTests: XCTestCase {
     }
 
     func testTimeUntil_justOverOneDayAhead_reportsSingularDay() {
-        let future = Date().addingTimeInterval(86400 + 60)
+        // One calendar day, not 86,400 s: timeUntil() measures in Calendar.current,
+        // so a fixed interval reads as hours across a 25-hour DST day.
+        let future = Calendar.current.date(byAdding: .day, value: 1, to: Date())!.addingTimeInterval(60)
 
         let result = future.timeUntil()
 
