@@ -22,6 +22,14 @@ on:
       - 'scripts/check-nodrm-app-excludes-audioengine.sh'
       - '.github/workflows/non-drm-build.yml'
 
+# Every other macOS workflow cancels its superseded runs; this one did not, so
+# a re-push left the previous ~19-minute macos-26 build running to completion
+# against a commit nobody would merge. macOS minutes bill at 10x, so three
+# pushes to one PR spent roughly two whole builds on dead revisions.
+concurrency:
+  group: non-drm-build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: macos-26
