@@ -24,18 +24,13 @@ final class AudiobookLoaderTests: XCTestCase {
     /// AudiobookLoadError.cancelled, not whatever the pipeline would have
     /// produced. The session manager relies on this to drop completions
     /// from superseded loaders.
-    func testLoad_whenCancelledFirst_surfacesCancelledError() {
+    func testLoad_whenCancelledFirst_surfacesCancelledError() async {
         let loader = AudiobookLoader()
         let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
 
-        let exp = expectation(description: "load completes")
         var seenError: AudiobookLoadError?
         loader.cancel()
-        loader.load(book) { result in
-            if case .failure(let err) = result { seenError = err }
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: 5.0)
+        if case .failure(let err) = await loader.load(book) { seenError = err }
 
         guard case .cancelled = seenError else {
             XCTFail("expected .cancelled, got \(String(describing: seenError))")
@@ -50,18 +45,18 @@ final class AudiobookLoaderTests: XCTestCase {
     /// loader surfaces a definitive error on the network path instead of
     /// waiting forever (which was the old BookService behavior's failure
     /// mode combined with a 20s session-manager timeout).
-    func testLoad_missingLocalFileAndUnreachableURL_failsWithManifestError() {
+    ///
+    /// Integration-shaped on purpose: a bare `AudiobookLoader()` means the
+    /// production adapter chain and a real request. It carries no test deadline
+    /// (STARVE-001), so the bound is the executor's own request timeout rather
+    /// than a wall-clock number here. The trade is diagnosability: a hang
+    /// surfaces as a suite-level time allowance rather than this assertion.
+    func testLoad_missingLocalFileAndUnreachableURL_failsWithManifestError() async {
         let loader = AudiobookLoader()
         let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
 
-        let exp = expectation(description: "load completes")
-        exp.assertForOverFulfill = false
         var seenError: AudiobookLoadError?
-        loader.load(book) { result in
-            if case .failure(let err) = result { seenError = err }
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: 10.0)
+        if case .failure(let err) = await loader.load(book) { seenError = err }
 
         XCTAssertNotNil(seenError, "loader must surface an error for unreachable manifest")
         if case .cancelled = seenError { XCTFail("unexpected .cancelled") }

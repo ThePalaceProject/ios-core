@@ -121,13 +121,10 @@ final class AudiobookCrossVendorSmokeTests: XCTestCase {
         var stubbedError: Error?
         private(set) var getCallCount = 0
 
-        func GET(
-            _ reqURL: URL,
-            completion: @escaping (Data?, URLResponse?, Error?) -> Void
-        ) -> URLSessionDataTask? {
+        func fetchLicense(from reqURL: URL) async throws -> (Data, URLResponse?) {
             getCallCount += 1
-            completion(stubbedData, stubbedResponse, stubbedError)
-            return nil
+            if let stubbedError { throw stubbedError }
+            return (stubbedData ?? Data(), stubbedResponse)
         }
     }
 
@@ -165,13 +162,9 @@ final class AudiobookCrossVendorSmokeTests: XCTestCase {
             }
         )
 
-        let resolveExpectation = expectation(description: "LCP smoke resolveManifest completes")
         var observedError: AudiobookLoadError?
-        adapter.resolveManifest(for: book) { result in
+        let result = await adapter.resolveManifest(for: book)
             if case .failure(let err) = result { observedError = err }
-            resolveExpectation.fulfill()
-        }
-        await fulfillment(of: [resolveExpectation], timeout: 2.0)
 
         XCTAssertEqual(factoryCallCount, 1,
                        "LCP wire-through: factory must be invoked exactly once when local source resolves")
@@ -200,15 +193,10 @@ final class AudiobookCrossVendorSmokeTests: XCTestCase {
         var stubbedError: Error?
         private(set) var requestedURLs: [URL] = []
 
-        func fetchData(
-            from url: URL,
-            completion: @escaping (Data?, URLResponse?, Error?) -> Void
-        ) {
+        func fetchData(from url: URL) async throws -> (Data, URLResponse?) {
             requestedURLs.append(url)
-            let box = SendableBox(value: completion)
-            DispatchQueue.main.async { [stubbedData, stubbedResponse, stubbedError] in
-                box.value(stubbedData, stubbedResponse, stubbedError)
-            }
+            if let stubbedError { throw stubbedError }
+            return (stubbedData ?? Data(), stubbedResponse)
         }
     }
 
@@ -220,14 +208,10 @@ final class AudiobookCrossVendorSmokeTests: XCTestCase {
 
         func fetchManifest(
             with token: MyBooksSimplifiedBearerToken,
-            for book: TPPBook,
-            completion: @escaping ([String: Any]?) -> Void
-        ) {
+            for book: TPPBook
+        ) async -> [String: Any]? {
             callCount += 1
-            let box = SendableBox(value: (json: stubbedJSON, completion: completion))
-            DispatchQueue.main.async {
-                box.value.completion(box.value.json)
-            }
+            return stubbedJSON
         }
     }
 
@@ -255,13 +239,9 @@ final class AudiobookCrossVendorSmokeTests: XCTestCase {
 
         let adapter = BearerTokenAdapter(network: network, manifestFetcher: fetcher)
 
-        let resolveExpectation = expectation(description: "BearerToken smoke resolveManifest completes")
         var observed: (json: [String: Any], decryptor: DRMDecryptor?)?
-        adapter.resolveManifest(for: book) { result in
+        let result = await adapter.resolveManifest(for: book)
             if case .success(let value) = result { observed = value }
-            resolveExpectation.fulfill()
-        }
-        await fulfillment(of: [resolveExpectation], timeout: 2.0)
 
         assertSingleTrackManifest(observed)
         XCTAssertEqual(network.requestedURLs.count, 1,
@@ -287,15 +267,10 @@ final class AudiobookCrossVendorSmokeTests: XCTestCase {
         var stubbedError: Error?
         private(set) var requestedURLs: [URL] = []
 
-        func fetchData(
-            from url: URL,
-            completion: @escaping (Data?, URLResponse?, Error?) -> Void
-        ) {
+        func fetchData(from url: URL) async throws -> (Data, URLResponse?) {
             requestedURLs.append(url)
-            let box = SendableBox(value: completion)
-            DispatchQueue.main.async { [stubbedData, stubbedResponse, stubbedError] in
-                box.value(stubbedData, stubbedResponse, stubbedError)
-            }
+            if let stubbedError { throw stubbedError }
+            return (stubbedData ?? Data(), stubbedResponse)
         }
     }
 
@@ -314,13 +289,9 @@ final class AudiobookCrossVendorSmokeTests: XCTestCase {
 
         let adapter = OpenAccessAdapter(network: network)
 
-        let resolveExpectation = expectation(description: "OpenAccess smoke resolveManifest completes")
         var observed: (json: [String: Any], decryptor: DRMDecryptor?)?
-        adapter.resolveManifest(for: book) { result in
+        let result = await adapter.resolveManifest(for: book)
             if case .success(let value) = result { observed = value }
-            resolveExpectation.fulfill()
-        }
-        await fulfillment(of: [resolveExpectation], timeout: 2.0)
 
         assertSingleTrackManifest(observed)
         XCTAssertEqual(network.requestedURLs.count, 1,
@@ -387,13 +358,9 @@ final class AudiobookCrossVendorSmokeTests: XCTestCase {
     /// branch so refresh stays off the wire and the case is keychain-free.
     private final class StubLocalTokenRefresher: BearerTokenRefreshing {
         private(set) var callCount: Int = 0
-        func refreshToken(
-            from fulfillURL: URL,
-            completion: @escaping (MyBooksSimplifiedBearerToken?) -> Void
-        ) {
+        func refreshToken(from fulfillURL: URL) async -> MyBooksSimplifiedBearerToken? {
             callCount += 1
-            let box = SendableBox(value: completion)
-            DispatchQueue.main.async { box.value(nil) }
+            return nil
         }
     }
 
@@ -425,13 +392,9 @@ final class AudiobookCrossVendorSmokeTests: XCTestCase {
         XCTAssertTrue(adapter.canHandle(book),
                       "LocalFile.canHandle must return true when both URL and file-exists check succeed")
 
-        let resolveExpectation = expectation(description: "LocalFile smoke resolveManifest completes")
         var observed: (json: [String: Any], decryptor: DRMDecryptor?)?
-        adapter.resolveManifest(for: book) { result in
+        let result = await adapter.resolveManifest(for: book)
             if case .success(let value) = result { observed = value }
-            resolveExpectation.fulfill()
-        }
-        await fulfillment(of: [resolveExpectation], timeout: 2.0)
 
         assertSingleTrackManifest(observed)
         XCTAssertEqual(fileReader.readURLs.count, 1,

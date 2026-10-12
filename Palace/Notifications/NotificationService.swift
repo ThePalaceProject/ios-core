@@ -549,90 +549,92 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
                 )
                 return
             }
-            self.performTokenRegistration(for: live)
+            await self.performTokenRegistration(for: live)
         }
     }
 
     /// Registration proper. Split out of `updateToken()` so the readiness gate
     /// above reads as one decision; the body below is unchanged behaviour.
-    private func performTokenRegistration(for account: Account) {
-        account.getProfileDocument { [weak self] profileDocument in
+    ///
+    /// `async` because `getProfileDocument` is awaited now (PP-5301). The body
+    /// is otherwise unchanged; `self` no longer needs the weak dance because
+    /// the awaiting frame holds it.
+    private func performTokenRegistration(for account: Account) async {
+        let profileDocument = await account.getProfileDocument()
+        guard let profileDocument else {
+            // Resolve the auth state for the account this attempt is FOR.
+            // Reading `currentUserAccount` here would report the wrong
+            // library's state if a switch landed mid-fetch — the same
+            // cross-account drift that made `markTokenRegistered` take an
+            // explicit account.
+            let currentAuthState = self.accountsManager.userAccount(for: account.uuid).authState
+
+            // A signed-out patron has nothing to register. Deferring is the
+            // CORRECT outcome, not a failure — the observed traffic includes
+            // this case (a Settings library switch to a library the patron
+            // is not signed in to). Reporting it as an error is noise that
+            // hides the real failures.
+            guard Self.shouldReportProfileFetchFailure(authState: currentAuthState) else {
+                Log.info(#file, "[FCM_REG] SKIP: patron signed out — nothing to register")
+                return
+            }
+
+            // Wording corrected in PP-4958. This previously blamed
+            // "SAML-stale credentials, no credentials, network failure",
+            // which is what this volume was triaged against for months and
+            // is not what the device logs showed: the dominant cause was an
+            // authentication document that had not loaded yet, so this
+            // method returned on its first guard without issuing a request.
+            // That is now gated by a readiness wait in `updateToken()`, so
+            // reaching here means the profile fetch genuinely failed.
+            Log.warn(#file, "[FCM_REG] FAIL: profile_doc_missing — /patrons/me/ returned nil after the account was ready. Suspect credentials or the network. authState=\(currentAuthState)")
+            TPPErrorLogger.logError(
+                nil,
+                summary: "[FCM_REG] token registration deferred: profile fetch returned nil",
+                metadata: [
+                    // Same key spelling as every sibling non-fatal in this
+                    // file. Support triages these together, and a
+                    // Crashlytics query on `accountUUID` silently missed
+                    // the arms that spelled it `uuid` or omitted it.
+                    "accountUUID": account.uuid,
+                    "authState": String(describing: currentAuthState),
+                    "hasUpdatedToken": account.hasUpdatedToken
+                ]
+            )
+            return
+        }
+        guard let endpointHref = profileDocument.linksWith(.deviceRegistration).first?.href,
+              let endpointUrl = URL(string: endpointHref)
+        else {
+            Log.warn(#file, "[FCM_REG] FAIL: device_registration_link_missing — profile doc returned but had no deviceRegistration link. Library may not support push.")
+            return
+        }
+        Messaging.messaging().token { [weak self] token, error in
             guard let self else { return }
-            guard let profileDocument else {
-                // Resolve the auth state for the account this attempt is FOR.
-                // Reading `currentUserAccount` here would report the wrong
-                // library's state if a switch landed mid-fetch — the same
-                // cross-account drift that made `markTokenRegistered` take an
-                // explicit account.
-                let currentAuthState = self.accountsManager.userAccount(for: account.uuid).authState
-
-                // A signed-out patron has nothing to register. Deferring is the
-                // CORRECT outcome, not a failure — the observed traffic includes
-                // this case (a Settings library switch to a library the patron
-                // is not signed in to). Reporting it as an error is noise that
-                // hides the real failures.
-                guard Self.shouldReportProfileFetchFailure(authState: currentAuthState) else {
-                    Log.info(#file, "[FCM_REG] SKIP: patron signed out — nothing to register")
-                    return
-                }
-
-                // Wording corrected in PP-4958. This previously blamed
-                // "SAML-stale credentials, no credentials, network failure",
-                // which is what this volume was triaged against for months and
-                // is not what the device logs showed: the dominant cause was an
-                // authentication document that had not loaded yet, so this
-                // method returned on its first guard without issuing a request.
-                // That is now gated by a readiness wait in `updateToken()`, so
-                // reaching here means the profile fetch genuinely failed.
-                Log.warn(#file, "[FCM_REG] FAIL: profile_doc_missing — /patrons/me/ returned nil after the account was ready. Suspect credentials or the network. authState=\(currentAuthState)")
-                TPPErrorLogger.logError(
-                    nil,
-                    summary: "[FCM_REG] token registration deferred: profile fetch returned nil",
-                    metadata: [
-                        // Same key spelling as every sibling non-fatal in this
-                        // file. Support triages these together, and a
-                        // Crashlytics query on `accountUUID` silently missed
-                        // the arms that spelled it `uuid` or omitted it.
-                        "accountUUID": account.uuid,
-                        "authState": String(describing: currentAuthState),
-                        "hasUpdatedToken": account.hasUpdatedToken
-                    ]
-                )
+            guard let token else {
+                Log.warn(#file, "[FCM_REG] FAIL: fcm_token_unavailable — Firebase Messaging returned no token. error=\(error?.localizedDescription ?? "nil")")
                 return
             }
-            guard let endpointHref = profileDocument.linksWith(.deviceRegistration).first?.href,
-                  let endpointUrl = URL(string: endpointHref)
-            else {
-                Log.warn(#file, "[FCM_REG] FAIL: device_registration_link_missing — profile doc returned but had no deviceRegistration link. Library may not support push.")
-                return
-            }
-            Messaging.messaging().token { [weak self] token, error in
+            self.checkTokenExists(token, endpointUrl: endpointUrl) { [weak self] exists, _ in
                 guard let self else { return }
-                guard let token else {
-                    Log.warn(#file, "[FCM_REG] FAIL: fcm_token_unavailable — Firebase Messaging returned no token. error=\(error?.localizedDescription ?? "nil")")
+                guard let exists = exists else {
+                    // Inconclusive (non-200/404 status). Leave flag false so
+                    // the next sign-in / account-change observer retries.
+                    Log.warn(#file, "[FCM_REG] FAIL: exists_check_inconclusive — token-exists check returned non-200/non-404 (likely 401 or 5xx). Will retry on next sign-in / account-change.")
                     return
                 }
-                self.checkTokenExists(token, endpointUrl: endpointUrl) { [weak self] exists, _ in
-                    guard let self else { return }
-                    guard let exists = exists else {
-                        // Inconclusive (non-200/404 status). Leave flag false so
-                        // the next sign-in / account-change observer retries.
-                        Log.warn(#file, "[FCM_REG] FAIL: exists_check_inconclusive — token-exists check returned non-200/non-404 (likely 401 or 5xx). Will retry on next sign-in / account-change.")
-                        return
-                    }
-                    if exists {
-                        Log.info(#file, "[FCM_REG] SUCCESS: token_already_registered — CM has the FCM token, no save needed")
-                        self.markTokenRegistered(for: account)
-                    } else {
-                        self.saveToken(token, endpointUrl: endpointUrl) { [weak self] succeeded in
-                            guard let self else { return }
-                            guard succeeded else {
-                                Log.warn(#file, "[FCM_REG] FAIL: save_failed — PUT to deviceRegistration endpoint did not return 2xx. CM does not have the token. Will retry on next sign-in / account-change.")
-                                return
-                            }
-                            Log.info(#file, "[FCM_REG] SUCCESS: token_saved — CM accepted the new FCM token (PUT 2xx)")
-                            self.markTokenRegistered(for: account)
+                if exists {
+                    Log.info(#file, "[FCM_REG] SUCCESS: token_already_registered — CM has the FCM token, no save needed")
+                    self.markTokenRegistered(for: account)
+                } else {
+                    self.saveToken(token, endpointUrl: endpointUrl) { [weak self] succeeded in
+                        guard let self else { return }
+                        guard succeeded else {
+                            Log.warn(#file, "[FCM_REG] FAIL: save_failed — PUT to deviceRegistration endpoint did not return 2xx. CM does not have the token. Will retry on next sign-in / account-change.")
+                            return
                         }
+                        Log.info(#file, "[FCM_REG] SUCCESS: token_saved — CM accepted the new FCM token (PUT 2xx)")
+                        self.markTokenRegistered(for: account)
                     }
                 }
             }
@@ -703,8 +705,14 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         }
     }
 
+    /// Five sign-out and library-removal call sites invoke this and return, so
+    /// it keeps a synchronous signature and starts the work itself. The profile
+    /// fetch is awaited inside (PP-5301), which is also what puts the
+    /// continuation on the main actor rather than wherever the network layer
+    /// delivered.
     func deleteToken(for account: Account) {
-        account.getProfileDocument { profileDocument in
+        Task {
+            let profileDocument = await account.getProfileDocument()
             guard let endpointHref = profileDocument?.linksWith(.deviceRegistration).first?.href,
                   let endpointUrl = URL(string: endpointHref)
             else {

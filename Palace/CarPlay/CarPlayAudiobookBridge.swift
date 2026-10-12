@@ -24,6 +24,10 @@ enum CarPlayPlaybackError: Error {
     case drmError
     case notDownloaded
     case unknown
+    /// The open returned `.alreadyLoading`: a stop or a newer open replaced it
+    /// (PP-5302), the same book was already loading, or the LCP content gate
+    /// found a newer open. Nothing to report to the patron.
+    case superseded
 
     init(from sessionError: AudiobookSessionError) {
         switch sessionError {
@@ -33,8 +37,28 @@ enum CarPlayPlaybackError: Error {
             self = .notDownloaded
         case .networkUnavailable:
             self = .networkError
+        case .alreadyLoading:
+            self = .superseded
         default:
             self = .unknown
+        }
+    }
+
+    /// The CarPlay alert for this failure, or nil when none should be shown.
+    var alertContent: (title: String, message: String)? {
+        switch self {
+        case .authenticationRequired:
+            return (Strings.CarPlay.Error.authRequired, Strings.CarPlay.Error.authMessage)
+        case .networkError:
+            return (Strings.CarPlay.Error.offline, Strings.CarPlay.Error.offlineMessage)
+        case .drmError:
+            return (Strings.CarPlay.Error.playbackFailed, Strings.CarPlay.Error.drmMessage)
+        case .notDownloaded:
+            return (Strings.CarPlay.Error.notDownloaded, Strings.CarPlay.Error.downloadRequired)
+        case .unknown:
+            return (Strings.CarPlay.Error.playbackFailed, Strings.CarPlay.Error.tryAgain)
+        case .superseded:
+            return nil
         }
     }
 }
