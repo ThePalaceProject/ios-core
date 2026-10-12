@@ -60,6 +60,11 @@ XCODEBUILD = textwrap.dedent("""\
     # STUB_INTERRUPT_IN_FLIGHT logs the first class's test as failed in 0.000 s
     # after the INTERRUPTED line, as Xcode does for the test it cuts off (run
     # 38278109196); =bundle also records it Failed in the bundle.
+    # STUB_RERUN_SAVE_FAIL: a method-level re-run (the second chance) runs its
+    # tests, then cannot save the bundle and exits 73 (run 38292451781); with
+    # =nobundle the bundle holds nothing readable, and with =loggedfail the log
+    # shows a failed test the bundle records as passed; =noresult leaves a
+    # readable bundle that records none of the re-run tests and logs no failure.
     echo "$*" >> "$STUB_LOG"
     bundle=""; prev=""; ids=()
     for a in "$@"; do
@@ -139,7 +144,7 @@ XCODEBUILD = textwrap.dedent("""\
         continue
       fi
       IFS=/ read -r b c m <<< "$id"
-      rerun=0; [ -n "$m" ] && rerun=1; m="${m:-t}"
+      rerun=0; [ -n "$m" ] && rerun=1 && any_rerun=1; m="${m:-t}"
       result="Passed"; msg=""
       if [ "$b/$c" = "${STUB_KILL:-}" ] && { [ $rerun -eq 0 ] || [ -n "${STUB_KILL_AGAIN:-}" ]; }; then
         result="Failed"; msg="Test exceeded execution time allowance of 2 minutes"
@@ -149,6 +154,15 @@ XCODEBUILD = textwrap.dedent("""\
       echo "$b|$c|$m|$result|$msg" >> "$bundle/cases"
     done
     [ -n "${late:-}" ] && [ $failed -eq 0 ] && echo "** TEST EXECUTE SUCCEEDED **"
+    if [ -n "${STUB_RERUN_SAVE_FAIL:-}" ] && [ -n "${any_rerun:-}" ]; then
+      touch "$bundle/nocoverage"
+      [ "$STUB_RERUN_SAVE_FAIL" = "nobundle" ] && rm -f "$bundle/cases"
+      [ "$STUB_RERUN_SAVE_FAIL" = "noresult" ] && : > "$bundle/cases"
+      [ "$STUB_RERUN_SAVE_FAIL" = "loggedfail" ] && echo "Test Case '-[PalaceTests.A t]' failed (0.010 seconds)." && failed=1
+      [ $failed -eq 0 ] && echo "** TEST EXECUTE SUCCEEDED **"
+      echo "Error saving invocation record to resultBundlePath: Could not write the 1_Test action log because the log hasn't finished recording"
+      exit 73
+    fi
     [ $failed -eq 1 ] && exit 65
     exit "${STUB_XCB_EXIT:-0}"
     """)
@@ -165,6 +179,11 @@ XCRUN = textwrap.dedent("""\
       mkdir -p "$out"
       # One input without a coverage report leaves the merged bundle unreadable to xccov.
       for b in "$@"; do cat "$b/cases" >> "$out/cases"; [ -e "$b/nocoverage" ] && touch "$out/nocoverage"; done; exit 0
+    fi
+    if [ "$1 $2" = "xccov view" ]; then
+      b="${@: -1}"
+      [ -e "$b/cases" ] && [ ! -e "$b/nocoverage" ] || { echo "error: Failed to load coverage report" >&2; exit 1; }
+      exit 0
     fi
     if [ "$1 $2 $3 $4" = "xcresulttool get test-results tests" ]; then
       [ -e "$6/cases" ] || { echo "error: $6 is not a result bundle" >&2; exit 1; }
@@ -309,6 +328,9 @@ def test_a_kill_that_passes_alone_passes_the_shard_and_says_so(env):
     assert "-parallel-testing-enabled NO" in rerun
     assert "::warning title=Second chance for allowance kills::" in r.stdout
     assert "passed on the second chance" in r.stdout
+    tests = json.dumps(json.loads((tmp_path / "out/tests.json").read_text()))
+    assert '"nodeIdentifier": "A/t()", "result": "Passed"' in tests, "the re-run is merged, not hidden"
+    assert "rerun.xcresult" not in _partial(tmp_path)
 
 
 def test_a_kill_that_repeats_fails_the_shard(env):
@@ -736,3 +758,44 @@ def test_a_failure_before_the_interrupt_is_not_excused_by_a_test_in_flight(env):
              STUB_INTERRUPT_FAILED="1", STUB_INTERRUPT_IN_FLIGHT="log")
     assert r.returncode == 1
     assert "::error title=Interrupted pass recorded a test failure::" in r.stdout
+
+
+def test_a_second_chance_that_passed_but_could_not_save_its_bundle_passes(env):
+    """Run 38292451781: both re-run tests passed, then the bundle save failed with exit 73."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_KILL="PalaceTests/A", STUB_RERUN_SAVE_FAIL="1")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "Second-chance pass exit code: 73" in r.stdout
+    assert "::warning title=Second chance exited 73 after its tests passed::" in r.stdout
+    assert not _results_lack_coverage(tmp_path), "the coverage-less bundle is not merged"
+    assert "rerun.xcresult" in _partial(tmp_path)
+
+
+def test_a_second_chance_failure_is_fatal_whatever_the_exit_code(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_KILL="PalaceTests/A", STUB_KILL_AGAIN="1", STUB_RERUN_SAVE_FAIL="1")
+    assert r.returncode == 1
+    assert "Allowance kill repeated" in r.stdout
+
+
+def test_a_second_chance_with_no_readable_result_fails_the_shard(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_KILL="PalaceTests/A", STUB_RERUN_SAVE_FAIL="nobundle")
+    assert r.returncode == 1
+    assert "Shard 0 passed" not in r.stdout
+
+
+def test_a_second_chance_failure_in_the_log_is_fatal_even_if_the_bundle_says_passed(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_KILL="PalaceTests/A", STUB_RERUN_SAVE_FAIL="loggedfail")
+    assert r.returncode == 1
+    assert "Allowance kill repeated" in r.stdout
+
+
+def test_a_second_chance_that_records_no_result_fails_even_without_a_failure_line(env):
+    """A runner that never connects exits non-zero, logs no failed test, and runs nothing."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_KILL="PalaceTests/A", STUB_RERUN_SAVE_FAIL="noresult")
+    assert r.returncode == 1
+    assert "did not run on the second chance" in r.stdout
+    assert "Shard 0 passed" not in r.stdout

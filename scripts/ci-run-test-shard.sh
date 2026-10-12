@@ -416,17 +416,39 @@ if [ "$TEST_EXIT" -ne 0 ]; then
             echo "::warning title=Second chance for allowance kills::shard $SHARD: ${#IDS[@]} test(s) were killed at the execution-time allowance, which -retry-tests-on-failure does not retry. Re-running only those, once, in a fresh test process: ${IDS[*]}"
             run_pass "$OUT/rerun.xcresult" once -parallel-testing-enabled NO "${KILL_ARGS[@]}"
             RERUN_EXIT=$PASS_EXIT
+            RERUN_LOG="$PASS_LOG"
             echo "Second-chance pass exit code: $RERUN_EXIT"
+            # The verdict is what the re-run tests did, read from the bundle and
+            # the log, not xcodebuild's exit code: after every test passed and
+            # "** TEST EXECUTE SUCCEEDED **", xcodebuild can still exit 73 because it
+            # could not finish saving the bundle ("Could not write the 1_Test
+            # action log because the log hasn't finished recording", run
+            # 38292451781), while the bundle still holds the results. A bundle
+            # that cannot be read stops the script, which fails the shard.
             if [ -d "$OUT/rerun.xcresult" ]; then
                 xcrun xcresulttool get test-results tests --path "$OUT/rerun.xcresult" > "$OUT/rerun-tests.json"
-                if [ "$RERUN_EXIT" -eq 0 ] && python3 "$SHARDS_PY" check-rerun --tests-json "$OUT/rerun-tests.json" "${IDS[@]}"; then
+                if python3 "$SHARDS_PY" check-rerun --tests-json "$OUT/rerun-tests.json" "${IDS[@]}" \
+                        && ! grep -qE "$XCB_TEST_FAILED" "$RERUN_LOG"; then
                     TEST_EXIT=0
+                    if [ "$RERUN_EXIT" -ne 0 ]; then
+                        echo "::warning title=Second chance exited $RERUN_EXIT after its tests passed::shard $SHARD: xcodebuild exited $RERUN_EXIT, but the bundle records every re-run test as passed and the log has no failed test. Judged by the test results."
+                    fi
                     echo "::warning title=Allowance kills passed on the second chance::shard $SHARD: ${IDS[*]} — each was killed once at the allowance and passed when re-run alone. Read the spindump summary below before treating this as the test's defect or as noise."
                 else
                     echo "::error title=Allowance kill repeated::shard $SHARD: the second chance did not pass for ${IDS[*]}"
                 fi
-                merge_into_results "$OUT/TestResults.xcresult" "$OUT/rerun.xcresult"
-                xcrun xcresulttool get test-results tests --path "$OUT/TestResults.xcresult" > "$OUT/tests.json"
+                # A bundle that failed to save has its results but no coverage
+                # report (run 38292451781), and merging it would leave the
+                # shard's coverage unreadable. It is kept in partial/ instead;
+                # TestResults keeps the killed run, and the verdict above stands.
+                # A bundle that saved normally carries coverage (run 37978496787).
+                if xcrun xccov view --report --only-targets "$OUT/rerun.xcresult" >/dev/null 2>&1; then
+                    merge_into_results "$OUT/TestResults.xcresult" "$OUT/rerun.xcresult"
+                    xcrun xcresulttool get test-results tests --path "$OUT/TestResults.xcresult" > "$OUT/tests.json"
+                else
+                    echo "::warning title=Second-chance bundle has no coverage report::shard $SHARD: it is kept in partial/ rather than merged, so the shard results show the killed run of ${IDS[*]}; the second chance's own results are in partial/rerun.xcresult and the log above."
+                    keep_partial "$OUT/rerun.xcresult" "$RERUN_LOG"
+                fi
             else
                 echo "::error::the second-chance pass wrote no result bundle"
             fi
