@@ -157,7 +157,7 @@ public final class ActiveTasksStore {
     // MARK: - Send / download
 
     /// Create + resume a data task. The task is auto-registered in the active
-    /// tasks store so it participates in pause/resume/cancel.
+    /// tasks store so account-switch cancellation can reach it.
     @discardableResult
     public func send(_ request: URLRequest) -> URLSessionDataTask {
         let task = urlSession.dataTask(with: request)
