@@ -41,6 +41,13 @@ XCODEBUILD = textwrap.dedent("""\
     # 26.6 fails the test in flight when it gives up on it (run 36952741418);
     # "nomarker" exits without the marker; any other value logs it before the
     # marker. STUB_CRASH_EXIT overrides 134.
+    # STUB_INTERRUPT=parallel|serial: the first pass of that kind is stopped at
+    # the shard budget (runs 37947147417, 37962677753): the INTERRUPTED marker,
+    # exit 73, and a bundle marked "nocoverage" that holds the runner failure
+    # only, or with STUB_INTERRUPT_RAN its classes as passed (one Failed with
+    # STUB_INTERRUPT_FAILED, killed if it is STUB_KILL), or nothing readable with
+    # STUB_INTERRUPT_UNREADABLE. STUB_INTERRUPT_LOGGED_FAILURE logs a failed
+    # test that the bundle does not record, as for the test in flight.
     echo "$*" >> "$STUB_LOG"
     bundle=""; prev=""; ids=()
     for a in "$@"; do
@@ -61,6 +68,34 @@ XCODEBUILD = textwrap.dedent("""\
       fi
       case "${STUB_CRASH_FAILED:-}" in after|nomarker) echo "$failure";; esac
       exit "${STUB_CRASH_EXIT:-134}"
+    fi
+    kind=serial; case "$*" in *"-parallel-testing-enabled YES"*) kind=parallel;; esac
+    interrupted="$STUB_LOG.interrupted"
+    if [ "${STUB_INTERRUPT:-}" = "$kind" ] && [ ! -e "$interrupted" ]; then
+      touch "$interrupted"
+      mkdir -p "$bundle"; touch "$bundle/nocoverage"
+      if [ -z "${STUB_INTERRUPT_UNREADABLE:-}" ]; then
+        : > "$bundle/cases"
+        if [ -n "${STUB_INTERRUPT_RAN:-}" ]; then
+          for id in "${ids[@]}"; do
+            IFS=/ read -r b c m <<< "$id"
+            result="Passed"; msg=""
+            [ "$b/$c" = "${STUB_KILL:-}" ] && { result="Failed"; msg="Test exceeded execution time allowance of 2 minutes"; }
+            if [ -n "${STUB_INTERRUPT_FAILED:-}" ]; then
+              result="Failed"; msg="XCTAssertEqual failed"
+              echo "Test case '$c.t()' failed on 'Clone 1 of iPhone 16 Pro - Palace (123)' (0.010 seconds)"
+            fi
+            echo "$b|$c|t|$result|$msg" >> "$bundle/cases"
+          done
+        else
+          echo "PalaceTests|System Failures|Palace (6129) encountered an error|Failed|The test runner hung before establishing connection." >> "$bundle/cases"
+        fi
+      fi
+      if [ -n "${STUB_INTERRUPT_LOGGED_FAILURE:-}" ]; then
+        echo "Test Case '-[PalaceTests.Iso t]' failed (0.010 seconds)."
+      fi
+      echo "** TEST EXECUTE INTERRUPTED **"
+      exit 73
     fi
     mkdir -p "$bundle"; : > "$bundle/cases"
     failed=0
@@ -100,7 +135,8 @@ XCRUN = textwrap.dedent("""\
       # A bundle xcodebuild abandoned has no Info.plist, and merge refuses it.
       for b in "$@"; do [ -e "$b/cases" ] || { echo "error: $b is not a result bundle" >&2; exit 1; }; done
       mkdir -p "$out"
-      for b in "$@"; do cat "$b/cases" >> "$out/cases"; done; exit 0
+      # One input without a coverage report leaves the merged bundle unreadable to xccov.
+      for b in "$@"; do cat "$b/cases" >> "$out/cases"; [ -e "$b/nocoverage" ] && touch "$out/nocoverage"; done; exit 0
     fi
     if [ "$1 $2 $3 $4" = "xcresulttool get test-results tests" ]; then
       [ -e "$6/cases" ] || { echo "error: $6 is not a result bundle" >&2; exit 1; }
@@ -482,3 +518,95 @@ def test_a_failed_shard_keeps_its_pass_logs(env):
     assert r.returncode == 1
     assert _partial(tmp_path) == ["parallel.log", "serial.log"]
     assert "Test case 'A.t()' failed" in (tmp_path / "out/partial/parallel.log").read_text()
+
+
+# --------------------------------------------------------------------------
+# A pass stopped at the shard budget (runs 37947147417, 37962677753)
+# --------------------------------------------------------------------------
+
+def _results_lack_coverage(tmp_path):
+    return (tmp_path / "out/TestResults.xcresult/nocoverage").exists()
+
+
+def test_an_interrupted_pass_with_no_failure_is_set_aside_and_its_classes_rerun(env):
+    """The interrupted bundle has no coverage report, so merging it breaks the
+    coverage report for the whole run; its classes must run again instead."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_INTERRUPT="serial")
+    assert r.returncode == 0, r.stdout + r.stderr
+    calls = _calls(tmp_path)
+    assert len(calls) == 3, "parallel, interrupted serial, relaunch"
+    assert _selection(calls[2]) == ["-only-testing:PalaceTests/Iso"]
+    assert "-parallel-testing-enabled NO" in calls[2]
+    assert not _results_lack_coverage(tmp_path)
+    assert "serial-interrupted.xcresult" in _partial(tmp_path) and "serial.log" in _partial(tmp_path)
+    assert "::warning title=Pass interrupted; its classes run again::" in r.stdout
+    report = json.loads((tmp_path / "out/shard-report.json").read_text())
+    assert report["missing"] == [] and "PalaceTests/Iso" in report["executed"]
+
+
+def test_classes_that_finished_before_the_interruption_run_again(env):
+    """A class that completed in the interrupted pass has no coverage either,
+    so it is relaunched too, not only the ones that never started."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_INTERRUPT="parallel", STUB_INTERRUPT_RAN="1")
+    assert r.returncode == 0, r.stdout + r.stderr
+    relaunch = _calls(tmp_path)[-1]
+    assert _selection(relaunch) == ["-only-testing:PalaceTests/A", "-only-testing:TenPrintCoverTests/T"]
+    assert "-parallel-testing-enabled YES" in relaunch
+    assert not _results_lack_coverage(tmp_path)
+
+
+def test_a_failure_in_an_interrupted_pass_fails_the_shard_and_stays_in_the_results(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_INTERRUPT="serial", STUB_INTERRUPT_RAN="1", STUB_INTERRUPT_FAILED="1")
+    assert r.returncode == 1
+    assert "::error title=Interrupted pass recorded a test failure::" in r.stdout
+    assert "Shard 0 passed" not in r.stdout
+    tests = json.loads((tmp_path / "out/tests.json").read_text())
+    assert '"result": "Failed"' in json.dumps(tests), "the failure is still in the shard results"
+
+
+def test_an_interrupted_kill_is_not_excused_by_the_second_chance(env):
+    """A kill would otherwise get a second chance and pass the shard while the
+    interrupted bundle, merged, still breaks the coverage report."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_INTERRUPT="serial", STUB_INTERRUPT_RAN="1", STUB_KILL="PalaceTests/Iso")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "interrupted-failure=1" in r.stdout
+
+
+def test_an_unreadable_interrupted_bundle_fails_the_shard(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_INTERRUPT="serial", STUB_INTERRUPT_UNREADABLE="1")
+    assert r.returncode == 1
+    assert "::error title=Interrupted pass unreadable::" in r.stdout
+
+
+def test_a_shard_whose_only_pass_was_interrupted_recovers_on_relaunch(env):
+    """With the one bundle set aside there is nothing to merge until the relaunch."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, shard=1, STUB_INTERRUPT="parallel")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert len(_calls(tmp_path)) == 2
+    assert (tmp_path / "out/TestResults.xcresult").is_dir()
+    assert not _results_lack_coverage(tmp_path)
+
+
+def test_a_failure_only_in_the_log_of_an_interrupted_pass_fails_the_shard(env):
+    """The test running at the interrupt can be logged as failed with no result in the bundle."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_INTERRUPT="serial", STUB_INTERRUPT_LOGGED_FAILURE="1")
+    assert r.returncode == 1
+    assert "::error title=Interrupted pass recorded a test failure::" in r.stdout
+
+
+def test_a_crash_retry_that_is_interrupted_is_set_aside_beside_the_crashed_bundle(env):
+    """The retry's own log carries the marker, and both bundles stay in partial/."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_CRASH="1", STUB_INTERRUPT="parallel")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not _results_lack_coverage(tmp_path)
+    assert {"parallel.xcresult", "parallel-interrupted.xcresult"} <= set(_partial(tmp_path))
+    assert _selection(_calls(tmp_path)[-1]) == ["-only-testing:PalaceTests/A",
+                                               "-only-testing:TenPrintCoverTests/T"]

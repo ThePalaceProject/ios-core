@@ -28,6 +28,9 @@
 #     it no longer needs 4 of them. CI_TEST_WORKERS overrides.
 #   * One second chance for allowance kills (see second_chance below).
 #   * One relaunch for classes a test runner never ran (see relaunch below).
+#   * A pass stopped at the shard budget with no test failure is set aside and
+#     its classes relaunched, because its bundle has no coverage report (see
+#     interrupted below).
 #   * One retry of a pass that xcodebuild itself crashed with no test failure
 #     recorded (see run_pass below).
 #
@@ -208,6 +211,7 @@ run_pass() {
     local args=(${retry[@]+"${retry[@]}"} "${TIMEOUT_ARGS[@]}" "$@")
     local name; name="$(basename "$bundle" .xcresult)"
     local log="$OUT/$name.log"
+    PASS_LOG="$log"
     run_xcodebuild "$bundle" "$log" "${args[@]}"
     xcodebuild_crashed "$log" || return 0
     if [ -n "$(failures_before_crash "$log")" ]; then
@@ -228,10 +232,17 @@ run_pass() {
         exit 1
     fi
     if [ -d "$fresh" ]; then mv "$fresh" "$bundle"; fi
+    PASS_LOG="$OUT/$name-crash-retry.log"
     echo "Shard $SHARD, $name pass: the retry after the crash exited $PASS_EXIT"
 }
 
-merge_into_results() {  # bundles... -> $OUT/TestResults.xcresult
+merge_into_results() {  # bundles... -> $OUT/TestResults.xcresult; absent paths are skipped
+    local b present=()
+    for b in "$@"; do
+        if [ -d "$b" ]; then present+=("$b"); fi
+    done
+    set -- ${present[@]+"${present[@]}"}
+    [ $# -gt 0 ] || return 0
     if [ $# -eq 1 ]; then
         mv "$1" "$OUT/TestResults.xcresult"
         return
@@ -241,6 +252,42 @@ merge_into_results() {  # bundles... -> $OUT/TestResults.xcresult
     mv "$OUT/merged.xcresult" "$OUT/TestResults.xcresult"
 }
 
+# interrupted: when the shard budget above stops a pass, xcodebuild finalizes
+# its bundle with the test results it has but without a coverage report, and
+# `xccov view --report` cannot read a merged bundle that contains one ("Failed
+# to load coverage report ... action.xccovreport", runs 37947147417 and
+# 37962677753), so the coverage gate reads the run as incomplete. When such a
+# pass recorded no test failure, in its bundle or its log (the test running at
+# the interrupt may be logged as failed without a result), its bundle is set
+# aside instead of merged:
+# every class it was given is then absent from TestResults.xcresult, and the
+# relaunch below runs all of them again, coverage included. When it recorded a
+# test failure, or its results cannot be read, it is merged as before and the
+# shard fails, so a failure is never dropped with the bundle.
+XCB_INTERRUPTED='** TEST EXECUTE INTERRUPTED **'
+INTERRUPTED_FAILED=0
+set_aside_if_interrupted() {  # $1 = bundle, $2 = the log of the run that wrote it
+    local bundle="$1" log="$2" name status=0
+    name="$(basename "$bundle" .xcresult)"
+    [ -d "$bundle" ] && grep -qF "$XCB_INTERRUPTED" "$log" || return 0
+    if ! xcrun xcresulttool get test-results tests --path "$bundle" > "$OUT/$name-tests.json"; then
+        INTERRUPTED_FAILED=1
+        echo "::error title=Interrupted pass unreadable::shard $SHARD, $name pass: xcodebuild was interrupted and its result bundle cannot be read, so whether a test failed is unknown. Failing the shard."
+        return 0
+    fi
+    python3 "$SHARDS_PY" kills --tests-json "$OUT/$name-tests.json" >/dev/null || status=$?
+    if [ "$status" -ne 4 ] || grep -qE "$XCB_TEST_FAILED" "$log"; then
+        INTERRUPTED_FAILED=1
+        echo "::error title=Interrupted pass recorded a test failure::shard $SHARD, $name pass: xcodebuild was interrupted after a test failed. Its bundle stays in the results, and the shard fails."
+        return 0
+    fi
+    echo "::warning title=Pass interrupted; its classes run again::shard $SHARD, $name pass: xcodebuild was interrupted at the shard budget with no test failure recorded. An interrupted bundle has no coverage report, so it is kept in partial/ instead of the shard results, and every class it was given is relaunched below."
+    # Its own name in partial/, so it does not replace a crashed bundle of the same pass.
+    mv "$bundle" "$OUT/$name-interrupted.xcresult"
+    keep_partial "$OUT/$name-interrupted.xcresult" "$log"
+}
+
+PASS_LOG=""
 PARALLEL_EXIT=0
 if [ ${#PARALLEL_ARGS[@]} -gt 0 ]; then
     run_pass "$OUT/parallel.xcresult" retry \
@@ -250,6 +297,7 @@ if [ ${#PARALLEL_ARGS[@]} -gt 0 ]; then
     PARALLEL_EXIT=$PASS_EXIT
     echo "Parallel pass exit code: $PARALLEL_EXIT"
     [ -d "$OUT/parallel.xcresult" ] || { echo "🔴 ERROR: parallel pass wrote no result bundle"; exit 1; }
+    PARALLEL_LOG="$PASS_LOG"
 fi
 
 SERIAL_EXIT=0
@@ -259,14 +307,17 @@ if [ ${#SERIAL_ARGS[@]} -gt 0 ]; then
     SERIAL_EXIT=$PASS_EXIT
     echo "Serial pass exit code: $SERIAL_EXIT"
     [ -d "$OUT/serial.xcresult" ] || { echo "🔴 ERROR: serial pass wrote no result bundle"; exit 1; }
+    SERIAL_LOG="$PASS_LOG"
 fi
+if [ ${#PARALLEL_ARGS[@]} -gt 0 ]; then set_aside_if_interrupted "$OUT/parallel.xcresult" "$PARALLEL_LOG"; fi
+if [ ${#SERIAL_ARGS[@]} -gt 0 ]; then set_aside_if_interrupted "$OUT/serial.xcresult" "$SERIAL_LOG"; fi
 
-BUNDLES=()
-for b in "$OUT/parallel.xcresult" "$OUT/serial.xcresult"; do
-    if [ -d "$b" ]; then BUNDLES+=("$b"); fi
-done
-merge_into_results "${BUNDLES[@]}"
-xcrun xcresulttool get test-results tests --path "$OUT/TestResults.xcresult" > "$OUT/tests.json"
+merge_into_results "$OUT/parallel.xcresult" "$OUT/serial.xcresult"
+if [ -d "$OUT/TestResults.xcresult" ]; then
+    xcrun xcresulttool get test-results tests --path "$OUT/TestResults.xcresult" > "$OUT/tests.json"
+else
+    echo '{"testNodes": []}' > "$OUT/tests.json"
+fi
 
 TEST_EXIT=0
 if [ "$PARALLEL_EXIT" -ne 0 ] || [ "$SERIAL_EXIT" -ne 0 ]; then TEST_EXIT=1; fi
@@ -276,9 +327,10 @@ if [ "$PARALLEL_EXIT" -ne 0 ] || [ "$SERIAL_EXIT" -ne 0 ]; then TEST_EXIT=1; fi
 # was given with it, and xcodebuild does not hand them to another runner (run
 # 36799592179: 162 of 516 classes; run 36797084975). Relaunch exactly the
 # shard's classes that are absent from the bundle, once, with the pass settings
-# they had. It never re-runs a test that ran, so it cannot turn a failure into
-# a pass; whether the original non-zero exit is then explained is decided below
-# from the merged bundle.
+# they had. The only tests it re-runs are those of a pass set aside above,
+# which recorded no failure, so it cannot turn a failure into a pass; whether
+# the original non-zero exit is then explained is decided below from the
+# merged bundle.
 read_lost() {  # $1 = parallel|serial
     python3 "$SHARDS_PY" lost --plan "$PLAN" --shard "$SHARD" --tests-json "$OUT/tests.json" --kind "$1"
 }
@@ -378,8 +430,8 @@ VERIFY_EXIT=0
 python3 "$SHARDS_PY" verify-shard --plan "$PLAN" --shard "$SHARD" \
     --tests-json "$OUT/tests.json" --out "$OUT/shard-report.json" || VERIFY_EXIT=$?
 
-if [ "$TEST_EXIT" -ne 0 ] || [ "$VERIFY_EXIT" -ne 0 ]; then
-    echo "🔴 Shard $SHARD failed (parallel=$PARALLEL_EXIT serial=$SERIAL_EXIT verify=$VERIFY_EXIT)"
+if [ "$TEST_EXIT" -ne 0 ] || [ "$VERIFY_EXIT" -ne 0 ] || [ "$INTERRUPTED_FAILED" -ne 0 ]; then
+    echo "🔴 Shard $SHARD failed (parallel=$PARALLEL_EXIT serial=$SERIAL_EXIT verify=$VERIFY_EXIT interrupted-failure=$INTERRUPTED_FAILED)"
     exit 1
 fi
 SHARD_PASSED=1
