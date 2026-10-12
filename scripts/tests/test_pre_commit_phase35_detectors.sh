@@ -331,9 +331,72 @@ if [ "$CH_CLEAN_EXIT" -ne 0 ]; then
   exit 1
 fi
 
-echo "PASS: 9 assertions — hook blocks violations, identifies detector, honors both"
+# --- Assert 10: SWIFT_SOURCES_COMPILED blocks a Swift file no target compiles, ---
+# and passes once every tracked Swift file is in the project's Sources phase.
+# Like the real project, it references the gitignored APIKeys.swift.
+git rm -q -r --cached Palace
+rm -rf Palace
+mkdir -p Palace Palace.xcodeproj
+cat > Palace/App.swift <<'EOF'
+import Foundation
+struct App {}
+EOF
+cat > Palace.xcodeproj/project.pbxproj <<'EOF'
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	objectVersion = 56;
+	objects = {
+		APPBUILDFILE0001 /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = APPFILEREF0001 /* App.swift */; };
+		APPFILEREF0001 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
+		KEYSBUILDFILE0001 /* APIKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = KEYSFILEREF0001 /* APIKeys.swift */; };
+		KEYSFILEREF0001 /* APIKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppInfrastructure/APIKeys.swift; sourceTree = "<group>"; };
+		MAINGROUP0001 = {isa = PBXGroup; children = (PALACEGROUP0001 /* Palace */, ); sourceTree = "<group>"; };
+		PALACEGROUP0001 /* Palace */ = {isa = PBXGroup; children = (APPFILEREF0001 /* App.swift */, KEYSFILEREF0001 /* APIKeys.swift */, ); path = Palace; sourceTree = "<group>"; };
+		SOURCES0001 /* Sources */ = {isa = PBXSourcesBuildPhase; files = (APPBUILDFILE0001 /* App.swift in Sources */, KEYSBUILDFILE0001 /* APIKeys.swift in Sources */, ); };
+		PROJECT0001 /* Project object */ = {isa = PBXProject; mainGroup = MAINGROUP0001; targets = (); };
+	};
+	rootObject = PROJECT0001 /* Project object */;
+}
+EOF
+git add Palace Palace.xcodeproj
+set +e
+SSC_CLEAN_OUT=$(echo "$JSON_INPUT" | bash "$HOOK" 2>&1)
+SSC_CLEAN_EXIT=$?
+set -e
+if [ "$SSC_CLEAN_EXIT" -ne 0 ]; then
+  echo "FAIL: a project that compiles every tracked Swift file spuriously blocked (exit $SSC_CLEAN_EXIT)"
+  echo "$SSC_CLEAN_OUT" | sed 's/^/    /'
+  exit 1
+fi
+cat > Palace/Orphan.swift <<'EOF'
+import Foundation
+struct Orphan {}
+EOF
+git add Palace/Orphan.swift
+set +e
+SSC_OUT=$(echo "$JSON_INPUT" | bash "$HOOK" 2>&1)
+SSC_EXIT=$?
+set -e
+if [ "$SSC_EXIT" -eq 0 ] || ! echo "$SSC_OUT" | grep -q "SWIFT_SOURCES_COMPILED" \
+   || ! echo "$SSC_OUT" | grep -q "Palace/Orphan.swift: unreferenced"; then
+  echo "FAIL: a tracked Swift file missing from the project did not block (exit $SSC_EXIT)"
+  echo "$SSC_OUT" | sed 's/^/    /'
+  exit 1
+fi
+set +e
+SSC_BYPASS_OUT=$(echo "$JSON_INPUT" | SKIP_PHASE35_SWIFT_SOURCES_COMPILED=1 bash "$HOOK" 2>&1)
+SSC_BYPASS_EXIT=$?
+set -e
+if [ "$SSC_BYPASS_EXIT" -ne 0 ]; then
+  echo "FAIL: SKIP_PHASE35_SWIFT_SOURCES_COMPILED=1 did not skip the detector (exit $SSC_BYPASS_EXIT)"
+  echo "$SSC_BYPASS_OUT" | sed 's/^/    /'
+  exit 1
+fi
+
+echo "PASS: 10 assertions — hook blocks violations, identifies detector, honors both"
 echo "      bypass envvars, passes a clean diff (no detector spuriously blocks),"
-echo "      and the unsynchronized-sendable-mock, auth-challenge-async-form and"
-echo "      opaque-blob-egress detectors each fire on a violation and clean-pass"
-echo "      on the fix."
+echo "      and the unsynchronized-sendable-mock, auth-challenge-async-form,"
+echo "      opaque-blob-egress and swift-sources-compiled detectors each fire on a"
+echo "      violation and clean-pass on the fix."
 exit 0
