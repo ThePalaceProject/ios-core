@@ -48,7 +48,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 SHARDS_PY="$HERE/ci-test-shards.py"
 DIAG_PY="$HERE/ci-runner-diagnostics.py"
 mkdir -p "$OUT"
-rm -rf "$OUT/parallel.xcresult" "$OUT/serial.xcresult" "$OUT/rerun.xcresult" \
+rm -rf "$OUT/parallel.xcresult" "$OUT/serial.xcresult" "$OUT/rerun.xcresult" "$OUT/budget-exceeded" \
        "$OUT/relaunch-parallel.xcresult" "$OUT/relaunch-serial.xcresult" \
        "$OUT/TestResults.xcresult" "$OUT/merged.xcresult" "$OUT/memory-samples.txt" \
        "$OUT"/*-crash-retry.xcresult "$OUT"/*.log "$OUT/partial"
@@ -100,10 +100,12 @@ SAMPLER=$!
 # than the runner's SIGKILL: xcodebuild finalizes the result bundle on SIGINT,
 # so a wedged run still uploads its spindumps and the tests that did finish.
 SHARD_BUDGET_SECONDS="${SHARD_BUDGET_SECONDS:-1800}"
+BUDGET_MARK="$OUT/budget-exceeded"  # written before the interrupt; see interrupted below
 ( trap 'kill "$sleeper" 2>/dev/null; exit 0' TERM
   sleep "$SHARD_BUDGET_SECONDS" & sleeper=$!
   wait "$sleeper"
   echo "🔴 shard $SHARD exceeded ${SHARD_BUDGET_SECONDS}s; interrupting xcodebuild so the result bundle is written"
+  : > "$BUDGET_MARK"
   pkill -INT -f "xcodebuild test-without-building" || true ) &
 WATCHDOG=$!
 # A crashed pass leaves a bundle that may not be finalized, and a failing shard
@@ -177,9 +179,12 @@ fi
 XCB_INTERNAL_ERROR_TEXT='** INTERNAL ERROR: Uncaught exception **'
 XCB_INTERNAL_ERROR='\*\* INTERNAL ERROR: Uncaught exception \*\*'
 XCB_TEST_FAILED="Test [Cc]ase '[^']+' failed"
+XCB_INTERRUPTED='** TEST EXECUTE INTERRUPTED **'
 PASS_EXIT=0
+PASS_INTERRUPTED=0
 run_xcodebuild() {  # $1 = bundle, $2 = log, rest = xcodebuild args
-    local bundle="$1" log="$2"; shift 2
+    local bundle="$1" log="$2" fired_before=0; shift 2
+    if [ -e "$BUDGET_MARK" ]; then fired_before=1; fi
     rm -rf "$bundle"
     set +e
     xcodebuild test-without-building \
@@ -190,6 +195,9 @@ run_xcodebuild() {  # $1 = bundle, $2 = log, rest = xcodebuild args
         "$@" 2>&1 | tee "$log"
     PASS_EXIT=${PIPESTATUS[0]}
     set -e
+    PASS_INTERRUPTED=0
+    if [ "$fired_before" -eq 0 ] && [ -e "$BUDGET_MARK" ]; then PASS_INTERRUPTED=1; fi
+    if grep -qF "$XCB_INTERRUPTED" "$log"; then PASS_INTERRUPTED=1; fi
 }
 xcodebuild_crashed() {  # $1 = log; exit status of the pass in PASS_EXIT
     [ "$PASS_EXIT" -ne 0 ] || return 1
@@ -256,7 +264,11 @@ merge_into_results() {  # bundles... -> $OUT/TestResults.xcresult; absent paths 
 # its bundle with the test results it has but without a coverage report, and
 # `xccov view --report` cannot read a merged bundle that contains one ("Failed
 # to load coverage report ... action.xccovreport", runs 37947147417 and
-# 37962677753), so the coverage gate reads the run as incomplete. When such a
+# 37962677753), so the coverage gate reads the run as incomplete. A pass counts
+# as interrupted when the budget fired while it ran, not only when xcodebuild
+# says so: an interrupt that lands after the last test, while coverage is being
+# collected, ends in "** TEST EXECUTE SUCCEEDED **" and exit 0 with the same
+# coverage-less bundle (run 38261917670). When such a
 # pass recorded no test failure, in its bundle or its log (the test running at
 # the interrupt may be logged as failed without a result), its bundle is set
 # aside instead of merged:
@@ -264,12 +276,11 @@ merge_into_results() {  # bundles... -> $OUT/TestResults.xcresult; absent paths 
 # relaunch below runs all of them again, coverage included. When it recorded a
 # test failure, or its results cannot be read, it is merged as before and the
 # shard fails, so a failure is never dropped with the bundle.
-XCB_INTERRUPTED='** TEST EXECUTE INTERRUPTED **'
 INTERRUPTED_FAILED=0
-set_aside_if_interrupted() {  # $1 = bundle, $2 = the log of the run that wrote it
-    local bundle="$1" log="$2" name status=0
+set_aside_if_interrupted() {  # $1 = bundle, $2 = the log of the run that wrote it, $3 = 1 if interrupted
+    local bundle="$1" log="$2" interrupted="$3" name status=0
     name="$(basename "$bundle" .xcresult)"
-    [ -d "$bundle" ] && grep -qF "$XCB_INTERRUPTED" "$log" || return 0
+    [ "$interrupted" -eq 1 ] && [ -d "$bundle" ] || return 0
     if ! xcrun xcresulttool get test-results tests --path "$bundle" > "$OUT/$name-tests.json"; then
         INTERRUPTED_FAILED=1
         echo "::error title=Interrupted pass unreadable::shard $SHARD, $name pass: xcodebuild was interrupted and its result bundle cannot be read, so whether a test failed is unknown. Failing the shard."
@@ -298,6 +309,7 @@ if [ ${#PARALLEL_ARGS[@]} -gt 0 ]; then
     echo "Parallel pass exit code: $PARALLEL_EXIT"
     [ -d "$OUT/parallel.xcresult" ] || { echo "🔴 ERROR: parallel pass wrote no result bundle"; exit 1; }
     PARALLEL_LOG="$PASS_LOG"
+    PARALLEL_INTERRUPTED=$PASS_INTERRUPTED
 fi
 
 SERIAL_EXIT=0
@@ -308,9 +320,10 @@ if [ ${#SERIAL_ARGS[@]} -gt 0 ]; then
     echo "Serial pass exit code: $SERIAL_EXIT"
     [ -d "$OUT/serial.xcresult" ] || { echo "🔴 ERROR: serial pass wrote no result bundle"; exit 1; }
     SERIAL_LOG="$PASS_LOG"
+    SERIAL_INTERRUPTED=$PASS_INTERRUPTED
 fi
-if [ ${#PARALLEL_ARGS[@]} -gt 0 ]; then set_aside_if_interrupted "$OUT/parallel.xcresult" "$PARALLEL_LOG"; fi
-if [ ${#SERIAL_ARGS[@]} -gt 0 ]; then set_aside_if_interrupted "$OUT/serial.xcresult" "$SERIAL_LOG"; fi
+if [ ${#PARALLEL_ARGS[@]} -gt 0 ]; then set_aside_if_interrupted "$OUT/parallel.xcresult" "$PARALLEL_LOG" "$PARALLEL_INTERRUPTED"; fi
+if [ ${#SERIAL_ARGS[@]} -gt 0 ]; then set_aside_if_interrupted "$OUT/serial.xcresult" "$SERIAL_LOG" "$SERIAL_INTERRUPTED"; fi
 
 merge_into_results "$OUT/parallel.xcresult" "$OUT/serial.xcresult"
 if [ -d "$OUT/TestResults.xcresult" ]; then
