@@ -269,9 +269,10 @@ merge_into_results() {  # bundles... -> $OUT/TestResults.xcresult; absent paths 
 # says so: an interrupt that lands after the last test, while coverage is being
 # collected, ends in "** TEST EXECUTE SUCCEEDED **" and exit 0 with the same
 # coverage-less bundle (run 38261917670). When such a
-# pass recorded no test failure, in its bundle or its log (the test running at
-# the interrupt may be logged as failed without a result), its bundle is set
-# aside instead of merged:
+# pass recorded no test failure in its bundle or its log, its bundle is set
+# aside instead of merged. The test running at the interrupt, logged as failed
+# after the INTERRUPTED marker, does not count (see interrupted_pass_failures in
+# ci-test-shards.py): it runs again with the rest of the pass's classes.
 # every class it was given is then absent from TestResults.xcresult, and the
 # relaunch below runs all of them again, coverage included. When it recorded a
 # test failure, or its results cannot be read, it is merged as before and the
@@ -286,13 +287,19 @@ set_aside_if_interrupted() {  # $1 = bundle, $2 = the log of the run that wrote 
         echo "::error title=Interrupted pass unreadable::shard $SHARD, $name pass: xcodebuild was interrupted and its result bundle cannot be read, so whether a test failed is unknown. Failing the shard."
         return 0
     fi
-    python3 "$SHARDS_PY" kills --tests-json "$OUT/$name-tests.json" >/dev/null || status=$?
-    if [ "$status" -ne 4 ] || grep -qE "$XCB_TEST_FAILED" "$log"; then
+    local verdict in_flight failed discounted=""
+    verdict=$(python3 "$SHARDS_PY" interrupted-failures --tests-json "$OUT/$name-tests.json" --log "$log") || status=$?
+    if [ "$status" -ne 0 ]; then
         INTERRUPTED_FAILED=1
-        echo "::error title=Interrupted pass recorded a test failure::shard $SHARD, $name pass: xcodebuild was interrupted after a test failed. Its bundle stays in the results, and the shard fails."
+        failed=$(printf '%s\n' "$verdict" | sed -n 's/^failed //p' | paste -sd, -)
+        echo "::error title=Interrupted pass recorded a test failure::shard $SHARD, $name pass: xcodebuild was interrupted after a test failed (${failed:-unreadable verdict, status $status}). Its bundle stays in the results, and the shard fails."
         return 0
     fi
-    echo "::warning title=Pass interrupted; its classes run again::shard $SHARD, $name pass: xcodebuild was interrupted at the shard budget with no test failure recorded. An interrupted bundle has no coverage report, so it is kept in partial/ instead of the shard results, and every class it was given is relaunched below."
+    in_flight=$(printf '%s\n' "$verdict" | sed -n 's/^in-flight //p' | paste -sd, -)
+    if [ -n "$in_flight" ]; then
+        discounted=" Discounted the failure of $in_flight, logged after the interrupt: it was the test in flight, and it must pass when its class runs again."
+    fi
+    echo "::warning title=Pass interrupted; its classes run again::shard $SHARD, $name pass: xcodebuild was interrupted at the shard budget with no test failure recorded. An interrupted bundle has no coverage report, so it is kept in partial/ instead of the shard results, and every class it was given is relaunched below.$discounted"
     # Its own name in partial/, so it does not replace a crashed bundle of the same pass.
     mv "$bundle" "$OUT/$name-interrupted.xcresult"
     keep_partial "$OUT/$name-interrupted.xcresult" "$log"

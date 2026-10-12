@@ -57,6 +57,9 @@ XCODEBUILD = textwrap.dedent("""\
     # marker, so only the shard's own watchdog can; it waits for that marker
     # (up to 30 s) rather than for a fixed time. STUB_INTERRUPT_NO_MARK keeps
     # STUB_INTERRUPT from writing the marker, leaving only the log line.
+    # STUB_INTERRUPT_IN_FLIGHT logs the first class's test as failed in 0.000 s
+    # after the INTERRUPTED line, as Xcode does for the test it cuts off (run
+    # 38278109196); =bundle also records it Failed in the bundle.
     echo "$*" >> "$STUB_LOG"
     bundle=""; prev=""; ids=()
     for a in "$@"; do
@@ -105,6 +108,11 @@ XCODEBUILD = textwrap.dedent("""\
         echo "Test Case '-[PalaceTests.Iso t]' failed (0.010 seconds)."
       fi
       echo "** TEST EXECUTE INTERRUPTED **"
+      if [ -n "${STUB_INTERRUPT_IN_FLIGHT:-}" ]; then
+        IFS=/ read -r b c m <<< "${ids[0]}"
+        echo "Test case '$c.t()' failed on 'Clone 1 of iPhone 16 Pro - Palace (123)' (0.000 seconds)"
+        [ "$STUB_INTERRUPT_IN_FLIGHT" = "bundle" ] && echo "$b|$c|t|Failed|" >> "$bundle/cases"
+      fi
       exit 73
     fi
     mkdir -p "$bundle"; : > "$bundle/cases"
@@ -702,3 +710,29 @@ def test_the_interrupted_line_alone_marks_a_pass_interrupted(env):
     assert r.returncode == 0, r.stdout + r.stderr
     assert not _results_lack_coverage(tmp_path)
     assert "serial-interrupted.xcresult" in _partial(tmp_path)
+
+
+def test_the_test_cut_off_by_the_interrupt_is_rerun_not_counted_as_a_failure(env):
+    """Run 38278109196: the in-flight test is logged failed (0.000 s) after the marker."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_INTERRUPT="parallel", STUB_INTERRUPT_IN_FLIGHT="bundle")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "Discounted the failure of A/t" in r.stdout
+    assert not _results_lack_coverage(tmp_path)
+    assert "-only-testing:PalaceTests/A" in _selection(_calls(tmp_path)[-1])
+
+
+def test_the_test_cut_off_by_the_interrupt_must_pass_when_rerun(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_INTERRUPT="parallel", STUB_INTERRUPT_IN_FLIGHT="log",
+             STUB_FAIL="PalaceTests/A")
+    assert r.returncode == 1
+    assert "Shard 0 passed" not in r.stdout
+
+
+def test_a_failure_before_the_interrupt_is_not_excused_by_a_test_in_flight(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_INTERRUPT="serial", STUB_INTERRUPT_RAN="1",
+             STUB_INTERRUPT_FAILED="1", STUB_INTERRUPT_IN_FLIGHT="log")
+    assert r.returncode == 1
+    assert "::error title=Interrupted pass recorded a test failure::" in r.stdout
