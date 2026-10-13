@@ -87,6 +87,16 @@ final class DownloadStateManagerTests: XCTestCase {
         XCTAssertNil(result2, "Multiple unknown identifiers must all return nil")
     }
 
+    func testDownloadInfo_sync_existingEntry_returnsStoredInfo() async {
+        let info = MyBooksDownloadInfo(downloadProgress: 0.7, downloadTask: fakeDownloadTask(), rightsManagement: .lcp)
+        await stateManager.bookIdentifierToDownloadInfo.set("sync-book", value: info)
+
+        let retrieved = stateManager.downloadInfo(forBookIdentifier: "sync-book")
+
+        XCTAssertEqual(retrieved?.downloadProgress, 0.7)
+        XCTAssertEqual(retrieved?.rightsManagement, .lcp)
+    }
+
     // MARK: - Download Progress
 
     func testDownloadProgress_noInfo_returnsZero() {

@@ -34,16 +34,8 @@ final class DownloadReissuePersistenceTests: PalaceWiringTestCase {
     private lazy var isolatedStateManager = DownloadStateManager(
         taskPersistence: DownloadTaskPersistence(fileURL: persistenceURL))
 
-    override func setUpWithError() throws {
-        try super.setUpWithError()
-        // Skip the synchronous disk-cache preload (root of the FLAKE-003 30s CI
-        // timeout). Safe here: nothing in this file reads `accountSets`.
-        AccountsManager.deferDiskCachePreloadForTesting = true
-    }
-
     override func tearDown() async throws {
         try? FileManager.default.removeItem(at: persistenceURL)
-        AccountsManager.deferDiskCachePreloadForTesting = false
         try await super.tearDown()
     }
 

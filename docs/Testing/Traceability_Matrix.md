@@ -36,7 +36,7 @@ This document maps requirements to their implementing code and corresponding tes
 |------|-----------|--------------|----------|
 | `TPPKeychainManager.swift` | `Keychain/TPPKeychainManagerTests.swift`; credential storage in `Palace/Packages/PalaceKeychain/Tests/PalaceKeychainTests/` | 9 tests (archive decoding, error logging); package: 17 tests | Not measured |
 | `TPPUserAccount.swift` | `TPPUserAccountTests.swift` (partial) | - | ~20% |
-| `TPPNetworkExecutor.swift` | `NetworkClientTests.swift` | Limited | ~15% |
+| `TPPNetworkExecutor.swift` | `Network/TPPNetworkExecutorTests.swift` | Limited | Not measured |
 | `TPPSAMLHelper.swift` | `SignInLogic/TPPSAMLFlowTests.swift` | 31 tests | Not measured |
 | `TPPAgeCheck.swift` | `TPPAgeCheckTests.swift` | 5 tests | ~60% |
 | `TPPSignInBusinessLogic.swift` | `TPPSignInBusinessLogicTests.swift` | 3 tests | ~25% |
@@ -243,8 +243,8 @@ This document maps requirements to their implementing code and corresponding tes
 
 | File | Test File | Test Methods | Coverage |
 |------|-----------|--------------|----------|
-| `TPPNetworkExecutor.swift` | `NetworkClientTests.swift` | 3 tests | ~15% |
-| `URLSessionNetworkClient.swift` | `NetworkClientTests.swift` | 2 tests | ~40% |
+| `TPPNetworkExecutor.swift` | `Network/TPPNetworkExecutorTests.swift` | See file | Not measured |
+| `URLSessionNetworkClient.swift` | `Network/URLSessionNetworkClientCancellationTests.swift` | 1 test (cancellation) | Not measured |
 | `TPPNetworkQueue.swift` | `Network/NetworkQueueTests.swift` | 22 tests | Not measured |
 | `Reachability.swift` | `Network/ReachabilityTests.swift` | 10 tests | Not measured |
 | `TPPCaching.swift` | `TPPCachingTests.swift` | 4 tests | ~60% |
@@ -490,7 +490,7 @@ PalaceTests/
 │   ├── MyBooksDownloadCenterExtendedTests.swift
 │   └── MyBooksViewModelTests.swift
 ├── Network/
-│   └── NetworkClientTests.swift
+│   └── URLSessionNetworkClientCancellationTests.swift
 ├── OPDS2/
 │   ├── OPDS2AuthenticationDocumentTests.swift
 │   ├── OPDS2FeedParsingTests.swift

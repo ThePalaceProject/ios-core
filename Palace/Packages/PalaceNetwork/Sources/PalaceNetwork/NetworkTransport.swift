@@ -3,7 +3,7 @@
 //  The Palace Project
 //
 //  Pure-transport HTTP layer: owns the URLSession and active tasks
-//  (pause / resume / cancel on account switch) and exposes send/download.
+//  (cancelled on account switch) and exposes send/download.
 //  Credentials and sign-in live in the app target's TPPNetworkExecutor,
 //  which wraps a Transport and can reach AccountsManager / TPPUserAccount.
 //
@@ -34,23 +34,6 @@ public final class ActiveTasksStore {
         }
     }
 
-    public func pauseNonAudioTasks() {
-        lock.lock(); defer { lock.unlock() }
-        for task in tasks {
-            if let url = task.originalRequest?.url,
-               Self.isAudiobookRelated(url: url) {
-                Log.info(#function, "Preserving audiobook network task: \(url.absoluteString)")
-                continue
-            }
-            task.suspend()
-        }
-    }
-
-    public func resumeAll() {
-        lock.lock(); defer { lock.unlock() }
-        tasks.forEach { $0.resume() }
-    }
-
     /// Number of registered tasks that are not yet finished or cancelling.
     /// Counts only `.running` and `.suspended` (i.e. live URLSession state).
     /// Used by adversarial tests to verify that `cancelNonEssential` drops
@@ -67,6 +50,15 @@ public final class ActiveTasksStore {
                 break
             }
         }
+    }
+
+    /// Number of registered tasks in any state, including ones already
+    /// cancelling, which `liveTaskCount` skips. Lets a test assert that no
+    /// task was created at all. Pure observation — no state mutation.
+    // PUBLIC_INTENT: read by TPPNetworkExecutor in the Palace app target, outside this package.
+    public var registeredTaskCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return tasks.count
     }
 
     @discardableResult
@@ -174,7 +166,7 @@ public final class ActiveTasksStore {
     // MARK: - Send / download
 
     /// Create + resume a data task. The task is auto-registered in the active
-    /// tasks store so it participates in pause/resume/cancel.
+    /// tasks store so account-switch cancellation can reach it.
     @discardableResult
     public func send(_ request: URLRequest) -> URLSessionDataTask {
         let task = urlSession.dataTask(with: request)
@@ -193,14 +185,6 @@ public final class ActiveTasksStore {
     }
 
     // MARK: - Active tasks control
-
-    @objc public func pauseAllTasks() {
-        activeTasksStore.pauseNonAudioTasks()
-    }
-
-    @objc public func resumeAllTasks() {
-        activeTasksStore.resumeAll()
-    }
 
     /// Cancels all active tasks not related to audiobook streaming. Called
     /// during account switches to prevent in-flight requests from completing

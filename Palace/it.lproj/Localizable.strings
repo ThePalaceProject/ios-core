@@ -398,9 +398,6 @@
 
 "Couldn't send" = "Invio non riuscito";
 
-/* Book cover accessibility */
-"Cover image for %@" = "Immagine di copertina di %@";
-
 "Create Card" = "Crea tessera";
 
 /* VoiceOver announcement when the current reading position cannot be determined */

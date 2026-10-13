@@ -34,88 +34,47 @@ final class URLSessionNetworkClient: NetworkClient {
         }
         urlRequest.httpBody = request.body
 
-        // Bridges Swift structured-concurrency cancellation to the underlying
-        // URLSession task. See `CancellableTaskBox` for why this matters.
-        let taskBox = CancellableTaskBox()
+        // Don't open a connection, or start a token refresh, for work nobody
+        // is waiting on.
+        try Task.checkCancellation()
 
-        let (data, response): (Data, HTTPURLResponse) = try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(Data, HTTPURLResponse), Error>) in
-                // If the awaiting Task was already cancelled, don't even open a
-                // connection for work nobody is waiting on.
-                if Task.isCancelled {
-                    continuation.resume(throwing: CancellationError())
-                    return
-                }
+        // `execute` is the executor's cancellable entry point: a cancel frees
+        // the URLSession task and its connection-pool slot (#1116), and during
+        // a proactive token refresh it frees the caller and nothing is sent
+        // afterwards. The callback verbs return no task while a refresh runs,
+        // so they cannot be cancelled in that window.
+        let enableTokenRefresh: Bool
+        switch request.method {
+        case .GET, .HEAD:
+            // As the executor's GET verb: always sent as GET, with the
+            // protocol cache policy.
+            urlRequest.httpMethod = "GET"
+            urlRequest.cachePolicy = .useProtocolCachePolicy
+            enableTokenRefresh = true
 
-                func resume(_ data: Data?, _ response: URLResponse?, _ error: Error?) {
-                    if let error { continuation.resume(throwing: error); return }
-                    guard let data, let response = response as? HTTPURLResponse else {
-                        continuation.resume(throwing: NetworkError.invalidResponse); return
-                    }
-                    continuation.resume(returning: (data, response))
-                }
+        case .POST, .PUT:
+            enableTokenRefresh = true
 
-                let dataTask: URLSessionDataTask?
-                switch request.method {
-                case .GET, .HEAD:
-                    dataTask = self.executor.GET(request: urlRequest, useTokenIfAvailable: true) { resume($0, $1, $2) }
+        case .PATCH:
+            // As `addBearerAndExecute`: the Authorization header is replaced
+            // and the proactive near-expiry refresh is skipped. A 401 is still
+            // offered to the responder's reactive refresh, which declines for
+            // browser (SAML/OIDC) auth among other cases; see
+            // `handleExpiredTokenIfNeeded`.
+            urlRequest = TPPNetworkExecutor.bearerAuthorized(request: urlRequest)
+            enableTokenRefresh = false
 
-                case .POST:
-                    dataTask = self.executor.POST(urlRequest, useTokenIfAvailable: true) { resume($0, $1, $2) }
-
-                case .PUT:
-                    dataTask = self.executor.PUT(request: urlRequest, useTokenIfAvailable: true) { resume($0, $1, $2) }
-
-                case .PATCH:
-                    // Executor has no PATCH; emulate via POST with method override header
-                    var patched = urlRequest
-                    patched.httpMethod = "PATCH"
-                    dataTask = self.executor.addBearerAndExecute(patched) { resume($0, $1, $2) }
-
-                case .DELETE:
-                    dataTask = self.executor.DELETE(urlRequest, useTokenIfAvailable: true) { resume($0, $1, $2) }
-                }
-
-                // Hand the live URLSession task to the cancellation box. If
-                // cancellation raced ahead of task creation, this cancels it
-                // immediately (freeing the connection-pool slot).
-                taskBox.set(dataTask)
-            }
-        } onCancel: {
-            taskBox.cancel()
+        case .DELETE:
+            // The executor's DELETE verb never refreshes proactively.
+            enableTokenRefresh = false
         }
 
-        return NetworkResponse(data: data, response: response)
-    }
-}
-
-/// Thread-safe holder that bridges structured-concurrency cancellation to the
-/// underlying `URLSessionTask`.
-///
-/// Previously `send` discarded the task returned by the executor
-/// (`_ = executor.GET(...)`) and installed no cancellation handler, so a
-/// cancelled or timed-out catalog/lane fetch kept its socket open until the
-/// shared session's resource timeout. Because most Palace libraries share one
-/// Circulation Manager host, a handful of stuck requests could exhaust that
-/// host's connection pool and starve *every* library's feed fetches — the
-/// "catalog hangs until a wifi-switch or app restart" failure. Cancelling the
-/// task here releases the slot immediately.
-private final class CancellableTaskBox: @unchecked Sendable {
-    private let lock = NSLock()
-    private var task: URLSessionTask?
-    private var isCancelled = false
-
-    /// Store the in-flight task, or cancel it on the spot if cancellation
-    /// already arrived before the task existed.
-    func set(_ task: URLSessionTask?) {
-        lock.lock(); defer { lock.unlock() }
-        if isCancelled { task?.cancel() } else { self.task = task }
-    }
-
-    func cancel() {
-        lock.lock(); defer { lock.unlock() }
-        isCancelled = true
-        task?.cancel()
-        task = nil
+        switch await executor.execute(urlRequest, enableTokenRefresh: enableTokenRefresh, accountId: nil) {
+        case let .success(data, response):
+            guard let response = response as? HTTPURLResponse else { throw NetworkError.invalidResponse }
+            return NetworkResponse(data: data, response: response)
+        case let .failure(error, _):
+            throw error
+        }
     }
 }

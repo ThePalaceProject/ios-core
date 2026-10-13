@@ -999,6 +999,27 @@ else
   record "doc_index" "skip" "check-doc-index-complete.py not found"
 fi
 
+# 3b2c. Swift sources compiled — every tracked Swift file under Palace/,
+# PalaceTests/ and PalaceUITests/ (outside Swift packages) is in a target's
+# Sources phase, and every Swift reference in the project resolves. Whole-tree:
+# the project file and the file list drift apart in either direction.
+echo "--- Swift sources compiled ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "swift_sources_compiled" "skip" "Skipped (--mutation-only)"
+elif [ -f scripts/check-swift-sources-compiled.py ]; then
+  SSC_OUT=$(python3 scripts/check-swift-sources-compiled.py 2>&1)
+  SSC_RC=$?
+  if [ "$SSC_RC" -eq 0 ]; then
+    record "swift_sources_compiled" "pass" "$(printf '%s\n' "$SSC_OUT" | tail -1)"
+  else
+    SSC_FIRST=$(printf '%s\n' "$SSC_OUT" | grep -m1 -E '^  [A-Za-z]' || true)
+    [ -n "$SSC_FIRST" ] || SSC_FIRST=$(printf '%s\n' "$SSC_OUT" | sed -n '1p')
+    record "swift_sources_compiled" "fail" "$SSC_FIRST"
+  fi
+else
+  record "swift_sources_compiled" "skip" "check-swift-sources-compiled.py not found"
+fi
+
 # 3b6. Decomposition ratchets — locator count, file-size ceiling, `.shared`
 # reads, package-test wiring.
 # Four whole-tree scans, and they no longer share a shape: two hold a baseline

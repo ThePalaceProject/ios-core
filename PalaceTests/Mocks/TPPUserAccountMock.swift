@@ -120,6 +120,24 @@ class TPPUserAccountMock: TPPUserAccount, @unchecked Sendable {
         mockLock.withLock { _userID = newValue }
     }
 
+    private var _adobeActivationConnectorGeneration: Int?
+    override var adobeActivationConnectorGeneration: Int? {
+        mockLock.withLock { _adobeActivationConnectorGeneration }
+    }
+    /// Must be overridden alongside the getters above, AND cleared in
+    /// `removeAll()` below. Without it the inherited
+    /// implementation writes the real keychain-backed storage, which these
+    /// overridden getters never read — so a successful activation would look
+    /// lost — and it writes under this mock's fixed, process-shared library
+    /// UUID, leaking across suites.
+    override func setAdobeActivation(userID: String, deviceID: String, generation: Int) {
+        mockLock.withLock {
+            _userID = userID
+            _deviceID = deviceID
+            _adobeActivationConnectorGeneration = generation
+        }
+    }
+
     private var _adobeVendor: String?
     override var adobeVendor: String? {
         mockLock.withLock { _adobeVendor }
@@ -331,6 +349,10 @@ class TPPUserAccountMock: TPPUserAccount, @unchecked Sendable {
             _removeAllCallCount += 1
             _adobeToken = nil
             _patron = nil
+            // Production clears this in removeAll(); without it the mock keeps a
+            // marker across sign-out, and a sign-out-then-migrate test would
+            // conclude the migration correctly skips.
+            _adobeActivationConnectorGeneration = nil
             _adobeVendor = nil
             _provider = nil
             _userID = nil

@@ -764,3 +764,49 @@ def test_cli_lost_prints_only_testing_args_and_runner_failures_print_their_reaso
     assert r.returncode == 0, r.stderr
     assert r.stdout.strip() == ("PalaceTests: Palace (36741) encountered an error: "
                                 "The test runner hung before establishing connection.")
+
+
+# --------------------------------------------------------------------------
+# A pass the shard budget interrupted
+# --------------------------------------------------------------------------
+
+MARK = "** TEST EXECUTE INTERRUPTED **"
+CUT_OFF = "Test case 'S.testA()' failed on 'Clone 1 of iPhone 16 Pro - Palace (1)' (0.000 seconds)"
+
+
+def test_the_test_logged_failed_after_the_marker_is_in_flight_not_a_failure():
+    doc = _doc(_case("S/testA()", "Failed"), _case("S/testB()", "Passed"))
+    assert shards.interrupted_pass_failures(doc, f"{MARK}\n{CUT_OFF}\n") == ([], ["S/testA"])
+
+
+def test_a_bundle_failure_of_another_test_still_counts():
+    doc = _doc(_case("S/testA()", "Failed"), _case("S/testB()", "Failed", ["XCTAssertTrue failed"]))
+    failures, in_flight = shards.interrupted_pass_failures(doc, f"{MARK}\n{CUT_OFF}\n")
+    assert failures == ["PalaceTests/S/testB"] and in_flight == ["S/testA"]
+
+
+def test_a_failure_logged_before_the_marker_counts_even_if_the_bundle_lost_it():
+    log = "Test Case '-[PalaceTests.S testB]' failed (0.010 seconds).\n" + MARK + "\n"
+    assert shards.interrupted_pass_failures(_doc(), log) == (["S/testB"], [])
+
+
+def test_a_test_that_failed_before_the_marker_is_not_excused_by_failing_again_after_it():
+    log = "\n".join([CUT_OFF.replace("0.000", "0.200"), MARK, CUT_OFF])
+    failures, in_flight = shards.interrupted_pass_failures(_doc(_case("S/testA()", "Failed")), log)
+    assert failures == ["PalaceTests/S/testA", "S/testA"] and in_flight == []
+
+
+def test_without_the_marker_every_logged_failure_counts():
+    assert shards.interrupted_pass_failures(_doc(), CUT_OFF) == (["S/testA"], [])
+
+
+def test_module_qualified_and_nested_names_are_parsed_on_both_sides_of_the_marker():
+    log = "\n".join(["Test case 'PalaceTests.Outer.testB()' failed on 'Clone 1' (0.010 seconds)",
+                     MARK, "Test case 'PalaceTests.S.testA()' failed on 'Clone 1' (0.000 seconds)"])
+    assert shards.interrupted_pass_failures(_doc(), log) == (["Outer/testB"], ["S/testA"])
+
+
+def test_a_failure_line_in_an_unknown_shape_counts_as_a_failure_on_either_side():
+    log = "Test Case 'weird name' failed\n" + MARK + "\nTest case 'other thing' failed\n"
+    failures, in_flight = shards.interrupted_pass_failures(_doc(), log)
+    assert failures == ["unparsed:other thing", "unparsed:weird name"] and in_flight == []

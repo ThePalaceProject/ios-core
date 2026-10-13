@@ -81,6 +81,7 @@ class TPPMigrationManager: NSObject {
     @discardableResult
     static func migrate(
         settings: TPPSettings = AppContainer.production().settings,
+        defaults: UserDefaults = .standard,
         substituting substitutions: MigrationSubstitutions = MigrationSubstitutions()
     ) -> Task<Void, Never>? {
         // Fetch target version
@@ -95,7 +96,7 @@ class TPPMigrationManager: NSObject {
         if let substitute = substitutions.runMigrations {
             substitute(settings)
         } else {
-            runMigrations(settings: settings)
+            runMigrations(settings: settings, defaults: defaults)
         }
 
         if let substitute = substitutions.performPostUpdateTasks {
