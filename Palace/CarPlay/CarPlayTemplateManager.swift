@@ -354,7 +354,7 @@ final class CarPlayTemplateManager: NSObject {
 
             // Start playback through the bridge with enhanced error handling
             // Note: switchToNowPlaying will be called automatically via playbackStatePublisher
-            // when playback actually begins (after BookService finishes position sync)
+            // when playback actually begins (after AudiobookSessionManager finishes position sync)
             // openAudiobook() will stop any existing playback before starting the new book
             self.playerBridge.playAudiobook(book) { [weak self] result in
                 self?.isLoadingBook = false

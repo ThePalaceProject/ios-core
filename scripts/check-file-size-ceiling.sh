@@ -87,8 +87,9 @@ read -r -d '' ALLOWLIST <<'EOF'
 # -> 1193 when PP-4967 moved the OverDrive re-fulfilment out, then -> 1183
 # when PP-5301 collapsed the awaited audiobook-open call site, then -> 1174
 # when PP-5302 moved the phone alert mapping to +ErrorMapping, then -> 1173
-# when the book-open tracker's recording call was removed.
-1173 Palace/Audiobooks/AudiobookSessionManager.swift
+# when the book-open tracker's recording call was removed, then -> 1168
+# when the open-failure alert moved to AudiobookOpenFailureAlert.
+1168 Palace/Audiobooks/AudiobookSessionManager.swift
 # 1213 -> 1172 when the mid-download network-loss handler moved to
 # DownloadNetworkLossMonitor.swift.
 1172 Palace/MyBooks/MyBooksDownloadCenter.swift

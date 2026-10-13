@@ -632,7 +632,7 @@ final class AudiobookContentSourceTests: XCTestCase {
 
 // MARK: - Open failures
 
-/// The open-failure non-fatal (`BookService.showAudiobookTryAgainError`) is a
+/// The open-failure non-fatal (`AudiobookOpenFailureAlert`) is a
 /// fixed domain/code with no cause. These pin the metadata the session manager
 /// now hands it: which loader step failed, the error that step carried, and the
 /// content source.

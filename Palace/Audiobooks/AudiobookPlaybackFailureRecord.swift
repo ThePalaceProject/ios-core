@@ -218,7 +218,7 @@ extension AudiobookSessionManager {
     }
 
     /// Metadata for the open-failure non-fatal logged by
-    /// `BookService.showAudiobookTryAgainError`. That report keeps its fixed
+    /// `AudiobookOpenFailureAlert`. That report keeps its fixed
     /// domain and code (existing grouping); this adds which loader step failed
     /// (`loadError`), the content source, and the cause fields of the error the
     /// step carried. `underlyingDomain`/`underlyingCode` here describe that

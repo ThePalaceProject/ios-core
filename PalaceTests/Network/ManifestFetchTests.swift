@@ -2,7 +2,7 @@
 //  Audiobook manifest fetch: fetchOpenAccessManifest used a download task on a
 //  session with no download delegate (empty data) and ignored the two-step bearer
 //  token flow. Pins bearer-token vs. manifest detection, the URL and auth used by
-//  fetchManifestWithBearerToken, that TPPNetworkExecutor.GET uses a data task, and
+//  ProductionBearerTokenManifestFetcher, that TPPNetworkExecutor.GET uses a data task, and
 //  error handling.
 //
 
@@ -116,7 +116,7 @@ final class BearerTokenResponseDetectionTests: XCTestCase {
     }
 }
 
-// MARK: - fetchManifestWithBearerToken Tests
+// MARK: - ProductionBearerTokenManifestFetcher Tests
 
 /// Tests the second-hop manifest fetch that uses the book-specific bearer token.
 /// Uses HTTP stub protocol to verify correct request construction and response handling.
@@ -130,6 +130,7 @@ final class FetchManifestWithBearerTokenTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        executionTimeAllowance = 60  // bounds fetchManifestBounded, which has no deadline
         book = TPPBookMocker.mockBook(distributorType: .BearerToken)
         HTTPStubURLProtocol.reset()
         let config = URLSessionConfiguration.ephemeral
@@ -146,7 +147,7 @@ final class FetchManifestWithBearerTokenTests: XCTestCase {
 
     // MARK: - Success Cases
 
-    func testSuccess_returnsManifestJSON() {
+    func testSuccess_returnsManifestJSON() async {
         let manifest: [String: Any] = [
             "@context": "https://readium.org/webpub-manifest/context.jsonld",
             "metadata": ["title": "Test Audiobook"],
@@ -168,22 +169,14 @@ final class FetchManifestWithBearerTokenTests: XCTestCase {
             fulfillURL: fulfillURL
         )
 
-        let expectation = expectation(description: "Manifest fetch completes")
-        let resultJSON = ManifestResultHolder()
+        let resultJSON = await fetchManifestBounded(token, for: book, session: stubbedSession)
 
-        BookService.fetchManifestWithBearerToken(token, for: book, session: stubbedSession) { json in
-            resultJSON.value = json
-            expectation.fulfill()
-        }
-
-        waitForExpectations(timeout: 5)
-
-        XCTAssertNotNil(resultJSON.value, "Should return parsed manifest JSON")
-        XCTAssertNotNil(resultJSON.value?["metadata"], "Manifest should contain metadata")
-        XCTAssertNotNil(resultJSON.value?["readingOrder"], "Manifest should contain readingOrder")
+        XCTAssertNotNil(resultJSON, "Should return parsed manifest JSON")
+        XCTAssertNotNil(resultJSON?["metadata"], "Manifest should contain metadata")
+        XCTAssertNotNil(resultJSON?["readingOrder"], "Manifest should contain readingOrder")
     }
 
-    func testSuccess_sendsCorrectBearerTokenHeader() {
+    func testSuccess_sendsCorrectBearerTokenHeader() async {
         var capturedAuthHeader: String?
 
         HTTPStubURLProtocol.register { request in
@@ -199,12 +192,7 @@ final class FetchManifestWithBearerTokenTests: XCTestCase {
             location: manifestURL
         )
 
-        let expectation = expectation(description: "Request sent")
-        BookService.fetchManifestWithBearerToken(token, for: book, session: stubbedSession) { _ in
-            expectation.fulfill()
-        }
-
-        waitForExpectations(timeout: 5)
+        _ = await fetchManifestBounded(token, for: book, session: stubbedSession)
 
         XCTAssertEqual(
             capturedAuthHeader, "Bearer specific-book-token-abc",
@@ -212,7 +200,7 @@ final class FetchManifestWithBearerTokenTests: XCTestCase {
         )
     }
 
-    func testSuccess_requestsFromCorrectURL() {
+    func testSuccess_requestsFromCorrectURL() async {
         var capturedURL: URL?
 
         HTTPStubURLProtocol.register { request in
@@ -227,12 +215,7 @@ final class FetchManifestWithBearerTokenTests: XCTestCase {
             location: manifestURL
         )
 
-        let expectation = expectation(description: "Request sent")
-        BookService.fetchManifestWithBearerToken(token, for: book, session: stubbedSession) { _ in
-            expectation.fulfill()
-        }
-
-        waitForExpectations(timeout: 5)
+        _ = await fetchManifestBounded(token, for: book, session: stubbedSession)
 
         XCTAssertEqual(capturedURL, manifestURL,
                        "Should fetch from the bearer token's location URL, not the fulfill URL")
@@ -240,7 +223,7 @@ final class FetchManifestWithBearerTokenTests: XCTestCase {
 
     // MARK: - Error Cases
 
-    func testHTTP401_returnsNil() {
+    func testHTTP401_returnsNil() async {
         HTTPStubURLProtocol.register { request in
             guard request.url == self.manifestURL else { return nil }
             return .init(statusCode: 401, headers: nil, body: nil)
@@ -252,19 +235,11 @@ final class FetchManifestWithBearerTokenTests: XCTestCase {
             location: manifestURL
         )
 
-        let expectation = expectation(description: "Fetch completes")
-        let resultJSON = ManifestResultHolder()
-
-        BookService.fetchManifestWithBearerToken(token, for: book, session: stubbedSession) { json in
-            resultJSON.value = json
-            expectation.fulfill()
-        }
-
-        waitForExpectations(timeout: 5)
-        XCTAssertNil(resultJSON.value, "Should return nil for 401 response")
+        let resultJSON = await fetchManifestBounded(token, for: book, session: stubbedSession)
+        XCTAssertNil(resultJSON, "Should return nil for 401 response")
     }
 
-    func testHTTP500_returnsNil() {
+    func testHTTP500_returnsNil() async {
         HTTPStubURLProtocol.register { request in
             guard request.url == self.manifestURL else { return nil }
             return .init(statusCode: 500, headers: nil, body: nil)
@@ -276,19 +251,11 @@ final class FetchManifestWithBearerTokenTests: XCTestCase {
             location: manifestURL
         )
 
-        let expectation = expectation(description: "Fetch completes")
-        let resultJSON = ManifestResultHolder()
-
-        BookService.fetchManifestWithBearerToken(token, for: book, session: stubbedSession) { json in
-            resultJSON.value = json
-            expectation.fulfill()
-        }
-
-        waitForExpectations(timeout: 5)
-        XCTAssertNil(resultJSON.value, "Should return nil for 500 server error")
+        let resultJSON = await fetchManifestBounded(token, for: book, session: stubbedSession)
+        XCTAssertNil(resultJSON, "Should return nil for 500 server error")
     }
 
-    func testEmptyResponseBody_returnsNil() {
+    func testEmptyResponseBody_returnsNil() async {
         HTTPStubURLProtocol.register { request in
             guard request.url == self.manifestURL else { return nil }
             return .init(statusCode: 200, headers: nil, body: nil)
@@ -300,19 +267,11 @@ final class FetchManifestWithBearerTokenTests: XCTestCase {
             location: manifestURL
         )
 
-        let expectation = expectation(description: "Fetch completes")
-        let resultJSON = ManifestResultHolder()
-
-        BookService.fetchManifestWithBearerToken(token, for: book, session: stubbedSession) { json in
-            resultJSON.value = json
-            expectation.fulfill()
-        }
-
-        waitForExpectations(timeout: 5)
-        XCTAssertNil(resultJSON.value, "Should return nil for empty response body")
+        let resultJSON = await fetchManifestBounded(token, for: book, session: stubbedSession)
+        XCTAssertNil(resultJSON, "Should return nil for empty response body")
     }
 
-    func testHTMLResponse_returnsNil() {
+    func testHTMLResponse_returnsNil() async {
         let htmlData = "<html><body>Login Required</body></html>".data(using: .utf8)!
 
         HTTPStubURLProtocol.register { request in
@@ -326,19 +285,11 @@ final class FetchManifestWithBearerTokenTests: XCTestCase {
             location: manifestURL
         )
 
-        let expectation = expectation(description: "Fetch completes")
-        let resultJSON = ManifestResultHolder()
-
-        BookService.fetchManifestWithBearerToken(token, for: book, session: stubbedSession) { json in
-            resultJSON.value = json
-            expectation.fulfill()
-        }
-
-        waitForExpectations(timeout: 5)
-        XCTAssertNil(resultJSON.value, "Should return nil for HTML (non-JSON) response")
+        let resultJSON = await fetchManifestBounded(token, for: book, session: stubbedSession)
+        XCTAssertNil(resultJSON, "Should return nil for HTML (non-JSON) response")
     }
 
-    func testInvalidJSON_returnsNil() {
+    func testInvalidJSON_returnsNil() async {
         let badJSON = "{ invalid json }".data(using: .utf8)!
 
         HTTPStubURLProtocol.register { request in
@@ -352,19 +303,11 @@ final class FetchManifestWithBearerTokenTests: XCTestCase {
             location: manifestURL
         )
 
-        let expectation = expectation(description: "Fetch completes")
-        let resultJSON = ManifestResultHolder()
-
-        BookService.fetchManifestWithBearerToken(token, for: book, session: stubbedSession) { json in
-            resultJSON.value = json
-            expectation.fulfill()
-        }
-
-        waitForExpectations(timeout: 5)
-        XCTAssertNil(resultJSON.value, "Should return nil for malformed JSON")
+        let resultJSON = await fetchManifestBounded(token, for: book, session: stubbedSession)
+        XCTAssertNil(resultJSON, "Should return nil for malformed JSON")
     }
 
-    func testJSONArray_returnsNil() {
+    func testJSONArray_returnsNil() async {
         let arrayJSON = try! JSONSerialization.data(withJSONObject: [1, 2, 3])
 
         HTTPStubURLProtocol.register { request in
@@ -378,16 +321,96 @@ final class FetchManifestWithBearerTokenTests: XCTestCase {
             location: manifestURL
         )
 
-        let expectation = expectation(description: "Fetch completes")
-        let resultJSON = ManifestResultHolder()
+        let resultJSON = await fetchManifestBounded(token, for: book, session: stubbedSession)
+        XCTAssertNil(resultJSON, "Should return nil for JSON array (not a dictionary)")
+    }
 
-        BookService.fetchManifestWithBearerToken(token, for: book, session: stubbedSession) { json in
-            resultJSON.value = json
-            expectation.fulfill()
+    /// A non-2xx response whose body is a JSON object (a problem document) must
+    /// not be handed to the loader as a manifest.
+    func testHTTP403WithJSONProblemDocument_returnsNil() async {
+        let problem = try! JSONSerialization.data(withJSONObject: [
+            "type": "http://librarysimplified.org/terms/problem/credentials-invalid",
+            "title": "Invalid credentials"
+        ])
+        HTTPStubURLProtocol.register { request in
+            guard request.url == self.manifestURL else { return nil }
+            return .init(statusCode: 403, headers: ["Content-Type": "application/api-problem+json"], body: problem)
         }
+        let token = MyBooksSimplifiedBearerToken(
+            accessToken: "tok",
+            expiration: Date(timeIntervalSinceNow: 3600),
+            location: manifestURL
+        )
 
-        waitForExpectations(timeout: 5)
-        XCTAssertNil(resultJSON.value, "Should return nil for JSON array (not a dictionary)")
+        let resultJSON = await fetchManifestBounded(token, for: book, session: stubbedSession)
+
+        XCTAssertNil(resultJSON, "A non-2xx problem document is not a manifest")
+    }
+
+    // MARK: - Request shape
+
+    /// The second leg is a plain GET that carries the app User-Agent and skips the
+    /// local cache, so an expired manifest is never served from disk.
+    func testRequest_isUncachedGETWithAppUserAgent() async {
+        let captured = CapturedRequestHolder()
+        HTTPStubURLProtocol.register { request in
+            guard request.url == self.manifestURL else { return nil }
+            captured.value = request
+            let json = try! JSONSerialization.data(withJSONObject: ["metadata": [:]])
+            return .init(statusCode: 200, headers: nil, body: json)
+        }
+        let token = MyBooksSimplifiedBearerToken(
+            accessToken: "tok",
+            expiration: Date(timeIntervalSinceNow: 3600),
+            location: manifestURL
+        )
+        var expectedUARequest = URLRequest(url: manifestURL)
+        expectedUARequest.applyCustomUserAgent()
+
+        _ = await fetchManifestBounded(token, for: book, session: stubbedSession)
+
+        XCTAssertEqual(captured.value?.httpMethod, "GET")
+        XCTAssertEqual(captured.value?.value(forHTTPHeaderField: "User-Agent"),
+                       expectedUARequest.value(forHTTPHeaderField: "User-Agent"))
+        XCTAssertEqual(captured.value?.cachePolicy, .reloadIgnoringLocalCacheData)
+    }
+
+    /// A transport failure (no HTTP response at all) completes with nil rather
+    /// than hanging the loader.
+    func testTransportError_returnsNil() async {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [FailingURLProtocol.self]
+        let failingSession = URLSession(configuration: config)
+        defer { failingSession.finishTasksAndInvalidate() }
+        let token = MyBooksSimplifiedBearerToken(
+            accessToken: "tok",
+            expiration: Date(timeIntervalSinceNow: 3600),
+            location: manifestURL
+        )
+
+        let resultJSON = await fetchManifestBounded(token, for: book, session: failingSession)
+
+        XCTAssertNil(resultJSON, "A transport error must complete with nil")
+    }
+}
+
+/// Fails every request with `NSURLErrorNotConnectedToInternet` before any response.
+private final class FailingURLProtocol: URLProtocol {
+    override static func canInit(with request: URLRequest) -> Bool { true }
+    override static func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
+    }
+    override func stopLoading() {}
+}
+
+/// Lock-backed holder for the request a stub handler saw on the URL-loading queue.
+private final class CapturedRequestHolder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: URLRequest?
+    var value: URLRequest? {
+        get { lock.lock(); defer { lock.unlock() }; return storage }
+        set { lock.lock(); defer { lock.unlock() }; storage = newValue }
     }
 }
 
@@ -514,6 +537,7 @@ final class BearerTokenFulfillFlowTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        executionTimeAllowance = 60  // bounds fetchManifestBounded, which has no deadline
         HTTPStubURLProtocol.reset()
     }
 
@@ -522,7 +546,7 @@ final class BearerTokenFulfillFlowTests: XCTestCase {
         super.tearDown()
     }
 
-    func testFullFlow_fulfillReturnsBearerToken_thenManifestIsFetched() {
+    func testFullFlow_fulfillReturnsBearerToken_thenManifestIsFetched() async {
         let bearerTokenResponse: [String: Any] = [
             "access_token": "fulfill-bearer-token-123",
             "expires_in": 3600,
@@ -574,26 +598,16 @@ final class BearerTokenFulfillFlowTests: XCTestCase {
         config.protocolClasses = [HTTPStubURLProtocol.self]
         let stubbedSession = URLSession(configuration: config)
 
-        let expectation = expectation(description: "Manifest fetched via bearer token")
-        let resultJSON = ManifestResultHolder()
-
-        BookService.fetchManifestWithBearerToken(token!, for: book, session: stubbedSession) { json in
-            resultJSON.value = json
-            expectation.fulfill()
-        }
-
-        waitForExpectations(timeout: 5)
+        let resultJSON = await fetchManifestBounded(token!, for: book, session: stubbedSession)
 
         // Verify manifest was returned
-        XCTAssertNotNil(resultJSON.value, "Should receive the actual manifest, not the bearer token JSON")
-        let metadata = resultJSON.value?["metadata"] as? [String: Any]
+        XCTAssertNotNil(resultJSON, "Should receive the actual manifest, not the bearer token JSON")
+        let metadata = resultJSON?["metadata"] as? [String: Any]
         XCTAssertEqual(metadata?["title"] as? String, "California Audiobook")
-        XCTAssertNotNil(resultJSON.value?["readingOrder"])
+        XCTAssertNotNil(resultJSON?["readingOrder"])
 
         // Verify the request was made to the manifest URL (not the fulfill URL)
-        requestLogLock.lock()
-        let manifestRequests = requestLog.filter { $0.url == manifestURL }
-        requestLogLock.unlock()
+        let manifestRequests = requestLogLock.withLock { requestLog.filter { $0.url == manifestURL } }
 
         XCTAssertEqual(manifestRequests.count, 1, "Exactly one request should go to the manifest URL")
         XCTAssertEqual(
@@ -618,7 +632,7 @@ final class BearerTokenFulfillFlowTests: XCTestCase {
         XCTAssertNil(token, "Open access manifest must NOT trigger the two-step bearer token flow")
     }
 
-    func testFullFlow_bearerTokenWithExpiredManifestFetch_returnsNil() {
+    func testFullFlow_bearerTokenWithExpiredManifestFetch_returnsNil() async {
         HTTPStubURLProtocol.reset()
         HTTPStubURLProtocol.register { request in
             if request.url == self.manifestURL {
@@ -639,16 +653,8 @@ final class BearerTokenFulfillFlowTests: XCTestCase {
         config.protocolClasses = [HTTPStubURLProtocol.self]
         let stubbedSession = URLSession(configuration: config)
 
-        let expectation = expectation(description: "Fetch completes")
-        let resultJSON = ManifestResultHolder()
-
-        BookService.fetchManifestWithBearerToken(token, for: book, session: stubbedSession) { json in
-            resultJSON.value = json
-            expectation.fulfill()
-        }
-
-        waitForExpectations(timeout: 5)
-        XCTAssertNil(resultJSON.value, "Should return nil when manifest location returns 403")
+        let resultJSON = await fetchManifestBounded(token, for: book, session: stubbedSession)
+        XCTAssertNil(resultJSON, "Should return nil when manifest location returns 403")
     }
 
     /// Verifies that the fulfill URL (which might return bearer token JSON) is correctly
@@ -1095,7 +1101,7 @@ final class FetchOpenAccessManifestLCPSafetyTests: XCTestCase {
 
 // MARK: - Fetch Manifest With Bearer Token: LCP Safety
 
-/// Verifies that fetchManifestWithBearerToken correctly handles the case
+/// Verifies that ProductionBearerTokenManifestFetcher correctly handles the case
 /// where the manifest location URL unexpectedly returns an LCP license
 /// instead of a manifest.
 @MainActor
@@ -1103,6 +1109,7 @@ final class FetchManifestWithBearerTokenLCPSafetyTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        executionTimeAllowance = 60  // bounds fetchManifestBounded, which has no deadline
         HTTPStubURLProtocol.reset()
     }
 
@@ -1111,7 +1118,7 @@ final class FetchManifestWithBearerTokenLCPSafetyTests: XCTestCase {
         super.tearDown()
     }
 
-    func testFetchManifestWithBearerToken_receivingLCPLicense_returnsJSON() {
+    func testFetchManifestWithBearerToken_receivingLCPLicense_returnsJSON() async {
         // Use the process-wide shared stubbed session per URLSession+Stubbing.swift's
         // contract — creating a fresh URLSession per test method leaks the session
         // and its private delegate queue, causing callbacks to fire on freed state
@@ -1135,23 +1142,13 @@ final class FetchManifestWithBearerTokenLCPSafetyTests: XCTestCase {
         )
 
         let book = TPPBookMocker.mockBook(distributorType: .BearerToken)
-        let expectation = expectation(description: "Fetch completes")
-        let receivedJSON = ManifestResultHolder()
+        let receivedJSON = await fetchManifestBounded(token, for: book, session: stubbedSession)
 
-        BookService.fetchManifestWithBearerToken(
-            token, for: book, session: stubbedSession
-        ) { json in
-            receivedJSON.value = json
-            expectation.fulfill()
-        }
-
-        waitForExpectations(timeout: 5)
-
-        XCTAssertNotNil(receivedJSON.value,
+        XCTAssertNotNil(receivedJSON,
             "Even if the response is an LCP license (valid JSON), it will be returned. " +
             "The fix prevents LCP books from reaching this code path at all."
         )
-        XCTAssertNotNil(receivedJSON.value?["encryption"],
+        XCTAssertNotNil(receivedJSON?["encryption"],
             "Returned JSON should be the LCP license (with encryption key)")
     }
 }
@@ -1339,12 +1336,27 @@ final class NetworkExecutorResponseRegressionTests: XCTestCase {
     }
 }
 
-/// Lock-backed holder for a parsed manifest captured out of a completion.
-///
-/// `BookService.fetchManifestWithBearerToken`'s completion is `@Sendable`
-/// (PP-5301), so a plain captured `var` holding a non-`Sendable`
-/// `[String: Any]?` cannot cross into it. The lock states the single-writer
-/// handoff these tests already rely on rather than asserting it.
+extension XCTestCase {
+    /// Runs the production second-leg fetch and joins it. A fetch that never
+    /// completes is failed by the calling class's execution-time allowance.
+    @MainActor
+    fileprivate func fetchManifestBounded(
+        _ token: MyBooksSimplifiedBearerToken,
+        for book: TPPBook,
+        session: URLSession
+    ) async -> [String: Any]? {
+        let fetcher = ProductionBearerTokenManifestFetcher(session: session)
+        let result = ManifestResultHolder()
+        let fetch = Task { @MainActor in
+            result.value = await fetcher.fetchManifest(with: token, for: book)
+        }
+        await fetch.value
+        return result.value
+    }
+}
+
+/// Lock-backed holder for the manifest the bounded fetch hands back from its
+/// task. The lock states the single-writer handoff rather than asserting it.
 private final class ManifestResultHolder: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: [String: Any]?

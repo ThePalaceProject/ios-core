@@ -301,6 +301,10 @@ public final class AudiobookSessionManager: ObservableObject {
     /// the production download centre.
     let overdriveRefulfillStarter: @MainActor (TPPBook) -> Void
 
+    /// Reports a loader failure and shows the open-failure alert (PP-3707).
+    /// Injected so the call site is observable without presenting UIKit alerts.
+    private let showOpenFailureAlert: @MainActor (TPPBook, [String: Any]) -> Void
+
     // MARK: - Initialization
 
     /// Designated init — every dependency is explicit. `private` so the
@@ -321,6 +325,7 @@ public final class AudiobookSessionManager: ObservableObject {
         readinessTimeout: TimeInterval,
         notificationCenter: NotificationCenter,
         overdriveRefulfillStarter: @escaping @MainActor (TPPBook) -> Void,
+        showOpenFailureAlert: @escaping @MainActor (TPPBook, [String: Any]) -> Void,
         makeLoader: @escaping @MainActor (Bool) -> AudiobookLoader
     ) {
         self.bookRegistry = bookRegistry
@@ -339,6 +344,7 @@ public final class AudiobookSessionManager: ObservableObject {
         self.readinessTimeout = readinessTimeout
         self.mediaServicesResetRecovery = MediaServicesResetRecovery(notificationCenter: notificationCenter)
         self.overdriveRefulfillStarter = overdriveRefulfillStarter
+        self.showOpenFailureAlert = showOpenFailureAlert
         self.makeLoader = makeLoader
         Log.info(#file, "AudiobookSessionManager initialized")
         nowPlayingCoordinator = NowPlayingCoordinator()
@@ -381,6 +387,7 @@ public final class AudiobookSessionManager: ObservableObject {
         overdriveRefulfillStarter: @escaping @MainActor (TPPBook) -> Void = { book in
             AppContainer.production().downloadCenter.startDownload(for: book, withRequest: nil)
         },
+        showOpenFailureAlert: (@MainActor (TPPBook, [String: Any]) -> Void)? = nil,
         makeLoader: @escaping @MainActor (Bool) -> AudiobookLoader = { AudiobookLoader(forceRefulfill: $0) }
     ) {
         self.init(
@@ -399,6 +406,7 @@ public final class AudiobookSessionManager: ObservableObject {
             readinessTimeout: readinessTimeout,
             notificationCenter: notificationCenter,
             overdriveRefulfillStarter: overdriveRefulfillStarter,
+            showOpenFailureAlert: showOpenFailureAlert ?? AudiobookOpenFailureAlert.presenter(bookRegistry: appContainer.bookRegistry),
             makeLoader: makeLoader
         )
     }
@@ -406,8 +414,8 @@ public final class AudiobookSessionManager: ObservableObject {
     /// Presents phone alerts for validation errors published to
     /// `errorPublisher` (WiFi-only+cellular, not-authenticated,
     /// not-downloaded, offline+streaming). Loader failures and cold-load
-    /// playback failures have their own alert paths (BookService.
-    /// showAudiobookTryAgainError and the .playbackFailed cold-load branch);
+    /// playback failures have their own alert paths (`AudiobookOpenFailureAlert`
+    /// and the .playbackFailed cold-load branch);
     /// those are explicitly skipped here to avoid double-alerting.
     private func subscribeToPhoneSideErrorAlerts() {
         errorPublisher
@@ -515,17 +523,6 @@ public final class AudiobookSessionManager: ObservableObject {
         state == .unregistered
             && currentBookIdentifier != nil
             && currentBookIdentifier == changedIdentifier
-    }
-
-    static func presentPhoneSideAlert(for error: AudiobookSessionError) {
-        guard let alertContent = phoneAlertContent(for: error) else { return }
-        let alert = TPPAlertUtils.alert(title: alertContent.title, message: alertContent.message)
-        TPPAlertUtils.presentFromViewControllerOrNil(
-            alertController: alert,
-            viewController: nil,
-            animated: true,
-            completion: nil
-        )
     }
 
     // MARK: - Public API
@@ -834,7 +831,7 @@ public final class AudiobookSessionManager: ObservableObject {
                         guard self.currentBook?.identifier == book.identifier else { return }
                         guard self.accountsManager.currentUserAccount.hasCredentials() else {
                             Log.info(#file, "SAML re-auth cancelled or failed — falling back to standard try-again error")
-                            BookService.showAudiobookTryAgainError(book: book, onFinish: nil)
+                            self.showOpenFailureAlert(book, [:])
                             return
                         }
                         Log.info(#file, "SAML re-auth succeeded — re-attempting audiobook open")
@@ -845,7 +842,7 @@ public final class AudiobookSessionManager: ObservableObject {
                 // PP-5242: carry the load error's cause into the open-failure report.
                 let failureMetadata = Self.openFailureMetadata(
                     loadError: loadError, contentSource: Self.contentSourceForOpen(book: book))
-                BookService.showAudiobookTryAgainError(book: book, failureMetadata: failureMetadata, onFinish: nil)
+                showOpenFailureAlert(book, failureMetadata)
             }
             return .failure(sessionError)
         }

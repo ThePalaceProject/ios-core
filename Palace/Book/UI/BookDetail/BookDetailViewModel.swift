@@ -132,7 +132,7 @@ final class BookDetailViewModel: ObservableObject {
     private let readerService: ReaderService
     private let metadataService: BookMetadataService
     private let relatedBooksService: RelatedBooksService
-    /// Optional injected audiobook session — nil in production (BookService
+    /// Optional injected audiobook session — nil in production (BookOpenRouter
     /// resolves the DI-root session). A test injects a mock so the audiobook
     /// open → half-sheet-dismiss wiring is drivable. fix/audiobook-first-open-hang.
     private let injectedAudiobookSession: AudiobookSessionManaging?
@@ -148,9 +148,6 @@ final class BookDetailViewModel: ObservableObject {
     /// tests that name the view model's typealias keep compiling.
     typealias BookMetadataHydrator = BookMetadataFetcher
 
-    // Note: audiobook management moved to BookService
-    // private var audiobookViewController: UIViewController? // No longer used
-    // private var audiobookManager: DefaultAudiobookManager? // No longer used
     private var audiobookPlayer: AudiobookPlayer?
     private var audiobookBookmarkBusinessLogic: AudiobookBookmarkBusinessLogic?
     private var timer: DispatchSourceTimer?
@@ -209,7 +206,7 @@ final class BookDetailViewModel: ObservableObject {
         self.opdsFeedService = opdsFeedService
         self.samplePreviewManager = samplePreviewManager
         self.readerService = readerService
-        // Test seam: nil in production, where BookService falls back to the
+        // Test seam: nil in production, where BookOpenRouter falls back to the
         // AppContainer session.
         self.injectedAudiobookSession = audiobookSession
         self.authGateOverride = authGateOverride
@@ -906,7 +903,7 @@ final class BookDetailViewModel: ObservableObject {
 
         switch destination {
         case .epubReader, .pdfReader:
-            BookService.open(resolvedBook, onFinish: finishOnMain)
+            BookOpenRouter.open(resolvedBook, bookRegistry: registry, onFinish: finishOnMain)
         case .audiobookSession:
             openAudiobook(resolvedBook, completion: finishOnMain, onLoadingShellPresented: onLoadingShellPresented)
         case .streamingReader:
@@ -926,7 +923,7 @@ final class BookDetailViewModel: ObservableObject {
     // MARK: - Audiobook Opening
 
     func openAudiobook(_ book: TPPBook, completion: (() -> Void)? = nil, onLoadingShellPresented: (@MainActor () -> Void)? = nil) {
-        BookService.open(book, audiobookSession: injectedAudiobookSession, onFinish: completion, onLoadingShellPresented: onLoadingShellPresented)
+        BookOpenRouter.open(book, bookRegistry: registry, audiobookSession: injectedAudiobookSession, onFinish: completion, onLoadingShellPresented: onLoadingShellPresented)
     }
 
     // MARK: - Streaming HTML Reader (PP-4161)
@@ -934,7 +931,7 @@ final class BookDetailViewModel: ObservableObject {
     /// Presents the in-app WKWebView reader for streaming-media (text/html)
     /// titles. Distinct from `didSelectRead` because there's no auth document
     /// dependency (no DRM grant), no openBook dispatch (no LCP / Readium /
-    /// audiobook session), and no `BookService.open` reentrancy guard — we
+    /// audiobook session), and no `BookOpenRouter.open` reentrancy guard — we
     /// route straight to `NavigationCoordinator.push(.streamingHTML(...))`.
     @MainActor
     func didSelectReadStreaming(for book: TPPBook, completion: (() -> Void)? = nil) {
@@ -1142,7 +1139,7 @@ extension BookDetailViewModel {
         timer?.resume()
     }
     @objc public func pollAudiobookReadingLocation() {
-        // Position polling is now handled by AudiobookPlaybackModel in BookService
+        // Position polling is now handled by AudiobookPlaybackModel
         // This legacy polling can interfere with the new system, so disable it
         timer?.cancel()
         timer = nil

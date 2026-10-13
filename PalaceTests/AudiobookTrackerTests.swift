@@ -710,7 +710,7 @@ final class ContinuousPlaybackTrackingTests: XCTestCase {
 // MARK: - CarPlay Integration Tests
 
 /// Tests to verify time tracking works correctly via CarPlay code paths
-/// CarPlay uses the same BookService.open() -> AudiobookManager flow
+/// CarPlay opens through the same `AudiobookSessionManager.openAudiobook` flow as the phone
 @MainActor
 final class CarPlayTimeTrackingTests: XCTestCase {
 
@@ -737,11 +737,11 @@ final class CarPlayTimeTrackingTests: XCTestCase {
         super.tearDown()
     }
 
-    /// Simulates CarPlay flow: BookService creates tracker, manager calls delegate methods
+    /// Simulates CarPlay flow: the open creates the tracker, the manager calls delegate methods
     /// CarPlay uses currentManager?.play() which calls playbackTrackerDelegate?.playbackStarted()
     func testCarPlayPlayback_usesStandardTrackerDelegateMethods() {
         // Arrange: Simulate the exact CarPlay flow
-        // 1. BookService.open() creates the tracker (done in setUp)
+        // 1. The audiobook open creates the tracker (done in setUp)
         // 2. Manager calls playbackStarted() when user taps play in CarPlay
         tracker.playbackStarted()
 

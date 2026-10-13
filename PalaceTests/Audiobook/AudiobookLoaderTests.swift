@@ -4,7 +4,7 @@
 //
 //  Tests for AudiobookLoader — the collaborator that builds an audiobook
 //  manager from a TPPBook. Regression suite for the "opening third audiobook
-//  hangs" root cause: the previous static BookService pipeline leaked a
+//  hangs" root cause: the previous static open pipeline leaked a
 //  live decryptor across sessions, which is now impossible because each
 //  load produces its own LoadedAudiobook owned by the session manager.
 //
@@ -43,7 +43,7 @@ final class AudiobookLoaderTests: XCTestCase {
     /// A book with a placeholder acquisition URL and no local manifest must
     /// resolve to a manifest failure — not a success or a hang. Ensures the
     /// loader surfaces a definitive error on the network path instead of
-    /// waiting forever (which was the old BookService behavior's failure
+    /// waiting forever (which was the old static open pipeline's failure
     /// mode combined with a 20s session-manager timeout).
     ///
     /// Integration-shaped on purpose: a bare `AudiobookLoader()` means the

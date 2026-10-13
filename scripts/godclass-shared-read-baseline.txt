@@ -31,4 +31,8 @@
 #   line; later waves removed more than it added, so that debt nets out here.
 #   test_live_baseline_has_zero_slack now fails on any slack OR any raise above
 #   the measured count, so this number must be re-measured, not estimated.
-162
+# 162 -> 159: BookService's three UserRetryTracker.shared reads moved into
+#   AudiobookOpenFailureAlert, which takes the tracker as an init argument. Its
+#   production factory passes `retryTracker: .shared`, one remaining reach that
+#   this pattern does not count because the implicit member has no type prefix.
+159
