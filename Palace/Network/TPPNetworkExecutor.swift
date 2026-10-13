@@ -383,7 +383,9 @@ struct RefreshOutcomeBox: @unchecked Sendable {
                 return // refresh completed normally, or a newer one took over
             }
             Log.error(#file, "Token refresh watchdog fired after \(timeout)s — force-releasing wedged refresh (generation \(generation)); failing \(stranded.count) stranded request(s)")
-            stranded.forEach { $0.task.cancel() }
+            let error = NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut,
+                                userInfo: [NSLocalizedDescriptionKey: "Token refresh did not finish"])
+            stranded.forEach { self.failQueuedRetry($0.task, error: error) }
         }
     }
 
@@ -908,6 +910,13 @@ extension TPPNetworkExecutor {
                 return
             }
 
+            // A completion passed with a task replaces the one the responder
+            // holds for it; every outcome below then completes the task through
+            // the responder, exactly once.
+            if let task, let completionBox {
+                self.responder.addCompletion(completionBox.call, taskID: task.taskIdentifier)
+            }
+
             // Atomic check-and-claim: only one caller can take the refresh slot.
             let claimed = await self.tokenCoordinator.tryClaimRefreshSlot()
 
@@ -915,9 +924,6 @@ extension TPPNetworkExecutor {
                 Log.debug(#file, "Token refresh already in progress, queueing task for retry")
                 if let task {
                     await self.tokenCoordinator.appendToRetryQueue(task, accountIdAtRefreshStart: capturedAccountId)
-                    if let completionBox {
-                        self.responder.addCompletion(completionBox.call, taskID: task.taskIdentifier)
-                    }
                 } else {
                     let error = NSError(domain: TPPErrorLogger.clientDomain,
                                         code: TPPErrorCode.invalidCredentials.rawValue,
@@ -945,7 +951,11 @@ extension TPPNetworkExecutor {
                 Log.error(#file, "Cannot refresh token: missing credentials or tokenURL for account \(capturedAccountId ?? "nil")")
                 await self.tokenCoordinator.setRefreshing(false)
                 let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Cannot request token with empty credentials"])
-                completionBox?.call(NYPLResult.failure(error, nil))
+                if let task {
+                    self.failQueuedRetry(task, error: error)
+                } else {
+                    completionBox?.call(NYPLResult.failure(error, nil))
+                }
                 return
             }
 
@@ -954,9 +964,6 @@ extension TPPNetworkExecutor {
 
             if let task {
                 await self.tokenCoordinator.appendToRetryQueue(task, accountIdAtRefreshStart: capturedAccountId)
-                if let completionBox {
-                    self.responder.addCompletion(completionBox.call, taskID: task.taskIdentifier)
-                }
             }
 
             self.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL, accountId: capturedAccountId) { [weak self] result in
@@ -983,6 +990,10 @@ extension TPPNetworkExecutor {
                             let oldTask = queued.task
                             guard let originalRequest = oldTask.originalRequest,
                                   originalRequest.url != nil else {
+                                let message = "The request could not be rebuilt after a token refresh"
+                                self.failQueuedRetry(oldTask, error: NSError(domain: TPPErrorLogger.clientDomain,
+                                                                             code: TPPErrorCode.responseFail.rawValue,
+                                                                             userInfo: [NSLocalizedDescriptionKey: message]))
                                 continue
                             }
 
@@ -1036,7 +1047,6 @@ extension TPPNetworkExecutor {
                         Log.error(#file, "Failed to refresh token with error: \(error.localizedDescription)")
 
                         let failedTasks = await self.tokenCoordinator.drainRetryQueue()
-                        failedTasks.forEach { $0.task.cancel() }
 
                         await self.tokenCoordinator.setRefreshing(false)
 
@@ -1074,7 +1084,12 @@ extension TPPNetworkExecutor {
                                               code: TPPErrorCode.invalidCredentials.rawValue,
                                               userInfo: userInfo)
                         }
-                        completionBox?.call(NYPLResult.failure(nsError, nil))
+                        // Failed after the stale mark above, so a caller that
+                        // reads the account's state on failure sees it.
+                        failedTasks.forEach { self.failQueuedRetry($0.task, error: nsError) }
+                        if task == nil {
+                            completionBox?.call(NYPLResult.failure(nsError, nil))
+                        }
                     }
                 }
             }

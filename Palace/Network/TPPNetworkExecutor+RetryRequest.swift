@@ -59,19 +59,27 @@ extension TPPNetworkExecutor {
         return request
     }
 
-    /// Fails a queued retry that `retryRequest` could not rebuild. Delivered on
-    /// the session's delegate queue, where the responder delivers every other
-    /// task completion.
+    /// Fails a queued retry that `retryRequest` could not rebuild.
     fileprivate func failUnresendableRetry(_ oldTask: URLSessionTask, url retryURL: URL?) {
         let host = retryURL?.host ?? "unknown-host"
         Log.error(#file, "Token-refresh retry not sent: stream body consumed (host: \(host))")
+        let message = "The request body could not be resent after a token refresh"
+        failQueuedRetry(oldTask, error: NSError(domain: TPPErrorLogger.clientDomain,
+                                                code: TPPErrorCode.responseFail.rawValue,
+                                                userInfo: [NSLocalizedDescriptionKey: message]))
+    }
+
+    /// Completes the caller of a request that was waiting on a token refresh
+    /// and will not be resent, with `error` and the response that started the
+    /// refresh. The task has already finished at the URLSession level, so
+    /// cancelling it delivers nothing; the responder's stored completion has to
+    /// be called directly. Delivered on the session's delegate queue, where the
+    /// responder delivers every other task completion.
+    func failQueuedRetry(_ oldTask: URLSessionTask, error: NSError) {
         let responder = self.responder
         transport.urlSession.delegateQueue.addOperation {
-            let message = "The request body could not be resent after a token refresh"
-            let error = NSError(domain: TPPErrorLogger.clientDomain,
-                                code: TPPErrorCode.responseFail.rawValue,
-                                userInfo: [NSLocalizedDescriptionKey: message])
-            responder.failRetry(taskID: oldTask.taskIdentifier, url: retryURL, error: error)
+            responder.failRetry(taskID: oldTask.taskIdentifier, url: oldTask.originalRequest?.url,
+                                error: error, response: oldTask.response)
             oldTask.cancel()
         }
     }
