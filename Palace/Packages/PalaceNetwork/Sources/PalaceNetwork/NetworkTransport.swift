@@ -18,13 +18,19 @@ import PalaceLogging
 /// proceeds — a fire-and-forget `Task { await actor.… }` would silently break
 /// that invariant and let in-flight requests complete against the wrong
 /// account's credentials.
+///
+/// A task stays registered until it is removed, either by `cancelNonEssential`
+/// or by the owner when the task's completion is delivered; the store does not
+/// observe completion itself.
 public final class ActiveTasksStore {
     private var tasks: [URLSessionTask] = []
+    private var addedCount = 0
     private let lock = NSLock()
 
     public func add(_ task: URLSessionTask) {
         lock.lock(); defer { lock.unlock() }
         tasks.append(task)
+        addedCount += 1
     }
 
     public func remove(_ task: URLSessionTask) {
@@ -52,13 +58,21 @@ public final class ActiveTasksStore {
         }
     }
 
-    /// Number of registered tasks in any state, including ones already
-    /// cancelling, which `liveTaskCount` skips. Lets a test assert that no
-    /// task was created at all. Pure observation — no state mutation.
+    /// Number of tasks currently held, in any state, including ones already
+    /// cancelling, which `liveTaskCount` skips. Pure observation.
+    // PUBLIC_INTENT: read by TPPNetworkExecutor in the Palace app target, outside this package.
+    public var heldTaskCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return tasks.count
+    }
+
+    /// Number of tasks ever added, never decremented by removal. Lets a test
+    /// assert that no task was created at all without racing the removal that
+    /// follows a task's completion. Pure observation.
     // PUBLIC_INTENT: read by TPPNetworkExecutor in the Palace app target, outside this package.
     public var registeredTaskCount: Int {
         lock.lock(); defer { lock.unlock() }
-        return tasks.count
+        return addedCount
     }
 
     @discardableResult

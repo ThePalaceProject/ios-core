@@ -453,12 +453,18 @@ struct RefreshOutcomeBox: @unchecked Sendable {
         transport.activeTasksStore.liveTaskCount
     }
 
-    /// Number of tasks the executor has handed to the transport, in any
-    /// state. Read-only observation surface for tests that assert a request
-    /// was never created; a task resumed and cancelled at once may never reach
+    /// Number of tasks the executor has ever handed to the transport.
+    /// Read-only observation surface for tests that assert a request was
+    /// never created; a task resumed and cancelled at once may never reach
     /// its URLProtocol, so a protocol-side count cannot show that.
     var registeredTaskCount: Int {
         transport.activeTasksStore.registeredTaskCount
+    }
+
+    /// Number of tasks the transport still holds, in any state. Read-only
+    /// observation surface for tests that assert completed tasks are released.
+    var heldTaskCount: Int {
+        transport.activeTasksStore.heldTaskCount
     }
 }
 
@@ -645,8 +651,16 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
         // pre-existing defect than this comment's change addressed. Closing it
         // needs `accountId` on `addBearerAndExecute`.
         TaskProvenance.setAccount(accountId, on: task)
-        responder.addCompletion(completion, taskID: task.taskIdentifier)
-        transport.activeTasksStore.add(task)
+        // Release the task when its completion is delivered: on success,
+        // failure, cancel, session invalidation, or after a 401 when the
+        // retry it moved to finishes. Removed before the caller's completion
+        // runs, so the caller observes the store already updated.
+        let activeTasks = transport.activeTasksStore
+        responder.addCompletion({ [weak task] result in
+            if let task { activeTasks.remove(task) }
+            completion(result)
+        }, taskID: task.taskIdentifier)
+        activeTasks.add(task)
         task.resume()
         return task
     }
