@@ -86,18 +86,19 @@ read -r -d '' ALLOWLIST <<'EOF'
 # when PP-5241 moved its recovery host and two pure error mappers out, then
 # -> 1193 when PP-4967 moved the OverDrive re-fulfilment out, then -> 1183
 # when PP-5301 collapsed the awaited audiobook-open call site, then -> 1174
-# when PP-5302 moved the phone alert mapping to +ErrorMapping.
-1174 Palace/Audiobooks/AudiobookSessionManager.swift
+# when PP-5302 moved the phone alert mapping to +ErrorMapping, then -> 1173
+# when the book-open tracker's recording call was removed.
+1173 Palace/Audiobooks/AudiobookSessionManager.swift
 # 1213 -> 1172 when the mid-download network-loss handler moved to
 # DownloadNetworkLossMonitor.swift.
 1172 Palace/MyBooks/MyBooksDownloadCenter.swift
 1028 Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift
 867  Palace/Book/UI/BookDetail/BookDetailViewModel.swift
 871  Palace/Utilities/Localization/Strings.swift
-# AccountsManager is 367 under this metric, not 366: #1520 landed
-# `_ = registryLoader` in init while this branch was in review. Re-measured
-# against the current tree with this gate's own import-excluding counter, not
-# derived by adding one to the previous number.
+# AccountsManager is 363 under this metric: it was pinned at 367 after #1520
+# landed `_ = registryLoader` in init, then lowered when #1624 moved the DEBUG
+# disk-cache preload flag into AccountsManager+TestingSupport.swift. Measured
+# with this gate's own import-excluding counter.
 #
 # Carried over from the retired six-file freeze at their MEASURED sizes, not the
 # freeze's stale numbers. Without these three the swap would LOOSEN exactly the
@@ -105,7 +106,7 @@ read -r -d '' ALLOWLIST <<'EOF'
 # 429 lines of headroom, TPPSignInBusinessLogic 162 and BorrowOperation 279 —
 # 870 in total, on two CLAUDE.md critical paths (sign-in, borrow). The allowlist
 # only ratchets down, so pinning them costs nothing and closes the regression.
-367  Palace/Accounts/Library/AccountsManager.swift
+363  Palace/Accounts/Library/AccountsManager.swift
 633  Palace/SignInLogic/TPPSignInBusinessLogic.swift
 514  Palace/MyBooks/BorrowOperation.swift
 # Package source is in scope (see THE RULE). This one was already over the

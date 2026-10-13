@@ -183,26 +183,11 @@ struct AppContainer: @unchecked Sendable {
         return session
     }
 
-    /// Wall-clock open-time tracker keyed by book identifier. Audiobook +
-    /// reader open-paths record into it. Its only reader (the "Continue"
-    /// catalog rows) was removed in PP-4910, so the tracker is currently
-    /// write-only — retained because the recording call sites live in the
-    /// critical-path reader/audiobook flows and a future "resume" re-entry
-    /// point would consume it. See PP-4910's removal note.
-    @MainActor
-    var bookOpenTracker: BookOpenTracking {
-        if let cached = AppContainer._bookOpenTracker { return cached }
-        let tracker = BookOpenTracker()
-        AppContainer._bookOpenTracker = tracker
-        return tracker
-    }
-    @MainActor private static var _bookOpenTracker: BookOpenTracking?
-
     /// Side-loading (PP-2678) — process-wide registry of side-loaded books.
     /// Source of truth for the sync-exemption set (consumed by
     /// `BookRegistrySync.sync()` via a lazy provider) and the side-loaded
-    /// catalog lane. File-backed shared cache, lazy + cached the
-    /// same way `bookOpenTracker` is; `_resetForTesting()` nils it so its
+    /// catalog lane. File-backed shared cache, lazy + cached;
+    /// `_resetForTesting()` nils it so its
     /// on-disk manifest state does not bleed across test classes.
     var sideloadedBookRegistry: SideloadedBookRegistry {
         if let cached = AppContainer._sideloadedBookRegistry.withLock({ $0 }) { return cached }

@@ -254,17 +254,23 @@ class PalaceWiringTestCase: PalaceTestCase {
     /// (`AccountRegistryCaching`). Lets a test install a recording
     /// cache to pin the catalog read/write/clear routing while keeping the same
     /// opt-out flag pin + tearDown drain as the other helpers (so it stays off the
-    /// `AccountsManagerIsolationLint` bare-construction ban).
+    /// `AccountsManagerIsolationLint` bare-construction ban). `processEnvironment`
+    /// lets a test build the manager as a non-XCTest launch would.
     @discardableResult
     nonisolated func makeFreshAccountsManager(
         defaults: UserDefaults,
         registryCache: any AccountRegistryCaching,
+        processEnvironment: [String: String] = ProcessInfo.processInfo.environment,
         _ configure: (AccountsManager) -> Void = { _ in }
     ) -> AccountsManager {
         #if DEBUG
         AccountsManager.deferInitialLoadCatalogsForTesting = true
         #endif
-        let manager = AccountsManager(defaults: defaults, registryCache: registryCache)
+        let manager = AccountsManager(
+            defaults: defaults,
+            registryCache: registryCache,
+            processEnvironment: processEnvironment
+        )
         configure(manager)
         managersToCancelOnTearDown.append(manager)
         return manager

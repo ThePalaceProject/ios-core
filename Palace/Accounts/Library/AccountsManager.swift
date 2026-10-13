@@ -30,7 +30,7 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
 /// `@unchecked Sendable` invariant: the only mutable state is `storage`, read
 /// and written exclusively under `lock` (an immutable `NSLock`); the wrapped
 /// value is a `Sendable` `Bool`.
-private final class AccountsManagerBoolFlag: @unchecked Sendable {
+final class AccountsManagerBoolFlag: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: Bool
     init(_ value: Bool) { storage = value }
@@ -161,23 +161,6 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
         set { _deferInitialLoadCatalogsForTesting.value = newValue }
     }
 
-    /// Test-only opt-out from the synchronous `preloadAccountsFromDiskCacheSync()`
-    /// in `init()`. Defaults to `false`, so production AND every test that relies
-    /// on preloaded accounts are unaffected — only tests that opt in are changed.
-    ///
-    /// A test that constructs an `AccountsManager` purely to satisfy a dependency
-    /// and never reads `accountSets` (e.g. `TPPBookRegistryMigrationTests`, which
-    /// drives `BookRegistrySync.load(account:)` with a random test UUID) sets this
-    /// to `true` in `setUp` to skip the on-disk cached-account load, which can
-    /// take >5s on memory-pressured CI with ~1138 cached accounts. Scope the flip
-    /// to `setUp`/`tearDown`. Not compiled into release builds.
-    private static let _deferDiskCachePreloadForTesting = AccountsManagerBoolFlag(false)
-    /// Lock-backed test-only flag.
-    internal static var deferDiskCachePreloadForTesting: Bool {
-        get { _deferDiskCachePreloadForTesting.value }
-        set { _deferDiskCachePreloadForTesting.value = newValue }
-    }
-
     /// Test-only flag flipped to `true` inside `cancelBackgroundWork()` BEFORE
     /// the `.cancel()` is issued on `backgroundFetchTask`. Used by
     /// `AccountsManagerCancellationTests` to disambiguate "explicit cancel was
@@ -241,13 +224,16 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
     ///   (PP-4754).
     /// - Parameter switchDependencies: account-switch cleanup collaborators;
     ///   `.production` binds the live ones, tests spy.
+    /// - Parameter processEnvironment: read once to decide whether the disk-cache
+    ///   preload runs; tests pass a non-XCTest environment to build a production launch.
     init(
         defaults: UserDefaults = .standard,
         borrowReauthResetter: any BorrowReauthResetting = DownloadCenterBorrowReauthResetter(),
         crawlScheduler: CrawlTaskScheduler = .production,
         switchDependencies: AccountSwitchDependencies = .production,
         registryCache: any AccountRegistryCaching = DiskAccountRegistryCache(),
-        registryStore: AccountRegistryStore = AccountRegistryStore()
+        registryStore: AccountRegistryStore = AccountRegistryStore(),
+        processEnvironment: [String: String] = ProcessInfo.processInfo.environment
     ) {
         self.defaults = defaults
         self.borrowReauthResetter = borrowReauthResetter
@@ -316,9 +302,8 @@ private final class AccountsManagerBoolFlag: @unchecked Sendable {
         // an empty list. The async refresh below still runs to pick up any
         // server-side registry changes.
         #if DEBUG
-        // Test-only skip (see `deferDiskCachePreloadForTesting`): a test that
-        // never reads `accountSets` can opt out of the >5s cached-account load.
-        if !Self.deferDiskCachePreloadForTesting {
+        // Skipped under XCTest unless a test opts in; see `deferDiskCachePreloadForTesting`.
+        if Self.shouldPreloadDiskCacheAtInit(environment: processEnvironment) {
             registryLoader.preloadAccountsFromDiskCacheSync()
         }
         #else
