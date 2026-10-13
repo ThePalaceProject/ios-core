@@ -539,12 +539,14 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
             return await dataTask(req, accountId: accountId)
 
         case .refreshThenDispatch(let accountId):
+            // Nobody is waiting on a refresh for a request already cancelled.
+            guard !Task.isCancelled else { return Self.cancelledResult }
             Log.info(#file, "Token near expiry - proactively refreshing before request")
             // Boxed like the request below: a refresh callback firing twice
-            // would otherwise trap on a double resume.
-            // No caller cancels an `execute` await today — the sign-in tasks
-            // are unstructured — so this arm is defensive and untested. It
-            // becomes load-bearing the moment a structured caller appears.
+            // would otherwise trap on a double resume. A cancel ends this wait
+            // without cancelling the refresh, which other requests share;
+            // `dataTask` then sends nothing. `URLSessionNetworkClient` relies on
+            // this to free catalog fetches cancelled mid-refresh.
             let refreshed = CancellableContinuationBox<Void>()
             _ = try? await withTaskCancellationHandler {
                 try await withCheckedThrowingContinuation { (c: CheckedContinuation<Void, Error>) in
@@ -567,6 +569,9 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
         let bridged: SendableNetworkResult? = try? await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 box.install(continuation)
+                // Cancelled before dispatch, including during a refresh: the
+                // cancellation handler settles the box, so send nothing.
+                guard !Task.isCancelled else { return }
                 let task = performDataTask(with: req, accountId: accountId) { result in
                     box.finish(.success(SendableNetworkResult(result: result)))
                 }
@@ -575,8 +580,12 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
         } onCancel: {
             box.cancel()
         }
-        return bridged?.result
-            ?? .failure(NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled), nil)
+        return bridged?.result ?? Self.cancelledResult
+    }
+
+    /// What an `execute` await returns when its Task is cancelled.
+    private static var cancelledResult: NYPLResult<Data> {
+        .failure(NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled), nil)
     }
 
     private func performDataTask(with request: URLRequest,
@@ -1135,8 +1144,6 @@ private final class ContinuationGuard {
 ///
 /// Cancellation that arrives BEFORE the continuation is installed is retained
 /// and applied on `install(_:)`, so the early-cancel race cannot strand a caller.
-/// Mirrors `CancellableTaskBox` in `URLSessionNetworkClient`, which already
-/// solved this for the newer client.
 /// Internal rather than private so `TPPRequestExecuting`'s async bridge can
 /// reuse it instead of growing a second resume-once guard.
 final class CancellableContinuationBox<T>: @unchecked Sendable {
