@@ -151,7 +151,9 @@ PBXPROJ = """// !$*UTF8*$!
 ALL_TEST_CLASSES = ("WidgetTests", "WidgetExtraTests", "WidgetOrphanTests", "WidgetAppSideTests")
 
 
-def _gate_repo(tmp_path: Path, test_classes=ALL_TEST_CLASSES) -> Path:
+def _gate_repo(tmp_path: Path, test_classes=ALL_TEST_CLASSES, files=None) -> Path:
+    """`files` maps PalaceTests-relative paths to contents, replacing or adding
+    to the one-XCTestCase-per-file defaults."""
     repo = _repo(tmp_path, hub_cap=5, hub_lines=5)
     shutil.copy(SOURCES_CHECK, repo / "scripts" / SOURCES_CHECK.name)
     (repo / "Palace" / "Widget.swift").write_text("struct Widget {}\n")
@@ -160,6 +162,9 @@ def _gate_repo(tmp_path: Path, test_classes=ALL_TEST_CLASSES) -> Path:
         (repo / "PalaceTests" / f"{cls}.swift").write_text(
             f"import XCTest\n\nfinal class {cls}: XCTestCase {{\n"
             f"    func testWidget() {{}}\n}}\n")
+    for rel, content in (files or {}).items():
+        (repo / "PalaceTests" / rel).parent.mkdir(parents=True, exist_ok=True)
+        (repo / "PalaceTests" / rel).write_text(content)
     (repo / "Palace.xcodeproj").mkdir()
     (repo / "Palace.xcodeproj" / "project.pbxproj").write_text(PBXPROJ)
     _git(repo, "add", "-A")
@@ -169,7 +174,8 @@ def _gate_repo(tmp_path: Path, test_classes=ALL_TEST_CLASSES) -> Path:
     return repo
 
 
-def _run_gate(repo: Path, tmp_path: Path, log: str, rc: int = 0) -> subprocess.CompletedProcess:
+def _run_gate(repo: Path, tmp_path: Path, log: str, rc: int = 0,
+              extra_env=None) -> subprocess.CompletedProcess:
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
     stub = bin_dir / "xcodebuild"
@@ -190,6 +196,8 @@ def _run_gate(repo: Path, tmp_path: Path, log: str, rc: int = 0) -> subprocess.C
         "FAKE_XCODEBUILD_OUTPUT": str(GATE_FIXTURES / log),
         "FAKE_XCODEBUILD_RC": str(rc),
     })
+    env.pop("PRE_PUSH_TESTS_ALLOW_TIMEOUT", None)
+    env.update(extra_env or {})
     head = _git(repo, "rev-parse", "HEAD").strip()
     refs = f"refs/heads/main {head} refs/heads/main {'0' * 40}\n"
     return subprocess.run(
@@ -250,16 +258,194 @@ def test_normal_run_passes_and_reports_the_executed_count(tmp_path):
     assert "-quiet" not in _selected_args(tmp_path)
 
 
-def test_timeout_is_still_allowed_without_an_executed_count(tmp_path):
-    """A run killed at the wall-clock cap has no "Executed" lines yet; it stays a
-    non-blocking timeout rather than a 0-executed failure."""
+# --- Classes that inherit XCTestCase through a project base class -------------
+
+BASES = {
+    "Support/PalaceTestCase.swift":
+        "import XCTest\n\n@MainActor\nclass PalaceTestCase: XCTestCase {\n"
+        "    override func setUp() { super.setUp() }\n}\n",
+    "Support/PalaceWiringTestCase.swift":
+        "import XCTest\n\n@MainActor\nclass PalaceWiringTestCase: PalaceTestCase {\n"
+        "    func installWiring() {}\n}\n",
+}
+
+
+def test_classes_inheriting_xctestcase_through_project_bases_are_selected(tmp_path):
+    """AppContainerResetTests subclasses PalaceTestCase; a change to AppContainer
+    must select it, including through a second level of base class."""
+    repo = _gate_repo(tmp_path, test_classes=(), files={
+        **BASES,
+        "WidgetTests.swift":
+            "import XCTest\n\n@MainActor final class WidgetTests: PalaceTestCase {\n"
+            "    func testWidget() {}\n}\n",
+        "WidgetExtraTests.swift":
+            "import XCTest\n\nfinal class WidgetExtraTests: PalaceWiringTestCase {\n"
+            "    func testWidget() {}\n}\n",
+    })
+
+    result = _run_gate(repo, tmp_path, "two-classes-passed.log")
+
+    assert result.returncode == 0, result.stderr
+    assert _selected(tmp_path) == ["WidgetExtraTests", "WidgetTests"]
+
+
+def test_a_base_class_without_test_methods_is_not_selected(tmp_path):
+    """A fixture base declares no tests, so selecting it would fail the
+    zero-executed check; the subclass after it in the same file is the test."""
+    repo = _gate_repo(tmp_path, test_classes=(), files={
+        "WidgetTests.swift":
+            "import XCTest\n\nclass WidgetFixture: XCTestCase {\n"
+            "    final class Spy: NSObject {}\n"
+            "    func makeWidget() {}\n}\n\n"
+            "final class WidgetTests: WidgetFixture {\n"
+            "    func testWidget() {}\n}\n",
+    })
+
+    result = _run_gate(repo, tmp_path, "one-class-passed.log")
+
+    assert result.returncode == 0, result.stderr
+    assert _selected(tmp_path) == ["WidgetTests"]
+
+
+def test_a_class_declared_inside_a_string_literal_is_not_selected(tmp_path):
+    """Lint tests embed synthetic test classes in indented string literals."""
+    repo = _gate_repo(tmp_path, test_classes=(), files={
+        **BASES,
+        "WidgetTests.swift":
+            "import XCTest\n\nfinal class WidgetTests: PalaceTestCase {\n"
+            "    let source = \"\"\"\n"
+            "        final class SyntheticTests: XCTestCase {\n"
+            "            func testNothing() {}\n"
+            "        }\n"
+            "        \"\"\"\n"
+            "    func testWidget() {}\n}\n",
+    })
+
+    result = _run_gate(repo, tmp_path, "one-class-passed.log")
+
+    assert result.returncode == 0, result.stderr
+    assert _selected(tmp_path) == ["WidgetTests"]
+
+
+def test_an_extension_of_xctestcase_is_not_selected(tmp_path):
+    """`extension XCTestCase` holds shared helpers; selecting it would run
+    PalaceTests/XCTestCase, execute 0 tests and block the push."""
+    repo = _gate_repo(tmp_path, test_classes=(), files={
+        "WidgetTests.swift":
+            "import XCTest\n\nextension XCTestCase {\n"
+            "    func testableWidget() {}\n"
+            "    func test_helper() {}\n}\n\n"
+            "final class WidgetTests: XCTestCase {\n"
+            "    func testWidget() {}\n}\n",
+    })
+
+    result = _run_gate(repo, tmp_path, "one-class-passed.log")
+
+    assert result.returncode == 0, result.stderr
+    assert _selected(tmp_path) == ["WidgetTests"]
+
+
+def test_a_test_named_helper_is_not_a_test_method(tmp_path):
+    """`func testableX` is a helper, not an XCTest method, so a base that only
+    declares one is not selected."""
+    repo = _gate_repo(tmp_path, test_classes=(), files={
+        "WidgetTests.swift":
+            "import XCTest\n\nclass WidgetFixture: XCTestCase {\n"
+            "    func testableWidget() {}\n}\n\n"
+            "final class WidgetTests: WidgetFixture {\n"
+            "    func testWidget() {}\n}\n",
+    })
+
+    result = _run_gate(repo, tmp_path, "one-class-passed.log")
+
+    assert result.returncode == 0, result.stderr
+    assert _selected(tmp_path) == ["WidgetTests"]
+
+
+def test_an_attributed_top_level_type_ends_the_preceding_class(tmp_path):
+    """A test-named method in `@MainActor struct` after a test-less class must
+    not be credited to that class."""
+    repo = _gate_repo(tmp_path, test_classes=(), files={
+        "WidgetTests.swift":
+            "import XCTest\n\nclass WidgetFixture: XCTestCase {\n"
+            "    func makeWidget() {}\n}\n\n"
+            "@MainActor struct WidgetProbe {\n"
+            "    func testProbe() {}\n}\n\n"
+            "@available(iOS 17, *)\nfinal class WidgetTests: WidgetFixture {\n"
+            "    func testWidget() {}\n}\n",
+    })
+
+    result = _run_gate(repo, tmp_path, "one-class-passed.log")
+
+    assert result.returncode == 0, result.stderr
+    assert _selected(tmp_path) == ["WidgetTests"]
+
+
+# --- Runs killed at the wall-clock cap ----------------------------------------
+
+
+def test_timeout_before_any_selected_class_ran_blocks_the_push(tmp_path):
+    """A run killed during the build verified nothing, so it is not a pass."""
     repo = _gate_repo(tmp_path, test_classes=("WidgetTests",))
 
     result = _run_gate(repo, tmp_path, "timed-out.log", rc=124)
 
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 1, result.stderr
     assert "TIMEOUT after" in result.stderr
-    assert "executed 0 tests" not in result.stderr
+    assert "  - WidgetTests" in result.stderr.split("did not finish before the cap:", 1)[1]
+    assert "PRE_PUSH_TESTS_ALLOW_TIMEOUT=1" in result.stderr
+    assert "PRE_PUSH_TESTS_TIMEOUT_SECS" in result.stderr
+
+
+def test_timeout_after_some_classes_ran_names_only_the_missing_ones(tmp_path):
+    repo = _gate_repo(tmp_path, test_classes=("WidgetTests", "WidgetExtraTests"))
+
+    result = _run_gate(repo, tmp_path, "timed-out-after-one-class.log", rc=142)
+
+    assert result.returncode == 1, result.stderr
+    missing = result.stderr.split("did not finish before the cap:", 1)[1]
+    assert "  - WidgetExtraTests" in missing
+    assert "  - WidgetTests" not in missing
+
+
+def test_timeout_after_every_selected_class_ran_allows_the_push(tmp_path):
+    repo = _gate_repo(tmp_path, test_classes=("WidgetTests",))
+
+    result = _run_gate(repo, tmp_path, "timed-out-after-one-class.log", rc=124)
+
+    assert result.returncode == 0, result.stderr
+    assert "every selected class ran (3 test(s))" in result.stderr
+
+
+def test_timeout_after_a_test_failure_blocks_even_with_the_override(tmp_path):
+    repo = _gate_repo(tmp_path, test_classes=("WidgetTests",))
+
+    result = _run_gate(repo, tmp_path, "timed-out-after-failure.log", rc=124,
+                       extra_env={"PRE_PUSH_TESTS_ALLOW_TIMEOUT": "1"})
+
+    assert result.returncode == 1, result.stderr
+    assert "-[PalaceTests.WidgetTests testB]" in result.stderr
+
+
+def test_allow_timeout_override_allows_a_run_killed_during_the_build(tmp_path):
+    repo = _gate_repo(tmp_path, test_classes=("WidgetTests",))
+
+    result = _run_gate(repo, tmp_path, "timed-out.log", rc=124,
+                       extra_env={"PRE_PUSH_TESTS_ALLOW_TIMEOUT": "1"})
+
+    assert result.returncode == 0, result.stderr
+    assert "PRE_PUSH_TESTS_ALLOW_TIMEOUT=1" in result.stderr
+    assert "  - WidgetTests" in result.stderr.split("did not finish before the cap:", 1)[1]
+
+
+def test_build_interrupted_without_a_timeout_exit_code_is_treated_as_a_timeout(tmp_path):
+    repo = _gate_repo(tmp_path, test_classes=("WidgetTests",))
+
+    result = _run_gate(repo, tmp_path, "build-interrupted.log", rc=65)
+
+    assert result.returncode == 1, result.stderr
+    assert "TIMEOUT after" in result.stderr
+    assert "did not finish before the cap:" in result.stderr
 
 
 def _selected_args(tmp_path: Path) -> list[str]:

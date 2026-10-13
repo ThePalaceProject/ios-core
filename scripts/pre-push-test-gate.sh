@@ -13,16 +13,19 @@
 #      `scripts/check-file-size-ceiling.sh`; a non-zero exit blocks the push.
 #   2. For each changed file, derive a test class via the same lookup
 #      logic used by `scripts/regression-report.sh::derive_test_class_for`
-#      — Foo.swift -> Foo*Tests.swift, then first XCTestCase subclass
-#      declared in each candidate file. Candidate files that the PalaceTests
-#      target does not compile (per check-swift-sources-compiled.py
-#      --list-compiled) are skipped: selecting them runs zero tests.
+#      — Foo.swift -> Foo*Tests.swift, then the first class in each candidate
+#      file that declares a `func test` and whose superclass chain reaches
+#      XCTestCase (directly or through a PalaceTests base such as
+#      PalaceTestCase). Candidate files that the PalaceTests target does not
+#      compile (per check-swift-sources-compiled.py --list-compiled) are
+#      skipped: selecting them runs zero tests.
 #   3. Build `-only-testing:PalaceTests/<Class>` args and run xcodebuild
 #      test with a wall-clock cap (default 180s, override via
 #      PRE_PUSH_TESTS_TIMEOUT_SECS=N).
-#   4. On exit 0, read each selected class's "Executed N tests" line from the
-#      log. xcodebuild exits 0 when a selector matches nothing, so a class
-#      with 0 executed tests fails the gate.
+#   4. Read each selected class's "Executed N tests" line from the log.
+#      xcodebuild exits 0 when a selector matches nothing, so a class with 0
+#      executed tests fails the gate. A run killed at the cap passes only if
+#      every selected class already ran and no test failed.
 #   5. Failure exits 1 (blocks push). Success or no derived tests exits 0.
 #      The xcodebuild log goes to PRE_PUSH_TESTS_LOG
 #      (default /tmp/pre-push-test-gate.log).
@@ -30,6 +33,8 @@
 # Bypass:
 #   SKIP_PRE_PUSH_TESTS=1 git push ...                # full opt-out (logged)
 #   PRE_PUSH_TESTS_TIMEOUT_SECS=360 git push ...      # raise cap (cold builds)
+#   PRE_PUSH_TESTS_ALLOW_TIMEOUT=1 git push ...       # allow a capped run in
+#                                                     # which tests did not run
 #
 # The harness's existing STANZA_THRESHOLD_LOC bypass for commit-msg is
 # independent of this hook.
@@ -207,11 +212,54 @@ derive_test_classes_for() {
       echo "[pre-push-test-gate] skipping ${candidate#"$REPO_DIR"/}: not in the PalaceTests target's Sources phase, so it runs no tests." >&2
       continue
     fi
-    awk '/^[[:space:]]*(final[[:space:]]+)?class[[:space:]]+[A-Za-z0-9_]+[[:space:]]*:[[:space:]]*XCTestCase/ {
-      for (i=1; i<=NF; i++) if ($i == "class") { print $(i+1); exit }
-    }' "$candidate" | tr -d ':'
+    awk -v bases="$TEST_BASES" "$SWIFT_CLASS_AWK"'
+      BEGIN { n = split(bases, b, " "); for (i = 1; i <= n; i++) ok[b[i]] = 1 }
+      class_decl($0) { cur = (SUPER in ok) ? NAME : ""; if (cur != "") here[cur] = 1; next }
+      { line = $0; sub(ATTRS, "", line) }
+      # An extension counts only for a test class declared in this file, so
+      # `extension XCTestCase` or a base from elsewhere is never selected.
+      line ~ /^extension[[:space:]]/ { split(line, w, /[[:space:]:{<]+/); cur = (w[2] in here) ? w[2] : ""; next }
+      line ~ /^(struct|enum|actor|protocol|class|final|open|public|internal|private|fileprivate|func|let|var)[[:space:]]/ { cur = ""; next }
+      cur != "" && /func[[:space:]]+test[A-Z0-9_]/ { print cur; exit }
+    ' "$candidate"
   done <<< "$candidates" | sort -u
 }
+
+# Parses a top-level class declaration into NAME and SUPER. Only column-0
+# declarations count: test classes are top level, and the indented ones in
+# PalaceTests are nested fixtures or synthetic sources inside string literals.
+SWIFT_CLASS_AWK='
+  BEGIN { ATTRS = "^(@[A-Za-z]+(\\([^)]*\\))?[[:space:]]+)*" }
+  function class_decl(line,   s) {
+    if (line !~ /^(@[A-Za-z]+(\([^)]*\))?[[:space:]]+)*((final|open|public|internal|private|fileprivate)[[:space:]]+)*class[[:space:]]+[A-Za-z0-9_]+[[:space:]]*:[[:space:]]*[A-Za-z0-9_]+/) return 0
+    match(line, /class[[:space:]]+/)
+    s = substr(line, RSTART + RLENGTH)
+    match(s, /^[A-Za-z0-9_]+/); NAME = substr(s, 1, RLENGTH)
+    s = substr(s, RLENGTH + 1); sub(/^[[:space:]]*:[[:space:]]*/, "", s)
+    match(s, /^[A-Za-z0-9_]+/); SUPER = substr(s, 1, RLENGTH)
+    return 1
+  }
+'
+
+# XCTestCase plus every PalaceTests class whose superclass chain reaches it
+# (PalaceTestCase, PalaceWiringTestCase, fixture bases). Computed from the
+# tree so a new base class needs no edit here.
+TEST_BASES="XCTestCase"
+if [[ -d "$REPO_DIR/PalaceTests" ]]; then
+  # find may split the file list across several awk runs, so the first awk
+  # only emits "class superclass" pairs and the second computes the closure.
+  TEST_BASES="$(find "$REPO_DIR/PalaceTests" -name '*.swift' \
+                  -exec awk "$SWIFT_CLASS_AWK"'class_decl($0) { print NAME, SUPER }' {} + 2>/dev/null \
+                | awk '{ sup[$1] = $2 }
+                       END {
+                         ok["XCTestCase"] = 1
+                         do { grew = 0
+                              for (c in sup) if (!(c in ok) && (sup[c] in ok)) { ok[c] = 1; grew = 1 }
+                         } while (grew)
+                         for (c in ok) printf "%s ", c
+                       }')"
+  TEST_BASES="${TEST_BASES:-XCTestCase}"
+fi
 
 # Test files the PalaceTests target compiles. A file outside every Sources
 # phase still matches the filename lookup, and selecting its class runs zero
@@ -331,6 +379,21 @@ executed_counts() {
   ' "$1"
 }
 
+# Sets EMPTY to the selected classes with 0 executed tests in the log, and
+# TOTAL to the tests executed across the selected classes.
+count_selected_classes() {
+  local counts n cls
+  counts="$(executed_counts "$GATE_LOG")"
+  EMPTY=()
+  TOTAL=0
+  for cls in "${CLASSES[@]}"; do
+    n="$(awk -v c="$cls" '$1 == c { print $2; exit }' <<< "$counts")"
+    n="${n:-0}"
+    TOTAL=$((TOTAL + n))
+    [[ "$n" -eq 0 ]] && EMPTY+=("$cls")
+  done
+}
+
 # xcodebuild without -quiet: -quiet drops the per-suite "Executed N tests"
 # lines that the executed-count check below reads. Parallel testing is off so
 # those lines use the serial format (the scheme's default is already serial).
@@ -354,15 +417,7 @@ if run_with_timeout "$TIMEOUT_SECS" \
      test >"$GATE_LOG" 2>&1; then
   # Exit 0 also covers a selector that matched no test, so require every
   # selected class to have executed at least one test.
-  COUNTS="$(executed_counts "$GATE_LOG")"
-  declare -a EMPTY=()
-  TOTAL=0
-  for cls in "${CLASSES[@]}"; do
-    n="$(awk -v c="$cls" '$1 == c { print $2; exit }' <<< "$COUNTS")"
-    n="${n:-0}"
-    TOTAL=$((TOTAL + n))
-    [[ "$n" -eq 0 ]] && EMPTY+=("$cls")
-  done
+  count_selected_classes
   if [[ ${#EMPTY[@]} -gt 0 ]]; then
     echo "" >&2
     echo "[pre-push-test-gate] FAIL — xcodebuild exited 0 but ${#EMPTY[@]} selected class(es) executed 0 tests:" >&2
@@ -377,20 +432,41 @@ if run_with_timeout "$TIMEOUT_SECS" \
   exit 0
 else
   rc=$?
-  # A timeout is NOT a test failure. `timeout`/`gtimeout` exit 124 when they
-  # kill the child; the perl-alarm fallback surfaces SIGALRM as 142; and a
-  # killed xcodebuild prints "** BUILD INTERRUPTED **". A cold-build multi-class
-  # -only-testing run routinely exceeds the wall-clock cap without any test
-  # having failed — blocking the push there (forcing SKIP_PRE_PUSH_TESTS) is
-  # pure friction, since CI and `verify-pr.sh` remain the authoritative gates.
-  # Treat budget-exhaustion as a non-blocking WARN; only a real test/build
-  # failure (non-timeout non-zero) blocks.
+  # `timeout`/`gtimeout` exit 124 when they kill the child; the perl-alarm
+  # fallback surfaces SIGALRM as 142; a killed xcodebuild prints
+  # "** BUILD INTERRUPTED **". A cold build can use the whole cap, and then no
+  # selected test ran, so the push is allowed only when the partial log shows
+  # every selected class finished with no failed test. Otherwise it blocks,
+  # with two escape hatches: a larger cap, or PRE_PUSH_TESTS_ALLOW_TIMEOUT=1,
+  # which still blocks a test failure seen before the cap.
   if [ "$rc" -eq 124 ] || [ "$rc" -eq 142 ] || grep -q "BUILD INTERRUPTED" "$GATE_LOG" 2>/dev/null; then
     echo "" >&2
-    echo "[pre-push-test-gate] TIMEOUT after ${TIMEOUT_SECS}s (exit $rc) — targeted tests did not finish in budget." >&2
-    echo "[pre-push-test-gate] This is a cold-build budget limit, NOT a test failure — allowing the push." >&2
-    echo "[pre-push-test-gate] Verify locally with 'scripts/verify-pr.sh --quick'; CI remains authoritative." >&2
-    exit 0
+    echo "[pre-push-test-gate] TIMEOUT after ${TIMEOUT_SECS}s (exit $rc) — xcodebuild was stopped at the cap." >&2
+    FAILED_CASES="$(grep -E "^Test Case '.*' failed \(" "$GATE_LOG" 2>/dev/null || true)"
+    if [[ -n "$FAILED_CASES" ]]; then
+      echo "[pre-push-test-gate] FAIL — tests failed before the cap — push blocked:" >&2
+      printf '[pre-push-test-gate]   %s\n' "$FAILED_CASES" >&2
+      echo "[pre-push-test-gate] Log: $GATE_LOG. To bypass: SKIP_PRE_PUSH_TESTS=1 git push ..." >&2
+      exit 1
+    fi
+    count_selected_classes
+    if [[ ${#EMPTY[@]} -eq 0 ]]; then
+      echo "[pre-push-test-gate] every selected class ran ($TOTAL test(s)) before the cap and none failed — allowing the push." >&2
+      exit 0
+    fi
+    echo "[pre-push-test-gate] ${#EMPTY[@]} of ${#CLASSES[@]} selected class(es) did not finish before the cap:" >&2
+    printf '[pre-push-test-gate]   - %s\n' "${EMPTY[@]}" >&2
+    if [[ "${PRE_PUSH_TESTS_ALLOW_TIMEOUT:-0}" == "1" ]]; then
+      echo "[pre-push-test-gate] PRE_PUSH_TESTS_ALLOW_TIMEOUT=1 — allowing the push without these tests." >&2
+      echo "[pre-push-test-gate] Verify locally with 'scripts/verify-pr.sh --quick'; CI remains authoritative." >&2
+      exit 0
+    fi
+    echo "[pre-push-test-gate] Push blocked: these tests have not run. Either raise the cap" >&2
+    echo "[pre-push-test-gate]   PRE_PUSH_TESTS_TIMEOUT_SECS=600 git push ..." >&2
+    echo "[pre-push-test-gate] or, on a machine too slow to finish in any reasonable cap, allow it" >&2
+    echo "[pre-push-test-gate]   PRE_PUSH_TESTS_ALLOW_TIMEOUT=1 git push ..." >&2
+    echo "[pre-push-test-gate] Log: $GATE_LOG" >&2
+    exit 1
   fi
 
   # A build that fails ONLY because Carthage / audiobook binary frameworks are
