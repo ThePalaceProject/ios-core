@@ -1,0 +1,9 @@
+Testing started
+Test Suite 'Selected tests' started at 2026-10-13 11:20:01.000.
+Test Suite 'PalaceTests.xctest' started at 2026-10-13 11:20:01.001.
+Test Suite 'PalaceTests.xctest' passed at 2026-10-13 11:20:01.300.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.005 (0.006) seconds
+Test Suite 'Selected tests' passed at 2026-10-13 11:20:01.301.
+	 Executed 0 tests, with 0 failures (0 unexpected) in 0.005 (0.007) seconds
+
+** TEST SUCCEEDED **

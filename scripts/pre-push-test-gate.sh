@@ -14,11 +14,18 @@
 #   2. For each changed file, derive a test class via the same lookup
 #      logic used by `scripts/regression-report.sh::derive_test_class_for`
 #      — Foo.swift -> Foo*Tests.swift, then first XCTestCase subclass
-#      declared in each candidate file.
+#      declared in each candidate file. Candidate files that the PalaceTests
+#      target does not compile (per check-swift-sources-compiled.py
+#      --list-compiled) are skipped: selecting them runs zero tests.
 #   3. Build `-only-testing:PalaceTests/<Class>` args and run xcodebuild
 #      test with a wall-clock cap (default 180s, override via
 #      PRE_PUSH_TESTS_TIMEOUT_SECS=N).
-#   4. Failure exits 1 (blocks push). Success or no derived tests exits 0.
+#   4. On exit 0, read each selected class's "Executed N tests" line from the
+#      log. xcodebuild exits 0 when a selector matches nothing, so a class
+#      with 0 executed tests fails the gate.
+#   5. Failure exits 1 (blocks push). Success or no derived tests exits 0.
+#      The xcodebuild log goes to PRE_PUSH_TESTS_LOG
+#      (default /tmp/pre-push-test-gate.log).
 #
 # Bypass:
 #   SKIP_PRE_PUSH_TESTS=1 git push ...                # full opt-out (logged)
@@ -65,6 +72,7 @@ fi
 
 REPO_DIR="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$REPO_DIR" || exit 0
+GATE_LOG="${PRE_PUSH_TESTS_LOG:-/tmp/pre-push-test-gate.log}"
 
 # ---------------------------------------------------------------------------
 # 1. Compute changed Swift files in the push range
@@ -194,11 +202,30 @@ derive_test_classes_for() {
 
   while IFS= read -r candidate; do
     [[ -z "$candidate" ]] && continue
+    if [[ -n "$COMPILED_TESTS" ]] \
+       && ! grep -qxF "${candidate#"$REPO_DIR"/}" <<< "$COMPILED_TESTS"; then
+      echo "[pre-push-test-gate] skipping ${candidate#"$REPO_DIR"/}: not in the PalaceTests target's Sources phase, so it runs no tests." >&2
+      continue
+    fi
     awk '/^[[:space:]]*(final[[:space:]]+)?class[[:space:]]+[A-Za-z0-9_]+[[:space:]]*:[[:space:]]*XCTestCase/ {
       for (i=1; i<=NF; i++) if ($i == "class") { print $(i+1); exit }
     }' "$candidate" | tr -d ':'
   done <<< "$candidates" | sort -u
 }
+
+# Test files the PalaceTests target compiles. A file outside every Sources
+# phase still matches the filename lookup, and selecting its class runs zero
+# tests while xcodebuild exits 0. If the list cannot be read, nothing is
+# filtered and the executed-count check after the run still catches it.
+COMPILED_TESTS=""
+if [[ -d "$REPO_DIR/PalaceTests" ]]; then
+  if ! COMPILED_TESTS="$(python3 "$REPO_DIR/scripts/check-swift-sources-compiled.py" \
+                           --root "$REPO_DIR" --list-compiled PalaceTests 2>&1)"; then
+    echo "[pre-push-test-gate] WARN: could not list the PalaceTests target's sources; not filtering test files:" >&2
+    printf '[pre-push-test-gate]   %s\n' "$COMPILED_TESTS" >&2
+    COMPILED_TESTS=""
+  fi
+fi
 
 declare -a CLASSES=()
 while IFS= read -r file; do
@@ -283,7 +310,30 @@ run_with_timeout() {
   fi
 }
 
-# Quiet xcodebuild — we only care about pass/fail at the gate.
+# Sum the "Executed N tests" line that follows each "Test Suite '<name>'
+# passed|failed at" line; prints "<name> <N>" per suite. Repeated suites
+# (test iterations, retries) add up.
+executed_counts() {
+  awk -v q="'" '
+    index($0, "Test Suite " q) == 1 && $0 ~ (q " (passed|failed) at ") {
+      s = substr($0, length("Test Suite " q) + 1)
+      sub(q " (passed|failed) at .*", "", s)
+      pending = s
+      next
+    }
+    pending != "" && match($0, /Executed [0-9]+ tests?,/) {
+      n = substr($0, RSTART + 9)
+      sub(/ .*/, "", n)
+      count[pending] += n
+      pending = ""
+    }
+    END { for (k in count) print k, count[k] }
+  ' "$1"
+}
+
+# xcodebuild without -quiet: -quiet drops the per-suite "Executed N tests"
+# lines that the executed-count check below reads. Parallel testing is off so
+# those lines use the serial format (the scheme's default is already serial).
 # Clear the git hook environment before xcodebuild. git invokes pre-push
 # hooks with GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE exported; xcodebuild's SPM
 # resolution shells out to git internally, and an inherited GIT_WORK_TREE
@@ -300,9 +350,30 @@ if run_with_timeout "$TIMEOUT_SECS" \
      ${DEST_ARGS[@]+"${DEST_ARGS[@]}"} \
      ${DERIVED_ARGS[@]+"${DERIVED_ARGS[@]}"} \
      ${ONLY_TESTING_ARGS[@]+"${ONLY_TESTING_ARGS[@]}"} \
-     test \
-     -quiet >/tmp/pre-push-test-gate.log 2>&1; then
-  echo "[pre-push-test-gate] PASS — ${#CLASSES[@]} class(es) green." >&2
+     -parallel-testing-enabled NO \
+     test >"$GATE_LOG" 2>&1; then
+  # Exit 0 also covers a selector that matched no test, so require every
+  # selected class to have executed at least one test.
+  COUNTS="$(executed_counts "$GATE_LOG")"
+  declare -a EMPTY=()
+  TOTAL=0
+  for cls in "${CLASSES[@]}"; do
+    n="$(awk -v c="$cls" '$1 == c { print $2; exit }' <<< "$COUNTS")"
+    n="${n:-0}"
+    TOTAL=$((TOTAL + n))
+    [[ "$n" -eq 0 ]] && EMPTY+=("$cls")
+  done
+  if [[ ${#EMPTY[@]} -gt 0 ]]; then
+    echo "" >&2
+    echo "[pre-push-test-gate] FAIL — xcodebuild exited 0 but ${#EMPTY[@]} selected class(es) executed 0 tests:" >&2
+    printf '[pre-push-test-gate]   - %s\n' "${EMPTY[@]}" >&2
+    echo "[pre-push-test-gate] ($TOTAL test(s) executed in total.) A class runs no tests when its file is not" >&2
+    echo "[pre-push-test-gate] compiled into PalaceTests, it has no test methods, or the name does not match." >&2
+    echo "[pre-push-test-gate] Check with: python3 scripts/check-swift-sources-compiled.py. Log: $GATE_LOG" >&2
+    echo "[pre-push-test-gate] To bypass: SKIP_PRE_PUSH_TESTS=1 git push ..." >&2
+    exit 1
+  fi
+  echo "[pre-push-test-gate] PASS — ${#CLASSES[@]} class(es) green, $TOTAL test(s) executed." >&2
   exit 0
 else
   rc=$?
@@ -314,7 +385,7 @@ else
   # pure friction, since CI and `verify-pr.sh` remain the authoritative gates.
   # Treat budget-exhaustion as a non-blocking WARN; only a real test/build
   # failure (non-timeout non-zero) blocks.
-  if [ "$rc" -eq 124 ] || [ "$rc" -eq 142 ] || grep -q "BUILD INTERRUPTED" /tmp/pre-push-test-gate.log 2>/dev/null; then
+  if [ "$rc" -eq 124 ] || [ "$rc" -eq 142 ] || grep -q "BUILD INTERRUPTED" "$GATE_LOG" 2>/dev/null; then
     echo "" >&2
     echo "[pre-push-test-gate] TIMEOUT after ${TIMEOUT_SECS}s (exit $rc) — targeted tests did not finish in budget." >&2
     echo "[pre-push-test-gate] This is a cold-build budget limit, NOT a test failure — allowing the push." >&2
@@ -332,9 +403,9 @@ else
   # compile error, then treat it as a non-blocking WARN (like the timeout case
   # above) instead of forcing SKIP_PRE_PUSH_TESTS.
   _FW_MISSING_RE="no XCFramework found at|Copy Files build phase contains a reference to a missing file"
-  _REAL_ERRORS="$(grep -E ' error:' /tmp/pre-push-test-gate.log 2>/dev/null \
+  _REAL_ERRORS="$(grep -E ' error:' "$GATE_LOG" 2>/dev/null \
                   | grep -vE "$_FW_MISSING_RE" || true)"
-  if grep -qE "$_FW_MISSING_RE" /tmp/pre-push-test-gate.log 2>/dev/null && [[ -z "$_REAL_ERRORS" ]]; then
+  if grep -qE "$_FW_MISSING_RE" "$GATE_LOG" 2>/dev/null && [[ -z "$_REAL_ERRORS" ]]; then
     echo "" >&2
     echo "[pre-push-test-gate] BUILD could not LINK: Carthage/audiobook binary frameworks absent." >&2
     echo "[pre-push-test-gate]   (worktree not 'carthage bootstrap'-ed / submodule-initialised) — NOT a code failure." >&2
@@ -344,8 +415,8 @@ else
 
   echo "" >&2
   echo "[pre-push-test-gate] FAIL (exit $rc) — push blocked." >&2
-  echo "[pre-push-test-gate] Last 40 lines of /tmp/pre-push-test-gate.log:" >&2
-  tail -n 40 /tmp/pre-push-test-gate.log >&2 || true
+  echo "[pre-push-test-gate] Last 40 lines of $GATE_LOG:" >&2
+  tail -n 40 "$GATE_LOG" >&2 || true
   echo "" >&2
   echo "[pre-push-test-gate] To bypass (only if you have a real reason):" >&2
   echo "[pre-push-test-gate]   SKIP_PRE_PUSH_TESTS=1 git push ..." >&2
