@@ -1,13 +1,12 @@
 import SwiftUI
 import PalaceBookModel
 
+/// Covers are decorative: the surrounding cell or detail header already announces the book (PP-3968, PP-4326).
 struct BookImageView: View {
     @ObservedObject var book: TPPBook
     var width: CGFloat?
     var height: CGFloat = 280
     var usePulseSkeleton: Bool = true
-    /// When true, the cover is not announced by VoiceOver (e.g. in list cells where the cell already announces title/author).
-    var treatImageAsDecorativeInLists: Bool = false
     /// Drop shadow radius applied ONLY to the settled cover image — never to the
     /// loading placeholder. Keeping the shadow off the animated placeholder
     /// avoids re-rasterizing 4 shadow layers every frame while it pulses (the
@@ -43,8 +42,7 @@ struct BookImageView: View {
                     .aspectRatio(contentMode: .fit)
                     .modifier(SettledCoverShadow(radius: coverShadowRadius))
                     .transition(.opacity)
-                    .accessibilityLabel(treatImageAsDecorativeInLists ? "" : String(format: NSLocalizedString("Cover image for %@", comment: "Book cover accessibility"), book.title))
-                    .accessibilityHidden(treatImageAsDecorativeInLists)
+                    .accessibilityHidden(true)
             }
 
             if book.isAudiobook {
@@ -55,21 +53,16 @@ struct BookImageView: View {
                     .background(Circle().fill(Color.colorAudiobookBackground))
                     .clipShape(Circle())
                     .padding([.trailing, .bottom], 10)
-                    .accessibilityLabel(NSLocalizedString("Audiobook", comment: "Audiobook badge accessibility"))
-                    .accessibilityHidden(treatImageAsDecorativeInLists)
+                    .accessibilityHidden(true)
             }
         }
-        .accessibilityElement(children: treatImageAsDecorativeInLists ? .ignore : .combine)
-        // follow-up: the inner Image carries .accessibilityHidden(true)
-        // when `treatImageAsDecorativeInLists` is true, but the outer
+        .accessibilityElement(children: .ignore)
+        // The inner Image and badge carry .accessibilityHidden(true), but
         // `.accessibilityElement(children: .ignore)` above promotes the ZStack
-        // itself to a single accessibility element — and that promotion
-        // overrides the inner Image's hidden flag. The cover ends up being
-        // announced by VoiceOver on the Book Detail screen even though it's
-        // supposed to be decorative (title/author already announce the same
-        // info). Apply .accessibilityHidden(true) to the ZStack itself so the
-        // promoted element is hidden, not just its (ignored) children.
-        .accessibilityHidden(treatImageAsDecorativeInLists)
+        // itself to a single accessibility element, and that promotion
+        // overrides the children's hidden flag, so VoiceOver would still stop
+        // on the cover. Hiding the ZStack hides the promoted element too.
+        .accessibilityHidden(true)
         .frame(width: width, height: height)
         // Cover fades in: `book.coverImage` changes outside any animation
         // context (only the skeleton fade-out was animated), so the cover's

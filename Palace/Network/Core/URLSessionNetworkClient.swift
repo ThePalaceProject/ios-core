@@ -67,7 +67,13 @@ final class URLSessionNetworkClient: NetworkClient {
                     dataTask = self.executor.PUT(request: urlRequest, useTokenIfAvailable: true) { resume($0, $1, $2) }
 
                 case .PATCH:
-                    // Executor has no PATCH; emulate via POST with method override header
+                    // The executor has no PATCH verb method, so dispatch
+                    // through addBearerAndExecute with the method kept as
+                    // PATCH; it replaces the Authorization header. That skips the
+                    // proactive near-expiry refresh. A 401 is still offered to
+                    // the responder's reactive refresh, which declines for
+                    // browser (SAML/OIDC) auth among other cases; see
+                    // `handleExpiredTokenIfNeeded`.
                     var patched = urlRequest
                     patched.httpMethod = "PATCH"
                     dataTask = self.executor.addBearerAndExecute(patched) { resume($0, $1, $2) }

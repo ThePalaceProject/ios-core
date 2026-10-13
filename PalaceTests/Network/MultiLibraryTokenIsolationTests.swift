@@ -776,17 +776,14 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
 
         executor.cancelNonEssentialTasks()
 
-        // The audiobook task must NOT be cancelled.
-        XCTAssertNotEqual(audioTask.state, .canceling,
-                          "Audiobook tasks must survive account-switch cancellation — kills mutation that broadens cancelNonEssential to all tasks (silent regression of audiobook continuity)")
-        // Non-audiobook tasks should be cancelled.
-        // NOTE: task.state transitions asynchronously after .cancel() —
-        // assert via the "expected to be in cancelling or completed"
-        // window rather than a strict equality.
-        XCTAssertTrue(normalTask.state == .canceling
-                      || normalTask.state == .completed
-                      || normalTask.state == .suspended,
-                      "Non-audiobook tasks must be cancelled on account switch — kills mutation that skips cancellation")
+        // Both tasks were created and never resumed, so an untouched task
+        // stays `.suspended`. `cancel()` moves a task to `.canceling` at once
+        // and later to `.completed`, so a cancelled task can never read
+        // `.suspended` here.
+        XCTAssertEqual(audioTask.state, .suspended,
+                       "Audiobook tasks must survive account-switch cancellation")
+        XCTAssertTrue([URLSessionTask.State.canceling, .completed].contains(normalTask.state),
+                      "Non-audiobook tasks must be cancelled on account switch; got \(normalTask.state.rawValue)")
     }
 
     // MARK: - Test 13: cancelNonEssential returns count and clears registry

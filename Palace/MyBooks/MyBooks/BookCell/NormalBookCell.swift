@@ -178,7 +178,7 @@ struct NormalBookCell: View {
     }
 
     @ViewBuilder private var titleCoverImageView: some View {
-        BookImageView(book: model.book, width: nil, height: cellHeight, treatImageAsDecorativeInLists: true)
+        BookImageView(book: model.book, width: nil, height: cellHeight)
             .adaptiveShadowLight(radius: 1.5)
             .frame(width: cellHeight * 2.0 / 3.0)
     }

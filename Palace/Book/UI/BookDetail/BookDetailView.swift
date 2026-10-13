@@ -311,7 +311,7 @@ struct BookDetailView: View {
     }
 
     private var imageView: some View {
-        BookImageView(book: viewModel.book, height: 280 * imageScale, treatImageAsDecorativeInLists: true)
+        BookImageView(book: viewModel.book, height: 280 * imageScale)
             .accessibilityIdentifier(AccessibilityID.BookDetail.coverImage)
             .opacity(imageOpacity)
             .adaptiveShadow()
@@ -490,7 +490,7 @@ struct BookDetailView: View {
                                             Button(action: {
                                                 viewModel.selectRelatedBook(book)
                                             }, label: {
-                                                BookImageView(book: book, height: 160, treatImageAsDecorativeInLists: true)
+                                                BookImageView(book: book, height: 160)
                                                     .padding()
                                                     .adaptiveShadow(radius: 5)
                                                     .transition(.opacity.combined(with: .scale))
