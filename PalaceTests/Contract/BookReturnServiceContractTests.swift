@@ -234,7 +234,8 @@ final class BookReturnServiceContractTests: XCTestCase {
             userAccountProvider: { [unowned self] in self.userAccount },
             offlineReturnEnqueuer: { action in
                 log.record("queue.enqueue",
-                           args: ["type": action.type.rawValue, "bookId": action.bookID])
+                           args: ["type": action.type.rawValue, "bookId": action.bookID,
+                                  "libraryId": action.libraryID ?? "nil"])
             }
         )
         offlineService.delegate = purgeDelegate

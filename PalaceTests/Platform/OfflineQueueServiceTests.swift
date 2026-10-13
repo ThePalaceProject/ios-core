@@ -37,7 +37,8 @@ final class OfflineQueueServiceTests: XCTestCase {
         // returns — no post-call settle-sleep is needed to observe it.
         service = OfflineQueueService(
             userDefaults: UserDefaults(suiteName: "OfflineQueueServiceTests")!,
-            backoffSleep: { _ in }
+            backoffSleep: { _ in },
+            currentLibraryID: { OfflineAction.testLibraryID }
         )
         cancellables = Set<AnyCancellable>()
         executedActions.value = []
@@ -242,7 +243,8 @@ final class OfflineQueueServiceTests: XCTestCase {
         let action = OfflineAction(type: .borrow, bookID: "book1", bookTitle: "Test Book")
         await service.enqueue(action)
 
-        let newService = OfflineQueueService(userDefaults: UserDefaults(suiteName: "OfflineQueueServiceTests")!)
+        let newService = OfflineQueueService(userDefaults: UserDefaults(suiteName: "OfflineQueueServiceTests")!,
+                                             currentLibraryID: { OfflineAction.testLibraryID })
         let status = await newService.currentStatus()
         XCTAssertEqual(status.pendingCount, 1)
     }
@@ -253,7 +255,8 @@ final class OfflineQueueServiceTests: XCTestCase {
         let action = OfflineAction(type: .hold, bookID: "book1", bookTitle: "Test Book")
         await service.enqueue(action)
 
-        let newService = OfflineQueueService(userDefaults: UserDefaults(suiteName: "OfflineQueueServiceTests")!)
+        let newService = OfflineQueueService(userDefaults: UserDefaults(suiteName: "OfflineQueueServiceTests")!,
+                                             currentLibraryID: { OfflineAction.testLibraryID })
         let pending = await newService.actions(withState: .pending)
         let processing = await newService.actions(withState: .processing)
 

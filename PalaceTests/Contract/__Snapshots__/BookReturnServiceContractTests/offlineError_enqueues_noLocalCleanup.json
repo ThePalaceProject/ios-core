@@ -22,6 +22,7 @@
   {
     "args" : {
       "bookId" : "RET-OFFLINE",
+      "libraryId" : "test-library-mock",
       "type" : "return"
     },
     "method" : "queue.enqueue"

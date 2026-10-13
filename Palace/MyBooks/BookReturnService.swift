@@ -61,9 +61,8 @@ final class BookReturnService: @unchecked Sendable {
     private let offlineReturnEnqueuer: (@Sendable (OfflineAction) async -> Void)?
 
     /// Production default for `offlineReturnEnqueuer`: the app-wide offline queue.
-    static let productionOfflineReturnEnqueuer: @Sendable (OfflineAction) async -> Void = { action in
-        await OfflineQueueService.shared.enqueue(action)
-    }
+    static let productionOfflineReturnEnqueuer: @Sendable (OfflineAction) async -> Void =
+        OfflineQueueService.productionEnqueue
 
     /// Closure resolves the current user account each call so library
     /// switches mid-flow are observed correctly (matches MBDC's `userAccount`
@@ -241,6 +240,9 @@ final class BookReturnService: @unchecked Sendable {
             completion?()
             return
         }
+        // The library this return is made under, read alongside the registry
+        // lookup above. A queued offline return must run against this library.
+        let libraryID = userAccountProvider().libraryUUID
 
         // Cancel any pending remote listening-position write before cleanup, so
         // a queued snapshot cannot flush after `deleteAllBookmarks` and restore
@@ -327,7 +329,8 @@ final class BookReturnService: @unchecked Sendable {
                     self.bookRegistry.setProcessing(false, for: book.identifier)
                 }
 
-                self.handleRevokeError(error, book: book, identifier: identifier, downloaded: downloaded, completion: completion)
+                self.handleRevokeError(error, book: book, identifier: identifier, libraryID: libraryID,
+                                       downloaded: downloaded, completion: completion)
             }
         }
     }
@@ -402,7 +405,8 @@ final class BookReturnService: @unchecked Sendable {
     /// Failure path branches: parsing-error-as-success, no-active-loan +
     /// loan-term-limit cleanup, invalid-credentials re-auth retry, or
     /// generic alert with retry / remove-from-device / cancel.
-    private func handleRevokeError(_ error: Error, book: TPPBook, identifier: String, downloaded: Bool, completion: (@Sendable () -> Void)?) {
+    private func handleRevokeError(_ error: Error, book: TPPBook, identifier: String, libraryID: String?,
+                                   downloaded: Bool, completion: (@Sendable () -> Void)?) {
         // Pure classification facts. Parse-fail wraps a `PalaceError` (not an
         // NSError), so it is detected before the problem-doc extraction.
         let isOPDSParseFailure: Bool = {
@@ -427,7 +431,9 @@ final class BookReturnService: @unchecked Sendable {
             isLoanTermLimitReached: problemDoc?.detail?.contains(TPPProblemDocument.DetailLoanTermLimitReached) == true,
             isAuthError: isAuthError,
             isOffline: Self.isOfflineNSURLError(error),
-            hasOfflineEnqueuer: offlineReturnEnqueuer != nil
+            // Without a library the queued return could not be scoped, so it
+            // takes the alert path instead.
+            hasOfflineEnqueuer: offlineReturnEnqueuer != nil && libraryID != nil
         ))
 
         // Parse-fail is a benign treat-as-success (info); everything else is an error.
@@ -501,9 +507,10 @@ final class BookReturnService: @unchecked Sendable {
             // Offline is not a return failure: the loan is still held. Enqueue
             // for a later drain and tell the patron; do not delete local content
             // or unregister here.
-            if let enqueuer = self.offlineReturnEnqueuer {
+            if let enqueuer = self.offlineReturnEnqueuer, let libraryID {
                 Log.info(#file, "Offline return for '\(book.title)' — enqueuing for later; no local cleanup")
-                let action = OfflineAction(type: .return, bookID: identifier, bookTitle: book.title)
+                let action = OfflineAction(type: .return, bookID: identifier, bookTitle: book.title,
+                                           libraryID: libraryID)
                 launchTrackedTask { [weak self] in
                     await enqueuer(action)
                     guard let self else { return }

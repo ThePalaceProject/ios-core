@@ -18,12 +18,27 @@ import PalaceBookRegistry
 // MARK: - OfflineExecutorRegistering
 
 /// Narrow seam the coordinator needs from the queue: install the single
-/// executor closure, without pulling in the full queue surface.
+/// executor closure and the current-library reader that scopes it, without
+/// pulling in the full queue surface.
 protocol OfflineExecutorRegistering: Sendable {
-    func setExecutor(_ executor: @escaping OfflineActionExecutor) async
+    func setExecutor(
+        _ executor: @escaping OfflineActionExecutor,
+        currentLibraryID: @escaping @Sendable () -> String?
+    ) async
 }
 
 extension OfflineQueueService: OfflineExecutorRegistering {}
+
+// MARK: - OfflineCirculationPerforming
+
+/// The two circulation entry points the production executor drives, narrowed
+/// from `MyBooksDownloadCenter` so the executor is testable with a fake.
+protocol OfflineCirculationPerforming: AnyObject, Sendable {
+    func returnBook(withIdentifier identifier: String, completion: (@Sendable () -> Void)?)
+    func startBorrow(for book: TPPBook, attemptDownload: Bool, borrowCompletion: (() -> Void)?)
+}
+
+extension MyBooksDownloadCenter: OfflineCirculationPerforming {}
 
 // MARK: - OfflineQueueCoordinator
 
@@ -33,15 +48,16 @@ final class OfflineQueueCoordinator: @unchecked Sendable {
     /// server-confirmed success. Injected so the coordinator is
     /// unit-testable without standing up the real services.
     struct Handlers: Sendable {
-        let performReturn: @Sendable (_ bookID: String) async -> Bool
-        let performBorrow: @Sendable (_ bookID: String) async -> Bool
-        let performHold: @Sendable (_ bookID: String) async -> Bool
-        let performCancelHold: @Sendable (_ bookID: String) async -> Bool
+        let performReturn: @Sendable (OfflineAction) async -> Bool
+        let performBorrow: @Sendable (OfflineAction) async -> Bool
+        let performHold: @Sendable (OfflineAction) async -> Bool
+        let performCancelHold: @Sendable (OfflineAction) async -> Bool
     }
 
     private let queue: OfflineExecutorRegistering
     private let handlers: Handlers
     private let dedupe: DedupeBox
+    private let currentLibraryID: @Sendable () -> String?
 
     /// - Parameters:
     ///   - dedupeTTL: how long a *completed* (server-confirmed) bookID+type
@@ -50,14 +66,18 @@ final class OfflineQueueCoordinator: @unchecked Sendable {
     ///     -> return again) is allowed through rather than silently skipped.
     ///     In-flight dedupe is unconditional (never TTL-bounded).
     ///   - now: injectable clock for deterministic TTL tests.
+    ///   - currentLibraryID: reads the current library account; the queue
+    ///     hands over only that library's actions.
     init(
         queue: OfflineExecutorRegistering,
         handlers: Handlers,
+        currentLibraryID: @escaping @Sendable () -> String?,
         dedupeTTL: TimeInterval = 300,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.queue = queue
         self.handlers = handlers
+        self.currentLibraryID = currentLibraryID
         self.dedupe = DedupeBox(ttl: dedupeTTL, now: now)
     }
 
@@ -65,10 +85,10 @@ final class OfflineQueueCoordinator: @unchecked Sendable {
     /// (a second call simply replaces the closure), but intended to run
     /// exactly once at launch.
     func registerExecutor() async {
-        await queue.setExecutor { [weak self] action in
+        await queue.setExecutor({ [weak self] action in
             guard let self else { return false }
             return await self.execute(action)
-        }
+        }, currentLibraryID: currentLibraryID)
     }
 
     /// The dispatch + dedupe body. Exposed internally so tests can drive
@@ -104,13 +124,13 @@ final class OfflineQueueCoordinator: @unchecked Sendable {
     private func dispatch(_ action: OfflineAction) async -> Bool {
         switch action.type {
         case .return:
-            return await handlers.performReturn(action.bookID)
+            return await handlers.performReturn(action)
         case .borrow:
-            return await handlers.performBorrow(action.bookID)
+            return await handlers.performBorrow(action)
         case .hold:
-            return await handlers.performHold(action.bookID)
+            return await handlers.performHold(action)
         case .cancelHold:
-            return await handlers.performCancelHold(action.bookID)
+            return await handlers.performCancelHold(action)
         }
     }
 
@@ -205,30 +225,45 @@ extension OfflineQueueCoordinator {
     /// return is read from the registry after the flow completes: a book
     /// that is no longer registered (or no longer downloaded) was
     /// confirmed returned by the server.
+    ///
+    /// The registry and credentials are the current library's, so each handler
+    /// runs only while the action's library is current and confirms only if it
+    /// still is when the flow completes. The queue already picks only
+    /// current-library actions; these checks cover a library switch after that
+    /// pick. Declining there costs the action one retry, never a confirmation.
     static func production(
         queue: OfflineExecutorRegistering = OfflineQueueService.shared,
-        downloadCenter: MyBooksDownloadCenter,
-        bookRegistry: TPPBookRegistryProvider
+        downloadCenter: any OfflineCirculationPerforming,
+        bookRegistry: TPPBookRegistryProvider,
+        currentLibraryID: @escaping @Sendable () -> String?
     ) -> OfflineQueueCoordinator {
-        let performReturn: @Sendable (String) async -> Bool = { bookID in
-            await withCheckedContinuation { continuation in
+        let performReturn: @Sendable (OfflineAction) async -> Bool = { action in
+            let bookID = action.bookID
+            return await withCheckedContinuation { continuation in
                 Task { @MainActor in
+                    guard action.belongs(toLibrary: currentLibraryID()) else {
+                        continuation.resume(returning: false)
+                        return
+                    }
                     downloadCenter.returnBook(withIdentifier: bookID) {
                         // Server-confirmed if the registry no longer holds
                         // the book as an active downloaded loan.
-                        let confirmed = Self.isReturnConfirmed(
-                            state: bookRegistry.state(for: bookID),
-                            bookPresent: bookRegistry.book(forIdentifier: bookID) != nil)
+                        let confirmed = action.belongs(toLibrary: currentLibraryID())
+                            && Self.isReturnConfirmed(
+                                state: bookRegistry.state(for: bookID),
+                                bookPresent: bookRegistry.book(forIdentifier: bookID) != nil)
                         continuation.resume(returning: confirmed)
                     }
                 }
             }
         }
 
-        let performBorrow: @Sendable (String) async -> Bool = { bookID in
-            await withCheckedContinuation { continuation in
+        let performBorrow: @Sendable (OfflineAction) async -> Bool = { action in
+            let bookID = action.bookID
+            return await withCheckedContinuation { continuation in
                 Task { @MainActor in
-                    guard let book = bookRegistry.book(forIdentifier: bookID) else {
+                    guard action.belongs(toLibrary: currentLibraryID()),
+                          let book = bookRegistry.book(forIdentifier: bookID) else {
                         continuation.resume(returning: false)
                         return
                     }
@@ -239,24 +274,28 @@ extension OfflineQueueCoordinator {
                         // unregistered, download-failed) is NOT confirmed —
                         // return false so the queue keeps it and retries,
                         // rather than optimistically dropping a failed borrow.
-                        let confirmed = Self.isActiveLoanState(bookRegistry.state(for: bookID))
+                        let confirmed = action.belongs(toLibrary: currentLibraryID())
+                            && Self.isActiveLoanState(bookRegistry.state(for: bookID))
                         continuation.resume(returning: confirmed)
                     }
                 }
             }
         }
 
-        let performHold: @Sendable (String) async -> Bool = { bookID in
-            await withCheckedContinuation { continuation in
+        let performHold: @Sendable (OfflineAction) async -> Bool = { action in
+            let bookID = action.bookID
+            return await withCheckedContinuation { continuation in
                 Task { @MainActor in
-                    guard let book = bookRegistry.book(forIdentifier: bookID) else {
+                    guard action.belongs(toLibrary: currentLibraryID()),
+                          let book = bookRegistry.book(forIdentifier: bookID) else {
                         continuation.resume(returning: false)
                         return
                     }
                     downloadCenter.startBorrow(for: book, attemptDownload: false) {
                         // A placed hold lands in `.holding`. Any other state
                         // is not a confirmed hold -> fail-closed (stay queued).
-                        let confirmed = Self.isHeldState(bookRegistry.state(for: bookID))
+                        let confirmed = action.belongs(toLibrary: currentLibraryID())
+                            && Self.isHeldState(bookRegistry.state(for: bookID))
                         continuation.resume(returning: confirmed)
                     }
                 }
@@ -273,7 +312,8 @@ extension OfflineQueueCoordinator {
                 performBorrow: performBorrow,
                 performHold: performHold,
                 performCancelHold: performCancelHold
-            )
+            ),
+            currentLibraryID: currentLibraryID
         )
     }
 }
