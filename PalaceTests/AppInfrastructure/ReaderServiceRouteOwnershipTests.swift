@@ -6,6 +6,8 @@
 //
 
 import XCTest
+import PalaceBookModel
+import PalaceReadingPosition
 @testable import Palace
 
 /// PP-5022 — pins the ownership rule the LCP-PDF completions use before popping.
@@ -123,4 +125,133 @@ final class ReaderServiceRouteOwnershipTests: XCTestCase {
         XCTAssertFalse(service.isSupersededOpen(forBookIdentifier: bookId, generation: 0),
                        "Another book's teardown must not supersede this book's open")
     }
+
+    // MARK: - Backing out of the loading view
+
+    private func makeContent(for book: TPPBook) -> (TPPPDFDocument, TPPPDFDocumentMetadata) {
+        (TPPPDFDocument(url: URL(fileURLWithPath: "/nonexistent/extracted.pdf")),
+         TPPPDFDocumentMetadata(with: book,
+                                bookRegistry: TPPBookRegistryMock(),
+                                positionWriter: InertPositionWriter()))
+    }
+
+    /// Backing out while the extract runs abandons the open: its late completion
+    /// must not store the document or leave the loader pending.
+    func testBackOutWhileExtracting_LateCompletion_IsIgnored() throws {
+        let book = TPPBookMocker.snapshotPDF()
+        let route = BookRoute(id: book.identifier)
+        let generation = try XCTUnwrap(service.beginLCPPDFOpen(for: book, on: coordinator))
+
+        coordinator.path.removeLast()
+        var built = false
+        let handedOff = service.completeLCPPDFOpen(forBookIdentifier: book.identifier, generation: generation) {
+            built = true
+            return makeContent(for: book)
+        }
+
+        XCTAssertFalse(handedOff)
+        XCTAssertFalse(built, "A superseded completion must not build the PDFKit document")
+        XCTAssertNil(coordinator.resolvePDF(for: route))
+        XCTAssertFalse(coordinator.isLCPPDFExtractPending(for: route))
+    }
+
+    /// After a back-out the book is no longer in flight, so a reopen starts a
+    /// new open instead of coalescing into the abandoned one.
+    func testBackOutWhileExtracting_Reopen_StartsANewGeneration() throws {
+        let book = TPPBookMocker.snapshotPDF()
+        let first = try XCTUnwrap(service.beginLCPPDFOpen(for: book, on: coordinator))
+        coordinator.path.removeLast()
+
+        let second = try XCTUnwrap(service.beginLCPPDFOpen(for: book, on: coordinator),
+                                   "A reopen after backing out must not be coalesced")
+
+        XCTAssertTrue(service.isSupersededOpen(forBookIdentifier: book.identifier, generation: first))
+        XCTAssertFalse(service.isSupersededOpen(forBookIdentifier: book.identifier, generation: second))
+        XCTAssertEqual(coordinator.path.count, 1)
+        XCTAssertTrue(coordinator.isLCPPDFExtractPending(for: BookRoute(id: book.identifier)))
+    }
+
+    /// Without a back-out a second tap coalesces into the open in flight.
+    func testBeginLCPPDFOpen_WhileInFlight_Coalesces() {
+        let book = TPPBookMocker.snapshotPDF()
+        XCTAssertNotNil(service.beginLCPPDFOpen(for: book, on: coordinator))
+
+        XCTAssertNil(service.beginLCPPDFOpen(for: book, on: coordinator))
+        XCTAssertEqual(coordinator.path.count, 1, "A coalesced tap must not push a second route")
+    }
+
+    /// The normal flow, extract then reader, keeps the open current: the handoff
+    /// lands, and closing the reader afterwards does not tear anything down.
+    func testExtractThenReader_DoesNotRelease() throws {
+        let book = TPPBookMocker.snapshotPDF()
+        let route = BookRoute(id: book.identifier)
+        let generation = try XCTUnwrap(service.beginLCPPDFOpen(for: book, on: coordinator))
+
+        let handedOff = service.completeLCPPDFOpen(forBookIdentifier: book.identifier, generation: generation) {
+            makeContent(for: book)
+        }
+        guard case .reader = coordinator.pdfRouteContent(for: route) else {
+            return XCTFail("The handoff must show the PDFKit reader")
+        }
+        coordinator.path.removeLast()
+
+        XCTAssertTrue(handedOff)
+        XCTAssertFalse(service.isSupersededOpen(forBookIdentifier: book.identifier, generation: generation),
+                       "Neither the handoff nor closing the reader may bump the generation")
+        XCTAssertEqual(service.beginLCPPDFOpen(for: book, on: coordinator), generation + 1,
+                       "The handoff must drop the in-flight entry so the next open is not coalesced")
+    }
+
+    /// The handoff ends the loading progress it was tracking. `LCPPDFOpenProgress`
+    /// has no seam into `ReaderService`, so this resets the shared reporter the
+    /// way `LCPPDFOpenProgressTests` does.
+    func testCompleteLCPPDFOpen_ProgressTracksThisBook_FinishesIt() throws {
+        let book = TPPBookMocker.snapshotPDF()
+        let progress = LCPPDFOpenProgress.shared
+        addTeardownBlock { @MainActor in progress.finish() }
+        let generation = try XCTUnwrap(service.beginLCPPDFOpen(for: book, on: coordinator))
+        progress.begin(bookIdentifier: book.identifier)
+
+        service.completeLCPPDFOpen(forBookIdentifier: book.identifier, generation: generation) {
+            makeContent(for: book)
+        }
+
+        XCTAssertNil(progress.bookIdentifier)
+        XCTAssertEqual(progress.phase, .idle)
+    }
+
+    /// A handoff for one book must not end the loader of another book's open.
+    func testCompleteLCPPDFOpen_ProgressTracksAnotherBook_LeavesItRunning() throws {
+        let book = TPPBookMocker.snapshotPDF()
+        let progress = LCPPDFOpenProgress.shared
+        addTeardownBlock { @MainActor in progress.finish() }
+        let generation = try XCTUnwrap(service.beginLCPPDFOpen(for: book, on: coordinator))
+        progress.begin(bookIdentifier: "another-book")
+
+        service.completeLCPPDFOpen(forBookIdentifier: book.identifier, generation: generation) {
+            makeContent(for: book)
+        }
+
+        XCTAssertEqual(progress.bookIdentifier, "another-book")
+        XCTAssertNotEqual(progress.phase, .idle)
+    }
+
+    /// An abort's pop runs the release through the back-out, so it supersedes
+    /// the open once and leaves the book free to reopen.
+    func testPopRouteIfStillOwned_AfterBegin_ReleasesTheOpen() throws {
+        let book = TPPBookMocker.snapshotPDF()
+        let generation = try XCTUnwrap(service.beginLCPPDFOpen(for: book, on: coordinator))
+
+        XCTAssertTrue(service.popRouteIfStillOwned(forBookIdentifier: book.identifier, on: coordinator))
+
+        XCTAssertTrue(service.isSupersededOpen(forBookIdentifier: book.identifier, generation: generation))
+        XCTAssertFalse(service.isSupersededOpen(forBookIdentifier: book.identifier, generation: generation + 1))
+        XCTAssertEqual(service.beginLCPPDFOpen(for: book, on: coordinator), generation + 2)
+    }
+}
+
+private struct InertPositionWriter: PositionWriter {
+    func save(_ snapshot: PositionSnapshot) async throws -> ServerPositionID? { nil }
+    func load(for bookID: String) async throws -> PositionSnapshot? { nil }
+    func cancel(for bookID: String) async {}
 }

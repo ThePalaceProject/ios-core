@@ -64,6 +64,9 @@ final class NavigationCoordinator: ObservableObject {
             // on the next audiobook open.
             if path.count < oldValue.count {
                 isTopRouteAudio = false
+                // Every way a route leaves (back button, swipe-back, pop to root,
+                // a programmatic pop) shrinks the path through this setter.
+                backOutLCPPDFRoutesNoLongerOnStack()
             }
         }
     }
@@ -89,11 +92,16 @@ final class NavigationCoordinator: ObservableObject {
     private var audioModelById: [String: AudiobookPlaybackModel] = [:]
     private var pdfContentById: [String: (TPPPDFDocument, TPPPDFDocumentMetadata)] = [:]
     /// Books whose LCP PDF is still being decrypted to disk. Set when the
-    /// `.pdf` route is pushed; cleared when the extracted file reaches PDFKit
-    /// or the open is torn down. `@Published` because `pdfContentById` is not:
-    /// clearing this flag is what re-renders the route from the loading view
-    /// to the reader.
+    /// `.pdf` route is pushed; cleared when the extracted file reaches PDFKit,
+    /// when the open is torn down, or when the route leaves the stack.
+    /// `@Published` because `pdfContentById` is not: clearing this flag is what
+    /// re-renders the route from the loading view to the reader.
     @Published private var lcpPDFExtractPending: Set<String> = []
+    /// Pending LCP PDF routes pushed through `pushLCPPDFExtractRoute`: the path
+    /// depth the route sits at, and what to run if it leaves before the extract
+    /// completes. Depth rather than identity because `NavigationPath` elements
+    /// cannot be read back.
+    private var pendingLCPPDFRoutes: [String: (depth: Int, onBackOut: () -> Void)] = [:]
     private var catalogFilterStatesByURL: [String: CatalogLaneFilterState] = [:]
 
     private let maxStoredItems = 100
@@ -374,11 +382,31 @@ final class NavigationCoordinator: ObservableObject {
         return .empty
     }
 
-    /// Marks an LCP PDF extract as in progress. `ReaderService` pushes the
-    /// `.pdf` route immediately, and the route shows the loading view until
-    /// the extract completes or the open is torn down.
+    /// Marks an LCP PDF extract as in progress. The `.pdf` route shows the
+    /// loading view until the extract completes or the open is torn down.
     func markLCPPDFExtractPending(forBookId id: String) {
         lcpPDFExtractPending.insert(id)
+    }
+
+    /// Marks the extract pending and pushes its `.pdf` route. `onBackOut` runs
+    /// once if the route leaves the stack (back button, swipe-back, pop to
+    /// root) while the extract is still pending. The loader-to-reader switch
+    /// keeps the route on the stack, so it does not run `onBackOut`.
+    func pushLCPPDFExtractRoute(forBookId id: String, onBackOut: @escaping () -> Void) {
+        markLCPPDFExtractPending(forBookId: id)
+        push(.pdf(BookRoute(id: id)))
+        pendingLCPPDFRoutes[id] = (depth: path.count, onBackOut: onBackOut)
+    }
+
+    /// Runs the back-out for every pending LCP PDF route the path no longer
+    /// reaches, and clears its pending flag.
+    private func backOutLCPPDFRoutesNoLongerOnStack() {
+        let departed = pendingLCPPDFRoutes.filter { $0.value.depth > path.count }
+        for (id, route) in departed {
+            pendingLCPPDFRoutes.removeValue(forKey: id)
+            lcpPDFExtractPending.remove(id)
+            route.onBackOut()
+        }
     }
 
     /// Hands the extracted PDF to the route: stores the PDFKit document, then
@@ -392,10 +420,11 @@ final class NavigationCoordinator: ObservableObject {
     /// opens. The route then shows nothing rather than the loading view.
     func clearLCPPDFExtractPending(forBookId id: String) {
         lcpPDFExtractPending.remove(id)
+        pendingLCPPDFRoutes.removeValue(forKey: id)
     }
 
-    /// `true` from the push of an LCP PDF route until its extract completes or
-    /// the open is torn down.
+    /// `true` from the push of an LCP PDF route until its extract completes,
+    /// the open is torn down, or the route leaves the stack.
     func isLCPPDFExtractPending(for route: BookRoute) -> Bool {
         lcpPDFExtractPending.contains(route.id)
     }
