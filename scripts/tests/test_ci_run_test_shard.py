@@ -41,6 +41,30 @@ XCODEBUILD = textwrap.dedent("""\
     # 26.6 fails the test in flight when it gives up on it (run 36952741418);
     # "nomarker" exits without the marker; any other value logs it before the
     # marker. STUB_CRASH_EXIT overrides 134.
+    # STUB_INTERRUPT=parallel|serial: the first pass of that kind is stopped at
+    # the shard budget (runs 37947147417, 37962677753): the INTERRUPTED marker,
+    # exit 73, and a bundle marked "nocoverage" that holds the runner failure
+    # only, or with STUB_INTERRUPT_RAN its classes as passed (one Failed with
+    # STUB_INTERRUPT_FAILED, killed if it is STUB_KILL), or nothing readable with
+    # STUB_INTERRUPT_UNREADABLE. STUB_INTERRUPT_LOGGED_FAILURE logs a failed
+    # test that the bundle does not record, as for the test in flight.
+    # STUB_INTERRUPT_LATE=parallel|serial: the budget fires after that pass's
+    # tests finished, while coverage is collected (run 38261917670): the tests
+    # are recorded, the bundle is marked "nocoverage", and the stub prints
+    # SUCCEEDED and exits 0. Either interrupt writes the shard's budget marker,
+    # as its watchdog does before it sends SIGINT. STUB_OUTLAST_BUDGET=<kind>
+    # ends the same way after sleeping past the budget, without writing the
+    # marker, so only the shard's own watchdog can; it waits for that marker
+    # (up to 30 s) rather than for a fixed time. STUB_INTERRUPT_NO_MARK keeps
+    # STUB_INTERRUPT from writing the marker, leaving only the log line.
+    # STUB_INTERRUPT_IN_FLIGHT logs the first class's test as failed in 0.000 s
+    # after the INTERRUPTED line, as Xcode does for the test it cuts off (run
+    # 38278109196); =bundle also records it Failed in the bundle.
+    # STUB_RERUN_SAVE_FAIL: a method-level re-run (the second chance) runs its
+    # tests, then cannot save the bundle and exits 73 (run 38292451781); with
+    # =nobundle the bundle holds nothing readable, and with =loggedfail the log
+    # shows a failed test the bundle records as passed; =noresult leaves a
+    # readable bundle that records none of the re-run tests and logs no failure.
     echo "$*" >> "$STUB_LOG"
     bundle=""; prev=""; ids=()
     for a in "$@"; do
@@ -62,7 +86,50 @@ XCODEBUILD = textwrap.dedent("""\
       case "${STUB_CRASH_FAILED:-}" in after|nomarker) echo "$failure";; esac
       exit "${STUB_CRASH_EXIT:-134}"
     fi
+    kind=serial; case "$*" in *"-parallel-testing-enabled YES"*) kind=parallel;; esac
+    interrupted="$STUB_LOG.interrupted"
+    if [ "${STUB_INTERRUPT:-}" = "$kind" ] && [ ! -e "$interrupted" ]; then
+      touch "$interrupted"
+      [ -n "${STUB_INTERRUPT_NO_MARK:-}" ] || touch "$(dirname "$bundle")/budget-exceeded"
+      mkdir -p "$bundle"; touch "$bundle/nocoverage"
+      if [ -z "${STUB_INTERRUPT_UNREADABLE:-}" ]; then
+        : > "$bundle/cases"
+        if [ -n "${STUB_INTERRUPT_RAN:-}" ]; then
+          for id in "${ids[@]}"; do
+            IFS=/ read -r b c m <<< "$id"
+            result="Passed"; msg=""
+            [ "$b/$c" = "${STUB_KILL:-}" ] && { result="Failed"; msg="Test exceeded execution time allowance of 2 minutes"; }
+            if [ -n "${STUB_INTERRUPT_FAILED:-}" ]; then
+              result="Failed"; msg="XCTAssertEqual failed"
+              echo "Test case '$c.t()' failed on 'Clone 1 of iPhone 16 Pro - Palace (123)' (0.010 seconds)"
+            fi
+            echo "$b|$c|t|$result|$msg" >> "$bundle/cases"
+          done
+        else
+          echo "PalaceTests|System Failures|Palace (6129) encountered an error|Failed|The test runner hung before establishing connection." >> "$bundle/cases"
+        fi
+      fi
+      if [ -n "${STUB_INTERRUPT_LOGGED_FAILURE:-}" ]; then
+        echo "Test Case '-[PalaceTests.Iso t]' failed (0.010 seconds)."
+      fi
+      echo "** TEST EXECUTE INTERRUPTED **"
+      if [ -n "${STUB_INTERRUPT_IN_FLIGHT:-}" ]; then
+        IFS=/ read -r b c m <<< "${ids[0]}"
+        echo "Test case '$c.t()' failed on 'Clone 1 of iPhone 16 Pro - Palace (123)' (0.000 seconds)"
+        [ "$STUB_INTERRUPT_IN_FLIGHT" = "bundle" ] && echo "$b|$c|t|Failed|" >> "$bundle/cases"
+      fi
+      exit 73
+    fi
     mkdir -p "$bundle"; : > "$bundle/cases"
+    if [ "${STUB_OUTLAST_BUDGET:-}" = "$kind" ] && [ ! -e "$interrupted" ]; then
+      touch "$interrupted" "$bundle/nocoverage"
+      for _ in $(seq 300); do [ -e "$(dirname "$bundle")/budget-exceeded" ] && break; sleep 0.1; done
+      late=1
+    fi
+    if [ "${STUB_INTERRUPT_LATE:-}" = "$kind" ] && [ ! -e "$interrupted" ]; then
+      touch "$interrupted" "$(dirname "$bundle")/budget-exceeded" "$bundle/nocoverage"
+      late=1
+    fi
     failed=0
     hung="$STUB_LOG.hung"
     if [ -n "${STUB_SYSFAIL_ONLY:-}" ] && [ ! -e "$hung" ]; then
@@ -77,7 +144,7 @@ XCODEBUILD = textwrap.dedent("""\
         continue
       fi
       IFS=/ read -r b c m <<< "$id"
-      rerun=0; [ -n "$m" ] && rerun=1; m="${m:-t}"
+      rerun=0; [ -n "$m" ] && rerun=1 && any_rerun=1; m="${m:-t}"
       result="Passed"; msg=""
       if [ "$b/$c" = "${STUB_KILL:-}" ] && { [ $rerun -eq 0 ] || [ -n "${STUB_KILL_AGAIN:-}" ]; }; then
         result="Failed"; msg="Test exceeded execution time allowance of 2 minutes"
@@ -86,6 +153,16 @@ XCODEBUILD = textwrap.dedent("""\
       [ "$result" = "Failed" ] && { failed=1; echo "Test case '$c.$m()' failed on 'Clone 1 of iPhone 16 Pro - Palace (123)' (0.010 seconds)"; }
       echo "$b|$c|$m|$result|$msg" >> "$bundle/cases"
     done
+    [ -n "${late:-}" ] && [ $failed -eq 0 ] && echo "** TEST EXECUTE SUCCEEDED **"
+    if [ -n "${STUB_RERUN_SAVE_FAIL:-}" ] && [ -n "${any_rerun:-}" ]; then
+      touch "$bundle/nocoverage"
+      [ "$STUB_RERUN_SAVE_FAIL" = "nobundle" ] && rm -f "$bundle/cases"
+      [ "$STUB_RERUN_SAVE_FAIL" = "noresult" ] && : > "$bundle/cases"
+      [ "$STUB_RERUN_SAVE_FAIL" = "loggedfail" ] && echo "Test Case '-[PalaceTests.A t]' failed (0.010 seconds)." && failed=1
+      [ $failed -eq 0 ] && echo "** TEST EXECUTE SUCCEEDED **"
+      echo "Error saving invocation record to resultBundlePath: Could not write the 1_Test action log because the log hasn't finished recording"
+      exit 73
+    fi
     [ $failed -eq 1 ] && exit 65
     exit "${STUB_XCB_EXIT:-0}"
     """)
@@ -100,7 +177,13 @@ XCRUN = textwrap.dedent("""\
       # A bundle xcodebuild abandoned has no Info.plist, and merge refuses it.
       for b in "$@"; do [ -e "$b/cases" ] || { echo "error: $b is not a result bundle" >&2; exit 1; }; done
       mkdir -p "$out"
-      for b in "$@"; do cat "$b/cases" >> "$out/cases"; done; exit 0
+      # One input without a coverage report leaves the merged bundle unreadable to xccov.
+      for b in "$@"; do cat "$b/cases" >> "$out/cases"; [ -e "$b/nocoverage" ] && touch "$out/nocoverage"; done; exit 0
+    fi
+    if [ "$1 $2" = "xccov view" ]; then
+      b="${@: -1}"
+      [ -e "$b/cases" ] && [ ! -e "$b/nocoverage" ] || { echo "error: Failed to load coverage report" >&2; exit 1; }
+      exit 0
     fi
     if [ "$1 $2 $3 $4" = "xcresulttool get test-results tests" ]; then
       [ -e "$6/cases" ] || { echo "error: $6 is not a result bundle" >&2; exit 1; }
@@ -123,6 +206,14 @@ XCRUN = textwrap.dedent("""\
     """)
 
 
+# The watchdog's pkill must reach only this test's stub, never an
+# xcodebuild run elsewhere on the machine.
+PKILL = textwrap.dedent("""\
+    #!/bin/bash
+    echo "$*" >> "$STUB_LOG.pkill"
+    """)
+
+
 def _exe(path: Path, body: str) -> None:
     path.write_text(body)
     path.chmod(path.stat().st_mode | stat.S_IEXEC)
@@ -134,6 +225,7 @@ def env(tmp_path):
     bin_dir.mkdir()
     _exe(bin_dir / "xcodebuild", XCODEBUILD)
     _exe(bin_dir / "xcrun", XCRUN)
+    _exe(bin_dir / "pkill", PKILL)
     plan = {
         "shards": 2,
         "classes": {"PalaceTests/A": 0, "PalaceTests/Iso": 0, "TenPrintCoverTests/T": 0,
@@ -236,6 +328,9 @@ def test_a_kill_that_passes_alone_passes_the_shard_and_says_so(env):
     assert "-parallel-testing-enabled NO" in rerun
     assert "::warning title=Second chance for allowance kills::" in r.stdout
     assert "passed on the second chance" in r.stdout
+    tests = json.dumps(json.loads((tmp_path / "out/tests.json").read_text()))
+    assert '"nodeIdentifier": "A/t()", "result": "Passed"' in tests, "the re-run is merged, not hidden"
+    assert "rerun.xcresult" not in _partial(tmp_path)
 
 
 def test_a_kill_that_repeats_fails_the_shard(env):
@@ -482,3 +577,225 @@ def test_a_failed_shard_keeps_its_pass_logs(env):
     assert r.returncode == 1
     assert _partial(tmp_path) == ["parallel.log", "serial.log"]
     assert "Test case 'A.t()' failed" in (tmp_path / "out/partial/parallel.log").read_text()
+
+
+# --------------------------------------------------------------------------
+# A pass stopped at the shard budget (runs 37947147417, 37962677753)
+# --------------------------------------------------------------------------
+
+def _results_lack_coverage(tmp_path):
+    return (tmp_path / "out/TestResults.xcresult/nocoverage").exists()
+
+
+def test_an_interrupted_pass_with_no_failure_is_set_aside_and_its_classes_rerun(env):
+    """The interrupted bundle has no coverage report, so merging it breaks the
+    coverage report for the whole run; its classes must run again instead."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_INTERRUPT="serial")
+    assert r.returncode == 0, r.stdout + r.stderr
+    calls = _calls(tmp_path)
+    assert len(calls) == 3, "parallel, interrupted serial, relaunch"
+    assert _selection(calls[2]) == ["-only-testing:PalaceTests/Iso"]
+    assert "-parallel-testing-enabled NO" in calls[2]
+    assert not _results_lack_coverage(tmp_path)
+    assert "serial-interrupted.xcresult" in _partial(tmp_path) and "serial.log" in _partial(tmp_path)
+    assert "::warning title=Pass interrupted; its classes run again::" in r.stdout
+    report = json.loads((tmp_path / "out/shard-report.json").read_text())
+    assert report["missing"] == [] and "PalaceTests/Iso" in report["executed"]
+
+
+def test_classes_that_finished_before_the_interruption_run_again(env):
+    """A class that completed in the interrupted pass has no coverage either,
+    so it is relaunched too, not only the ones that never started."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_INTERRUPT="parallel", STUB_INTERRUPT_RAN="1")
+    assert r.returncode == 0, r.stdout + r.stderr
+    relaunch = _calls(tmp_path)[-1]
+    assert _selection(relaunch) == ["-only-testing:PalaceTests/A", "-only-testing:TenPrintCoverTests/T"]
+    assert "-parallel-testing-enabled YES" in relaunch
+    assert not _results_lack_coverage(tmp_path)
+
+
+def test_a_failure_in_an_interrupted_pass_fails_the_shard_and_stays_in_the_results(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_INTERRUPT="serial", STUB_INTERRUPT_RAN="1", STUB_INTERRUPT_FAILED="1")
+    assert r.returncode == 1
+    assert "::error title=Interrupted pass recorded a test failure::" in r.stdout
+    assert "Shard 0 passed" not in r.stdout
+    tests = json.loads((tmp_path / "out/tests.json").read_text())
+    assert '"result": "Failed"' in json.dumps(tests), "the failure is still in the shard results"
+
+
+def test_an_interrupted_kill_is_not_excused_by_the_second_chance(env):
+    """A kill would otherwise get a second chance and pass the shard while the
+    interrupted bundle, merged, still breaks the coverage report."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_INTERRUPT="serial", STUB_INTERRUPT_RAN="1", STUB_KILL="PalaceTests/Iso")
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "interrupted-failure=1" in r.stdout
+
+
+def test_an_unreadable_interrupted_bundle_fails_the_shard(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_INTERRUPT="serial", STUB_INTERRUPT_UNREADABLE="1")
+    assert r.returncode == 1
+    assert "::error title=Interrupted pass unreadable::" in r.stdout
+
+
+def test_a_shard_whose_only_pass_was_interrupted_recovers_on_relaunch(env):
+    """With the one bundle set aside there is nothing to merge until the relaunch."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, shard=1, STUB_INTERRUPT="parallel")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert len(_calls(tmp_path)) == 2
+    assert (tmp_path / "out/TestResults.xcresult").is_dir()
+    assert not _results_lack_coverage(tmp_path)
+
+
+def test_a_failure_only_in_the_log_of_an_interrupted_pass_fails_the_shard(env):
+    """The test running at the interrupt can be logged as failed with no result in the bundle."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_INTERRUPT="serial", STUB_INTERRUPT_LOGGED_FAILURE="1")
+    assert r.returncode == 1
+    assert "::error title=Interrupted pass recorded a test failure::" in r.stdout
+
+
+def test_a_crash_retry_that_is_interrupted_is_set_aside_beside_the_crashed_bundle(env):
+    """The retry's own log carries the marker, and both bundles stay in partial/."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_CRASH="1", STUB_INTERRUPT="parallel")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not _results_lack_coverage(tmp_path)
+    assert {"parallel.xcresult", "parallel-interrupted.xcresult"} <= set(_partial(tmp_path))
+    assert _selection(_calls(tmp_path)[-1]) == ["-only-testing:PalaceTests/A",
+                                               "-only-testing:TenPrintCoverTests/T"]
+
+
+def test_an_interrupt_after_the_last_test_is_caught_though_the_pass_reports_success(env):
+    """Run 38261917670: the budget fired while coverage was collected; the pass
+    printed SUCCEEDED and exited 0, and its bundle had no coverage report."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_INTERRUPT_LATE="serial")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "** TEST EXECUTE SUCCEEDED **" in r.stdout
+    assert not _results_lack_coverage(tmp_path)
+    assert "serial-interrupted.xcresult" in _partial(tmp_path)
+    assert _selection(_calls(tmp_path)[-1]) == ["-only-testing:PalaceTests/Iso"]
+
+
+def test_a_failure_before_a_late_interrupt_still_fails_the_shard(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_INTERRUPT_LATE="serial", STUB_FAIL="PalaceTests/Iso")
+    assert r.returncode == 1
+    assert "::error title=Interrupted pass recorded a test failure::" in r.stdout
+    assert "Shard 0 passed" not in r.stdout
+
+
+def test_a_pass_that_starts_after_the_budget_fired_is_merged(env):
+    """Only the pass running when the budget fired lost its coverage; the passes
+    after it are merged as usual."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_INTERRUPT_LATE="parallel")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert _partial(tmp_path) == ["parallel-interrupted.xcresult", "parallel.log"]
+    assert not _results_lack_coverage(tmp_path)
+    report = json.loads((tmp_path / "out/shard-report.json").read_text())
+    assert report["missing"] == [] and "PalaceTests/Iso" in report["executed"]
+
+
+def test_the_watchdog_marks_the_pass_it_interrupts(env):
+    """The shard's own watchdog, not the stub, records that the budget fired. The
+    first pass outlasts the budget, so the budget only has to outlast the setup."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, SHARD_BUDGET_SECONDS="8", STUB_OUTLAST_BUDGET="parallel")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "exceeded 8s; interrupting" in r.stdout
+    assert "-INT -f" in (tmp_path / "xcodebuild.log.pkill").read_text()
+    assert not _results_lack_coverage(tmp_path)
+    assert "parallel-interrupted.xcresult" in _partial(tmp_path)
+
+
+def test_a_budget_marker_left_from_an_earlier_run_is_cleared(env):
+    """A stale marker would make every pass look as if it started after the budget fired."""
+    tmp_path, e = env
+    (tmp_path / "out").mkdir()
+    (tmp_path / "out/budget-exceeded").touch()
+    r = _run(tmp_path, e, STUB_INTERRUPT_LATE="serial")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not _results_lack_coverage(tmp_path)
+
+
+def test_the_interrupted_line_alone_marks_a_pass_interrupted(env):
+    """An interrupt the watchdog did not send still leaves a bundle without coverage."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_INTERRUPT="serial", STUB_INTERRUPT_NO_MARK="1")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not _results_lack_coverage(tmp_path)
+    assert "serial-interrupted.xcresult" in _partial(tmp_path)
+
+
+def test_the_test_cut_off_by_the_interrupt_is_rerun_not_counted_as_a_failure(env):
+    """Run 38278109196: the in-flight test is logged failed (0.000 s) after the marker."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_INTERRUPT="parallel", STUB_INTERRUPT_IN_FLIGHT="bundle")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "Discounted the failure of A/t" in r.stdout
+    assert not _results_lack_coverage(tmp_path)
+    assert "-only-testing:PalaceTests/A" in _selection(_calls(tmp_path)[-1])
+
+
+def test_the_test_cut_off_by_the_interrupt_must_pass_when_rerun(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_INTERRUPT="parallel", STUB_INTERRUPT_IN_FLIGHT="log",
+             STUB_FAIL="PalaceTests/A")
+    assert r.returncode == 1
+    assert "Shard 0 passed" not in r.stdout
+
+
+def test_a_failure_before_the_interrupt_is_not_excused_by_a_test_in_flight(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_INTERRUPT="serial", STUB_INTERRUPT_RAN="1",
+             STUB_INTERRUPT_FAILED="1", STUB_INTERRUPT_IN_FLIGHT="log")
+    assert r.returncode == 1
+    assert "::error title=Interrupted pass recorded a test failure::" in r.stdout
+
+
+def test_a_second_chance_that_passed_but_could_not_save_its_bundle_passes(env):
+    """Run 38292451781: both re-run tests passed, then the bundle save failed with exit 73."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_KILL="PalaceTests/A", STUB_RERUN_SAVE_FAIL="1")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "Second-chance pass exit code: 73" in r.stdout
+    assert "::warning title=Second chance exited 73 after its tests passed::" in r.stdout
+    assert not _results_lack_coverage(tmp_path), "the coverage-less bundle is not merged"
+    assert "rerun.xcresult" in _partial(tmp_path)
+
+
+def test_a_second_chance_failure_is_fatal_whatever_the_exit_code(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_KILL="PalaceTests/A", STUB_KILL_AGAIN="1", STUB_RERUN_SAVE_FAIL="1")
+    assert r.returncode == 1
+    assert "Allowance kill repeated" in r.stdout
+
+
+def test_a_second_chance_with_no_readable_result_fails_the_shard(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_KILL="PalaceTests/A", STUB_RERUN_SAVE_FAIL="nobundle")
+    assert r.returncode == 1
+    assert "Shard 0 passed" not in r.stdout
+
+
+def test_a_second_chance_failure_in_the_log_is_fatal_even_if_the_bundle_says_passed(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_KILL="PalaceTests/A", STUB_RERUN_SAVE_FAIL="loggedfail")
+    assert r.returncode == 1
+    assert "Allowance kill repeated" in r.stdout
+
+
+def test_a_second_chance_that_records_no_result_fails_even_without_a_failure_line(env):
+    """A runner that never connects exits non-zero, logs no failed test, and runs nothing."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_KILL="PalaceTests/A", STUB_RERUN_SAVE_FAIL="noresult")
+    assert r.returncode == 1
+    assert "did not run on the second chance" in r.stdout
+    assert "Shard 0 passed" not in r.stdout

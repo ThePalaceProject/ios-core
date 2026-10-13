@@ -488,6 +488,62 @@ def kill_rerun_candidates(tests_doc: dict) -> tuple[int, list[str]]:
     return KILLS_ONLY, [f["id"] for f in failures]
 
 
+# --------------------------------------------------------------------------
+# A pass the shard budget interrupted
+# --------------------------------------------------------------------------
+#
+# After "** TEST EXECUTE INTERRUPTED **", xcodebuild logs the test that was running
+# as failed in 0.000 seconds (runs 38271986218 and 38278109196), whatever that
+# test would have done. The shard sets such a pass aside and runs every class it
+# was given again, so that test must pass there; its failure here is the
+# interrupt's. A failure logged before the marker, or recorded in the bundle for
+# any other test, is the test's own.
+
+INTERRUPTED_MARK = "** TEST EXECUTE INTERRUPTED **"
+_LOGGED_FAILURE = re.compile(r"Test [Cc]ase '([^']+)' failed")
+_TEST_NAME = (
+    re.compile(r"(?:[\w.]*\.)?(\w+)\.(\w+)\(\)"),        # parallel clones: [Module.]Class.method()
+    re.compile(r"-\[(?:[\w.]*\.)?(\w+) (\w+)\]"),         # one test process: -[Module.Class method]
+)
+
+
+def _logged_failures(lines) -> set[str]:
+    """-> "Class/method" for each failed-test line; a name in neither known
+    shape is kept whole, so it can never match a bundle test and is never
+    taken for the test in flight."""
+    out = set()
+    for line in lines:
+        m = _LOGGED_FAILURE.search(line)
+        if not m:
+            continue
+        name = m.group(1)
+        for shape in _TEST_NAME:
+            k = shape.fullmatch(name)
+            if k:
+                out.add(f"{k.group(1)}/{k.group(2)}")
+                break
+        else:
+            out.add(f"unparsed:{name}")
+    return out
+
+
+def interrupted_pass_failures(tests_doc: dict, log: str) -> tuple[list[str], list[str]]:
+    """-> (failures, in_flight) for a pass the shard budget interrupted.
+
+    in_flight: "Class/method" of each test logged as failed only after the
+    interrupt marker. failures: every other failure, from the bundle
+    ("Bundle/Class/method") or logged before the marker ("Class/method").
+    """
+    lines = log.splitlines()
+    cut = next((i for i, line in enumerate(lines) if INTERRUPTED_MARK in line), len(lines))
+    before = _logged_failures(lines[:cut])
+    after = _logged_failures(lines[cut:]) - before
+    in_flight = {k for k in after if not k.startswith("unparsed:")}
+    failures = {f["id"] for f in final_failures(tests_doc)
+                if f["id"].split("/", 1)[-1] not in in_flight}
+    return sorted(failures | before | (after - in_flight)), sorted(in_flight)
+
+
 RERUN_PASSES = {"Passed", "Expected Failure"}
 
 
@@ -689,6 +745,12 @@ def main(argv: list[str]) -> int:
     lo.add_argument("--tests-json", required=True)
     lo.add_argument("--kind", choices=("parallel", "serial"), required=True)
 
+    ip = sub.add_parser("interrupted-failures",
+                        help="print 'failed <id>' and 'in-flight <id>' for an interrupted pass; "
+                        "exit 1 when any failure is not the test in flight")
+    ip.add_argument("--tests-json", required=True)
+    ip.add_argument("--log", required=True, help="the pass's own xcodebuild output")
+
     rf = sub.add_parser("runner-failures", help="print each runner failure the bundle records")
     rf.add_argument("--tests-json", required=True)
 
@@ -745,6 +807,14 @@ def main(argv: list[str]) -> int:
                 return 1
             print(f"all {len(plan['classes'])} planned classes ran in exactly one of "
                   f"{plan['shards']} shards")
+        elif args.cmd == "interrupted-failures":
+            log = Path(args.log).read_text(encoding="utf-8", errors="replace")
+            failures, in_flight = interrupted_pass_failures(_load(args.tests_json), log)
+            for i in failures:
+                print(f"failed {i}")
+            for i in in_flight:
+                print(f"in-flight {i}")
+            return 1 if failures else 0
         elif args.cmd == "kills":
             status, ids = kill_rerun_candidates(_load(args.tests_json))
             for i in ids:

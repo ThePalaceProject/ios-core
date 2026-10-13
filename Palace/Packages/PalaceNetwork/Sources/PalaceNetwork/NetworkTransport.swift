@@ -52,6 +52,15 @@ public final class ActiveTasksStore {
         }
     }
 
+    /// Number of registered tasks in any state, including ones already
+    /// cancelling, which `liveTaskCount` skips. Lets a test assert that no
+    /// task was created at all. Pure observation — no state mutation.
+    // PUBLIC_INTENT: read by TPPNetworkExecutor in the Palace app target, outside this package.
+    public var registeredTaskCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return tasks.count
+    }
+
     @discardableResult
     public func cancelNonEssential() -> Int {
         lock.lock(); defer { lock.unlock() }
