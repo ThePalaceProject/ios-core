@@ -650,10 +650,12 @@ struct AppContainer: @unchecked Sendable {
         AccountsManager._drainAllLiveInstancesForTesting()
         let rebuilt = Self._buildCachedAppContainer()
         _cachedLock.withLock { $0 = rebuilt }
-        // The audiobook/rating statics are the only members the builder does
-        // not rebuild. Left intact, the presenter carries active-session state
-        // across test classes (e.g. a presenter left `.playing`). Test resets
-        // always run on main, hence `assumeIsolated`.
+        // The builder rebuilds neither the audiobook/rating statics nor
+        // `_samplePreviewManager`. Left intact, the presenter carries
+        // active-session state across test classes (e.g. a presenter left
+        // `.playing`); `SamplePreviewManager` stores nothing and takes no
+        // collaborators, so it needs no clear. Test resets always run on main,
+        // hence `assumeIsolated`.
         MainActor.assumeIsolated {
             _audiobookSession = nil
             _audiobookSessionPresenter = nil
@@ -666,8 +668,20 @@ struct AppContainer: @unchecked Sendable {
         // it, so both are cleared together.
         _sideloadedBookRegistry.withLock { $0 = nil }
         _sideloadedBookManager.withLock { $0 = nil }
+        // The coordinator captures the downloadCenter and bookRegistry of the
+        // container that registered it, and `ensureOfflineQueueExecutorRegistered()`
+        // no-ops while the slot is filled — so a slot surviving the rebuild would
+        // serve the new graph from the discarded one, with no way to replace it.
+        _offlineQueueCoordinator.withLock { $0 = nil }
         // Leave the flag at the test-safe `true`; see the doc comment above.
         AccountsManager.deferInitialLoadCatalogsForTesting = true
+    }
+
+    /// Lets the reset contract test observe the offline-queue slot. Lives in
+    /// this existing test-only block rather than its own `#if DEBUG`, which
+    /// would also compile into sim and dev builds.
+    internal static var _offlineQueueCoordinatorForTesting: OfflineQueueCoordinator? {
+        _offlineQueueCoordinator.withLock { $0 }
     }
     #endif
 }
