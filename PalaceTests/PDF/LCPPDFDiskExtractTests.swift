@@ -284,6 +284,26 @@ final class LCPPDFDiskExtractTests: XCTestCase {
         XCTAssertEqual(try contents(of: dir), ["book.pdf"])
     }
 
+    /// An app kill mid-extract leaves a decrypted partial file; the next extract
+    /// of that book removes it, and leaves other books' partials alone.
+    func testWriteExtract_OrphanedPartialsForThisBook_AreRemoved() async throws {
+        let dir = try makeScratchDirectory()
+        let dest = dir.appendingPathComponent("book.pdf")
+        let orphan = dir.appendingPathComponent("book-\(UUID().uuidString).partial")
+        let otherBook = dir.appendingPathComponent("other-\(UUID().uuidString).partial")
+        try Data(count: 4).write(to: orphan)
+        try Data(count: 4).write(to: otherBook)
+        let source = Data(repeating: 0x02, count: 8)
+
+        _ = try await LCPPDFDiskExtract.writeExtract(
+            to: dest, totalBytes: 8, chunkSize: 4,
+            read: { range -> Result<Data, ReadFailure> in .success(self.bytes(range, of: source)) },
+            onChunk: { _ in })
+
+        XCTAssertEqual(try contents(of: dir), ["book.pdf", otherBook.lastPathComponent].sorted())
+        XCTAssertEqual(try Data(contentsOf: dest), source)
+    }
+
     /// Returning the loan drops the extract and any partial file an
     /// interrupted extract left for that book, but not other books' files.
     func testInvalidate_RemovesTheBooksPartialFilesOnly() throws {

@@ -248,6 +248,137 @@ final class ReaderServiceRouteOwnershipTests: XCTestCase {
         XCTAssertFalse(service.isSupersededOpen(forBookIdentifier: book.identifier, generation: generation + 1))
         XCTAssertEqual(service.beginLCPPDFOpen(for: book, on: coordinator), generation + 2)
     }
+
+    // MARK: - Aborting an open
+
+    private func recordAbortReports() -> () -> [String] {
+        var reports: [String] = []
+        service.abortedOpenReporter = { reports.append($0.identifier) }
+        return { reports }
+    }
+
+    /// Every back-out cancels the extract, and that cancellation reaches the
+    /// abort. It must not show "Unable to open book" or pop the patron's screen.
+    func testAbortRunawayOpen_AfterBackOut_ShowsNoAlertAndPopsNothing() throws {
+        let book = TPPBookMocker.snapshotPDF()
+        let reports = recordAbortReports()
+        let generation = try XCTUnwrap(service.beginLCPPDFOpen(for: book, on: coordinator))
+        coordinator.path.removeLast()
+        coordinator.push(.bookDetail(BookRoute(id: "some-other-book")))
+
+        service.abortRunawayOpen(for: book, generation: generation)
+
+        XCTAssertEqual(reports(), [], "A superseded open must not alert the patron")
+        XCTAssertEqual(coordinator.path.count, 1, "A superseded open must not pop the patron's screen")
+    }
+
+    /// Back out, reopen, then the first open fails: the reopened route and its
+    /// open must be left alone.
+    func testAbortRunawayOpen_OldOpenFailsAfterReopen_LeavesTheNewOpenUntouched() throws {
+        let book = TPPBookMocker.snapshotPDF()
+        let reports = recordAbortReports()
+        let first = try XCTUnwrap(service.beginLCPPDFOpen(for: book, on: coordinator))
+        coordinator.path.removeLast()
+        let second = try XCTUnwrap(service.beginLCPPDFOpen(for: book, on: coordinator))
+
+        service.abortRunawayOpen(for: book, generation: first)
+
+        XCTAssertEqual(coordinator.path.count, 1, "The reopened route must stay")
+        XCTAssertTrue(coordinator.isLCPPDFExtractPending(for: BookRoute(id: book.identifier)))
+        XCTAssertFalse(service.isSupersededOpen(forBookIdentifier: book.identifier, generation: second))
+        XCTAssertEqual(reports(), [])
+    }
+
+    /// The abort of the current open pops its route, tears it down once and
+    /// tells the patron once.
+    func testAbortRunawayOpen_CurrentOpen_PopsReleasesOnceAndReports() throws {
+        let book = TPPBookMocker.snapshotPDF()
+        let reports = recordAbortReports()
+        let generation = try XCTUnwrap(service.beginLCPPDFOpen(for: book, on: coordinator))
+
+        service.abortRunawayOpen(for: book, generation: generation)
+
+        XCTAssertEqual(coordinator.path.count, 0)
+        XCTAssertEqual(reports(), [book.identifier])
+        XCTAssertEqual(service.beginLCPPDFOpen(for: book, on: coordinator), generation + 2,
+                       "The abort must release the open exactly once")
+    }
+
+    // MARK: - Cancelling the extract
+
+    private func makeExtractTask() -> Task<Void, Never> {
+        let task = Task<Void, Never> {
+            while !Task.isCancelled { try? await Task.sleep(nanoseconds: 10_000_000) }
+        }
+        addTeardownBlock { task.cancel() }
+        return task
+    }
+
+    func testReleaseLCPPDFOpen_CancelsTheRegisteredExtract() {
+        let task = makeExtractTask()
+        service.registerExtractTask(forBookIdentifier: bookId, task)
+
+        service.releaseLCPPDFOpen(forBookIdentifier: bookId)
+
+        XCTAssertTrue(task.isCancelled)
+    }
+
+    /// Backing out stops the extract rather than leaving it decrypting into
+    /// the progress reporter the next open shares.
+    func testBackOutWhileExtracting_CancelsTheExtract() throws {
+        let book = TPPBookMocker.snapshotPDF()
+        let task = makeExtractTask()
+        _ = try XCTUnwrap(service.beginLCPPDFOpen(for: book, on: coordinator))
+        service.registerExtractTask(forBookIdentifier: book.identifier, task)
+
+        coordinator.path.removeLast()
+
+        XCTAssertTrue(task.isCancelled)
+    }
+
+    func testReleaseLCPPDFOpen_LeavesAnotherBooksExtractRunning() {
+        let task = makeExtractTask()
+        service.registerExtractTask(forBookIdentifier: "another-book", task)
+
+        service.releaseLCPPDFOpen(forBookIdentifier: bookId)
+
+        XCTAssertFalse(task.isCancelled)
+    }
+
+    // MARK: - Watchdog
+
+    private var overLimit: Int { ReaderService.runawayDecryptBlockLimit + 1 }
+
+    func testWatchdogVerdict_CurrentOpenOverTheLimit_Aborts() {
+        XCTAssertEqual(service.watchdogVerdict(forBookIdentifier: bookId, generation: 0,
+                                               trackedBookIdentifier: bookId, decryptedBlocks: overLimit),
+                       .abort)
+    }
+
+    func testWatchdogVerdict_AtTheLimit_KeepsWatching() {
+        XCTAssertEqual(service.watchdogVerdict(forBookIdentifier: bookId, generation: 0,
+                                               trackedBookIdentifier: bookId,
+                                               decryptedBlocks: ReaderService.runawayDecryptBlockLimit),
+                       .keepWatching)
+    }
+
+    /// After a back-out the reporter belongs to whatever opens next; the old
+    /// open's watchdog must stop rather than abort it.
+    func testWatchdogVerdict_SupersededOpen_Stops() {
+        service.releaseLCPPDFOpen(forBookIdentifier: bookId)
+
+        XCTAssertEqual(service.watchdogVerdict(forBookIdentifier: bookId, generation: 0,
+                                               trackedBookIdentifier: bookId, decryptedBlocks: overLimit),
+                       .stop)
+    }
+
+    /// Book A's watchdog must not read book B's block count and tell the
+    /// patron A is too large.
+    func testWatchdogVerdict_ReporterTracksAnotherBook_Stops() {
+        XCTAssertEqual(service.watchdogVerdict(forBookIdentifier: bookId, generation: 0,
+                                               trackedBookIdentifier: "another-book", decryptedBlocks: overLimit),
+                       .stop)
+    }
 }
 
 private struct InertPositionWriter: PositionWriter {

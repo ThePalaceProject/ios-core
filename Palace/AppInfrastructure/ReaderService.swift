@@ -74,6 +74,25 @@ final class ReaderService {
     /// rather than leave it decrypting into the shared progress reporter.
     private var extractTaskByBookId: [String: Task<Void, Never>] = [:]
 
+    /// Tells the patron an LCP-PDF open was aborted and logs it. `nil` uses the
+    /// UIKit alert and error log; tests substitute a recorder.
+    var abortedOpenReporter: ((TPPBook) -> Void)?
+
+    /// What the open's watchdog does after each sample.
+    enum WatchdogVerdict: Equatable {
+        /// The open is healthy so far.
+        case keepWatching
+        /// The open was superseded, or the progress reporter now tracks
+        /// another book, so this watchdog's samples no longer describe it.
+        case stop
+        /// The decrypt walk ran away; abort before the device runs out of memory.
+        case abort
+    }
+
+    /// Decrypted-block count above which an open is aborted. A healthy disk
+    /// extract peaks in the low tens of thousands.
+    static let runawayDecryptBlockLimit = 150_000
+
     @MainActor
     private func topPresenter() -> UIViewController? {
         guard let root = UIApplication.shared.mainKeyWindow?.rootViewController else {
@@ -263,19 +282,26 @@ final class ReaderService {
         // way above any healthy open and below the OOM ceiling.
         Task.detached(priority: .utility) { [weak self] in
             guard let self else { return }
-            while await LCPPDFOpenProgress.shared.phase != .idle {
-                // A back-out or reopen hands the shared progress reporter to
-                // another open; this watchdog must not abort that one.
-                guard await !self.isSupersededOpen(forBookIdentifier: book.identifier, generation: generation) else { return }
+            let progress = LCPPDFOpenProgress.shared
+            while await progress.phase != .idle {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 let mb = Self.residentMemoryMB()
-                let blocks = await LCPPDFOpenProgress.shared.decryptedBlocks
-                let bytes = await LCPPDFOpenProgress.shared.bytesExtracted
-                let total = await LCPPDFOpenProgress.shared.totalExtractBytes
-                let phase = await LCPPDFOpenProgress.shared.phase
+                let blocks = await progress.decryptedBlocks
+                let bytes = await progress.bytesExtracted
+                let total = await progress.totalExtractBytes
+                let phase = await progress.phase
+                let trackedBook = await progress.bookIdentifier
                 Log.info(#file, "[PERF] [LCP-PDF] residentMB=\(mb) blocks=\(blocks) extracted=\(bytes)/\(total) phase=\(phase)")
 
-                if blocks > 150_000 {
+                switch await self.watchdogVerdict(forBookIdentifier: book.identifier,
+                                                  generation: generation,
+                                                  trackedBookIdentifier: trackedBook,
+                                                  decryptedBlocks: blocks) {
+                case .keepWatching:
+                    continue
+                case .stop:
+                    return
+                case .abort:
                     Log.error(#file, "[PERF] [LCP-PDF] abort: decrypt walk exceeded 150k blocks (\(blocks)) — aborting to avoid OOM")
                     await self.abortRunawayOpen(for: book, generation: generation)
                     return
@@ -311,7 +337,7 @@ final class ReaderService {
                     // its job is to provide the decrypt context, and
                     // PDFKit owns the rendering surface from there.
                     let bookIdentifier = book.identifier
-                    self.extractTaskByBookId[bookIdentifier] = Task.detached(priority: .userInitiated) {
+                    self.registerExtractTask(forBookIdentifier: bookIdentifier, Task.detached(priority: .userInitiated) {
                         do {
                             let extractStartedAt = Date()
                             let extractedURL = try await LCPPDFDiskExtract.extract(
@@ -335,7 +361,7 @@ final class ReaderService {
                                 self.abortRunawayOpen(for: book, generation: generation)
                             }
                         }
-                    }
+                    })
                     #else
                     // Non-LCP build (open-source) — should never reach
                     // here because openPDF is only invoked for LCP books,
@@ -494,8 +520,11 @@ final class ReaderService {
     /// threshold — at that point the open is definitely not going to
     /// succeed and continuing risks a hard jetsam kill (worse UX than
     /// a clean alert).
+    ///
+    /// A no-op for a superseded open: every back-out cancels the extract, and
+    /// that cancellation arrives here.
     @MainActor
-    private func abortRunawayOpen(for book: TPPBook, generation: Int) {
+    func abortRunawayOpen(for book: TPPBook, generation: Int) {
         guard !isSupersededOpen(forBookIdentifier: book.identifier, generation: generation) else { return }
         // Pop BEFORE teardown: `releaseLCPPDFOpen` clears the pending flag that
         // answers "is this route still ours", and it drops the targeted-stack
@@ -506,6 +535,32 @@ final class ReaderService {
         if !isSupersededOpen(forBookIdentifier: book.identifier, generation: generation) {
             releaseLCPPDFOpen(forBookIdentifier: book.identifier)
         }
+        if let abortedOpenReporter {
+            abortedOpenReporter(book)
+        } else {
+            reportAbortedOpen(book)
+        }
+    }
+
+    /// Records the disk extract an open is running so `releaseLCPPDFOpen` can
+    /// cancel it.
+    func registerExtractTask(forBookIdentifier identifier: String, _ task: Task<Void, Never>) {
+        extractTaskByBookId[identifier] = task
+    }
+
+    /// The watchdog's decision for one sample of the shared progress reporter.
+    func watchdogVerdict(forBookIdentifier identifier: String,
+                         generation: Int,
+                         trackedBookIdentifier: String?,
+                         decryptedBlocks: Int) -> WatchdogVerdict {
+        guard !isSupersededOpen(forBookIdentifier: identifier, generation: generation),
+              trackedBookIdentifier == identifier else {
+            return .stop
+        }
+        return decryptedBlocks > Self.runawayDecryptBlockLimit ? .abort : .keepWatching
+    }
+
+    private func reportAbortedOpen(_ book: TPPBook) {
         guard let top = topPresenter() else { return }
         let alert = UIAlertController(
             title: NSLocalizedString("Unable to open book", comment: ""),

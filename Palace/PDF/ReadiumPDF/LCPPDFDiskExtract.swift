@@ -189,9 +189,15 @@ enum LCPPDFDiskExtract {
     /// find a partly written one there; a unique name per extract also keeps a
     /// cancelled extract and its replacement from writing the same file. On a
     /// thrown error or cancellation the partial file is removed.
+    ///
+    /// Partial files an app kill left for this book are removed first: they hold
+    /// decrypted content that otherwise stays until the loan is returned. A
+    /// cancelled extract still writing one loses it too, which is safe: its
+    /// rename fails and its open is already superseded.
     private static func writeFile(at destURL: URL,
                                   isolation: isolated (any Actor)? = #isolation,
                                   _ write: (FileHandle) async throws -> Void) async throws -> URL {
+        removePartialFiles(for: destURL)
         let partialURL = destURL.deletingLastPathComponent()
             .appendingPathComponent("\(partialPrefix(for: destURL))\(UUID().uuidString).partial")
         FileManager.default.createFile(atPath: partialURL.path, contents: nil)
@@ -218,20 +224,22 @@ enum LCPPDFDiskExtract {
         "\(destURL.deletingPathExtension().lastPathComponent)-"
     }
 
+    private static func removePartialFiles(for destURL: URL) {
+        let dir = destURL.deletingLastPathComponent()
+        let prefix = partialPrefix(for: destURL)
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+        for name in names where name.hasPrefix(prefix) && name.hasSuffix(".partial") {
+            try? FileManager.default.removeItem(at: dir.appendingPathComponent(name))
+        }
+    }
+
     /// Drops the on-disk extracted PDF for one book. Call when the loan
     /// is returned so a re-borrow doesn't reuse a stale extract against
     /// potentially different content. Best-effort.
     static func invalidate(bookIdentifier: String, account: String) {
         guard let url = fileURL(bookIdentifier: bookIdentifier, account: account) else { return }
         try? FileManager.default.removeItem(at: url)
-        // A partial file outlives its extract only when the app is killed
-        // mid-write; return is the point at which it is known to be unused.
-        let dir = url.deletingLastPathComponent()
-        let prefix = partialPrefix(for: url)
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
-        for name in names where name.hasPrefix(prefix) && name.hasSuffix(".partial") {
-            try? FileManager.default.removeItem(at: dir.appendingPathComponent(name))
-        }
+        removePartialFiles(for: url)
     }
 
     // MARK: - Path
