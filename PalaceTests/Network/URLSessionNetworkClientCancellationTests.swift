@@ -208,7 +208,6 @@ final class URLSessionNetworkClientCancellationTests: XCTestCase {
     private func makeSendTask(_ client: URLSessionNetworkClient,
                               _ method: HTTPMethod) -> Task<Void, Error> {
         let url = apiURL
-        // Built inside the Task: NetworkRequest is not Sendable.
         return Task<Void, Error> {
             _ = try await client.send(NetworkRequest(method: method, url: url))
         }
