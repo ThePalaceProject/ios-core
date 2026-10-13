@@ -11,7 +11,7 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 | Script | Purpose | When you'll touch it |
 |--------|---------|----------------------|
 | **`verify-pr.sh`** | One-shot pre-PR battery (build, tests, lint, coverage, mutation, a11y). | Before every `gh pr create`. Run `--quick` to skip mutation. |
-| **`pre-push-test-gate.sh`** | Pre-push hook that runs the changed-file test selection before allowing a push. Selects only test classes the PalaceTests target compiles, and fails when a selected class executes 0 tests. | Automatic via git hook; tune timeouts when CI lag surfaces. |
+| **`pre-push-test-gate.sh`** | Pre-push hook that runs the changed-file test selection before allowing a push. Selects test classes the PalaceTests target compiles, including ones that inherit XCTestCase through a base such as `PalaceTestCase`, and fails when a selected class executes 0 tests. A run stopped at the time cap passes only if every selected class already ran; otherwise raise `PRE_PUSH_TESTS_TIMEOUT_SECS` or set `PRE_PUSH_TESTS_ALLOW_TIMEOUT=1`. | Automatic via git hook; tune timeouts when CI lag surfaces. |
 | **`lint-test-quality.py`** | Static linter for fluff/flake test patterns. Supports `// lint-ignore: FLUFF-XXX` per-line markers. | Every test PR — failures here block CI. |
 | **`snapshot-library-registry.py`** | Snapshots the library registry (account JSON) and produces a diff against the live registry. | Account/auth-doc churn investigations; weekly drift checks. |
 | **`palace_mutate.py`** | Mutation-testing harness (mutate Swift file, run tests, report surviving mutants). | Anything on a critical path (sign-in, borrow, download, DRM). |
@@ -60,7 +60,7 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 |--------|--------------|-----------|
 | `xcode-test-optimized.sh` | Runs the full Palace test plan with caching and timeouts tuned for CI. | `unit-testing.yml` |
 | `verify-pr.sh` | One-shot pre-PR battery: build, tests, lint, coverage, mutation, a11y. | dev/local (run before pushing) |
-| `pre-push-test-gate.sh` | Pre-push hook that runs the changed-file test selection before allowing `git push`; skips test files the PalaceTests target does not compile and fails a class that executes 0 tests. | local git hook |
+| `pre-push-test-gate.sh` | Pre-push hook that runs the changed-file test selection before allowing `git push`; skips test files the PalaceTests target does not compile, fails a class that executes 0 tests, and blocks a timed-out run in which a selected class did not run unless `PRE_PUSH_TESTS_ALLOW_TIMEOUT=1`. | local git hook |
 | `resolve-tests-for.py` | Maps a changed production-file path to the XCTest class selectors that cover it. | `verify-pr.sh`, `palace_mutate.py` |
 | `parse-xcresult.py` | Parses an `.xcresult` bundle into JSON for downstream reporting. | `unit-testing.yml` |
 | `coverage-report.py` | Builds app, package and excluded-source coverage from `.xcresult` and `swift test` exports; marks missing data INCOMPLETE. | `unit-testing.yml` |
