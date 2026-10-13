@@ -13,6 +13,7 @@ import SwiftUI
 import WebKit
 import PalaceLogging
 import PalaceCatalog
+import PalaceUtilities
 
 // MARK: - SignInWebSheet (SwiftUI)
 
@@ -51,6 +52,7 @@ struct SignInWebSheet: View {
                         viewModel.recordCancel()
                         onDismissRequested()
                     }
+                    .accessibilityIdentifier(AccessibilityID.SignIn.cancelButton)
                 }
             }
         }
