@@ -28,6 +28,10 @@ nothing in scripts/ compared the project's Sources phases with the tree.
 Usage:
     check-swift-sources-compiled.py [--root DIR] [--pbxproj PATH]
                                     [--files-from LIST] [--quiet]
+    check-swift-sources-compiled.py --list-compiled TARGET [--root DIR]
+`--list-compiled` prints the repo-relative path of every .swift file in
+TARGET's Sources phases, one per line, and runs no checks. The pre-push test
+gate uses it to skip test files that no target builds.
 `--files-from` replaces `git ls-files` with a newline-separated path list, so
 the check can be run against a historical tree:
     git show REV:Palace.xcodeproj/project.pbxproj > old.pbxproj
@@ -224,6 +228,28 @@ def compiled_refs(objects: dict) -> set[str]:
     return out
 
 
+def target_compiled_paths(project: dict, target: str) -> list[str]:
+    """Repo-relative .swift paths compiled by the native target named `target`.
+    Raises ParseError when no such target exists."""
+    objects = project["objects"]
+    paths = resolve_file_paths(project)
+    matches = [o for o in objects.values()
+               if o.get("isa") == "PBXNativeTarget" and o.get("name") == target]
+    if not matches:
+        raise ParseError(f"no native target named {target!r}")
+    out = set()
+    for tgt in matches:
+        for phase_id in tgt.get("buildPhases", []):
+            phase = objects.get(phase_id, {})
+            if phase.get("isa") != "PBXSourcesBuildPhase":
+                continue
+            for build_id in phase.get("files", []):
+                path = paths.get(objects.get(build_id, {}).get("fileRef", ""))
+                if path and path.endswith(".swift"):
+                    out.add(path)
+    return sorted(out)
+
+
 def package_dirs(tracked: list[str]) -> list[str]:
     return sorted(posixpath.dirname(p) + "/" for p in tracked
                   if posixpath.basename(p) == "Package.swift")
@@ -335,6 +361,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--files-from", help="newline-separated tracked-file list "
                                          "(default: git ls-files)")
     ap.add_argument("--quiet", action="store_true", help="print findings only")
+    ap.add_argument("--list-compiled", metavar="TARGET",
+                    help="print the .swift files TARGET compiles and exit")
     args = ap.parse_args(argv)
 
     root = args.root or _git_root()
@@ -342,6 +370,13 @@ def main(argv: list[str] | None = None) -> int:
     try:
         with open(pbxproj, encoding="utf-8") as fh:
             project = parse_pbxproj(fh.read())
+        if args.list_compiled:
+            listed = target_compiled_paths(project, args.list_compiled)
+            # An empty list would make every test file look unbuilt.
+            if not listed:
+                raise ParseError(f"target {args.list_compiled!r} compiles no Swift files")
+            print("\n".join(listed))
+            return 0
         if args.files_from:
             with open(args.files_from, encoding="utf-8") as fh:
                 tracked = [line.strip() for line in fh if line.strip()]
