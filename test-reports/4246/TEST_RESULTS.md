@@ -1,6 +1,6 @@
 # 🧪 Palace iOS Unit Test Results
 
-**Generated:** 2026-10-13 14:28:07 UTC
+**Generated:** 2026-10-13 20:21:20 UTC
 **Commit:** `b5041cee0ac2`
 **Branch:** `ci/pbxproj-merge-driver`
 
