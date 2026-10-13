@@ -416,7 +416,7 @@ if [ "$UNCOMMITTED_COUNT" -gt 0 ]; then
 fi
 CHANGED_SWIFT=$(git diff --name-only "$BASE"...HEAD -- '*.swift' 2>/dev/null | grep -v 'Tests/' || true)
 CHANGED_TEST_SWIFT=$(git diff --name-only "$BASE"...HEAD -- '*.swift' 2>/dev/null | grep 'Tests/' || true)
-# WHAT COUNTS AS A SCREEN. Files the accessibility leg examines (PP-5028).
+# What counts as a screen. Files the accessibility leg examines (PP-5028).
 #
 # By name: View, Cell, Controller or a UI/ folder, minus non-view siblings
 # (ViewModel, Model, Reducer, ...) that substring-match "View" or "Controller".
@@ -427,7 +427,7 @@ UI_BY_NAME=$(echo "$CHANGED_SWIFT" \
   | grep -E '(UI/|View|Cell|Controller)' \
   | grep -Ev '(ViewModel|ViewState|Model|Reducer|Service|Provider|Mapper|Store|Coordinator|Builder|Dispatcher|Repository|Manager)\.swift$' \
   || true)
-UI_DECL_RE='^[[:space:]]*([@A-Za-z]+[[:space:]]+)*(struct|class|extension)[[:space:]]+[A-Za-z_][A-Za-z0-9_.]*(<[^>]*>)?[[:space:]]*:[^{]*(^|[^A-Za-z0-9_])(View|[A-Za-z]*(ViewController|NavigationController|TabBarController|HostingController|VC))([^A-Za-z0-9_]|$)'
+UI_DECL_RE='^[[:space:]]*(@?[A-Za-z]+(\([^)]*\))?[[:space:]]+)*(struct|class|extension)[[:space:]]+[A-Za-z_][A-Za-z0-9_.]*(<[^>]*>)?[[:space:]]*:[^{]*(^|[^A-Za-z0-9_])(View|[A-Za-z]*(ViewController|NavigationController|TabBarController|HostingController|VC))([^A-Za-z0-9_]|$)'
 UI_BY_DECL=""
 while IFS= read -r ui_candidate; do
   [ -n "$ui_candidate" ] && [ -f "$ui_candidate" ] || continue

@@ -33,7 +33,7 @@ def _slice(start_marker: str, end_marker: str) -> str:
 
 
 def classifier_block() -> str:
-    block = _slice("# WHAT COUNTS AS A SCREEN.", "# `--ignore-submodules=none`")
+    block = _slice("# What counts as a screen.", "# `--ignore-submodules=none`")
     assert "UI_BY_NAME" in block and "UI_BY_DECL" in block, "extraction range has drifted"
     return block
 
@@ -131,6 +131,33 @@ def test_every_file_in_the_tree_that_declares_a_screen_is_selected():
 
     missed = screens - set(classify(production))
     assert not missed, f"screens the selector does not examine: {sorted(missed)}"
+
+
+def test_the_declaration_rule_alone_agrees_with_the_parser():
+    """The name rule already covers most screens, so check the declaration arm on its own."""
+    tracked = subprocess.run(["git", "ls-files", "Palace/*.swift"], cwd=REPO,
+                             capture_output=True, text=True, check=True).stdout.split()
+    production = [p for p in tracked if "Tests/" not in p]
+    out = run(production, '\nprintf "%s" "$UI_BY_DECL"\n')
+    by_decl = {line for line in out.split("\n") if line.strip()}
+    screens = {p for p in production if _declares_screen(p)}
+    assert len(screens) > 50, "oracle found too few screens to mean anything"
+    assert by_decl - screens == set(), "declaration rule selects non-screens"
+    assert screens - by_decl == set(), "declaration rule misses screens"
+
+
+@pytest.mark.parametrize("source", [
+    "final class Bar: BaseReaderVC {\n}\n",
+    "@objc(TPPBar) final class Bar: UIViewController {\n}\n",
+    "struct Bar<Content: Hashable>: View {\n  var body: some View { EmptyView() }\n}\n",
+])
+def test_declaration_shapes_without_a_screen_name_are_selected(source):
+    with tempfile.TemporaryDirectory() as tmp:
+        rel = "Palace/Reader/Bar.swift"
+        os.makedirs(os.path.join(tmp, "Palace/Reader"))
+        with open(os.path.join(tmp, rel), "w", encoding="utf-8") as fh:
+            fh.write(source)
+        assert classify([rel], cwd=tmp) == [rel]
 
 
 # --- End to end: the leg fails a newly reached screen -----------------------
