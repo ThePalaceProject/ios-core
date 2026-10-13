@@ -2,11 +2,12 @@
 //  AudiobookLoaderFinalizeBuildTests.swift
 //
 //  Crashlytics F-004: `AudiobookLoader.finalizeBuild` EXC_BREAKPOINT (3.0.0,
-//  Overdrive). `finalizeBuild` is private, so these exercise the same toolkit
-//  surface the stack trace pins: `Manifest.customDecoder()` and
-//  `AudiobookFactory.audiobook(...)`. Not covered: the manager/playback-model
-//  construction, which reads production account settings and needs the
-//  proposed AudiobookFactoryProviding seam.
+//  Overdrive). Most cases here exercise the toolkit surface the stack trace
+//  pins — `Manifest.customDecoder()` and `AudiobookFactory.audiobook(...)` —
+//  while the zero-track case drives `finalizeBuild` directly, which is
+//  internal, not private. Not covered: everything below the zero-track guard,
+//  including the manager/playback-model construction that reads production
+//  account settings and needs the proposed AudiobookFactoryProviding seam.
 //
 
 import XCTest

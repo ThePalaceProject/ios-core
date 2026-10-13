@@ -48,4 +48,11 @@
 #   AppContainer.production(); the tracker had no reader after PP-4910.
 # 233 -> 232: BookService retired. Its open forwarder's default registry
 #   argument read AppContainer.production(); callers now pass their own registry.
-232
+# 232 -> 228: BookAvailabilityFormatter deleted. It had no production caller
+#   and duplicated BookDetailViewModel's chooseLocalLocation, requestSyncWithCompletion
+#   and presentEndOfBookAlert; its copy of the end-of-book alert held four locator reads
+#   (navigationCoordinatorHub, downloadCenter and ratingPromptPresenter twice). The
+#   surviving view-model copy takes its downloadCenter injected, so the deletion removes
+#   the reads rather than moving them. This lands on top of the BookService retirement
+#   above, so the total is the composition of both, measured rather than added by hand.
+228

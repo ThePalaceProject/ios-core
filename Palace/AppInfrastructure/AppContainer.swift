@@ -650,10 +650,15 @@ struct AppContainer: @unchecked Sendable {
         AccountsManager._drainAllLiveInstancesForTesting()
         let rebuilt = Self._buildCachedAppContainer()
         _cachedLock.withLock { $0 = rebuilt }
-        // The audiobook/rating statics are the only members the builder does
-        // not rebuild. Left intact, the presenter carries active-session state
-        // across test classes (e.g. a presenter left `.playing`). Test resets
-        // always run on main, hence `assumeIsolated`.
+        // The builder rebuilds neither the audiobook/rating statics nor
+        // `_samplePreviewManager`. Left intact, the presenter carries
+        // active-session state across test classes (e.g. a presenter left
+        // `.playing`). `_samplePreviewManager` is omitted for a narrower
+        // reason: its init takes no container collaborators, so it cannot serve
+        // a discarded graph. Its `toolbar` and `currentBookID` are reachable
+        // only through `toggle(for:)`, which no test drives; a test that called
+        // it would leave a playing sample session and need this slot cleared
+        // too. Test resets always run on main, hence `assumeIsolated`.
         MainActor.assumeIsolated {
             _audiobookSession = nil
             _audiobookSessionPresenter = nil
@@ -666,8 +671,24 @@ struct AppContainer: @unchecked Sendable {
         // it, so both are cleared together.
         _sideloadedBookRegistry.withLock { $0 = nil }
         _sideloadedBookManager.withLock { $0 = nil }
+        // The coordinator captures the downloadCenter and bookRegistry of the
+        // container that registered it, and `ensureOfflineQueueExecutorRegistered()`
+        // no-ops while the slot is filled — so a slot surviving the rebuild would
+        // serve the new graph from the discarded one, with no way to replace it.
+        // Registration runs in an unawaited `Task` and `OfflineQueueService`'s
+        // `setExecutor` is last-writer-wins, so across repeated resets the order
+        // of the resulting registrations is unspecified. Nothing reads that
+        // executor in tests today; a test that did would need it pinned.
+        _offlineQueueCoordinator.withLock { $0 = nil }
         // Leave the flag at the test-safe `true`; see the doc comment above.
         AccountsManager.deferInitialLoadCatalogsForTesting = true
+    }
+
+    /// Lets the reset contract test observe the offline-queue slot. Reuses the
+    /// surrounding `#if DEBUG`; declared unconditionally it would reach Release,
+    /// and `_offlineQueueCoordinator` is `private` so tests have no other seam.
+    internal static var _offlineQueueCoordinatorForTesting: OfflineQueueCoordinator? {
+        _offlineQueueCoordinator.withLock { $0 }
     }
     #endif
 }

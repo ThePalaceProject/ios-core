@@ -297,4 +297,42 @@ final class AppContainerResetTests: PalaceTestCase {
             "Third consecutive `_resetForTesting()` must also produce a fresh AccountsManager"
         )
     }
+
+    /// The offline-queue coordinator is retained in a process-wide slot so its
+    /// `[weak self]` executor closure stays alive, and
+    /// `ensureOfflineQueueExecutorRegistered()` is a no-op once the slot is
+    /// filled. Both are deliberate. What was not deliberate: the slot captures
+    /// the `downloadCenter` and `bookRegistry` of whichever container
+    /// registered first, and `_resetForTesting()` cleared its two siblings —
+    /// the side-loaded registry and manager — but not this one. So a rebuilt
+    /// graph kept being served by the previous graph's collaborators, and the
+    /// no-op meant it could never install its own.
+    ///
+    /// This is the same shape as the leaked audiobook presenter above: a graph
+    /// member the reset did not reach.
+    func testResetForTesting_clearsTheOfflineQueueCoordinatorSlot() {
+        AppContainer.production().ensureOfflineQueueExecutorRegistered()
+        let registered = AppContainer._offlineQueueCoordinatorForTesting
+        XCTAssertNotNil(
+            registered,
+            "Premise: registering must fill the slot, or this test proves nothing about clearing it"
+        )
+
+        AppContainer._resetForTesting()
+
+        XCTAssertNil(
+            AppContainer._offlineQueueCoordinatorForTesting,
+            "_resetForTesting() must clear the offline-queue coordinator; a surviving slot serves the rebuilt graph "
+            + "with the previous container's downloadCenter and bookRegistry, and the registration no-ops so the new "
+            + "graph never installs its own"
+        )
+
+        AppContainer.production().ensureOfflineQueueExecutorRegistered()
+        let reregistered = AppContainer._offlineQueueCoordinatorForTesting
+        XCTAssertNotNil(reregistered, "After a reset the next container must be able to register its own coordinator")
+        XCTAssertFalse(
+            registered === reregistered,
+            "The re-registered coordinator must be a new instance, not the one built from the discarded graph"
+        )
+    }
 }
