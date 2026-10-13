@@ -304,6 +304,33 @@ final class LCPPDFDiskExtractTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: dest), source)
     }
 
+    /// A back-out cancels the old extract while it awaits the resource length;
+    /// when it resumes it must not delete the partial file a reopen is writing.
+    func testWriteExtract_AlreadyCancelled_LeavesAnotherExtractsPartialInPlace() async throws {
+        let dir = try makeScratchDirectory()
+        let dest = dir.appendingPathComponent("book.pdf")
+        let liveReopen = dir.appendingPathComponent("book-\(UUID().uuidString).partial")
+        try Data(count: 4).write(to: liveReopen)
+        var reads = 0
+
+        let task = Task { @MainActor in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await LCPPDFDiskExtract.writeExtract(
+                to: dest, totalBytes: 8, chunkSize: 4,
+                read: { _ -> Result<Data, ReadFailure> in
+                    reads += 1
+                    return .success(Data(count: 4))
+                },
+                onChunk: { _ in })
+        }
+        let result = await task.result
+
+        XCTAssertThrowsError(try result.get()) { XCTAssertTrue($0 is CancellationError) }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: liveReopen.path),
+                      "A cancelled extract must not sweep the reopen's live partial file")
+        XCTAssertEqual(reads, 0)
+    }
+
     /// Returning the loan drops the extract and any partial file an
     /// interrupted extract left for that book, but not other books' files.
     func testInvalidate_RemovesTheBooksPartialFilesOnly() throws {

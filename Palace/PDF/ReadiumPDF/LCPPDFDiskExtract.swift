@@ -197,6 +197,9 @@ enum LCPPDFDiskExtract {
     private static func writeFile(at destURL: URL,
                                   isolation: isolated (any Actor)? = #isolation,
                                   _ write: (FileHandle) async throws -> Void) async throws -> URL {
+        // A cancelled extract can resume here after a reopen started its own
+        // partial file; checking first keeps the sweep off that live file.
+        try Task.checkCancellation()
         removePartialFiles(for: destURL)
         let partialURL = destURL.deletingLastPathComponent()
             .appendingPathComponent("\(partialPrefix(for: destURL))\(UUID().uuidString).partial")
