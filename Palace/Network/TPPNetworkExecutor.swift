@@ -263,7 +263,7 @@ struct RefreshOutcomeBox: @unchecked Sendable {
     // through the executor's higher-level GET / PUT / POST / DELETE surface.
     let responder: TPPNetworkResponder
     private var _accountsManager: TPPLibraryAccountsProvider?
-    private var accountsManager: TPPLibraryAccountsProvider {
+    var accountsManager: TPPLibraryAccountsProvider {
         _accountsManager ?? AppContainer.production().accountsManager
     }
 
@@ -476,7 +476,9 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
         case .refreshThenDispatch(let accountId):
             Log.info(#file, "Token near expiry - proactively refreshing before request")
             refreshTokenAndResume(task: nil, accountId: accountId) { [weak self] _ in
-                _ = self?.performDataTask(with: req, accountId: accountId, completion: completion)
+                guard let self else { return }
+                _ = self.performDataTask(with: self.withCurrentBearer(req, accountId: accountId),
+                                         accountId: accountId, completion: completion)
             }
             return nil
         }
@@ -566,7 +568,7 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
             } onCancel: {
                 refreshed.cancel()
             }
-            return await dataTask(req, accountId: accountId)
+            return await dataTask(withCurrentBearer(req, accountId: accountId), accountId: accountId)
         }
     }
 

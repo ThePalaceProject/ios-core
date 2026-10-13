@@ -2,7 +2,8 @@
 //  TPPNetworkExecutor+RetryRequest.swift
 //  Palace
 //
-//  Building and failing the request resent after a token refresh.
+//  Building the request sent after a token refresh, and failing a retry
+//  that cannot be resent.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -33,9 +34,29 @@ extension TPPNetworkExecutor {
         if original.httpBody == nil, original.httpBodyStream != nil {
             return nil
         }
-        var retry = original
-        retry.setValue(snapshot.authToken.map { "Bearer \($0)" }, forHTTPHeaderField: "Authorization")
-        return retry
+        return replacingBearer(in: original, with: snapshot)
+    }
+
+    /// `request` re-authorized with the token `accountId` holds now; nil
+    /// resolves the selected library. A proactive refresh runs after its
+    /// request was built, so the request still carries the token the refresh
+    /// replaced. A request the caller sent without a bearer is returned as is.
+    func withCurrentBearer(_ request: URLRequest, accountId: String?) -> URLRequest {
+        guard request.value(forHTTPHeaderField: "Authorization")?.hasPrefix("Bearer ") == true else {
+            return request
+        }
+        let resolvedId = accountId ?? accountsManager.currentAccountId ?? ""
+        return Self.replacingBearer(in: request,
+                                    with: accountsManager.userAccount(for: resolvedId).credentialSnapshot())
+    }
+
+    /// `request` with its bearer set to `snapshot`'s token, or removed when
+    /// the snapshot has none. Method, body and other headers are kept.
+    private static func replacingBearer(in request: URLRequest,
+                                        with snapshot: TPPUserAccount.CredentialSnapshot) -> URLRequest {
+        var request = request
+        request.setValue(snapshot.authToken.map { "Bearer \($0)" }, forHTTPHeaderField: "Authorization")
+        return request
     }
 
     /// Fails a queued retry that `retryRequest` could not rebuild. Delivered on

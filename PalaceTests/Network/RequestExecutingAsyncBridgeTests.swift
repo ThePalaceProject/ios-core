@@ -388,4 +388,130 @@ final class RequestExecutingAsyncBridgeTests: XCTestCase {
         XCTAssertEqual(afterAsync, 1, "the async form must refresh a near-expiry token")
         XCTAssertEqual(afterCallback, 1, "the callback form must refresh it too")
     }
+
+    // MARK: - The request sent after a proactive refresh
+
+    private struct SentRequest: Sendable {
+        let method: String?
+        let body: Data?
+        let headers: [String: String]
+    }
+
+    /// URLProtocol usually sees the body as a stream, whatever the caller set.
+    private nonisolated static func bodyBytes(of request: URLRequest) -> Data? {
+        if let direct = request.httpBody { return direct }
+        guard let stream = request.httpBodyStream else { return nil }
+        stream.open()
+        defer { stream.close() }
+        var collected = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            if count <= 0 { break }
+            collected.append(buffer, count: count)
+        }
+        return collected
+    }
+
+    /// Answers the token endpoint with `token` and records every request that
+    /// reaches the API URL.
+    private func stubRefreshReturning(_ token: String) -> LockIsolated<[SentRequest]> {
+        let sent = LockIsolated<[SentRequest]>([])
+        HTTPStubURLProtocol.register { @Sendable [tokenURL, apiURL] request in
+            if request.url == tokenURL {
+                return .init(statusCode: 200, headers: nil, body: Self.tokenJSON(token))
+            }
+            guard request.url == apiURL else { return nil }
+            sent.withValue {
+                $0.append(SentRequest(method: request.httpMethod,
+                                      body: Self.bodyBytes(of: request),
+                                      headers: request.allHTTPHeaderFields ?? [:]))
+            }
+            return .init(statusCode: 200, headers: nil, body: Data("ok".utf8))
+        }
+        return sent
+    }
+
+    /// A POST as a caller builds it: the executor's request, carrying the
+    /// bearer the refresh is about to replace, with a body and a caller header.
+    private func callerPOST(accountId: String? = nil) -> URLRequest {
+        var request = executor.request(for: apiURL, accountId: accountId)
+        request.httpMethod = "POST"
+        request.httpBody = Data("position".utf8)
+        request.setValue("k-7", forHTTPHeaderField: "X-Idempotency-Key")
+        return request
+    }
+
+    private func assertSentOnceWithBearer(_ sent: [SentRequest], _ bearer: String,
+                                          file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(sent.count, 1, "the guarded request must be sent exactly once", file: file, line: line)
+        guard let request = sent.first else { return }
+        XCTAssertEqual(request.headers["Authorization"], bearer,
+                       "the request must carry the token the refresh obtained, not the one it replaced",
+                       file: file, line: line)
+        XCTAssertEqual(request.method, "POST", file: file, line: line)
+        XCTAssertEqual(request.body, Data("position".utf8), file: file, line: line)
+        XCTAssertEqual(request.headers["X-Idempotency-Key"], "k-7", file: file, line: line)
+    }
+
+    /// The async form refreshes first; the request it then sends must carry
+    /// the new token. Sending the old one costs a 401 and a second refresh.
+    func testExecute_nearExpiryToken_sendsTheRefreshedBearer() async {
+        setTokenExpiringIn(60)
+        let sent = stubRefreshReturning("refreshed")
+
+        _ = await executor.execute(callerPOST(), enableTokenRefresh: true, accountId: nil)
+
+        assertSentOnceWithBearer(sent.value, "Bearer refreshed")
+    }
+
+    /// Same property on the callback form, which `GET`/`PUT`/`POST` use.
+    func testExecuteRequest_nearExpiryToken_sendsTheRefreshedBearer() async {
+        setTokenExpiringIn(60)
+        let sent = stubRefreshReturning("refreshed")
+
+        let done = expectation(description: "callback form completes")
+        _ = executor.executeRequest(callerPOST(), enableTokenRefresh: true,
+                                    accountId: nil) { @Sendable _ in done.fulfill() }
+        await fulfillment(of: [done], timeout: 5.0)   // STARVE-001-OK: HTTPStubURLProtocol answers from a registered stub with no network and no fire-and-forget task
+
+        assertSentOnceWithBearer(sent.value, "Bearer refreshed")
+    }
+
+    /// A request for a library other than the selected one is refreshed and
+    /// re-authorized for that library; the selected library's token must not
+    /// reach the request (PP-4986).
+    func testExecute_nearExpiryTokenOnANamedLibrary_sendsThatLibrarysRefreshedBearer() async {
+        let otherLibraryId = "urn:uuid:other-library"
+        let otherLibrary = TPPUserAccountMock()
+        otherLibrary._authDefinition = Self.makeTokenAuth(tokenURL: tokenURL)
+        otherLibrary._credentials = .token(authToken: "other-near-expiry",
+                                           barcode: "user-002",
+                                           pin: "5678",
+                                           expirationDate: Date().addingTimeInterval(60))
+        otherLibrary.markLoggedIn()
+        let selected: TPPUserAccountMock = userAccount
+        libraryAccount.userAccountResolver = { @Sendable id in id == otherLibraryId ? otherLibrary : selected }
+        let sent = stubRefreshReturning("other-refreshed")
+
+        _ = await executor.execute(callerPOST(accountId: otherLibraryId),
+                                   enableTokenRefresh: true, accountId: otherLibraryId)
+
+        assertSentOnceWithBearer(sent.value, "Bearer other-refreshed")
+        XCTAssertEqual(otherLibrary.authToken, "other-refreshed", "the refresh writes the named library")
+        XCTAssertNil(userAccount.authToken, "the refresh must not write the selected library")
+    }
+
+    /// A request the caller sent without a bearer is not given one by the
+    /// refresh: only a bearer the caller chose to send is replaced.
+    func testExecute_nearExpiryToken_requestWithoutABearer_isSentWithoutOne() async {
+        setTokenExpiringIn(60)
+        let sent = stubRefreshReturning("refreshed")
+
+        _ = await executor.execute(URLRequest(url: apiURL), enableTokenRefresh: true, accountId: nil)
+
+        XCTAssertEqual(sent.value.count, 1)
+        XCTAssertNil(sent.value.first?.headers["Authorization"],
+                     "an unauthenticated request must stay unauthenticated after the refresh")
+    }
 }
