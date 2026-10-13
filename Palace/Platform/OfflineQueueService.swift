@@ -36,14 +36,10 @@ actor OfflineQueueService: OfflineQueueServiceProtocol {
     /// delay. Production uses `Task.sleep`.
     private let backoffSleep: @Sendable (TimeInterval) async -> Void
 
-    /// Reads the current library account. Only that library's actions drain;
-    /// the others keep their place and state until their library is current.
+    /// Reads the library whose actions may run now: the current library once
+    /// the registry has loaded it. The others keep their place and state.
     /// Installed with the executor; until then it reports no library.
     private var currentLibraryID: @Sendable () -> String?
-
-    /// Keeps the current-library-change subscription alive for the actor's
-    /// lifetime.
-    private let libraryChangeSubscription = SubscriptionHolder()
 
     /// The app-wide queue's entry points, used as production defaults by the
     /// services that feed and prune it.
@@ -82,7 +78,7 @@ actor OfflineQueueService: OfflineQueueServiceProtocol {
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
         },
         currentLibraryID: @escaping @Sendable () -> String? = { nil },
-        notificationCenter: NotificationCenter = .default
+        monitorsNetwork: Bool = true
     ) {
         self.userDefaults = userDefaults
         self.backoffSleep = backoffSleep
@@ -113,14 +109,11 @@ actor OfflineQueueService: OfflineQueueServiceProtocol {
             }
         }
 
-        Task { await startNetworkMonitoring() }
-
-        libraryChangeSubscription.cancellable = notificationCenter
-            .publisher(for: .TPPCurrentAccountDidChange)
-            .sink { [weak self] _ in
-                guard let self else { return }
-                Task { await self.currentLibraryDidChange() }
-            }
+        // Tests pass false and drive `networkStatusChanged` themselves, so the
+        // monitor's first path update cannot race them.
+        if monitorsNetwork {
+            Task { await startNetworkMonitoring() }
+        }
     }
 
     // MARK: - Configuration
@@ -261,8 +254,8 @@ actor OfflineQueueService: OfflineQueueServiceProtocol {
         return queue.firstIndex { $0.state == .pending && $0.belongs(toLibrary: current) }
     }
 
-    /// Drains the actions of the library that just became current.
-    func currentLibraryDidChange() async {
+    /// Drains the actions of the library that just became runnable.
+    func drainIfOnline() async {
         if isNetworkAvailable {
             await processQueue()
         }
@@ -314,8 +307,3 @@ actor OfflineQueueService: OfflineQueueServiceProtocol {
     }
 }
 
-/// Holds the current-library-change subscription. Written once in
-/// `OfflineQueueService.init` and never read, so it needs no lock.
-private final class SubscriptionHolder: @unchecked Sendable {
-    var cancellable: AnyCancellable?
-}

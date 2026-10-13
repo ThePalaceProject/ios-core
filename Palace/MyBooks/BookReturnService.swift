@@ -431,9 +431,7 @@ final class BookReturnService: @unchecked Sendable {
             isLoanTermLimitReached: problemDoc?.detail?.contains(TPPProblemDocument.DetailLoanTermLimitReached) == true,
             isAuthError: isAuthError,
             isOffline: Self.isOfflineNSURLError(error),
-            // Without a library the queued return could not be scoped, so it
-            // takes the alert path instead.
-            hasOfflineEnqueuer: offlineReturnEnqueuer != nil && libraryID != nil
+            hasOfflineEnqueuer: offlineReturnEnqueuer != nil
         ))
 
         // Parse-fail is a benign treat-as-success (info); everything else is an error.
@@ -518,6 +516,15 @@ final class BookReturnService: @unchecked Sendable {
                         self.presentOfflineReturnQueuedAlert(for: book)
                         completion?()
                     }
+                }
+            } else {
+                // Not reached: this route requires an enqueuer, and a TPPUserAccount
+                // always carries its library ID (its only initializer takes one).
+                // Ending the return keeps a nil ID from leaving it without a completion.
+                Log.error(#file, "Offline return for '\(book.title)' has no library to queue under")
+                runOnMainAsync {
+                    self.downloadAnnouncementService.announceReturnFailed(for: book)
+                    completion?()
                 }
             }
 

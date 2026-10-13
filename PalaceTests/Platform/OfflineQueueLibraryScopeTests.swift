@@ -24,7 +24,6 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
     private var registry: TPPBookRegistryMock!
     private var circulation: FakeCirculation!
     private var currentLibrary: LockIsolated<String?>!
-    private var notificationCenter: NotificationCenter!
     private var queue: OfflineQueueService!
     /// Retained: the executor it installs holds it weakly.
     private var coordinator: OfflineQueueCoordinator!
@@ -33,18 +32,15 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
         super.setUp()
         UserDefaults(suiteName: Self.suiteName)!.removePersistentDomain(forName: Self.suiteName)
         registry = TPPBookRegistryMock()
+        registry.loadedAccountID = Self.libraryA
         circulation = FakeCirculation()
         let current = LockIsolated<String?>(Self.libraryA)
         currentLibrary = current
-        // The test posts to this centre after handing it to the actor; posting
-        // is thread-safe.
-        nonisolated(unsafe) let center = NotificationCenter()
-        notificationCenter = center
         queue = OfflineQueueService(
             userDefaults: UserDefaults(suiteName: Self.suiteName)!,
             backoffSleep: { _ in },
             currentLibraryID: { current.value },
-            notificationCenter: center
+            monitorsNetwork: false
         )
     }
 
@@ -52,7 +48,6 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
         UserDefaults(suiteName: Self.suiteName)!.removePersistentDomain(forName: Self.suiteName)
         coordinator = nil
         queue = nil
-        notificationCenter = nil
         currentLibrary = nil
         circulation = nil
         registry = nil
@@ -63,14 +58,11 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
 
     private func makeQueue() -> OfflineQueueService {
         let current = currentLibrary!
-        // The test posts to this centre after handing it to the actor; posting
-        // is thread-safe.
-        nonisolated(unsafe) let center = notificationCenter!
         return OfflineQueueService(
             userDefaults: UserDefaults(suiteName: Self.suiteName)!,
             backoffSleep: { _ in },
             currentLibraryID: { current.value },
-            notificationCenter: center
+            monitorsNetwork: false
         )
     }
 
@@ -110,8 +102,16 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
         OfflineAction(type: type, bookID: bookID, bookTitle: bookID, libraryID: library)
     }
 
+    /// Changes the current library only; the registry keeps its old records
+    /// until `finishRegistryLoad()`, as the real registry does while it reloads.
     private func switchLibrary(to library: String) {
         currentLibrary.value = library
+    }
+
+    /// The registry finishes loading the current library and announces it.
+    private func finishRegistryLoad() {
+        registry.loadedAccountID = currentLibrary.value
+        registry.state = .loaded
     }
 
     // MARK: - Cross-library drain
@@ -227,8 +227,8 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
 
     // MARK: - Draining when the library is current again
 
-    /// Switching back to A drains A's queued return through the real return
-    /// flow; the same-library confirmation still completes it.
+    /// Once A's registry has loaded after switching back, its load starts the
+    /// drain and the same-library confirmation completes A's return.
     func testLibraryChange_backToOriginLibrary_drainsAndCompletesReturn() async throws {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         let queued = action(.return, book.identifier, in: Self.libraryA)
@@ -240,25 +240,17 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
         await queue.processQueue()
         XCTAssertEqual(circulation.returnCalls, [], "precondition: held while B is current")
 
-        let completed = expectation(description: "action completed")
-        let queuedID = queued.id
-        // Delivered on the queue actor's thread, so these closures must not
-        // inherit the test's main-actor isolation.
-        let cancellable = queue.actionPublisher
-            .filter { @Sendable action in action.id == queuedID && action.state == .completed }
-            .sink { @Sendable _ in completed.fulfill() }
         switchLibrary(to: Self.libraryA)
-        notificationCenter.post(name: .TPPCurrentAccountDidChange, object: nil)
-        await fulfillment(of: [completed], timeout: 5)
-        cancellable.cancel()
+        finishRegistryLoad()   // A's shelf, holding the book, has loaded
+        await coordinator._awaitTriggeredDrainsForTesting()
 
         XCTAssertEqual(circulation.returnCalls, [book.identifier])
         let remaining = await queue.currentStatus()
         XCTAssertEqual(remaining.pendingCount, 0)
     }
 
-    /// While offline, a library change does not start a drain.
-    func testLibraryChange_whileOffline_doesNotDrain() async {
+    /// While offline, the drain entry point does nothing.
+    func testDrainIfOnline_whileOffline_doesNotDrain() async {
         let executed = LockIsolated<[String]>([])
         await queue.setExecutor { action in
             executed.withValue { $0.append(action.bookID) }
@@ -269,13 +261,13 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
         await queue.enqueue(action(.borrow, "a1", in: Self.libraryA))
 
         switchLibrary(to: Self.libraryA)
-        await queue.currentLibraryDidChange()
+        await queue.drainIfOnline()
 
         XCTAssertEqual(executed.value, [])
     }
 
-    /// Online, the library-change entry point drains the now-current library.
-    func testCurrentLibraryDidChange_whileOnline_drainsNewlyCurrentLibrary() async {
+    /// Online, the drain entry point runs the now-runnable library's actions.
+    func testDrainIfOnline_whileOnline_drainsNewlyCurrentLibrary() async {
         let executed = LockIsolated<[String]>([])
         switchLibrary(to: Self.libraryB)
         await queue.enqueue(action(.borrow, "a1", in: Self.libraryA))
@@ -287,9 +279,200 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
         XCTAssertEqual(executed.value, [], "precondition: held while B is current")
 
         switchLibrary(to: Self.libraryA)
-        await queue.currentLibraryDidChange()
+        await queue.drainIfOnline()
 
         XCTAssertEqual(executed.value, ["a1"])
+    }
+
+    // MARK: - Registry not yet loaded for the current library
+
+    /// Switching back to A before the registry has reloaded A's shelf: the
+    /// store still holds B's records, so A's queued return must not run.
+    func testSwitchBack_beforeRegistryReloads_returnStaysPendingAndUnconfirmed() async {
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let queued = action(.return, book.identifier, in: Self.libraryA)
+        switchLibrary(to: Self.libraryB)
+        finishRegistryLoad()
+        await queue.enqueue(queued)
+        circulation.returnService = makeReturnService()
+        await makeCoordinator().registerExecutor()
+
+        switchLibrary(to: Self.libraryA)   // registry still holds B's shelf
+        await queue.drainIfOnline()
+
+        let pending = await queue.actions(withState: .pending)
+        XCTAssertEqual(pending.map(\.id), [queued.id], "the return must wait for A's registry")
+        XCTAssertEqual(pending.first?.retryCount, 0)
+        XCTAssertEqual(circulation.returnCalls, [])
+    }
+
+    /// The same window when B's stale shelf holds a book with the same ID:
+    /// B's record must not be returned under A's credentials.
+    func testSwitchBack_beforeRegistryReloads_doesNotReturnOtherLibrarysSameIDBook() async {
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let queued = action(.return, book.identifier, in: Self.libraryA)
+        switchLibrary(to: Self.libraryB)
+        finishRegistryLoad()
+        await queue.enqueue(queued)
+        registry.addBook(book, state: .downloadSuccessful)   // B's copy
+        await makeCoordinator().registerExecutor()
+
+        switchLibrary(to: Self.libraryA)
+        await queue.drainIfOnline()
+
+        XCTAssertEqual(circulation.returnCalls, [])
+        let pending = await queue.actions(withState: .pending)
+        XCTAssertEqual(pending.map(\.id), [queued.id])
+    }
+
+    /// At launch the queue can drain before the registry's first load: an
+    /// empty store must not confirm a persisted return.
+    func testLaunchDrain_beforeFirstRegistryLoad_returnStaysPending() async throws {
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let persisted = action(.return, book.identifier, in: Self.libraryA)
+        UserDefaults(suiteName: Self.suiteName)!.set(
+            try JSONEncoder().encode([persisted]), forKey: Self.storageKey)
+        queue = makeQueue()
+        registry.loadedAccountID = nil   // first load still pending
+        circulation.returnService = makeReturnService()
+        await makeCoordinator().registerExecutor()
+
+        await queue.networkStatusChanged(isAvailable: true)
+
+        let pending = await queue.actions(withState: .pending)
+        XCTAssertEqual(pending.map(\.id), [persisted.id])
+        XCTAssertEqual(pending.first?.retryCount, 0)
+        XCTAssertEqual(circulation.returnCalls, [])
+    }
+
+    /// When the first load finishes with the book on A's shelf, the load
+    /// starts the drain and the return runs.
+    func testLaunchDrain_afterFirstRegistryLoad_runsTheReturn() async throws {
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let persisted = action(.return, book.identifier, in: Self.libraryA)
+        UserDefaults(suiteName: Self.suiteName)!.set(
+            try JSONEncoder().encode([persisted]), forKey: Self.storageKey)
+        queue = makeQueue()
+        registry.loadedAccountID = nil
+        circulation.removesBookOnReturn = registry
+        await makeCoordinator().registerExecutor()
+        registry.addBook(book, state: .downloadSuccessful)
+
+        finishRegistryLoad()
+        await coordinator._awaitTriggeredDrainsForTesting()
+
+        XCTAssertEqual(circulation.returnCalls, [book.identifier])
+        let remaining = await queue.currentStatus()
+        XCTAssertEqual(remaining.pendingCount, 0)
+    }
+
+    // MARK: - Mixed libraries
+
+    /// Two libraries interleaved, with A's first action failing twice: A's
+    /// retries stay with A, and B's action waits untouched until B is current.
+    func testInterleavedLibraries_withRetries_retriesStayWithTheirLibrary() async {
+        let attempts = LockIsolated<[String]>([])
+        await queue.setExecutor { action in
+            let count = attempts.withValue { list -> Int in
+                list.append(action.bookID)
+                return list.filter { $0 == action.bookID }.count
+            }
+            return action.bookID != "a1" || count >= 3
+        }
+        await queue.networkStatusChanged(isAvailable: false)
+        await queue.enqueue(action(.borrow, "a1", in: Self.libraryA))
+        let b1 = action(.borrow, "b1", in: Self.libraryB)
+        await queue.enqueue(b1)
+        await queue.enqueue(action(.borrow, "a2", in: Self.libraryA))
+
+        await queue.networkStatusChanged(isAvailable: true)
+
+        XCTAssertEqual(attempts.value, ["a1", "a1", "a1", "a2"])
+        let pending = await queue.actions(withState: .pending)
+        XCTAssertEqual(pending.map(\.id), [b1.id])
+        XCTAssertEqual(pending.first?.retryCount, 0)
+
+        switchLibrary(to: Self.libraryB)
+        await queue.drainIfOnline()
+
+        XCTAssertEqual(attempts.value, ["a1", "a1", "a1", "a2", "b1"])
+        let status = await queue.currentStatus()
+        XCTAssertEqual(status.pendingCount, 0)
+    }
+
+    /// A library switch during a drain stops A's remaining actions and runs
+    /// B's, because each pick reads the current library afresh.
+    func testLibrarySwitchDuringDrain_stopsRemainingActionsAndRunsNewLibrarys() async {
+        let executed = LockIsolated<[String]>([])
+        let current = currentLibrary!
+        let libraryB = Self.libraryB
+        await queue.setExecutor { action in
+            executed.withValue { $0.append(action.bookID) }
+            if action.bookID == "a1" { current.value = libraryB }
+            return true
+        }
+        await queue.networkStatusChanged(isAvailable: false)
+        await queue.enqueue(action(.borrow, "a1", in: Self.libraryA))
+        let a2 = action(.borrow, "a2", in: Self.libraryA)
+        await queue.enqueue(a2)
+        await queue.enqueue(action(.borrow, "b1", in: Self.libraryB))
+
+        await queue.networkStatusChanged(isAvailable: true)
+
+        XCTAssertEqual(executed.value, ["a1", "b1"])
+        let pending = await queue.actions(withState: .pending)
+        XCTAssertEqual(pending.map(\.id), [a2.id])
+    }
+
+    /// Relaunch with persisted actions from two libraries, one left in
+    /// `.processing` by the previous run: all come back pending, in order, and
+    /// only the current library's run.
+    func testRelaunch_withMixedLibrariesAndStaleProcessing_resumesCurrentLibraryOnly() async throws {
+        var stale = action(.return, "a-stale", in: Self.libraryA)
+        stale.state = .processing
+        let b1 = action(.borrow, "b1", in: Self.libraryB)
+        let a2 = action(.borrow, "a2", in: Self.libraryA)
+        UserDefaults(suiteName: Self.suiteName)!.set(
+            try JSONEncoder().encode([stale, b1, a2]), forKey: Self.storageKey)
+
+        let relaunched = makeQueue()
+        let pendingAtLoad = await relaunched.actions(withState: .pending)
+        let executed = LockIsolated<[String]>([])
+        await relaunched.setExecutor { action in
+            executed.withValue { $0.append(action.bookID) }
+            return true
+        }
+        await relaunched.processQueue()
+
+        XCTAssertEqual(pendingAtLoad.map(\.id), [stale.id, b1.id, a2.id])
+        XCTAssertEqual(executed.value, ["a-stale", "a2"])
+        let pending = await relaunched.actions(withState: .pending)
+        XCTAssertEqual(pending.map(\.id), [b1.id])
+    }
+
+    /// Dropping legacy actions rewrites storage once; the next launch, with
+    /// nothing left to drop, writes nothing.
+    func testLegacyDrop_rewritesStorageOnce_secondLaunchWritesNothing() async throws {
+        let scoped = action(.return, "scoped", in: Self.libraryA)
+        var legacyJSON = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(scoped)) as? [String: Any])
+        legacyJSON.removeValue(forKey: "libraryID")
+        legacyJSON["id"] = UUID().uuidString
+        let scopedJSON = try JSONSerialization.jsonObject(with: JSONEncoder().encode(scoped))
+        UserDefaults(suiteName: Self.suiteName)!.set(
+            try JSONSerialization.data(withJSONObject: [legacyJSON, scopedJSON]), forKey: Self.storageKey)
+        let writes = LockIsolated(0)
+
+        _ = OfflineQueueService(
+            userDefaults: CountingDefaults(suiteName: Self.suiteName, key: Self.storageKey, writes: writes)!,
+            currentLibraryID: { nil }, monitorsNetwork: false)
+        let afterFirstLaunch = writes.value
+        _ = OfflineQueueService(
+            userDefaults: CountingDefaults(suiteName: Self.suiteName, key: Self.storageKey, writes: writes)!,
+            currentLibraryID: { nil }, monitorsNetwork: false)
+
+        XCTAssertEqual(afterFirstLaunch, 1)
+        XCTAssertEqual(writes.value, 1, "a second launch has nothing to drop and writes nothing")
     }
 
     // MARK: - Legacy persisted actions
@@ -431,6 +614,43 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
         XCTAssertEqual(circulation.returnCalls, [book.identifier])
     }
 
+    /// A registry reload starting while the return is in flight leaves no
+    /// loaded shelf to confirm against, so the return is not confirmed.
+    func testExecute_returnWhenRegistryReloadsMidFlight_isNotConfirmed() async {
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        registry.addBook(book, state: .downloadSuccessful)
+        circulation.removesBookOnReturn = registry
+        let registry = self.registry!
+        circulation.onCall = { registry.loadedAccountID = nil }
+
+        let result = await makeCoordinator().execute(action(.return, book.identifier, in: Self.libraryA))
+
+        XCTAssertFalse(result)
+    }
+
+    /// Handed an action before the current library's registry has loaded,
+    /// each handler declines without touching circulation.
+    func testExecute_beforeRegistryLoadsCurrentLibrary_declinesEveryType() async {
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        registry.addBook(book, state: .unregistered)
+        registry.loadedAccountID = Self.libraryB
+        let coordinator = makeCoordinator()
+
+        for type in [OfflineActionType.return, .borrow, .hold, .cancelHold] {
+            let result = await coordinator.execute(action(type, book.identifier, in: Self.libraryA))
+            XCTAssertFalse(result, "\(type) must wait for the library's registry")
+        }
+        XCTAssertEqual(circulation.returnCalls, [])
+        XCTAssertEqual(circulation.borrowCalls, [])
+    }
+
+    func testRunnableLibraryID_isCurrentOnlyOnceLoaded() {
+        XCTAssertEqual(OfflineQueueCoordinator.runnableLibraryID(current: "A", loaded: "A"), "A")
+        XCTAssertNil(OfflineQueueCoordinator.runnableLibraryID(current: "A", loaded: "B"))
+        XCTAssertNil(OfflineQueueCoordinator.runnableLibraryID(current: "A", loaded: nil))
+        XCTAssertNil(OfflineQueueCoordinator.runnableLibraryID(current: nil, loaded: nil))
+    }
+
     /// Same-library control for borrow and hold: the expected end state confirms.
     func testExecute_sameLibraryBorrowAndHold_areConfirmed() async {
         let borrowBook = TPPBookMocker.mockBook(distributorType: .EpubZip)
@@ -483,9 +703,8 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
             feedFetcher: OfflineFeedFetcher(beforeFailing: { account.value = accountB }),
             enqueuer: { action in enqueued.withValue { $0.append(action) } })
 
-        let done = expectation(description: "completion")
-        service.returnBook(withIdentifier: book.identifier) { done.fulfill() }
-        await fulfillment(of: [done], timeout: 5)
+        service.returnBook(withIdentifier: book.identifier)
+        await joinReturnTasks(service)
 
         XCTAssertEqual(enqueued.value.map(\.libraryID), [Self.libraryA])
         XCTAssertEqual(enqueued.value.map(\.bookID), [book.identifier])
@@ -500,11 +719,23 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
             userAccountProvider: { TPPUserAccountMock(libraryUUID: Self.libraryA) },
             enqueuer: nil)
 
-        let done = expectation(description: "completion")
-        service.returnBook(withIdentifier: book.identifier) { done.fulfill() }
-        await fulfillment(of: [done], timeout: 5)
+        let completed = LockIsolated(false)
+        service.returnBook(withIdentifier: book.identifier) { completed.value = true }
+        await joinReturnTasks(service)
 
+        XCTAssertTrue(completed.value, "the alert path completes the return")
         XCTAssertNotNil(registry.book(forIdentifier: book.identifier), "the loan stays until the patron acts")
+    }
+
+    /// Joins the return's tracked Tasks, including ones started by earlier
+    /// ones, until none remain.
+    private func joinReturnTasks(_ service: BookReturnService) async {
+        for _ in 0..<8 {
+            let pending = service.inFlightTasksSnapshotForTesting()
+            if pending.isEmpty { return }
+            for task in pending { await task.value }
+        }
+        XCTFail("return tasks did not settle")
     }
 
     private func makeBookWithRevokeURL() -> TPPBook {
@@ -582,6 +813,24 @@ private final class FakeCirculation: OfflineCirculationPerforming, @unchecked Se
         }
         onCall?()
         borrowCompletion?()
+    }
+}
+
+/// Counts writes to one key, to show a launch rewrites storage only when it
+/// drops something.
+private final class CountingDefaults: UserDefaults, @unchecked Sendable {
+    private let key: String
+    private let writes: LockIsolated<Int>
+
+    init?(suiteName: String, key: String, writes: LockIsolated<Int>) {
+        self.key = key
+        self.writes = writes
+        super.init(suiteName: suiteName)
+    }
+
+    override func set(_ value: Any?, forKey defaultName: String) {
+        if defaultName == key { writes.withValue { $0 += 1 } }
+        super.set(value, forKey: defaultName)
     }
 }
 

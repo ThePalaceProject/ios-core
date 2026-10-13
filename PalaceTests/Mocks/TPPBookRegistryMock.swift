@@ -67,6 +67,13 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider, @unchecked Sendabl
     }
     var registryState: TPPBookRegistry.RegistryState { state }
 
+    private var _loadedAccountID: String?
+    /// Which library the mock claims to have loaded; nil until a test sets it.
+    var loadedAccountID: String? {
+        get { lock.withLock { _loadedAccountID } }
+        set { lock.withLock { _loadedAccountID = newValue } }
+    }
+
     var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> {
         registrySubject.eraseToAnyPublisher()
     }

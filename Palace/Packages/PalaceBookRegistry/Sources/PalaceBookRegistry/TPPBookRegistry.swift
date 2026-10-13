@@ -34,6 +34,11 @@ public protocol TPPBookRegistryProvider: Sendable {
     var isSyncing: Bool { get }
     var state: TPPBookRegistry.RegistryState { get }
     var registryState: TPPBookRegistry.RegistryState { get }
+    /// The library whose records the registry holds: set when a load for that
+    /// library finishes, nil while a load is pending or after the current library
+    /// changes. Until it names the current library, an absent book says nothing
+    /// about that library's shelf.
+    var loadedAccountID: String? { get }
 
     func sync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)?)
     func sync()
@@ -91,6 +96,10 @@ public protocol TPPBookRegistryProvider: Sendable {
 }
 
 public extension TPPBookRegistryProvider {
+    /// Registries that do not track their load report none, so callers that gate
+    /// on it treat them as not loaded.
+    var loadedAccountID: String? { nil }
+
     /// Default forwards to the non-authoritative removal. Only registries that
     /// PERSIST to disk (the concrete `TPPBookRegistry`) override these to thread the
     /// flag into `BookRegistrySync.save`'s server-authority gate (HelpSpot #18414).
@@ -283,6 +292,7 @@ public class TPPBookRegistry: @unchecked Sendable {
                 // (`heldBooks`, `myBooks`, `allBooks`, `state(for:)` derived from
                 // the subject) to see an empty list until the new load completes.
                 self.store.registrySubject.send([:])
+                self.setLoadedAccountID(nil)
                 self.state = .loading
                 // Chain sync() off load's completion so it never runs against an
                 // empty in-memory store. Previously this used an `asyncAfter(+1s)`
@@ -320,6 +330,21 @@ public class TPPBookRegistry: @unchecked Sendable {
     private let stateLock = NSLock()
 
     private var _state: RegistryState = .unloaded
+
+    /// Guarded by `stateLock`, like `_state`.
+    private var _loadedAccountID: String?
+
+    // PUBLIC_INTENT: TPPBookRegistryProvider requirement read by the app's offline queue.
+    public var loadedAccountID: String? {
+        stateLock.lock(); defer { stateLock.unlock() }
+        return _loadedAccountID
+    }
+
+    private func setLoadedAccountID(_ accountID: String?) {
+        stateLock.lock()
+        _loadedAccountID = accountID
+        stateLock.unlock()
+    }
 
     /// Transition ordering is IDENTICAL to the pre-lock `didSet`: write `_state`,
     /// derive `syncState.value`, then emit the lifecycle signal — all preserved,
@@ -499,8 +524,17 @@ public class TPPBookRegistry: @unchecked Sendable {
     }
 
     public func load(account: String? = nil, completion: (() -> Void)? = nil) {
+        // The sync engine resolves the same account synchronously in this call.
+        let loadingAccount = account ?? accountScope.currentAccountID
         syncEngine.load(account: account, setState: { [weak self] newState in
-            self?.state = newState
+            guard let self else { return }
+            // Set before the state is published, so a `.loaded` observer reads it.
+            switch newState {
+            case .loaded: self.setLoadedAccountID(loadingAccount)
+            case .loading, .unloaded: self.setLoadedAccountID(nil)
+            case .syncing, .synced: break
+            }
+            self.state = newState
         }, completion: completion)
     }
 
@@ -585,6 +619,7 @@ public class TPPBookRegistry: @unchecked Sendable {
     }
 
     public func reset(_ account: String) {
+        if loadedAccountID == account { setLoadedAccountID(nil) }
         state = .unloaded
         syncEngine.reset(account)
     }

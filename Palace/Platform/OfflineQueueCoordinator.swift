@@ -11,6 +11,7 @@
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
+import Combine
 import Foundation
 import PalaceBookModel
 import PalaceBookRegistry
@@ -18,13 +19,14 @@ import PalaceBookRegistry
 // MARK: - OfflineExecutorRegistering
 
 /// Narrow seam the coordinator needs from the queue: install the single
-/// executor closure and the current-library reader that scopes it, without
-/// pulling in the full queue surface.
+/// executor closure and the reader that scopes it, and start a drain when a
+/// library becomes runnable, without pulling in the full queue surface.
 protocol OfflineExecutorRegistering: Sendable {
     func setExecutor(
         _ executor: @escaping OfflineActionExecutor,
         currentLibraryID: @escaping @Sendable () -> String?
     ) async
+    func drainIfOnline() async
 }
 
 extension OfflineQueueService: OfflineExecutorRegistering {}
@@ -57,7 +59,9 @@ final class OfflineQueueCoordinator: @unchecked Sendable {
     private let queue: OfflineExecutorRegistering
     private let handlers: Handlers
     private let dedupe: DedupeBox
-    private let currentLibraryID: @Sendable () -> String?
+    private let runnableLibraryID: @Sendable () -> String?
+    private let libraryReady: AnyPublisher<Void, Never>
+    private let readyDrains = ReadyDrainBox()
 
     /// - Parameters:
     ///   - dedupeTTL: how long a *completed* (server-confirmed) bookID+type
@@ -66,18 +70,21 @@ final class OfflineQueueCoordinator: @unchecked Sendable {
     ///     -> return again) is allowed through rather than silently skipped.
     ///     In-flight dedupe is unconditional (never TTL-bounded).
     ///   - now: injectable clock for deterministic TTL tests.
-    ///   - currentLibraryID: reads the current library account; the queue
-    ///     hands over only that library's actions.
+    ///   - runnableLibraryID: the library whose actions may run now, or nil;
+    ///     the queue hands over only that library's actions.
+    ///   - libraryReady: fires when a library becomes runnable, to start its drain.
     init(
         queue: OfflineExecutorRegistering,
         handlers: Handlers,
-        currentLibraryID: @escaping @Sendable () -> String?,
+        runnableLibraryID: @escaping @Sendable () -> String?,
+        libraryReady: AnyPublisher<Void, Never> = Empty().eraseToAnyPublisher(),
         dedupeTTL: TimeInterval = 300,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.queue = queue
         self.handlers = handlers
-        self.currentLibraryID = currentLibraryID
+        self.runnableLibraryID = runnableLibraryID
+        self.libraryReady = libraryReady
         self.dedupe = DedupeBox(ttl: dedupeTTL, now: now)
     }
 
@@ -88,7 +95,14 @@ final class OfflineQueueCoordinator: @unchecked Sendable {
         await queue.setExecutor({ [weak self] action in
             guard let self else { return false }
             return await self.execute(action)
-        }, currentLibraryID: currentLibraryID)
+        }, currentLibraryID: runnableLibraryID)
+        let queue = self.queue
+        let readyDrains = self.readyDrains
+        readyDrains.set(libraryReady.sink { _ in
+            readyDrains.track(Task { await queue.drainIfOnline() })
+        })
+        // A library that became runnable before registration has no pending trigger.
+        await queue.drainIfOnline()
     }
 
     /// The dispatch + dedupe body. Exposed internally so tests can drive
@@ -114,6 +128,13 @@ final class OfflineQueueCoordinator: @unchecked Sendable {
         return success
     }
 
+    /// Test-only join on the drains started by library-ready signals so far.
+    func _awaitTriggeredDrainsForTesting() async {
+        for task in readyDrains.takeTasks() {
+            await task.value
+        }
+    }
+
     /// Clears dedupe state. Test/reset seam.
     func reset() async {
         await dedupe.clear()
@@ -134,8 +155,17 @@ final class OfflineQueueCoordinator: @unchecked Sendable {
         }
     }
 
+    /// Keyed by library too: the same book ID at two libraries is two loans.
     static func dedupeKey(for action: OfflineAction) -> String {
-        "\(action.type.rawValue):\(action.bookID)"
+        "\(action.libraryID ?? ""):\(action.type.rawValue):\(action.bookID)"
+    }
+
+    /// The current library once the registry has finished loading it, else nil.
+    /// Until then the registry may hold another library's records, or none, and
+    /// an absent book says nothing about this library's shelf.
+    static func runnableLibraryID(current: String?, loaded: String?) -> String? {
+        guard let current, current == loaded else { return nil }
+        return current
     }
 
     /// States that represent a confirmed active loan after a borrow. Used
@@ -227,28 +257,37 @@ extension OfflineQueueCoordinator {
     /// confirmed returned by the server.
     ///
     /// The registry and credentials are the current library's, so each handler
-    /// runs only while the action's library is current and confirms only if it
-    /// still is when the flow completes. The queue already picks only
-    /// current-library actions; these checks cover a library switch after that
-    /// pick. Declining there costs the action one retry, never a confirmation.
+    /// runs only while the action's library is current and loaded in the
+    /// registry, and confirms only if it still is when the flow completes. The
+    /// queue already picks only such actions; these checks cover a library
+    /// switch after that pick. Declining there costs the action one retry,
+    /// never a confirmation. A registry load drains the newly loaded library.
     static func production(
         queue: OfflineExecutorRegistering = OfflineQueueService.shared,
         downloadCenter: any OfflineCirculationPerforming,
         bookRegistry: TPPBookRegistryProvider,
         currentLibraryID: @escaping @Sendable () -> String?
     ) -> OfflineQueueCoordinator {
+        let runnableLibraryID: @Sendable () -> String? = {
+            Self.runnableLibraryID(current: currentLibraryID(), loaded: bookRegistry.loadedAccountID)
+        }
+        let libraryReady = bookRegistry.registryStatePublisher
+            .filter { $0 == .loaded }
+            .map { _ in () }
+            .eraseToAnyPublisher()
+
         let performReturn: @Sendable (OfflineAction) async -> Bool = { action in
             let bookID = action.bookID
             return await withCheckedContinuation { continuation in
                 Task { @MainActor in
-                    guard action.belongs(toLibrary: currentLibraryID()) else {
+                    guard action.belongs(toLibrary: runnableLibraryID()) else {
                         continuation.resume(returning: false)
                         return
                     }
                     downloadCenter.returnBook(withIdentifier: bookID) {
                         // Server-confirmed if the registry no longer holds
                         // the book as an active downloaded loan.
-                        let confirmed = action.belongs(toLibrary: currentLibraryID())
+                        let confirmed = action.belongs(toLibrary: runnableLibraryID())
                             && Self.isReturnConfirmed(
                                 state: bookRegistry.state(for: bookID),
                                 bookPresent: bookRegistry.book(forIdentifier: bookID) != nil)
@@ -262,7 +301,7 @@ extension OfflineQueueCoordinator {
             let bookID = action.bookID
             return await withCheckedContinuation { continuation in
                 Task { @MainActor in
-                    guard action.belongs(toLibrary: currentLibraryID()),
+                    guard action.belongs(toLibrary: runnableLibraryID()),
                           let book = bookRegistry.book(forIdentifier: bookID) else {
                         continuation.resume(returning: false)
                         return
@@ -274,7 +313,7 @@ extension OfflineQueueCoordinator {
                         // unregistered, download-failed) is NOT confirmed —
                         // return false so the queue keeps it and retries,
                         // rather than optimistically dropping a failed borrow.
-                        let confirmed = action.belongs(toLibrary: currentLibraryID())
+                        let confirmed = action.belongs(toLibrary: runnableLibraryID())
                             && Self.isActiveLoanState(bookRegistry.state(for: bookID))
                         continuation.resume(returning: confirmed)
                     }
@@ -286,7 +325,7 @@ extension OfflineQueueCoordinator {
             let bookID = action.bookID
             return await withCheckedContinuation { continuation in
                 Task { @MainActor in
-                    guard action.belongs(toLibrary: currentLibraryID()),
+                    guard action.belongs(toLibrary: runnableLibraryID()),
                           let book = bookRegistry.book(forIdentifier: bookID) else {
                         continuation.resume(returning: false)
                         return
@@ -294,7 +333,7 @@ extension OfflineQueueCoordinator {
                     downloadCenter.startBorrow(for: book, attemptDownload: false) {
                         // A placed hold lands in `.holding`. Any other state
                         // is not a confirmed hold -> fail-closed (stay queued).
-                        let confirmed = action.belongs(toLibrary: currentLibraryID())
+                        let confirmed = action.belongs(toLibrary: runnableLibraryID())
                             && Self.isHeldState(bookRegistry.state(for: bookID))
                         continuation.resume(returning: confirmed)
                     }
@@ -313,7 +352,34 @@ extension OfflineQueueCoordinator {
                 performHold: performHold,
                 performCancelHold: performCancelHold
             ),
-            currentLibraryID: currentLibraryID
+            runnableLibraryID: runnableLibraryID,
+            libraryReady: libraryReady
         )
+    }
+}
+
+/// Holds the registry-load subscription for the coordinator's lifetime and,
+/// under XCTest only, the drain Tasks it starts so a test can join them.
+private final class ReadyDrainBox: @unchecked Sendable {
+    private static let retainsTasks =
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    private let lock = NSLock()
+    private var cancellable: AnyCancellable?
+    private var tasks: [Task<Void, Never>] = []
+
+    func set(_ cancellable: AnyCancellable) {
+        lock.withLock { self.cancellable = cancellable }
+    }
+
+    func track(_ task: Task<Void, Never>) {
+        guard Self.retainsTasks else { return }
+        lock.withLock { tasks.append(task) }
+    }
+
+    func takeTasks() -> [Task<Void, Never>] {
+        lock.withLock {
+            defer { tasks = [] }
+            return tasks
+        }
     }
 }
