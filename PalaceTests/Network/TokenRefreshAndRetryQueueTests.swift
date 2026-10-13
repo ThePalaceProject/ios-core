@@ -20,14 +20,19 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
     private var libraryAccount: TPPLibraryAccountMock!
     private var userAccount: TPPUserAccountMock!
 
-    /// Fixed token endpoint URL. The stub matches by absolute string so we
-    /// can route /token traffic separately from arbitrary API requests.
-    private let tokenURL = URL(string: "https://token.example.com/oauth/token")!
-    private let apiURL = URL(string: "https://api.example.com/protected")!
+    /// Token and API endpoints, unique to each run. The stub is process-wide,
+    /// and a token request answered with a 5xx is retried after a backoff of
+    /// up to 1.2s, so a retry left by an earlier test would otherwise be
+    /// answered, and counted, by whichever test is running then.
+    private var tokenURL: URL!
+    private var apiURL: URL!
 
     override func setUp() async throws {
         try await super.setUp()
         HTTPStubURLProtocol.reset()
+        let runID = UUID().uuidString
+        tokenURL = URL(string: "https://token.example.com/\(runID)/oauth/token")!
+        apiURL = URL(string: "https://api.example.com/\(runID)/protected")!
         TPPUserAccountMock.resetShared()
 
         // Build a token-typed authentication definition. We need
@@ -796,7 +801,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
     /// a refresh: the request has been sent and answered 401, and the caller's
     /// completion is still registered for its task, waiting on the refresh.
     private func sentRequestAwaitingRefresh(to url: URL? = nil) async throws -> (URLSessionTask, CompletionLog) {
-        let apiURL = url ?? self.apiURL
+        let apiURL: URL = url ?? self.apiURL
         // Spending the URL's retry budget first lets the 401 complete at once
         // instead of starting a refresh of its own.
         executor.responder.markRetried(url: apiURL)
@@ -827,7 +832,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
                 let body = tokenStatus == 200 ? Self.tokenResponseJSON(accessToken: "fresh") : Data("denied".utf8)
                 return .init(statusCode: tokenStatus, headers: nil, body: body)
             }
-            guard request.url?.host == apiURL.host else { return nil }
+            guard request.url?.host == apiURL?.host else { return nil }
             return .init(statusCode: 401, headers: nil, body: nil)
         }
         return tokenHits
@@ -884,7 +889,8 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         HTTPStubURLProtocol.register { @Sendable [tokenURL, apiURL] request in
             if request.url == tokenURL {
                 _ = releaseTokenEndpoint.wait(timeout: .now() + 10.0)
-                return .init(statusCode: 500, headers: nil, body: nil)
+                // Not a 5xx: the token request retries those after the test ends.
+                return .init(statusCode: 400, headers: nil, body: nil)
             }
             guard request.url == apiURL else { return nil }
             return .init(statusCode: 401, headers: nil, body: nil)
@@ -1145,7 +1151,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
             if request.url == tokenURL {
                 return .init(statusCode: 200, headers: nil, body: Self.tokenResponseJSON(accessToken: "fresh"))
             }
-            guard request.url?.host == apiURL.host else { return nil }
+            guard request.url?.host == apiURL?.host else { return nil }
             return .init(statusCode: 200, headers: nil, body: Data("ok".utf8))
         }
         let (live, liveLog, probeLog) = await liveRequestAndQueuedProbe()
