@@ -1,6 +1,6 @@
 # 🧪 Palace iOS Unit Test Results
 
-**Generated:** 2026-10-13 17:44:15 UTC
+**Generated:** 2026-10-13 18:31:47 UTC
 **Commit:** `2298f0754dd2`
 **Branch:** `chore/modernization-stragglers`
 
