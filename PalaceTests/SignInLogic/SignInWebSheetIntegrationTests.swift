@@ -62,6 +62,22 @@ final class SignInWebSheetIntegrationTests: XCTestCase {
         coordinator.webView = webView
         window.addSubview(webView)
 
+        // Record whether the overlay ever cleared, rather than sampling it at
+        // the end. This navigation already loads a real page before the JS
+        // redirect, so `didFinish` fires inside the wait this test performs
+        // anyway — the observation is free, and it is what proves the
+        // `didFinish` witness is registered with WebKit rather than merely
+        // present on the coordinator (PP-5251's sibling hazard, #1205).
+        // A flag rather than a second expectation: the redirect is cancelled in
+        // `decidePolicyFor`, so whether a later navigation re-raises the
+        // overlay is a timing detail this test must not depend on.
+        XCTAssertTrue(viewModel.isLoading, "Pre-load: overlay must be visible")
+        var overlayEverCleared = false
+        let overlayObserver = viewModel.$isLoading.sink { isLoading in
+            if !isLoading { overlayEverCleared = true }
+        }
+        defer { overlayObserver.cancel() }
+
         // The HTML page does a JavaScript-driven location change to the
         // universal-links URL. WebKit will fire decidePolicyFor:navigationAction
         // for that nav, which the Coordinator forwards to the view model.
@@ -90,6 +106,11 @@ final class SignInWebSheetIntegrationTests: XCTestCase {
         // a wedged delegate hide forever.
         await fulfillment(of: [loginExpectation], timeout: 30.0) // FLAKE-003-OK: real WKWebView cold-start (WebContent + GPU + Networking helpers) + JS-setTimeout + nav IPC under memory-pressured CI nodes.
         XCTAssertEqual(capturedURL?.absoluteString, "\(universalLinks.absoluteString)?token=test123")
+        XCTAssertTrue(
+            overlayEverCleared,
+            "didFinish must reach the view model and hide the overlay; a witness "
+            + "that WebKit never calls leaves the sheet showing a spinner forever"
+        )
     }
 
     // MARK: - End-to-end: cookies are injected before load fires
@@ -196,81 +217,20 @@ final class SignInWebSheetIntegrationTests: XCTestCase {
         XCTAssertTrue(cookieNames.contains("csrf"))
     }
 
-    // MARK: - End-to-end: loading state transitions during a real navigation
-
-    func test_loadingOverlay_startsTrueAndBecomesFalseOnNavigationFinish() async throws {
-        // ARRANGE
-        let viewModel = SignInWebSheetViewModel(
-            cookies: [],
-            request: URLRequest(url: initialPage),
-            universalLinksURL: universalLinks
-        )
-
-        let coordinator = SignInWebViewCoordinator(viewModel: viewModel)
-        let webView = WKWebView(frame: window.bounds)
-        webView.navigationDelegate = coordinator
-        coordinator.webView = webView
-        window.addSubview(webView)
-
-        XCTAssertTrue(viewModel.isLoading, "Pre-load: overlay must be visible")
-
-        // ACT: load a trivial page; observe @Published isLoading until it flips to false
-        let exp = expectation(description: "isLoading flips to false after didFinish")
-        let cancellable = viewModel.$isLoading.sink { isLoading in
-            if !isLoading { exp.fulfill() }
-        }
-        webView.loadHTMLString("<html><body>OK</body></html>", baseURL: URL(string: "https://idp.test.local"))
-
-        // ASSERT — 30s, matching the test above rather than half of it.
-        //
-        // This read 15s under a comment saying "the same WebKit cold-start
-        // reason as the test above", while that test uses 30s after a recorded
-        // history of 5s and then 15s both proving insufficient. It cited the
-        // right reason and then took half the budget that reason justifies —
-        // and duly failed at 27.836s in run 32875518211 — in that run's SERIAL
-        // isolated pass, with `-parallel-testing-enabled NO`. So 15s was
-        // inadequate with no clone contention at all, which is a stronger case
-        // for the bump than "under CI load" suggests. Note that run's
-        // conclusion is SUCCESS: the failure was masked by retry, so opening
-        // the run page shows green and the per-iteration scan
-        // (`ci-test-history.py --scan --run 32875518211`) is what shows it.
-        //
-        // A second datum makes the margin concrete: run 33009253108 PASSED this
-        // test at 14.291s, again in the serial pass. Note the arithmetic that
-        // does NOT follow — 14.291s is the case duration, so it bounds the wait
-        // at AT MOST 14.291s and the slack at AT LEAST 0.7s, not exactly 0.7s.
-        // (Subtracting a deadline from a duration is the very step the
-        // paragraph above says is invalid; in the 27.836s run the non-wait
-        // overhead was ~12.8s.) The conclusion survives on the device-clock
-        // trace rather than the arithmetic: that run's test spans 20:39:51.566
-        // to 20:40:05.859 with the WebContent/GPU launches inside the window
-        // and ~0.03s of teardown, so the wait itself consumed ~14.2s of a 15.0s
-        // budget — or more precisely, somewhere in [~10.25s, ~14.29s]: the
-        // trace bounds the CASE, and the wait is a sub-interval of it. (The
-        // 27.836s run shows why the tighter reading is unsafe: ~12.8s of its
-        // duration sat BEFORE the wait.) Either bound leaves 15s marginal.
-        //
-        // What the evidence actually bounds: the recorded 27.836s is xcodebuild's
-        // per-test-case DURATION, not the fulfillment latency, so it includes
-        // setUp and ARRANGE around a wait that consumed exactly its 15.0s
-        // budget. (The reported duration ends at teardown's START — measured
-        // at 9ms and 3ms in the two runs — so the overhead is entirely
-        // pre-wait, which only strengthens the point.) It therefore proves ">15s needed" and nothing sharper.
-        // 30s is chosen for parity with the sibling above, not because 27.836s
-        // was measured inside it. (CI's own run also passes
-        // `-default-test-execution-time-allowance 120`, which caps a wedged
-        // test regardless — but that is one branch of
-        // xcode-test-optimized.sh, not a global default: verify-pr.sh passes no
-        // allowance at all.)
-        //
-        // Deliberately still `fulfillment(of:)` rather than a polling helper. A
-        // poll is also a fixed wall-clock deadline, just one STARVE-001 cannot
-        // see — `STARVE_PATTERNS` matches `wait(for:` / `fulfillment(of:` /
-        // `waitForExpectations(` and nothing else. Swapping to a poll would have
-        // moved this wait out of the lint's view while leaving it exactly as
-        // load-sensitive.
-        await fulfillment(of: [exp], timeout: 30.0) // STARVE-001-OK: not a fire-and-forget Task wait — it waits on a real WKWebView navigation, which is the bounded-dependency case the rule's own escape hatch describes. CI additionally runs this class in xcode-test-optimized.sh's serial-isolation list (BUILD_CONTEXT=ci only; the local path still runs 4 parallel workers, so that is a mitigation, not an exemption). // FLAKE-003-OK: real WKWebView cold-start (WebContent + GPU + Networking helpers); 15s observed insufficient with parallelism OFF, so this is not a contention allowance. See the block comment for what the timings do and do not bound.
-        XCTAssertFalse(viewModel.isLoading, "Post-load: overlay must be hidden")
-        cancellable.cancel()
-    }
+    // The standalone real-WKWebView overlay test that lived here was removed in
+    // PP-5297. It waited on a fresh navigation purely to observe
+    // `isLoading`, and WebKit's cold start (WebContent + GPU + Networking
+    // helpers) landed inside its deadline on CI: 5s, then 15s, then 30s each
+    // proved insufficient in turn, and it failed at 27.836s with parallelism
+    // off, so contention was not the cause.
+    //
+    // The same observation now rides on
+    // `test_navigatingToUniversalLinksURL_firesLoginCompletionWithCookies`,
+    // which loads a real page before its JS redirect and therefore fires
+    // `didFinish` inside a wait that test performs regardless. That keeps the
+    // end-to-end proof — WebKit really calls the coordinator's `didFinish`
+    // witness — while removing one cold-start exposure instead of adding one.
+    //
+    // `SignInWebSheetViewModelTests` covers the state transitions themselves,
+    // so nothing here needed to re-test `didFinishNavigation()` directly.
 }
