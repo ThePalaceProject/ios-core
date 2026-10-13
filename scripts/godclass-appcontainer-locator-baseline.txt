@@ -43,4 +43,7 @@
 #   Hoisting the duplicate container reads in `finalizeBuild` and
 #   `makeProductionAdapters` then took the file 13 -> 11, so the total lands at
 #   236. Both numbers are the same commit; net -1 against the prior baseline.
-236
+# 236 -> 233: BookOpenTracker deleted. Its three recordOpened call sites
+#   (ReaderService x2, AudiobookSessionManager) each read the tracker through
+#   AppContainer.production(); the tracker had no reader after PP-4910.
+233

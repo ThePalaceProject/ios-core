@@ -659,9 +659,6 @@ public final class AudiobookSessionManager: ObservableObject {
     ///   witness above delegates here, and the in-class recovery branch calls it.
     func openAudiobook(_ book: TPPBook, startPlaying: Bool, forceRefulfill: Bool, isColdLoadRecovery: Bool = false, isRecoveryReopen: Bool = false, onLoadingShellPresented: (@MainActor () -> Void)? = nil) async -> Result<Void, AudiobookSessionError> {
         Log.info(#file, "Opening audiobook: '\(book.title)' (id: \(book.identifier))\(forceRefulfill ? " [re-fulfill]" : "")\(isColdLoadRecovery ? " [cold-load recovery]" : "")")
-        // Record open time so Continue Reading sorts correctly before the
-        // first position save lands.
-        AppContainer.production().bookOpenTracker.recordOpened(book.identifier)
 
         // A recovery re-open (PP-4800) re-opens a book the `.playbackFailed`
         // handler parked at `.loading`, so it must bypass this duplicate-open
