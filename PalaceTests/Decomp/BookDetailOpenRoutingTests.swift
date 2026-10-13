@@ -24,6 +24,8 @@ final class BookDetailOpenRoutingTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        // `_awaitOpenTasksForTesting` has no deadline; the allowance fails a hung open.
+        executionTimeAllowance = 60
         appContainer = makeTestAppContainer()
     }
 
@@ -76,11 +78,12 @@ final class BookDetailOpenRoutingTests: XCTestCase {
         registry.addBook(registryCopy, state: .downloadSuccessful)
         let session = RecordingAudiobookSession()
         let vm = makeVM(book: callerCopy, registry: registry, session: session)
-        let finished = expectation(description: "open finished")
+        var finishCount = 0
 
-        vm.openAudiobook(callerCopy, completion: { finished.fulfill() })
+        vm.openAudiobook(callerCopy, completion: { finishCount += 1 })
 
-        await fulfillment(of: [finished], timeout: 3)
+        await BookOpenRouter._awaitOpenTasksForTesting()
+        XCTAssertEqual(finishCount, 1, "The open must report completion once")
         XCTAssertTrue(session.lastOpenedBook === registryCopy,
                       "The open must resolve through the registry the view model was built with")
         XCTAssertEqual(session.openCount, 1)

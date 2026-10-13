@@ -69,6 +69,36 @@ enum BookOpenRouter {
     // warning without changing the threading.
     private static var openingBooks = Set<String>()
 
+    // MARK: - Test-only join for open tasks
+
+    /// Gates retention below so a release build never populates the task list.
+    private static let isRunningUnderXCTest =
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+
+    /// Open tasks whose body ends in `finish`, retained only under XCTest so a
+    /// test can join the open instead of waiting on a wall-clock deadline that
+    /// starves under parallel simulator clones.
+    private static var retainedOpenTasks: [Task<Void, Never>] = []
+
+    private static func spawnOpenTask(_ body: @escaping @MainActor () async -> Void) {
+        let task = Task { @MainActor in await body() }
+        if isRunningUnderXCTest {
+            retainedOpenTasks.append(task)
+        }
+    }
+
+    /// Awaits every retained open task, so `onFinish` has run for each open
+    /// dispatched so far. Drains the list as it goes, repeating until no new
+    /// task was added while awaiting. The PDF arm completes from the reader's
+    /// callback rather than inside its task, so this does not cover it.
+    static func _awaitOpenTasksForTesting() async {
+        while !retainedOpenTasks.isEmpty {
+            let tasks = retainedOpenTasks
+            retainedOpenTasks.removeAll()
+            for task in tasks { await task.value }
+        }
+    }
+
     /// - parameter onLoadingShellPresented: audiobook-only early hook — fired the
     ///   moment the morphing player's loading shell is presented (before the
     ///   PP-4542 content-download wait) so a presenting caller can dismiss its
@@ -129,7 +159,7 @@ enum BookOpenRouter {
                                  onLoadingShellPresented: (@MainActor () -> Void)?) {
         switch destination(for: book) {
         case .epubReader:
-            Task { @MainActor in
+            spawnOpenTask {
                 defer { finish(book.identifier, onFinish) }
                 AppContainer.production().readerService.openEPUB(book)
             }
@@ -143,7 +173,7 @@ enum BookOpenRouter {
             // loading the new audiobook — the ordering invariant that prevents
             // a stale LCP Publication from hanging publicationOpener.open().
             let session = audiobookSession ?? AppContainer.production().audiobookSession
-            Task { @MainActor in
+            spawnOpenTask {
                 defer { finish(book.identifier, onFinish) }
                 _ = await session.openAudiobook(
                     book,
@@ -155,7 +185,7 @@ enum BookOpenRouter {
             // PP-4161: streaming-HTML titles route through NavigationCoordinator
             // directly — no AudiobookSessionManager-style lifecycle owner,
             // no LCP / DRM grant, no on-disk asset.
-            Task { @MainActor in
+            spawnOpenTask {
                 defer { finish(book.identifier, onFinish) }
                 presentStreamingReader(book)
             }

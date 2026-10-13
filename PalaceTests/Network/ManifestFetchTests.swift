@@ -130,6 +130,7 @@ final class FetchManifestWithBearerTokenTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        executionTimeAllowance = 60  // bounds fetchManifestBounded, which has no deadline
         book = TPPBookMocker.mockBook(distributorType: .BearerToken)
         HTTPStubURLProtocol.reset()
         let config = URLSessionConfiguration.ephemeral
@@ -536,6 +537,7 @@ final class BearerTokenFulfillFlowTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        executionTimeAllowance = 60  // bounds fetchManifestBounded, which has no deadline
         HTTPStubURLProtocol.reset()
     }
 
@@ -1107,6 +1109,7 @@ final class FetchManifestWithBearerTokenLCPSafetyTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        executionTimeAllowance = 60  // bounds fetchManifestBounded, which has no deadline
         HTTPStubURLProtocol.reset()
     }
 
@@ -1334,8 +1337,8 @@ final class NetworkExecutorResponseRegressionTests: XCTestCase {
 }
 
 extension XCTestCase {
-    /// Runs the production second-leg fetch with a 5s bound, so a fetch that
-    /// never completes fails the test rather than hanging the run.
+    /// Runs the production second-leg fetch and joins it. A fetch that never
+    /// completes is failed by the calling class's execution-time allowance.
     @MainActor
     fileprivate func fetchManifestBounded(
         _ token: MyBooksSimplifiedBearerToken,
@@ -1343,13 +1346,11 @@ extension XCTestCase {
         session: URLSession
     ) async -> [String: Any]? {
         let fetcher = ProductionBearerTokenManifestFetcher(session: session)
-        let done = expectation(description: "Manifest fetch completes")
         let result = ManifestResultHolder()
-        Task { @MainActor in
+        let fetch = Task { @MainActor in
             result.value = await fetcher.fetchManifest(with: token, for: book)
-            done.fulfill()
         }
-        await fulfillment(of: [done], timeout: 5)
+        await fetch.value
         return result.value
     }
 }
