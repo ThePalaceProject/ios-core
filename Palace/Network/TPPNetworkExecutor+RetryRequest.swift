@@ -69,13 +69,37 @@ extension TPPNetworkExecutor {
                                                 userInfo: [NSLocalizedDescriptionKey: message]))
     }
 
+    /// A data task on this executor's session, marked as sent on it.
+    func makeSessionDataTask(with request: URLRequest) -> URLSessionDataTask {
+        let task = transport.urlSession.dataTask(with: request)
+        markSentOnOwnSession(task)
+        return task
+    }
+
+    func markSentOnOwnSession(_ task: URLSessionTask) {
+        TaskProvenance.set(sessionTaskTag, forKey: TaskProvenance.sessionKey, on: task)
+    }
+
+    /// Whether `task` was created on this executor's session. The responder
+    /// keys completions by `taskIdentifier`, which is unique only within one
+    /// URLSession, so a background download task handed to a refresh can carry
+    /// the identifier of a live request here.
+    func sentOnOwnSession(_ task: URLSessionTask) -> Bool {
+        TaskProvenance.value(forKey: TaskProvenance.sessionKey, of: task) == sessionTaskTag
+    }
+
     /// Completes the caller of a request that was waiting on a token refresh
     /// and will not be resent, with `error` and the response that started the
     /// refresh. The task has already finished at the URLSession level, so
     /// cancelling it delivers nothing; the responder's stored completion has to
     /// be called directly. Delivered on the session's delegate queue, where the
-    /// responder delivers every other task completion.
+    /// responder delivers every other task completion. Another session's task
+    /// is only cancelled; its completion is not stored here.
     func failQueuedRetry(_ oldTask: URLSessionTask, error: NSError) {
+        guard sentOnOwnSession(oldTask) else {
+            oldTask.cancel()
+            return
+        }
         let responder = self.responder
         transport.urlSession.delegateQueue.addOperation {
             responder.failRetry(taskID: oldTask.taskIdentifier, url: oldTask.originalRequest?.url,

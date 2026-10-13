@@ -52,6 +52,9 @@ enum TaskProvenance {
     /// value carrying either is silently truncated or dropped on the next parse.
     /// Account ids are UUID URNs and cannot; a future co-tenant key must check.
     private static let accountKey = "acct"
+    /// The executor whose session created the task; see
+    /// `TPPNetworkExecutor.sentOnOwnSession(_:)`.
+    static let sessionKey = "sess"
 
     static func setAccount(_ accountId: String?, on task: URLSessionTask) {
         guard let accountId, !accountId.isEmpty else { return }
@@ -223,8 +226,10 @@ struct RefreshOutcomeBox: @unchecked Sendable {
 /// across concurrency domains as it already is in production. The conformance is
 /// honest, not a blanket silence — every stored property is immutable-after-init
 /// or independently synchronized:
-///   • `transport` / `responder` — `let`; both wrap the shared, thread-safe
-///     `URLSession` and are shared-by-design (the app routes through one executor).
+///   • `transport` / `responder` — `let`; the executor's own thread-safe
+///     `URLSession` and its delegate. Each executor refreshes and retries its
+///     own requests through them, so several executors can coexist.
+///   • `sessionTaskTag` — `let`, set at init.
 ///   • `tokenCoordinator` — a `private actor` (its `isRefreshing`/`retryQueue`
 ///     state is actor-isolated).
 ///   • `_accountsManager` — `var`, but assigned ONLY in the DI initializers
@@ -240,6 +245,8 @@ struct RefreshOutcomeBox: @unchecked Sendable {
 @objc class TPPNetworkExecutor: NSObject, @unchecked Sendable {
     let transport: NetworkTransport
     private let tokenCoordinator = TokenRefreshCoordinator()
+    /// Marks the tasks this executor's session creates. See `sentOnOwnSession(_:)`.
+    let sessionTaskTag = UUID().uuidString
 
     /// Ceiling on a single token refresh before the watchdog force-releases a
     /// wedged slot. Set comfortably above the shared session's resource
@@ -607,7 +614,7 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
     private func performDataTask(with request: URLRequest,
                                  accountId: String?,
                                  completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
-        let task = transport.urlSession.dataTask(with: request)
+        let task = makeSessionDataTask(with: request)
         // Stamp the account this task is being DISPATCHED for. Unlike
         // `currentAccountId` read later, this cannot drift under a library
         // switch — which is the whole defect (PP-4986).
@@ -775,6 +782,7 @@ extension TPPNetworkExecutor {
         }
 
         let task = transport.urlSession.downloadTask(with: req)
+        markSentOnOwnSession(task)
         // Fifth producer. It registers with the responder, so a 401 reaches the
         // retry queue like any other task. Zero production callers today (tests
         // only), which is why it was missed — but "no caller" is a fact about
@@ -955,7 +963,9 @@ extension TPPNetworkExecutor {
                 Log.error(#file, "Cannot refresh token: missing credentials or tokenURL for account \(capturedAccountId ?? "nil")")
                 await self.tokenCoordinator.setRefreshing(false)
                 let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Cannot request token with empty credentials"])
-                if let task {
+                // Another session's task is left running; its completion is
+                // not stored in this executor's responder.
+                if let task, self.sentOnOwnSession(task) {
                     self.failQueuedRetry(task, error: error)
                 } else {
                     completionBox?.call(NYPLResult.failure(error, nil))
@@ -994,10 +1004,12 @@ extension TPPNetworkExecutor {
                             let oldTask = queued.task
                             guard let originalRequest = oldTask.originalRequest,
                                   originalRequest.url != nil else {
-                                let message = "The request could not be rebuilt after a token refresh"
-                                self.failQueuedRetry(oldTask, error: NSError(domain: TPPErrorLogger.clientDomain,
-                                                                             code: TPPErrorCode.responseFail.rawValue,
-                                                                             userInfo: [NSLocalizedDescriptionKey: message]))
+                                if self.sentOnOwnSession(oldTask) {
+                                    let message = "The request could not be rebuilt after a token refresh"
+                                    self.failQueuedRetry(oldTask, error: NSError(domain: TPPErrorLogger.clientDomain,
+                                                                                 code: TPPErrorCode.responseFail.rawValue,
+                                                                                 userInfo: [NSLocalizedDescriptionKey: message]))
+                                }
                                 continue
                             }
 
@@ -1029,11 +1041,15 @@ extension TPPNetworkExecutor {
                             let snapshot = self.accountsManager.userAccount(for: resolvedId).credentialSnapshot()
                             guard let mutableRequest = self.resendableRetry(of: oldTask, original: originalRequest,
                                                                             credentials: snapshot) else { continue }
-                            let newTask = self.transport.urlSession.dataTask(with: mutableRequest)
+                            let newTask = self.makeSessionDataTask(with: mutableRequest)
                             // A retry can itself 401. Without this the second
                             // round loses provenance and falls back to current.
                             TaskProvenance.setAccount(rebuildAccountId, on: newTask)
-                            self.responder.updateCompletionId(oldTask.taskIdentifier, newId: newTask.taskIdentifier)
+                            // The responder keys completions by identifier, which
+                            // another session's task can share with a live request here.
+                            if self.sentOnOwnSession(oldTask) {
+                                self.responder.updateCompletionId(oldTask.taskIdentifier, newId: newTask.taskIdentifier)
+                            }
                             newTasks.append(newTask)
                             oldTask.cancel()
                         }

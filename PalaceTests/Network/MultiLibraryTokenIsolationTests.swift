@@ -810,4 +810,51 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
         XCTAssertEqual(secondCount, 0,
                        "Re-running cancelNonEssential must report zero (registry was emptied) — kills mutation that omits the tasks.removeAll cleanup")
     }
+
+    // MARK: - A library switch during a proactive refresh
+
+    /// Waits for `sem` on a Dispatch thread so the cooperative pool stays free.
+    private func signalled(_ sem: DispatchSemaphore) async -> DispatchTimeoutResult {
+        await withCheckedContinuation { (c: CheckedContinuation<DispatchTimeoutResult, Never>) in
+            DispatchQueue.global().async { c.resume(returning: sem.wait(timeout: .now() + 10.0)) }
+        }
+    }
+
+    /// A request for A whose token is near expiry refreshes A's token first.
+    /// Switching to B while that refresh is in flight must not change the
+    /// bearer the request is sent with: it carries A's refreshed token.
+    func test_ProactiveRefresh_SwitchToBMidRefresh_SendsAsRefreshedBearer() async {
+        libraryProvider.switchToA()
+        libraryProvider.accountA.setAuthToken("bearerA", barcode: "userA", pin: "pinA",
+                                              expirationDate: Date().addingTimeInterval(60))
+        let tokenRequested = DispatchSemaphore(value: 0)
+        let releaseToken = DispatchSemaphore(value: 0)
+        let sentBearers = LockIsolated<[String?]>([])
+        HTTPStubURLProtocol.register { @Sendable [tokenURL_A, tokenURL_B, apiURL_A] request in
+            if request.url == tokenURL_A {
+                tokenRequested.signal()
+                _ = releaseToken.wait(timeout: .now() + 10.0)
+                return .init(statusCode: 200, headers: nil, body: Self.tokenResponseJSON(accessToken: "freshA"))
+            }
+            if request.url == tokenURL_B {
+                return .init(statusCode: 200, headers: nil, body: Self.tokenResponseJSON(accessToken: "freshB-WRONG"))
+            }
+            guard request.url == apiURL_A else { return nil }
+            sentBearers.withValue { $0.append(request.value(forHTTPHeaderField: "Authorization")) }
+            return .init(statusCode: 200, headers: nil, body: Data("ok".utf8))
+        }
+        let request = executor.request(for: apiURL_A)
+        let executor: TPPNetworkExecutor = self.executor
+
+        async let sent = executor.execute(request, enableTokenRefresh: true, accountId: nil)
+        let requested = await signalled(tokenRequested)
+        libraryProvider.switchToB()
+        releaseToken.signal()
+        _ = await sent
+
+        XCTAssertEqual(requested, .success, "the proactive refresh never reached A's token endpoint")
+        XCTAssertEqual(sentBearers.value, ["Bearer freshA"],
+                       "the request is sent once, with A's refreshed bearer")
+        XCTAssertEqual(libraryProvider.accountB.authToken, "bearerB", "B's token is untouched")
+    }
 }
