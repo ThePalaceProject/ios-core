@@ -327,6 +327,60 @@ def test_a_class_declared_inside_a_string_literal_is_not_selected(tmp_path):
     assert _selected(tmp_path) == ["WidgetTests"]
 
 
+def test_an_extension_of_xctestcase_is_not_selected(tmp_path):
+    """`extension XCTestCase` holds shared helpers; selecting it would run
+    PalaceTests/XCTestCase, execute 0 tests and block the push."""
+    repo = _gate_repo(tmp_path, test_classes=(), files={
+        "WidgetTests.swift":
+            "import XCTest\n\nextension XCTestCase {\n"
+            "    func testableWidget() {}\n"
+            "    func test_helper() {}\n}\n\n"
+            "final class WidgetTests: XCTestCase {\n"
+            "    func testWidget() {}\n}\n",
+    })
+
+    result = _run_gate(repo, tmp_path, "one-class-passed.log")
+
+    assert result.returncode == 0, result.stderr
+    assert _selected(tmp_path) == ["WidgetTests"]
+
+
+def test_a_test_named_helper_is_not_a_test_method(tmp_path):
+    """`func testableX` is a helper, not an XCTest method, so a base that only
+    declares one is not selected."""
+    repo = _gate_repo(tmp_path, test_classes=(), files={
+        "WidgetTests.swift":
+            "import XCTest\n\nclass WidgetFixture: XCTestCase {\n"
+            "    func testableWidget() {}\n}\n\n"
+            "final class WidgetTests: WidgetFixture {\n"
+            "    func testWidget() {}\n}\n",
+    })
+
+    result = _run_gate(repo, tmp_path, "one-class-passed.log")
+
+    assert result.returncode == 0, result.stderr
+    assert _selected(tmp_path) == ["WidgetTests"]
+
+
+def test_an_attributed_top_level_type_ends_the_preceding_class(tmp_path):
+    """A test-named method in `@MainActor struct` after a test-less class must
+    not be credited to that class."""
+    repo = _gate_repo(tmp_path, test_classes=(), files={
+        "WidgetTests.swift":
+            "import XCTest\n\nclass WidgetFixture: XCTestCase {\n"
+            "    func makeWidget() {}\n}\n\n"
+            "@MainActor struct WidgetProbe {\n"
+            "    func testProbe() {}\n}\n\n"
+            "@available(iOS 17, *)\nfinal class WidgetTests: WidgetFixture {\n"
+            "    func testWidget() {}\n}\n",
+    })
+
+    result = _run_gate(repo, tmp_path, "one-class-passed.log")
+
+    assert result.returncode == 0, result.stderr
+    assert _selected(tmp_path) == ["WidgetTests"]
+
+
 # --- Runs killed at the wall-clock cap ----------------------------------------
 
 

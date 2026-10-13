@@ -214,10 +214,13 @@ derive_test_classes_for() {
     fi
     awk -v bases="$TEST_BASES" "$SWIFT_CLASS_AWK"'
       BEGIN { n = split(bases, b, " "); for (i = 1; i <= n; i++) ok[b[i]] = 1 }
-      class_decl($0) { cur = (SUPER in ok) ? NAME : ""; next }
-      /^(struct|enum|actor|protocol|class|final|open|public|internal|private|fileprivate)[[:space:]]/ { cur = ""; next }
-      /^extension[[:space:]]/ { split($0, w, /[[:space:]:{<]+/); cur = (w[2] in ok) ? w[2] : ""; next }
-      cur != "" && /func[[:space:]]+test/ { print cur; exit }
+      class_decl($0) { cur = (SUPER in ok) ? NAME : ""; if (cur != "") here[cur] = 1; next }
+      { line = $0; sub(ATTRS, "", line) }
+      # An extension counts only for a test class declared in this file, so
+      # `extension XCTestCase` or a base from elsewhere is never selected.
+      line ~ /^extension[[:space:]]/ { split(line, w, /[[:space:]:{<]+/); cur = (w[2] in here) ? w[2] : ""; next }
+      line ~ /^(struct|enum|actor|protocol|class|final|open|public|internal|private|fileprivate|func|let|var)[[:space:]]/ { cur = ""; next }
+      cur != "" && /func[[:space:]]+test[A-Z0-9_]/ { print cur; exit }
     ' "$candidate"
   done <<< "$candidates" | sort -u
 }
@@ -226,8 +229,9 @@ derive_test_classes_for() {
 # declarations count: test classes are top level, and the indented ones in
 # PalaceTests are nested fixtures or synthetic sources inside string literals.
 SWIFT_CLASS_AWK='
+  BEGIN { ATTRS = "^(@[A-Za-z]+(\\([^)]*\\))?[[:space:]]+)*" }
   function class_decl(line,   s) {
-    if (line !~ /^(@[A-Za-z]+[[:space:]]+)*((final|open|public|internal|private|fileprivate)[[:space:]]+)*class[[:space:]]+[A-Za-z0-9_]+[[:space:]]*:[[:space:]]*[A-Za-z0-9_]+/) return 0
+    if (line !~ /^(@[A-Za-z]+(\([^)]*\))?[[:space:]]+)*((final|open|public|internal|private|fileprivate)[[:space:]]+)*class[[:space:]]+[A-Za-z0-9_]+[[:space:]]*:[[:space:]]*[A-Za-z0-9_]+/) return 0
     match(line, /class[[:space:]]+/)
     s = substr(line, RSTART + RLENGTH)
     match(s, /^[A-Za-z0-9_]+/); NAME = substr(s, 1, RLENGTH)
