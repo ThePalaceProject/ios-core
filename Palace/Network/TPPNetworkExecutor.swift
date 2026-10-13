@@ -439,6 +439,14 @@ struct RefreshOutcomeBox: @unchecked Sendable {
     var liveTaskCount: Int {
         transport.activeTasksStore.liveTaskCount
     }
+
+    /// Number of tasks the executor has handed to the transport, in any
+    /// state. Read-only observation surface for tests that assert a request
+    /// was never created; a task resumed and cancelled at once may never reach
+    /// its URLProtocol, so a protocol-side count cannot show that.
+    var registeredTaskCount: Int {
+        transport.activeTasksStore.registeredTaskCount
+    }
 }
 
 // `executeTokenRefresh(username:password:tokenURL:accountId:completion:)`

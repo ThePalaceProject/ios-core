@@ -156,12 +156,20 @@ final class URLSessionNetworkClientCancellationTests: XCTestCase {
         ScriptedURLProtocol.route(tokenURL, .respond(status: 200, headers: nil,
                                                      body: URLSessionNetworkClientFixture.tokenJSON("refreshed")))
         ScriptedURLProtocol.route(apiURL, .respond(status: 200, headers: nil, body: Data("ok".utf8)))
+        let refreshSent = expectation(description: "token request sent for a cancelled request")
+        refreshSent.isInverted = true
+        ScriptedURLProtocol.expectStart(of: tokenURL, refreshSent)
 
         let code = await executeCancelled(fixture.executor)
 
         XCTAssertEqual(code, NSURLErrorCancelled)
+        // A refresh started by mistake runs on its own Task after execute
+        // returns, so the token request is awaited over a window, not read
+        // once.
+        await fulfillment(of: [refreshSent], timeout: 1) // STARVE-001-OK: inverted expectation bounding a must-not-happen event
         let refreshing = await fixture.executor.isTokenRefreshingForTesting
         XCTAssertFalse(refreshing, "a cancelled request must not claim the refresh slot")
+        XCTAssertEqual(fixture.executor.registeredTaskCount, 0, "no API task may be created")
         XCTAssertEqual(ScriptedURLProtocol.started.count, 0,
                        "neither the token endpoint nor the API may be contacted")
     }
@@ -175,6 +183,9 @@ final class URLSessionNetworkClientCancellationTests: XCTestCase {
         let code = await executeCancelled(fixture.executor)
 
         XCTAssertEqual(code, NSURLErrorCancelled)
+        // Counted at creation: a task resumed and cancelled at once may never
+        // reach the URLProtocol, so `started` alone cannot show it was sent.
+        XCTAssertEqual(fixture.executor.registeredTaskCount, 0, "no task may be created")
         XCTAssertEqual(ScriptedURLProtocol.started.count, 0, "no request may reach the server")
     }
 
