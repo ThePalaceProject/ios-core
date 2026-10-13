@@ -24,6 +24,17 @@ final class BookCellModelStreamingHTMLTests: XCTestCase {
     /// extraction outside Module C scope.
     private var coordinator: NavigationCoordinator!
     private var pinnedRouter: AppTabRouter!
+    /// Counts how often the reader service looks for somewhere to present.
+    /// The stub root is nil, so an EPUB open stops before the real reader
+    /// pipeline (open, transparent re-download, retry) and never reaches the
+    /// host window or outlives the test.
+    private var readerRootLookups: LookupCounter!
+    private var readerService: ReaderService!
+
+    @MainActor
+    private final class LookupCounter {
+        var count = 0
+    }
 
     override func setUp() {
         super.setUp()
@@ -31,6 +42,12 @@ final class BookCellModelStreamingHTMLTests: XCTestCase {
         mockImageCache = MockImageCache()
         mockReachability = MockReachability(initiallyConnected: true)
         coordinator = NavigationCoordinator()
+        let lookups = LookupCounter()
+        readerRootLookups = lookups
+        readerService = ReaderService(rootViewController: {
+            lookups.count += 1
+            return nil
+        })
         // PP-5022 — pin the hub's resolution deterministically rather than
         // relying on production's tab router being unset. `currentTab` prefers
         // the live router, so attaching one (held strongly for this test's
@@ -48,6 +65,8 @@ final class BookCellModelStreamingHTMLTests: XCTestCase {
         // The hub registers weakly, so dropping the last strong reference here
         // is what clears it — there is nothing to un-set.
         pinnedRouter = nil
+        readerService = nil
+        readerRootLookups = nil
         coordinator = nil
         mockReachability = nil
         mockImageCache = nil
@@ -109,7 +128,7 @@ final class BookCellModelStreamingHTMLTests: XCTestCase {
             downloadCenter: downloadCenter ?? AppContainer.production().downloadCenter,
             accountsManager: AppContainer.production().accountsManager,
             samplePreviewManager: AppContainer.production().samplePreviewManager,
-            readerService: AppContainer.production().readerService,
+            readerService: readerService,
             reachability: mockReachability
         )
     }
@@ -142,6 +161,8 @@ final class BookCellModelStreamingHTMLTests: XCTestCase {
                         "Pushed streamingHTML route must have the book payload stored so NavigationHostView can resolve it")
         XCTAssertFalse(model.isLoading,
                        "Cell-level isLoading must be cleared after push — the streaming reader owns its own loading state")
+        XCTAssertEqual(readerRootLookups.count, 0,
+                       "A streamingHTML open must not go through ReaderService")
     }
 
     /// Negative control: didSelectRead on an EPUB book must NOT push the
@@ -162,6 +183,8 @@ final class BookCellModelStreamingHTMLTests: XCTestCase {
         // payload that we never stored.
         XCTAssertNil(coordinator.resolveBook(for: BookRoute(id: book.identifier)),
                      "EPUB books must not have their payload stored on the coordinator by the streamingHTML branch")
+        XCTAssertEqual(readerRootLookups.count, 1,
+                       "An EPUB open must go through ReaderService.openEPUB")
     }
 
 }

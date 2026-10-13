@@ -29,7 +29,7 @@ final class TPPAgeCheckStateMachineTests: XCTestCase {
         ageCheckChoiceStorageMock = TPPAgeCheckChoiceStorageMock()
         libraryAccountProviderMock = TPPCurrentLibraryAccountProviderMock()
         userAccountProviderMock = TPPUserAccountProviderMock()
-        ageCheck = TPPAgeCheck(ageCheckChoiceStorage: ageCheckChoiceStorageMock)
+        ageCheck = TPPAgeCheck(ageCheckChoiceStorage: ageCheckChoiceStorageMock, presentAgeVerification: { _ in })
 
         defaultUserAboveAgeLimit = libraryAccountProviderMock.currentAccount?.details?.userAboveAgeLimit ?? false
         libraryAccountProviderMock.currentAccount?.details?.userAboveAgeLimit = false

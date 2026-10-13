@@ -17,6 +17,7 @@ class TPPAgeCheckTests: XCTestCase {
     var userAccountProviderMock: TPPUserAccountProviderMock!
     var simplyeLibraryAccountProviderMock: TPPCurrentLibraryAccountProviderMock!
     var ageCheck: TPPAgeCheck!
+    var presenterSpy: AgeVerificationPresenterSpy!
 
     // TPPAgeCheck checks the property userAboveAgeLimit in AccountDetails before performing age check
     // This property is store in UserDefault which can be different value when testing on different machine
@@ -49,7 +50,9 @@ class TPPAgeCheckTests: XCTestCase {
 
         expectation = self.expectation(description: "AgeChecking")
 
-        ageCheck = TPPAgeCheck(ageCheckChoiceStorage: ageCheckChoiceStorageMock)
+        presenterSpy = AgeVerificationPresenterSpy()
+        ageCheck = TPPAgeCheck(ageCheckChoiceStorage: ageCheckChoiceStorageMock,
+                               presentAgeVerification: presenterSpy.present)
     }
 
     override func tearDownWithError() throws {
@@ -108,6 +111,43 @@ class TPPAgeCheckTests: XCTestCase {
 
         let birthYear = Calendar.current.component(.year, from: Date()) - 20
         ageCheck.didCompleteAgeCheck(birthYear)
+        waitForExpectations(timeout: 1, handler: nil)
+    }
+
+    /// The age-check screen goes through the injected presenter, wrapped in a
+    /// navigation controller, so tests never put it on the host window.
+    func testVerify_WhenAgeNotYetChecked_PresentsAgeCheckScreenThroughPresenter() throws {
+        ageCheck.verifyCurrentAccountAgeRequirement(userAccountProvider: userAccountProviderMock,
+                                                    currentLibraryAccountProvider: simplyeLibraryAccountProviderMock) { [weak self] _ in
+            self?.expectation.fulfill()
+        }
+        ageCheck.flushPendingForTests()
+        drainMainQueue()
+
+        XCTAssertEqual(presenterSpy.presented.count, 1)
+        let nav = try XCTUnwrap(presenterSpy.presented.first as? UINavigationController)
+        XCTAssertTrue(nav.viewControllers.first is TPPAgeCheckViewController)
+
+        ageCheck.didCompleteAgeCheck(Calendar.current.component(.year, from: Date()) - 30)
+        waitForExpectations(timeout: 1, handler: nil)
+    }
+
+    /// A second request while the screen is up queues its completion rather
+    /// than presenting a second screen; both completions fire once answered.
+    func testVerify_WhileAlreadyPresenting_DoesNotPresentAgain() throws {
+        expectation.expectedFulfillmentCount = 2
+        for _ in 0..<2 {
+            ageCheck.verifyCurrentAccountAgeRequirement(userAccountProvider: userAccountProviderMock,
+                                                        currentLibraryAccountProvider: simplyeLibraryAccountProviderMock) { [weak self] _ in
+                self?.expectation.fulfill()
+            }
+        }
+        ageCheck.flushPendingForTests()
+        drainMainQueue()
+
+        XCTAssertEqual(presenterSpy.presented.count, 1)
+
+        ageCheck.didCompleteAgeCheck(Calendar.current.component(.year, from: Date()) - 30)
         waitForExpectations(timeout: 1, handler: nil)
     }
 
