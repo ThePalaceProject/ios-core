@@ -283,6 +283,45 @@ def test_shipped_allowlist_entries_each_suppress_a_live_finding():
         assert reason.strip()
 
 
+# --- --list-compiled (used by pre-push-test-gate.sh) -------------------------
+
+def _list_compiled(tmp_path, capsys, project, target):
+    pbx = tmp_path / "project.pbxproj"
+    pbx.write_text(project.text())
+    rc = _load_module().main(["--root", str(tmp_path), "--pbxproj", str(pbx),
+                              "--list-compiled", target])
+    out = capsys.readouterr()
+    return Result(rc, out.out, out.err)
+
+
+def test_list_compiled_prints_only_the_targets_sources_phase(tmp_path, capsys):
+    """Unbuilt references and Swift files in a resources phase are not listed."""
+    p, _ = app_project()
+    p.ref("Unbuilt.swift", _tests_group(p), built=False)
+    p.ref("Copied.swift", _tests_group(p), phase="resources")
+    r = _list_compiled(tmp_path, capsys, p, "App")
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.split() == ["Palace/A.swift", "PalaceTests/ATests.swift"]
+
+
+def test_list_compiled_unknown_target_is_an_error(tmp_path, capsys):
+    p, _ = app_project()
+    r = _list_compiled(tmp_path, capsys, p, "PalaceTests")
+    assert r.returncode == 2
+    assert r.stdout == ""
+    assert "no native target named 'PalaceTests'" in r.stderr
+
+
+def test_list_compiled_target_with_no_swift_is_an_error(tmp_path, capsys):
+    """An empty list would make the gate treat every test file as unbuilt."""
+    p = Project()
+    p.group("Palace")
+    p.ref("A.swift", _palace_group(p), built=False)
+    r = _list_compiled(tmp_path, capsys, p, "App")
+    assert r.returncode == 2
+    assert "compiles no Swift files" in r.stderr
+
+
 # --- Errors are not passes ---------------------------------------------------
 
 def test_empty_scope_is_an_error_not_a_pass(run):

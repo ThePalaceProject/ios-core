@@ -11,7 +11,7 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 | Script | Purpose | When you'll touch it |
 |--------|---------|----------------------|
 | **`verify-pr.sh`** | One-shot pre-PR battery (build, tests, lint, coverage, mutation, a11y). | Before every `gh pr create`. Run `--quick` to skip mutation. |
-| **`pre-push-test-gate.sh`** | Pre-push hook that runs the changed-file test selection before allowing a push. | Automatic via git hook; tune timeouts when CI lag surfaces. |
+| **`pre-push-test-gate.sh`** | Pre-push hook that runs the changed-file test selection before allowing a push. Selects only test classes the PalaceTests target compiles, and fails when a selected class executes 0 tests. | Automatic via git hook; tune timeouts when CI lag surfaces. |
 | **`lint-test-quality.py`** | Static linter for fluff/flake test patterns. Supports `// lint-ignore: FLUFF-XXX` per-line markers. | Every test PR — failures here block CI. |
 | **`snapshot-library-registry.py`** | Snapshots the library registry (account JSON) and produces a diff against the live registry. | Account/auth-doc churn investigations; weekly drift checks. |
 | **`palace_mutate.py`** | Mutation-testing harness (mutate Swift file, run tests, report surviving mutants). | Anything on a critical path (sign-in, borrow, download, DRM). |
@@ -60,7 +60,7 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 |--------|--------------|-----------|
 | `xcode-test-optimized.sh` | Runs the full Palace test plan with caching and timeouts tuned for CI. | `unit-testing.yml` |
 | `verify-pr.sh` | One-shot pre-PR battery: build, tests, lint, coverage, mutation, a11y. | dev/local (run before pushing) |
-| `pre-push-test-gate.sh` | Pre-push hook that runs the changed-file test selection before allowing `git push`. | local git hook |
+| `pre-push-test-gate.sh` | Pre-push hook that runs the changed-file test selection before allowing `git push`; skips test files the PalaceTests target does not compile and fails a class that executes 0 tests. | local git hook |
 | `resolve-tests-for.py` | Maps a changed production-file path to the XCTest class selectors that cover it. | `verify-pr.sh`, `palace_mutate.py` |
 | `parse-xcresult.py` | Parses an `.xcresult` bundle into JSON for downstream reporting. | `unit-testing.yml` |
 | `coverage-report.py` | Builds app, package and excluded-source coverage from `.xcresult` and `swift test` exports; marks missing data INCOMPLETE. | `unit-testing.yml` |
@@ -92,7 +92,7 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 | `snapshot-library-registry.py` | Snapshots the library registry JSON and diffs against live; surfaces account/auth-doc drift. | dev/local, drift-investigation |
 | `check_registry_snapshot_freshness.sh` | CI guard that fails if the committed registry snapshot is older than the live registry. | `ledger.yml` |
 | `crashlytics-sentinel.py` | Compares Crashlytics issue counts week-over-week and alerts on new top issues. | `crashlytics-sentinel.yml` |
-| `check-swift-sources-compiled.py` | Fails when a tracked Swift file under `Palace/`, `PalaceTests/` or `PalaceUITests/` is not compiled by a target, or a Swift reference in `Palace.xcodeproj` is dangling or duplicated. | `tooling-checks.yml`, `verify-pr.sh`, `pre-commit-phase35-detectors.sh` |
+| `check-swift-sources-compiled.py` | Fails when a tracked Swift file under `Palace/`, `PalaceTests/` or `PalaceUITests/` is not compiled by a target, or a Swift reference in `Palace.xcodeproj` is dangling or duplicated. `--list-compiled TARGET` prints the Swift files a target compiles. | `tooling-checks.yml`, `verify-pr.sh`, `pre-commit-phase35-detectors.sh`, `pre-push-test-gate.sh` |
 
 ### Release and TestFlight
 
