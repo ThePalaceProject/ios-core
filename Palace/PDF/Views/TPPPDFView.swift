@@ -12,7 +12,9 @@ import SwiftUI
 /// This view shows PDFKit views when PDF is not encrypted
 /// PDFKit reading controls (PDFView and PDFThumbnails) are generally faster because of direct data reading,
 /// instead of reading blocks of data with data provider.
-/// The analog for encrypted documents - `TPPEncryptedPDFView`
+/// Encrypted (LCP) PDFs reach this same view: they are decrypted to disk and
+/// opened through `TPPPDFDocument(url:)`. The former `TPPEncryptedPDFView` was
+/// deleted with the LCP pipeline migration.
 struct TPPPDFView: View {
 
     let document: PDFDocument
@@ -21,12 +23,10 @@ struct TPPPDFView: View {
     // `allowsCopy` flag is applied below in `onAppear`, before any user
     // interaction can reach the view.
     //
-    // Today TPPPDFView only renders non-encrypted PDFs — encrypted (LCP)
-    // titles go through TPPEncryptedPDFView's bitmap-tile path where text
-    // is non-selectable by construction. The gating here is forward-
-    // looking for any future PDFKit-rendered DRM-PDF path (e.g. PP-4454
-    // Readium-PDF) and a defense against future content where decryption
-    // happens upstream of this view.
+    // TPPPDFView renders every PDF, encrypted included: LCP titles are
+    // decrypted to disk first and arrive here as an ordinary PDFDocument,
+    // so this gating is the live defence for DRM-protected text rather
+    // than a forward-looking one.
     let pdfView = PalacePDFView()
     private let pageChangePublisher = NotificationCenter.default.publisher(for: .PDFViewPageChanged)
 
@@ -43,6 +43,29 @@ struct TPPPDFView: View {
                 .edgesIgnoringSafeArea([.all])
                 .accessibilityScrollAction { edge in
                     handleAccessibilityScroll(edge)
+                }
+                // PP-3838: Full Keyboard Access (the Tab-Z menu) needs named
+                // actions; a scroll action alone is reachable only by a
+                // three-finger swipe. Restores what #811 removed.
+                //
+                // Whether VoiceOver's rotor surfaces these is NOT established.
+                // They sit on a `UIViewRepresentable` container, and UIKit
+                // reads `accessibilityCustomActions` from the focused element
+                // rather than walking ancestors — `accessibilityScroll:` does
+                // propagate up, so the working scroll action above is not
+                // evidence for these. The sibling reader registers the same
+                // strings on its own container and a device recording refuted
+                // it (PP-4527). PDFKit is not a WKWebView with a separate AX
+                // tree, so it may well differ, but only a device can say.
+                // Claim Tab-Z, not the rotor, until someone checks.
+                //
+                // Both delegate to the scroll handler so the boundary clamp
+                // and the page announcement have one implementation.
+                .accessibilityAction(named: Text(Strings.Generic.nextPage)) {
+                    handleAccessibilityScroll(.bottom)
+                }
+                .accessibilityAction(named: Text(Strings.Generic.previousPage)) {
+                    handleAccessibilityScroll(.top)
                 }
 
             VStack {
