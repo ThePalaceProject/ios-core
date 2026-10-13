@@ -63,8 +63,8 @@ open-failure alert is `AudiobookOpenFailureAlert` (`Palace/Audiobooks/`), which
 `AudiobookSessionManager` receives as an injected closure and whose Retry reopens
 through `BookOpenRouter` with the manager's registry, and the second-leg
 bearer-token manifest fetch is owned by `ProductionBearerTokenManifestFetcher`
-(`Palace/Audiobooks/Vendors/Adapters+Production.swift`). The forwarder's removal
-condition was met once #1642 merged: `BookDetailViewModel` and `BookCellModel` now
+(`Palace/Audiobooks/Vendors/Adapters+Production.swift`). Moving those helpers met the
+forwarder's removal condition, so `BookDetailViewModel` and `BookCellModel` now
 call `BookOpenRouter.open` with the registry they were built with, the router's
 audiobook tests are `BookOpenRouterAudiobookOpenTests`, and the file is deleted.
 In production both registries are the AppContainer's, so the open resolves the same
