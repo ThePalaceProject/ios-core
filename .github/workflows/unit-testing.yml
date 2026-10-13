@@ -274,8 +274,12 @@ jobs:
     runs-on: macos-15
     name: test (shard ${{ matrix.shard }})
     # The shard budget inside ci-run-test-shard.sh interrupts xcodebuild at
-    # 30 minutes so the result bundle is still written; this is the backstop.
-    timeout-minutes: 45
+    # 30 minutes so the result bundle is still written, and the shard step's own
+    # timeout-minutes (40) bounds the relaunch after it. This is the backstop
+    # above that: the package tests or the flag-ON leg and the uploads after the
+    # step took up to 6 minutes on 2026-10-12, so 45 cancelled a job whose step
+    # used its full 40 (run 38278109196).
+    timeout-minutes: 55
     strategy:
       fail-fast: false
       matrix:
