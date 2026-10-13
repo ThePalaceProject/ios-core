@@ -18,4 +18,12 @@
 #
 # Resolve membership conflicts with `scripts/pbxproj_add_swift.rb`, which is
 # idempotent and writes all six entries per file.
-*.pbxproj text
+# A membership conflict is a different shape from a settings conflict: both
+# sides are new UUID-keyed entries at one insertion point, and keeping both is
+# the only correct answer. scripts/pbxproj_merge_driver.py unions exactly that,
+# REFUSES any hunk holding anything else, and refuses a result that would drop
+# a file from either side — so a build-number conflict still stops for a human.
+# The attribute is inert until the driver is registered, which
+# scripts/install-git-hooks.sh does, because .git/config is shared by neither a
+# clone nor a worktree.
+*.pbxproj text merge=pbxproj
