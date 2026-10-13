@@ -398,9 +398,6 @@
 
 "Couldn't send" = "No se ha podido enviar";
 
-/* Book cover accessibility */
-"Cover image for %@" = "Imagen de portada de %@";
-
 "Create Card" = "Crear tarjeta";
 
 /* VoiceOver announcement when the current reading position cannot be determined */
