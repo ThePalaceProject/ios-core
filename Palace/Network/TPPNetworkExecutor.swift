@@ -279,6 +279,7 @@ struct RefreshOutcomeBox: @unchecked Sendable {
         // accountsManager is lazy — accessed on first use, not during init
         // This avoids circular singleton deadlock: TPPNetworkExecutor ↔ AccountsManager
         super.init()
+        responder.bind(to: self)
     }
 
     /// Test-friendly initializer allowing a custom URLSessionConfiguration (e.g., with custom URLProtocol classes)
@@ -295,6 +296,7 @@ struct RefreshOutcomeBox: @unchecked Sendable {
                                           requestTimeout: TPPNetworkExecutor.defaultRequestTimeout)
         // accountsManager is lazy — avoids circular init deadlock
         super.init()
+        responder.bind(to: self)
     }
 
     /// DI-friendly initializer for testing
@@ -310,6 +312,7 @@ struct RefreshOutcomeBox: @unchecked Sendable {
                                           delegateQueue: delegateQueue)
         self._accountsManager = accountsManager
         super.init()
+        responder.bind(to: self)
     }
 
     /// Full-DI initializer used by adversarial tests that need BOTH a custom
@@ -336,6 +339,7 @@ struct RefreshOutcomeBox: @unchecked Sendable {
                                           requestTimeout: TPPNetworkExecutor.defaultRequestTimeout)
         self._accountsManager = accountsManager
         super.init()
+        responder.bind(to: self)
     }
 
     #if DEBUG

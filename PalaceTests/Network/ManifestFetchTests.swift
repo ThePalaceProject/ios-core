@@ -1161,9 +1161,12 @@ final class FetchManifestWithBearerTokenLCPSafetyTests: XCTestCase {
 @MainActor
 final class NetworkExecutorResponseRegressionTests: XCTestCase {
 
+    // Each executor is given its own accounts, signed out, so the 401 below
+    // cannot reach whichever account the simulator running the tests holds.
     override func setUp() {
         super.setUp()
         HTTPStubURLProtocol.reset()
+        TPPUserAccountMock.resetShared()
     }
 
     override func tearDown() {
@@ -1189,7 +1192,8 @@ final class NetworkExecutorResponseRegressionTests: XCTestCase {
 
         let executor = TPPNetworkExecutor(
             cachingStrategy: .default,
-            sessionConfiguration: config
+            sessionConfiguration: config,
+            accountsManager: TPPLibraryAccountMock()
         )
 
         let url = URL(string: "https://cm.example.com/fulfill/lcp-123")!
@@ -1248,7 +1252,8 @@ final class NetworkExecutorResponseRegressionTests: XCTestCase {
 
         let executor = TPPNetworkExecutor(
             cachingStrategy: .default,
-            sessionConfiguration: config
+            sessionConfiguration: config,
+            accountsManager: TPPLibraryAccountMock()
         )
 
         let url = URL(string: "https://cm.example.com/manifest/large-book")!
@@ -1287,7 +1292,8 @@ final class NetworkExecutorResponseRegressionTests: XCTestCase {
 
         let executor = TPPNetworkExecutor(
             cachingStrategy: .default,
-            sessionConfiguration: config
+            sessionConfiguration: config,
+            accountsManager: TPPLibraryAccountMock()
         )
 
         let url = URL(string: "https://cm.example.com/fulfill/expired")!
@@ -1316,7 +1322,8 @@ final class NetworkExecutorResponseRegressionTests: XCTestCase {
 
         let executor = TPPNetworkExecutor(
             cachingStrategy: .default,
-            sessionConfiguration: config
+            sessionConfiguration: config,
+            accountsManager: TPPLibraryAccountMock()
         )
 
         let url = URL(string: "https://cm.example.com/fulfill/empty")!

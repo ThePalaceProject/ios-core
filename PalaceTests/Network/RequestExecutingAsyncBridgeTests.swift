@@ -74,6 +74,7 @@ final class RequestExecutingAsyncBridgeTests: XCTestCase {
     /// overloads: callers read problem documents off error responses and
     /// `throws` loses them.
     func testFetchResult_on401_reportsFailureCarryingTheResponse() async {
+        signOutInjectedAccount()
         HTTPStubURLProtocol.register { @Sendable [apiURL] request in
             guard request.url == apiURL else { return nil }
             return .init(statusCode: 401, headers: nil, body: Data("{}".utf8))
@@ -235,6 +236,12 @@ final class RequestExecutingAsyncBridgeTests: XCTestCase {
         """.utf8)
     }
 
+    /// Leaves the injected account with nothing to refresh, so a 401 reaches
+    /// the caller as is instead of starting a token refresh.
+    private func signOutInjectedAccount() {
+        userAccount._credentials = nil
+    }
+
     private func setTokenExpiringIn(_ seconds: TimeInterval) {
         userAccount._credentials = .token(authToken: "near-expiry",
                                           barcode: "user-001",
@@ -277,6 +284,7 @@ final class RequestExecutingAsyncBridgeTests: XCTestCase {
     /// `execute` returns `NYPLResult` instead of throwing: a thrown error would
     /// drop the response and the body with it.
     func testExecute_httpFailure_carriesTheResponseAndTheProblemDocument() async {
+        signOutInjectedAccount()
         let problem = Data("""
         {"type":"http://librarysimplified.org/terms/problem/credentials-invalid","title":"Invalid credentials"}
         """.utf8)
