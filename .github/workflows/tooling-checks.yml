@@ -139,6 +139,18 @@ jobs:
           fi
           bash scripts/check-package-tests-wired.sh
 
+      # Every tracked Swift file under Palace/, PalaceTests/ and PalaceUITests/
+      # (outside Swift packages) is compiled by a target, and every Swift
+      # reference in Palace.xcodeproj resolves to a tracked file. Test files
+      # that exist but never compile read as coverage that does not run.
+      - name: Swift sources compiled (whole tree)
+        run: |
+          if [ ! -f scripts/check-swift-sources-compiled.py ]; then
+            echo "::error::scripts/check-swift-sources-compiled.py is missing — the gate cannot run."
+            exit 1
+          fi
+          python3 scripts/check-swift-sources-compiled.py
+
       # 3b. verify-pr detector wiring test. The decomposition ratchets
       #     (locator count, file-size ceiling, .shared reads, package-test
       #     wiring) each shipped with a
