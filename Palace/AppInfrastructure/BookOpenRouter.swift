@@ -67,7 +67,11 @@ enum BookOpenRouter {
     // hops run on `DispatchQueue.main`). Isolating the lock to the main actor
     // documents that invariant and clears the nonisolated-global-mutable-state
     // warning without changing the threading.
-    private static var openingBooks = Set<String>()
+    //
+    // Each open holds its own token, so a stale release (an earlier open's
+    // safety timer, or its finish arriving after that timer fired) cannot
+    // free the lock of a later open of the same book.
+    private static var openingBooks = [String: UUID]()
 
     // MARK: - Test-only join for open tasks
 
@@ -105,22 +109,32 @@ enum BookOpenRouter {
     ///   transient UI (BookDetail half-sheet) immediately rather than after full
     ///   playback readiness. Nil for EPUB/PDF/streaming (they present promptly and
     ///   rely on `onFinish`). fix/audiobook-first-open-hang.
+    /// - parameter scheduleSafetyRelease: runs the lock's safety release after
+    ///   the given delay; tests pass a scheduler they fire by hand.
     static func open(_ book: TPPBook,
                      bookRegistry: TPPBookRegistryProvider,
                      audiobookSession: AudiobookSessionManaging? = nil,
                      onFinish: (() -> Void)? = nil,
-                     onLoadingShellPresented: (@MainActor () -> Void)? = nil) {
-        guard !openingBooks.contains(book.identifier) else {
+                     onLoadingShellPresented: (@MainActor () -> Void)? = nil,
+                     scheduleSafetyRelease: @MainActor (TimeInterval, @escaping @MainActor () -> Void) -> Void = BookOpenRouter.scheduleOnMainQueue) {
+        guard openingBooks[book.identifier] == nil else {
             Log.warn(#file, "Book \(book.title) is already being opened, ignoring duplicate request")
             onFinish?()
             return
         }
 
-        openingBooks.insert(book.identifier)
-        scheduleOpenLockSafetyRelease(for: book.identifier)
+        let identifier = book.identifier
+        let token = UUID()
+        openingBooks[identifier] = token
+        scheduleSafetyRelease(openLockSafetyRelease) {
+            if releaseLock(identifier, token) {
+                Log.warn(#file, "⏱️ Open lock for \(identifier) auto-released after \(Int(openLockSafetyRelease))s — pipeline never reported completion")
+            }
+        }
         let resolvedBook = bookRegistry.book(forIdentifier: book.identifier) ?? book
 
         dispatch(resolvedBook,
+                 token: token,
                  audiobookSession: audiobookSession,
                  onFinish: onFinish,
                  onLoadingShellPresented: onLoadingShellPresented)
@@ -140,32 +154,30 @@ enum BookOpenRouter {
         coordinator.push(.streamingHTML(BookRoute(id: book.identifier)))
     }
 
-    private static func scheduleOpenLockSafetyRelease(for identifier: String) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + openLockSafetyRelease) {
+    /// The production scheduler for the open lock's safety release.
+    static func scheduleOnMainQueue(_ delay: TimeInterval, _ work: @escaping @MainActor () -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
             // Runs on the main queue; `assumeIsolated` bridges the non-isolated
             // dispatch closure to the main actor so the `openingBooks` access is
-            // statically safe without altering the existing timing behavior.
-            MainActor.assumeIsolated {
-                if openingBooks.remove(identifier) != nil {
-                    Log.warn(#file, "⏱️ Open lock for \(identifier) auto-released after \(Int(openLockSafetyRelease))s — pipeline never reported completion")
-                }
-            }
+            // statically safe.
+            MainActor.assumeIsolated { work() }
         }
     }
 
     private static func dispatch(_ book: TPPBook,
+                                 token: UUID,
                                  audiobookSession: AudiobookSessionManaging?,
                                  onFinish: (() -> Void)?,
                                  onLoadingShellPresented: (@MainActor () -> Void)?) {
         switch destination(for: book) {
         case .epubReader:
             spawnOpenTask {
-                defer { finish(book.identifier, onFinish) }
+                defer { finish(book.identifier, token, onFinish) }
                 AppContainer.production().readerService.openEPUB(book)
             }
         case .pdfReader:
             Task { @MainActor in
-                presentPDF(book) { finish(book.identifier, onFinish) }
+                presentPDF(book) { finish(book.identifier, token, onFinish) }
             }
         case .audiobookSession:
             // Route through the single audiobook owner. The session manager
@@ -174,7 +186,7 @@ enum BookOpenRouter {
             // a stale LCP Publication from hanging publicationOpener.open().
             let session = audiobookSession ?? AppContainer.production().audiobookSession
             spawnOpenTask {
-                defer { finish(book.identifier, onFinish) }
+                defer { finish(book.identifier, token, onFinish) }
                 _ = await session.openAudiobook(
                     book,
                     startPlaying: true,
@@ -186,17 +198,25 @@ enum BookOpenRouter {
             // directly — no AudiobookSessionManager-style lifecycle owner,
             // no LCP / DRM grant, no on-disk asset.
             spawnOpenTask {
-                defer { finish(book.identifier, onFinish) }
+                defer { finish(book.identifier, token, onFinish) }
                 presentStreamingReader(book)
             }
         case .unsupported:
-            finish(book.identifier, onFinish)
+            finish(book.identifier, token, onFinish)
         }
     }
 
-    private static func finish(_ identifier: String, _ onFinish: (() -> Void)?) {
-        openingBooks.remove(identifier)
+    private static func finish(_ identifier: String, _ token: UUID, _ onFinish: (() -> Void)?) {
+        releaseLock(identifier, token)
         onFinish?()
+    }
+
+    /// Removes the lock only while it still belongs to the open that took it.
+    @discardableResult
+    private static func releaseLock(_ identifier: String, _ token: UUID) -> Bool {
+        guard openingBooks[identifier] == token else { return false }
+        openingBooks[identifier] = nil
+        return true
     }
 
     private static func presentPDF(_ book: TPPBook, completion: (() -> Void)? = nil) {
