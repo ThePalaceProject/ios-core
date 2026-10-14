@@ -15,9 +15,10 @@
 import XCTest
 @testable import Palace
 import PalaceBookRegistry
+import PalaceCatalog
 
 @MainActor
-final class TPPBookRegistryAsyncReadinessTests: XCTestCase {
+final class TPPBookRegistryAsyncReadinessTests: PalaceWiringTestCase {
 
     private var libraryMock: TPPLibraryAccountMock!
 
@@ -135,5 +136,49 @@ final class TPPBookRegistryAsyncReadinessTests: XCTestCase {
         } catch {
             XCTFail("Expected PalaceError, got \(type(of: error)): \(error)")
         }
+    }
+
+    // MARK: - Bounded readiness wait
+
+    /// A sync for an account whose details never load ends with
+    /// `.accountNotFound` once the readiness wait runs out. The post-return
+    /// sync awaits this, and the return's completion awaits the sync.
+    func testSyncAsync_whenAccountNeverBecomesReady_throwsAccountNotFoundAfterReadinessWait() async {
+        let manager = makeFreshAccountsManager(defaults: Self.testUserDefaults())
+        let pub = OPDS2Publication(
+            links: [OPDS2Link(href: "https://example.com/catalog", rel: "http://opds-spec.org/catalog")],
+            metadata: OPDS2Publication.Metadata(id: "never-ready-\(UUID().uuidString)", title: "Never Ready"),
+            images: nil)
+        let account = Account(publication: pub, imageCache: MockImageCache())
+        _ = manager._seedAccountForTesting(account)
+        account._setState(.detailsLoading)
+        let registry = TPPBookRegistry(accountsManager: manager, imageLoader: MockImageLoader())
+
+        let sync = Task { @MainActor () -> String in
+            do {
+                _ = try await registry.syncAsync(accountsManager: manager, readinessTimeout: 0.05)
+                return "succeeded"
+            } catch PalaceError.authentication(.accountNotFound) {
+                return "accountNotFound"
+            } catch {
+                return "\(error)"
+            }
+        }
+        // A far deadline that only matters if the wait stops being bounded: the
+        // test then fails here instead of hanging until the runner kills it.
+        let outcome: String? = await withTaskGroup(of: String?.self) { group in
+            group.addTask { await sync.value }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                return nil
+            }
+            let first = await group.next() ?? nil
+            if first == nil { sync.cancel() }
+            group.cancelAll()
+            return first
+        }
+
+        XCTAssertEqual(outcome, "accountNotFound",
+                       "nil means the sync was still waiting on the account after 10 s")
     }
 }

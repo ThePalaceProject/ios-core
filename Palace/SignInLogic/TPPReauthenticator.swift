@@ -29,14 +29,15 @@ protocol Reauthenticator: NSObject {
 /// the hood when no user input is needed.
 /// `Reauthenticating` (PalaceAuth) refines `Sendable`, so the conformer must be
 /// Sendable-honest. The class is `final` with no un-serialized mutable instance
-/// state: the only instance storage is `authenticateCallCountLock` (an
-/// `OSAllocatedUnfairLock`, itself `Sendable`, which serializes the call
-/// counter); the `_testContainerOverride` seam is a `@MainActor`-isolated
+/// state: the only instance storage is two `OSAllocatedUnfairLock`s (each
+/// `Sendable`), serializing the call counter and the test-only task list;
+/// the `_testContainerOverride` seam is a `@MainActor`-isolated
 /// `static` (not instance state). `@unchecked` is required only because the
 /// `NSObject` superclass is not `Sendable` — not because any state is racy.
 //
-// Sendable invariant: the sole mutable instance value (`authenticateCallCount`)
-// is read and written exclusively through `authenticateCallCountLock.withLock`.
+// Sendable invariant: the mutable instance values (`authenticateCallCount`,
+// `pendingAuthenticationTasks`) are read and written exclusively through their
+// locks' `withLock`.
 @objc final class TPPReauthenticator: NSObject, Reauthenticator, @unchecked Sendable {
 
     /// Serializes `authenticateCallCount` so the counter is safe to read from a
@@ -51,6 +52,25 @@ protocol Reauthenticator: NSObject {
     /// Not used for any production logic.
     internal var authenticateCallCount: Int {
         authenticateCallCountLock.withLock { $0 }
+    }
+
+    /// Presentation tasks, retained only under XCTest so a test can join them
+    /// instead of waiting on a deadline that starves under parallel CI clones.
+    /// Never populated in production.
+    private let pendingAuthenticationTasks = OSAllocatedUnfairLock(initialState: [Task<Void, Never>]())
+
+    private static let retainsTasksForTesting =
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+
+    /// Awaits every presentation task started by `authenticateIfNeeded` so far.
+    /// Main-actor isolated so a main-actor caller does not hop executors on the
+    /// call itself, which would let the queued tasks run whether or not they
+    /// were retained.
+    @MainActor
+    func _awaitPendingAuthenticationsForTesting() async {
+        for task in pendingAuthenticationTasks.withLock({ $0 }) {
+            await task.value
+        }
     }
 
     /// Test-only override for the `AppContainer` from which the
@@ -90,7 +110,7 @@ protocol Reauthenticator: NSObject {
                                     usingExistingCredentials: Bool,
                                     authenticationCompletion: (@Sendable () -> Void)?) {
         authenticateCallCountLock.withLock { $0 += 1 }
-        Task { @MainActor in
+        let task = Task { @MainActor in
             Log.info(#file, "TPPReauthenticator: Re-authentication requested, using existing credentials: \(usingExistingCredentials)")
 
             // `_testContainerOverride` is consulted only under XCTest, so it
@@ -115,6 +135,9 @@ protocol Reauthenticator: NSObject {
                 Log.info(#file, "TPPReauthenticator: Re-authentication completed")
                 authenticationCompletion?()
             }
+        }
+        if Self.retainsTasksForTesting {
+            pendingAuthenticationTasks.withLock { $0.append(task) }
         }
     }
 }

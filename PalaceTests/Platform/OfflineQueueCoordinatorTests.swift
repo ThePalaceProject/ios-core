@@ -35,19 +35,19 @@ final class OfflineQueueCoordinatorTests: XCTestCase {
             OfflineQueueCoordinator.Handlers(
                 performReturn: { [weak self] action in
                     self?.lock.withLock { self?.returnIDs.append(action.bookID) }
-                    return self?.returnSucceeds ?? false
+                    return self?.returnSucceeds == true ? .confirmed : .failed
                 },
                 performBorrow: { [weak self] action in
                     self?.lock.withLock { self?.borrowIDs.append(action.bookID) }
-                    return self?.borrowSucceeds ?? false
+                    return self?.borrowSucceeds == true ? .confirmed : .failed
                 },
                 performHold: { [weak self] action in
                     self?.lock.withLock { self?.holdIDs.append(action.bookID) }
-                    return true
+                    return .confirmed
                 },
                 performCancelHold: { [weak self] action in
                     self?.lock.withLock { self?.cancelHoldIDs.append(action.bookID) }
-                    return true
+                    return .confirmed
                 })
         }
 
@@ -96,8 +96,8 @@ final class OfflineQueueCoordinatorTests: XCTestCase {
         let r1 = await coord.execute(a1)
         let r2 = await coord.execute(a2)
 
-        XCTAssertTrue(r1)
-        XCTAssertTrue(r2, "the deduped duplicate is reported as already-done")
+        XCTAssertEqual(r1, .confirmed)
+        XCTAssertEqual(r2, .confirmed, "the deduped duplicate is reported as already-done")
         XCTAssertEqual(spy.withLock { spy.returnIDs }, ["book-1"],
             "INV-8: the underlying return side effect runs exactly once")
     }
@@ -132,8 +132,8 @@ final class OfflineQueueCoordinatorTests: XCTestCase {
         let atA = await coord.execute(OfflineAction(type: .return, bookID: "x", bookTitle: "X", libraryID: "lib-A"))
         let atB = await coord.execute(OfflineAction(type: .return, bookID: "x", bookTitle: "X", libraryID: "lib-B"))
 
-        XCTAssertTrue(atA)
-        XCTAssertTrue(atB)
+        XCTAssertEqual(atA, .confirmed)
+        XCTAssertEqual(atB, .confirmed)
         XCTAssertEqual(spy.withLock { spy.returnIDs }, ["x", "x"],
             "each library's return runs; a completion at A is not a completion at B")
     }
@@ -159,8 +159,8 @@ final class OfflineQueueCoordinatorTests: XCTestCase {
         let r1 = await coord.execute(OfflineAction(type: .return, bookID: "f", bookTitle: "F"))
         let r2 = await coord.execute(OfflineAction(type: .return, bookID: "f", bookTitle: "F"))
 
-        XCTAssertFalse(r1)
-        XCTAssertFalse(r2)
+        XCTAssertEqual(r1, .failed)
+        XCTAssertEqual(r2, .failed)
         XCTAssertEqual(spy.withLock { spy.returnIDs }, ["f", "f"],
             "a genuine failure rolls back the dedupe key so the queue can retry")
     }
@@ -194,11 +194,11 @@ final class OfflineQueueCoordinatorTests: XCTestCase {
         let coord = coordinator(spy)
 
         let r1 = await coord.execute(OfflineAction(type: .borrow, bookID: "bfail", bookTitle: "B"))
-        XCTAssertFalse(r1, "an unconfirmed borrow must return false, not an optimistic true")
+        XCTAssertEqual(r1, .failed, "an unconfirmed borrow must report .failed, not an optimistic .confirmed")
 
         // Not deduped-as-done: a retry re-dispatches (the queue keeps it).
         let r2 = await coord.execute(OfflineAction(type: .borrow, bookID: "bfail", bookTitle: "B"))
-        XCTAssertFalse(r2)
+        XCTAssertEqual(r2, .failed)
         XCTAssertEqual(spy.withLock { spy.borrowIDs }, ["bfail", "bfail"],
             "a failed borrow is retryable, not silently dropped")
     }
@@ -282,7 +282,7 @@ final class OfflineQueueCoordinatorTests: XCTestCase {
         XCTAssertNotNil(executor, "setExecutor must have been called")
 
         let ok = await executor?(OfflineAction(type: .borrow, bookID: "wired", bookTitle: "W"))
-        XCTAssertEqual(ok, true)
+        XCTAssertEqual(ok, .confirmed)
         XCTAssertEqual(spy.withLock { spy.borrowIDs }, ["wired"],
             "the installed executor dispatches through the coordinator to the handler")
     }
