@@ -118,6 +118,8 @@ struct DeveloperSettingsView: View {
     /// "Send Error Logs" is on the Advanced screen (PP-4788).
     @ViewBuilder private var developerToolsSection: some View {
         Section(header: Text("Developer Tools")) {
+            DevToggleRow(title: "Show Format and DRM on Covers",
+                         isOn: $viewModel.coverFormatAndDRMLabelsEnabled)
             DevDisclosureValueRow(title: "Email Audiobook Logs", value: "") {
                 present { viewModel.emailAudiobookLogs(from: $0) }
             }
