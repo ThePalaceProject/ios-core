@@ -20,6 +20,14 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     var window: UIWindow?
 
+    /// The only foreground sync: in this scene-based app UIKit does not call
+    /// `applicationDidBecomeActive`. The registry is resolved when a foreground
+    /// actually syncs, so creating the delegate never touches the container.
+    lazy var foregroundShelfSync = ForegroundShelfSync(sync: ForegroundShelfSync.registrySync(
+        registry: { AppContainer.production().bookRegistry },
+        updateBadge: { NotificationService.updateAppIconBadge(heldBooks: $0) }
+    ))
+
     func scene(
         _ scene: UIScene,
         willConnectTo session: UISceneSession,
@@ -92,7 +100,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func sceneWillEnterForeground(_ scene: UIScene) {
-        // Called as scene transitions from background to foreground
+        foregroundShelfSync.appWillEnterForeground()
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {

@@ -109,6 +109,9 @@ public extension TPPBookState {
         .init(from: .downloadNeeded, to: .SAMLStarted),
         .init(from: .downloadNeeded, to: .unregistered),
         .init(from: .downloadNeeded, to: .downloadFailed),
+        // A loan that is not downloaded yet becomes a hold again when the
+        // loans feed reports it as reserved or ready (sync merge, PP-5360).
+        .init(from: .downloadNeeded, to: .holding),
         // From .downloading
         .init(from: .downloading, to: .downloadSuccessful),
         .init(from: .downloading, to: .downloadFailed),
@@ -119,6 +122,8 @@ public extension TPPBookState {
         .init(from: .downloadFailed, to: .downloadNeeded),
         .init(from: .downloadFailed, to: .downloading),
         .init(from: .downloadFailed, to: .unregistered),
+        // Same sync-merge move for a loan whose download failed (PP-5360).
+        .init(from: .downloadFailed, to: .holding),
         // From .downloadSuccessful
         .init(from: .downloadSuccessful, to: .used),
         .init(from: .downloadSuccessful, to: .returning),
