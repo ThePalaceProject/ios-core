@@ -13,8 +13,10 @@ asked to run (optionally minus one), so every branch runs without a simulator.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
+import re
 import stat
 import subprocess
 import textwrap
@@ -169,6 +171,14 @@ XCODEBUILD = textwrap.dedent("""\
 
 XCRUN = textwrap.dedent("""\
     #!/bin/bash
+    if [ "$1 $2" = "simctl bootstatus" ]; then
+      echo "$*" >> "$STUB_LOG.simctl"
+      # STUB_BOOTSTATUS=fail: the template does not report a booted device.
+      # =hang: it never returns, so only the bounded wait around it can end it.
+      [ "${STUB_BOOTSTATUS:-}" = "hang" ] && sleep 120
+      [ "${STUB_BOOTSTATUS:-}" = "fail" ] && exit 164
+      echo "All devices have finished booting."; exit 0
+    fi
     if [ "$1" = "simctl" ]; then
       echo "    iPhone 16 Pro (11111111-2222-3333-4444-555555555555) (Shutdown)"; exit 0
     fi
@@ -799,3 +809,142 @@ def test_a_second_chance_that_records_no_result_fails_even_without_a_failure_lin
     assert r.returncode == 1
     assert "did not run on the second chance" in r.stdout
     assert "Shard 0 passed" not in r.stdout
+
+
+# --------------------------------------------------------------------------
+# The step deadline: every recovery phase is skipped rather than overrun
+# --------------------------------------------------------------------------
+#
+# The shard budget interrupts one xcodebuild pass; the recovery phases after it
+# each add minutes, and together they outlasted the step's timeout-minutes. The
+# step was killed with shard-report.json unwritten, and the upload step then
+# failed for a missing file (if-no-files-found: error, run 38582762222). The
+# phase checks below keep the script inside SHARD_STEP_SECONDS; the trap in
+# cleanup() is the backstop for the exits that do not reach the normal report.
+
+NO_TIME = {"SHARD_STEP_SECONDS": "200", "SHARD_REPORT_RESERVE_SECONDS": "180"}
+
+
+def _report(tmp_path):
+    return json.loads((tmp_path / "out/shard-report.json").read_text())
+
+
+def test_phase_fits_is_a_floor_on_the_seconds_left():
+    spec = importlib.util.spec_from_file_location(
+        "ci_test_shards", REPO / "scripts" / "ci-test-shards.py")
+    shards = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(shards)
+    assert shards.phase_fits(now=1000.0, deadline=1500.0, needed=420) == (True, 500)
+    assert shards.phase_fits(now=1000.0, deadline=1500.0, needed=500) == (True, 500)
+    assert shards.phase_fits(now=1000.0, deadline=1500.0, needed=501) == (False, 500)
+    # Past the deadline the time left is negative, so nothing fits — not even a
+    # phase that claims to need no time at all.
+    assert shards.phase_fits(now=1600.0, deadline=1500.0, needed=0) == (False, -100)
+
+
+def test_the_step_deadline_matches_the_workflow_step_timeout():
+    """The script's default and the step's timeout-minutes are one number in two
+    files; a drift either overruns the step or wastes minutes of it."""
+    yaml = pytest.importorskip("yaml")
+    workflow = yaml.safe_load((REPO / ".github" / "workflows" / "unit-testing.yml").read_text())
+    step = next(s for s in workflow["jobs"]["test"]["steps"] if s.get("id") == "tests")
+    assert int(step["env"]["SHARD_STEP_SECONDS"]) == step["timeout-minutes"] * 60
+    default = re.search(r"SHARD_STEP_SECONDS:-(\d+)", RUNNER.read_text()).group(1)
+    assert int(default) == step["timeout-minutes"] * 60
+
+
+def test_a_relaunch_that_does_not_fit_is_skipped_and_the_shard_still_reports(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_HANG="PalaceTests/A", **NO_TIME)
+    assert r.returncode == 1
+    assert "Recovery phase skipped at the step deadline" in r.stdout
+    assert "the relaunch of the 1 class(es) the runner lost" in r.stdout
+    assert "Runner failure not recovered" in r.stdout
+    assert _report(tmp_path)["missing"] == ["PalaceTests/A"]
+    assert len((tmp_path / "xcodebuild.log").read_text().splitlines()) == 2, \
+        "the two original passes only; no relaunch pass"
+
+
+def test_a_relaunch_that_fits_still_runs(env):
+    """The control for the test above: the skip is the deadline's doing, not the
+    runner failure's."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_HANG="PalaceTests/A")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "Recovery phase skipped" not in r.stdout
+    assert "Runner failure recovered" in r.stdout
+
+
+def test_a_second_chance_that_does_not_fit_is_skipped_and_the_kill_fails_the_shard(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_KILL="PalaceTests/A", **NO_TIME)
+    assert r.returncode == 1
+    assert "the second chance for 1 allowance kill(s)" in r.stdout
+    assert "Second chance skipped" in r.stdout
+    assert "passed on the second chance" not in r.stdout
+    assert (tmp_path / "out/shard-report.json").exists()
+
+
+def test_a_crash_retry_that_does_not_fit_is_skipped_and_the_shard_still_reports(env):
+    """The crash paths exit before the normal report; cleanup() owes one anyway."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_CRASH="1", **NO_TIME)
+    assert r.returncode == 1
+    assert "the retry of the parallel pass after xcodebuild crashed" in r.stdout
+    assert "xcodebuild crashed with no time to retry" in r.stdout
+    assert "retrying the pass once" not in r.stdout
+    assert _report(tmp_path)["missing"] == ["PalaceTests/A", "PalaceTests/Iso",
+                                            "TenPrintCoverTests/T"]
+
+
+def test_a_crash_that_repeats_still_leaves_a_shard_report(env):
+    """The second crash exits 1 from inside run_pass, far from the report step."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_CRASH="2")
+    assert r.returncode == 1
+    assert "crashed again" in r.stdout
+    assert (tmp_path / "out/shard-report.json").exists()
+
+
+def test_a_test_failure_inside_the_deadline_is_not_excused_by_it(env):
+    """A skipped phase must not change what an ordinary failure reports: with no
+    time left a failing test still fails the shard, and nothing is called lost."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_FAIL="PalaceTests/A", **NO_TIME)
+    assert r.returncode == 1
+    assert "Recovery phase skipped" not in r.stdout
+    assert _report(tmp_path)["missing"] == []
+
+
+# --------------------------------------------------------------------------
+# Pre-booting the simulator template
+# --------------------------------------------------------------------------
+#
+# SIMULATOR_ID was chosen from `simctl list` and never booted, so xcodebuild
+# cold-booted each parallel clone itself with a 60 s allowance: "Failed to
+# prepare device 'Clone 2 of iPhone 16 Pro' for impending launch. (Underlying
+# Error: Timed out trying to boot simulator after waiting 60.00s.)"
+
+def _warm_calls(tmp_path):
+    p = tmp_path / "xcodebuild.log.simctl"
+    return p.read_text().splitlines() if p.exists() else []
+
+
+def test_the_simulator_template_is_booted_before_any_test_pass(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert _warm_calls(tmp_path) == \
+        ["simctl bootstatus 11111111-2222-3333-4444-555555555555 -b"], \
+        "the chosen template, warmed once, with -b so it boots rather than only reporting"
+    assert "is booted" in r.stdout
+
+
+@pytest.mark.parametrize("mode", ["fail", "hang"])
+def test_a_template_that_will_not_warm_does_not_fail_the_shard(env, mode):
+    """xcodebuild boots its own clones either way, so warming is best effort."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_BOOTSTATUS=mode, SIM_WARM_SECONDS="2")
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "Simulator warm-up did not finish" in r.stdout
+    assert _warm_calls(tmp_path), "it still tried"
