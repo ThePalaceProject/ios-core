@@ -3,8 +3,8 @@
 //  PalaceTests
 //
 //  PP-5285: the format and DRM labels drawn on covers when the Testing menu
-//  toggle is on. Values come from the last content type of each acquisition
-//  path, so the same title reads the same on every Palace client.
+//  toggle is on. Format comes from the last content type of each acquisition
+//  path; DRM from any type along the path, then the link's licensor.
 //
 
 import XCTest
@@ -35,13 +35,15 @@ final class CoverDebugLabelsTests: XCTestCase {
 
     private func acquisition(_ relation: TPPOPDSAcquisitionRelation,
                              _ type: String,
-                             _ indirect: [String] = []) -> TPPOPDSAcquisition {
+                             _ indirect: [String] = [],
+                             licensorVendor: String? = nil) -> TPPOPDSAcquisition {
         TPPOPDSAcquisition(
             relation: relation,
             type: type,
             hrefURL: URL(string: "https://example.com/acquire")!,
             indirectAcquisitions: indirect.isEmpty ? [] : [chain(indirect)],
-            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+            availability: TPPOPDSAcquisitionAvailabilityUnlimited(),
+            licensorVendor: licensorVendor
         )
     }
 
@@ -55,20 +57,21 @@ final class CoverDebugLabelsTests: XCTestCase {
 
     // MARK: - Mapping table
 
-    func testLabels_matchTheFinalContentTypeOfEachAcquisitionPath() {
+    func testLabels_mapEachAcquisitionShapeToFormatAndDRM() {
         let cases: [(name: String, acquisitions: [TPPOPDSAcquisition], format: String, drm: String)] = [
             ("open-access EPUB", [acquisition(.openAccess, ContentTypeEpubZip)], "epub", "none"),
-            ("LCP EPUB: the license is not the final type", [borrow(entry, [lcpLicense, ContentTypeEpubZip])], "epub", "none"),
+            ("LCP EPUB: the license sits before the EPUB", [borrow(entry, [lcpLicense, ContentTypeEpubZip])], "epub", "LCP"),
             ("LCP license as the final type", [borrow(entry, [lcpLicense])], "unknown", "LCP"),
             ("LCP audiobook", [borrow(entry, [lcpLicense, ContentTypeAudiobookLCP])], "audiobook", "LCP"),
-            ("Adobe EPUB: the ACSM is not the final type", [borrow(entry, [acsm, ContentTypeEpubZip])], "epub", "none"),
+            ("Adobe EPUB: the ACSM sits before the EPUB", [borrow(entry, [acsm, ContentTypeEpubZip])], "epub", "Adobe"),
+            ("LCP EPUB offered directly as the license", [borrow(lcpLicense, [ContentTypeEpubZip])], "epub", "LCP"),
             ("ACSM as the final type", [borrow(entry, [acsm])], "unknown", "Adobe"),
             ("Boundless license as the final type", [borrow(entry, [boundless])], "unknown", "Boundless"),
             ("Findaway audiobook", [borrow(entry, [findaway])], "audiobook", "Findaway"),
             ("OverDrive audiobook, parameter ignored", [borrow(entry, [ContentTypeBearerToken, overdriveAudio])], "audiobook", "Overdrive"),
-            ("Axis 360 EPUB", [borrow(entry, [axisNow])], "epub", "none"),
+            ("Boundless (AxisNow) EPUB", [borrow(entry, [axisNow])], "epub", "Boundless"),
             ("open-access PDF", [acquisition(.openAccess, ContentTypeOpenAccessPDF)], "pdf", "none"),
-            ("LCP PDF", [borrow(entry, [lcpLicense, ContentTypeReadiumLCPPDF])], "pdf", "none"),
+            ("LCP PDF", [borrow(entry, [lcpLicense, ContentTypeReadiumLCPPDF])], "pdf", "LCP"),
             ("MP3 audiobook", [acquisition(.openAccess, "audio/mpeg")], "audiobook", "none"),
             ("Feedbooks audiobook, profile ignored", [borrow(entry, [ContentTypeFeedbooksAudiobook])], "audiobook", "none"),
             ("unrecognised type", [acquisition(.openAccess, "text/html")], "unknown", "none"),
@@ -128,6 +131,30 @@ final class CoverDebugLabelsTests: XCTestCase {
         XCTAssertEqual(CoverDebugLabels.labels(for: [borrow(entry, [overdriveAudio]), borrow(entry, [findaway])]).drm, "Findaway")
     }
 
+    // MARK: - Licensor
+
+    func testDRM_withOnlyALicensor_namesTheVendor() {
+        let labels = CoverDebugLabels.labels(for: [
+            borrow(entry, [ContentTypeEpubZip]).withLicensor("OverDrive Inc."),
+        ])
+        XCTAssertEqual(labels.drm, "DRM:OverDrive Inc.")
+    }
+
+    func testDRM_aRecognisedSchemeOutranksTheLicensor() {
+        let labels = CoverDebugLabels.labels(for: [
+            borrow(entry, [acsm, ContentTypeEpubZip]).withLicensor("Adobe Vendor"),
+        ])
+        XCTAssertEqual(labels.drm, "Adobe")
+    }
+
+    func testDRM_aSampleLinksLicensorDoesNotLabelTheTitle() {
+        let labels = CoverDebugLabels.labels(for: [
+            acquisition(.sample, ContentTypeEpubZip, licensorVendor: "Sample Vendor"),
+            acquisition(.openAccess, ContentTypeEpubZip),
+        ])
+        XCTAssertEqual(labels.drm, "none")
+    }
+
     // MARK: - Sample and preview links
 
     func testSampleAndPreviewLinks_doNotDecideTheLabels() {
@@ -151,6 +178,14 @@ final class CoverDebugLabelsTests: XCTestCase {
         let acquisitions = [borrow(entry, [lcpLicense, ContentTypeAudiobookLCP])]
         XCTAssertEqual(CoverDebugLabels.overlay(for: acquisitions, enabled: true),
                        CoverDebugLabels(format: "audiobook", drm: "LCP"))
+    }
+}
+
+private extension TPPOPDSAcquisition {
+    func withLicensor(_ vendor: String) -> TPPOPDSAcquisition {
+        TPPOPDSAcquisition(relation: relation, type: type, hrefURL: hrefURL,
+                           indirectAcquisitions: indirectAcquisitions,
+                           availability: availability, licensorVendor: vendor)
     }
 }
 

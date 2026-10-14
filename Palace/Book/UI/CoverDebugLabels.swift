@@ -9,9 +9,10 @@
 import SwiftUI
 import PalaceCatalog
 
-/// The two labels for one title. Values are derived only from the final content
-/// type of each acquisition path, so they agree with the other Palace clients:
-/// an LCP or Adobe EPUB reads "epub"/"none", because its final type is the EPUB.
+/// The two labels for one title. Format comes from the final content type of
+/// each acquisition path. DRM comes from any type along the path, so an LCP or
+/// Adobe EPUB reads "LCP" or "Adobe" even though its final type is the EPUB;
+/// a link's licensor names the vendor when no known type does.
 struct CoverDebugLabels: Equatable {
     let format: String
     let drm: String
@@ -26,7 +27,8 @@ struct CoverDebugLabels: Equatable {
         let finalTypesPerAcquisition = acquisitions.map { finalTypes(of: $0) }
         return CoverDebugLabels(
             format: format(of: finalTypesPerAcquisition),
-            drm: drm(of: Set(finalTypesPerAcquisition.joined()))
+            drm: drm(of: Set(acquisitions.flatMap { allTypes(of: $0) }),
+                     licensorVendor: acquisitions.lazy.compactMap(\.licensorVendor).first)
         )
     }
 
@@ -61,14 +63,16 @@ struct CoverDebugLabels: Equatable {
 
     // MARK: - DRM
 
-    private static func drm(of types: Set<String>) -> String {
+    private static func drm(of types: Set<String>, licensorVendor: String?) -> String {
         func has(_ names: String...) -> Bool { names.contains(where: types.contains) }
 
         if has("application/vnd.readium.lcp.license.v1.0+json", "application/audiobook+lcp") { return "LCP" }
         if has("application/vnd.adobe.adept+xml") { return "Adobe" }
-        if has("application/vnd.thepalaceproject.baker-taylor.kdrm+json") { return "Boundless" }
+        if has("application/vnd.thepalaceproject.baker-taylor.kdrm+json",
+               "application/vnd.librarysimplified.axisnow+json") { return "Boundless" }
         if has("application/vnd.librarysimplified.findaway.license+json") { return "Findaway" }
         if has("application/vnd.overdrive.circulation.api+json") { return "Overdrive" }
+        if let licensorVendor { return "DRM:\(licensorVendor)" }
         return "none"
     }
 
@@ -85,6 +89,17 @@ struct CoverDebugLabels: Equatable {
             } else {
                 pending.append(contentsOf: node.indirectAcquisitions)
             }
+        }
+        return result
+    }
+
+    /// Every type on every path through the acquisition, without parameters.
+    private static func allTypes(of acquisition: TPPOPDSAcquisition) -> Set<String> {
+        var result: Set<String> = [baseType(acquisition.type)]
+        var pending = acquisition.indirectAcquisitions
+        while let node = pending.popLast() {
+            result.insert(baseType(node.type))
+            pending.append(contentsOf: node.indirectAcquisitions)
         }
         return result
     }
