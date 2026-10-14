@@ -503,12 +503,6 @@ final class BorrowOperation: @unchecked Sendable {
         let isAuthError: Bool = {
             if case .authentication = error { return true }
 
-            // A 401 surfacing as `.network(.unauthorized)` / `.forbidden`
-            // (an OPDS path can strip the problem doc) must route to reauth
-            // rather than a generic "Network request failed (912)" alert.
-            if case .network(.unauthorized) = error { return true }
-            if case .network(.forbidden) = error { return true }
-
             if let problemDoc = problemDocument {
                 if problemDoc.type == TPPProblemDocument.TypeInvalidCredentials { return true }
 
@@ -520,16 +514,30 @@ final class BorrowOperation: @unchecked Sendable {
                 if problemDoc.type == TPPProblemDocument.TypeNoActiveLoan,
                    authDef?.isBrowserBased == true,
                    hasCredentials {
-                    Log.info(#file, "Browser-based auth (SAML/OIDC/OAuth): 'no-active-loan' with active credentials — treating as auth error (PP-3716; swarm_66819d80 broadened from SAML+OIDC to include OAuth-intermediary)")
+                    Log.info(#file, "Browser-based auth (SAML/OIDC/OAuth): 'no-active-loan' with active credentials — treating as auth error (PP-3716)")
                     return true
                 }
+
+                // The server explained the failure and it is not about
+                // credentials (a loan limit arrives as 403 with this
+                // document). Re-authenticating cannot fix it (PP-5359).
+                return false
             }
+
+            // A 401 surfacing as `.network(.unauthorized)` / `.forbidden`
+            // (an OPDS path can strip the problem doc) must route to reauth
+            // rather than a generic "Network request failed (912)" alert.
+            if case .network(.unauthorized) = error { return true }
+            if case .network(.forbidden) = error { return true }
 
             if let nsError = originalError as NSError?, nsError.code == TPPErrorCode.invalidCredentials.rawValue {
                 return true
             }
 
-            return true
+            // Anything else (timeout, server error) is not a credentials
+            // problem; treating it as one marked valid accounts stale and,
+            // for browser sign-in, re-prompted on every retry (PP-5359).
+            return false
         }()
 
         guard isAuthError else { return .showGenericError }
@@ -568,7 +576,8 @@ final class BorrowOperation: @unchecked Sendable {
                 let oidcSuccess = await attemptOIDCReauth()
                 if oidcSuccess {
                     Log.info(#file, "OIDC silent re-auth succeeded, retrying borrow for '\(book.title)'")
-                    Self.clearBorrowReauthAttempted(for: book.identifier)
+                    // The breaker stays armed for the retry; a successful
+                    // borrow clears it (PP-5359).
                     Task { [weak self] in
                         do {
                             _ = try await self?.borrowAsync(book, attemptDownload: attemptDownload)
@@ -626,7 +635,7 @@ final class BorrowOperation: @unchecked Sendable {
                     }
 
                     Log.info(#file, "Sign-in completed, retrying borrow for '\(book.title)'")
-                    Self.clearBorrowReauthAttempted(for: book.identifier)
+                    // Breaker stays armed for the retry (PP-5359).
 
                     Task { [weak self] in
                         do {
@@ -722,13 +731,14 @@ final class BorrowOperation: @unchecked Sendable {
                 return
             }
             Log.info(#file, "\(authLabel) coordinator refresh succeeded, retrying borrow for '\(book.title)'")
-            Self.clearBorrowReauthAttempted(for: book.identifier)
-            Task { [weak self] in
-                do {
-                    _ = try await self?.borrowAsync(book, attemptDownload: attemptDownload)
-                } catch {
-                    Log.error(#file, "Retry borrow failed after \(authLabel) coordinator refresh: \(error.localizedDescription)")
-                }
+            // Retry once with the breaker still armed: if the retry fails
+            // again it shows an error instead of signing in again. Clearing it
+            // here let an identity provider with a live session re-prompt and
+            // retry without end (PP-5359). A successful borrow clears it.
+            do {
+                _ = try await self.borrowAsync(book, attemptDownload: attemptDownload)
+            } catch {
+                Log.error(#file, "Retry borrow failed after \(authLabel) coordinator refresh: \(error.localizedDescription)")
             }
         case .failure(let cancellation):
             Log.info(#file, "\(authLabel) coordinator declined refresh for '\(book.title)' — \(cancellation)")
@@ -769,8 +779,7 @@ final class BorrowOperation: @unchecked Sendable {
                 }
 
                 Log.info(#file, "\(authLabel) re-auth completed, retrying borrow for '\(book.title)'")
-                Self.clearBorrowReauthAttempted(for: book.identifier)
-
+                // Breaker stays armed for the retry (PP-5359).
                 Task { [weak self] in
                     do {
                         _ = try await self?.borrowAsync(book, attemptDownload: attemptDownload)
