@@ -971,8 +971,12 @@ final class TokenRefreshIntegrationTests: XCTestCase {
     func testExecuteTokenRefresh_EmptyUsername_NeverHitsNetwork() async {
         let executor = makeExecutor()
         var networkCallMade = false
+        // Per-test URL, matched exactly: the stub handlers are process-wide, so a
+        // catch-all would count a request left over from another test class.
+        let tokenURL = URL(string: "https://example.com/\(UUID().uuidString)/token")!
 
-        HTTPStubURLProtocol.register { _ in
+        HTTPStubURLProtocol.register { request in
+            guard request.url == tokenURL else { return nil }
             networkCallMade = true
             return HTTPStubURLProtocol.StubbedResponse(statusCode: 200, headers: nil, body: Data())
         }
@@ -982,7 +986,6 @@ final class TokenRefreshIntegrationTests: XCTestCase {
         // instant the guard rejects — no wall-clock deadline to starve. By the
         // time the continuation returns, the guard has run, so networkCallMade
         // reflects the final decision.
-        let tokenURL = URL(string: "https://example.com/token")!
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             executor.executeTokenRefresh(
                 username: "",

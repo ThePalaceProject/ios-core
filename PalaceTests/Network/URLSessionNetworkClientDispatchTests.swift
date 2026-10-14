@@ -16,8 +16,11 @@ import PalaceNetwork
 @MainActor
 final class URLSessionNetworkClientDispatchTests: XCTestCase {
 
-    private let apiURL = URL(string: "https://api.example.com/resource")!
-    private let tokenURL = URLSessionNetworkClientFixture.tokenURL
+    /// Per-test path segment: `ScriptedURLProtocol` is process-wide, so a request
+    /// left over from another test class must not reach or be counted by this one.
+    private let runID = UUID().uuidString
+    private lazy var apiURL = URL(string: "https://api.example.com/\(runID)/resource")!
+    private lazy var tokenURL = URL(string: "https://token.example.com/\(runID)/oauth/token")!
     private let allMethods: [HTTPMethod] = [.GET, .HEAD, .POST, .PUT, .PATCH, .DELETE]
 
     override func setUp() async throws {
@@ -45,7 +48,7 @@ final class URLSessionNetworkClientDispatchTests: XCTestCase {
         ]
         for method in allMethods {
             ScriptedURLProtocol.reset()
-            let fixture = URLSessionNetworkClientFixture(tokenExpiresIn: 3600,
+            let fixture = URLSessionNetworkClientFixture(tokenURL: tokenURL, tokenExpiresIn: 3600,
                                                          requestCachePolicy: .reloadIgnoringLocalCacheData)
             ScriptedURLProtocol.route(apiURL, .respond(status: 200, headers: nil, body: Data()))
 
@@ -63,7 +66,7 @@ final class URLSessionNetworkClientDispatchTests: XCTestCase {
         let refreshes: Set<HTTPMethod> = [.GET, .HEAD, .POST, .PUT]
         for method in allMethods {
             ScriptedURLProtocol.reset()
-            let fixture = URLSessionNetworkClientFixture(tokenExpiresIn: 60)
+            let fixture = URLSessionNetworkClientFixture(tokenURL: tokenURL, tokenExpiresIn: 60)
             ScriptedURLProtocol.route(tokenURL, .respond(status: 200, headers: nil,
                                                          body: URLSessionNetworkClientFixture.tokenJSON("refreshed")))
             ScriptedURLProtocol.route(apiURL, .respond(status: 200, headers: nil, body: Data()))
@@ -84,7 +87,7 @@ final class URLSessionNetworkClientDispatchTests: XCTestCase {
     func testSend_nonPatchMethods_sendTheCurrentAccountBearerAndCallerHeaders() async throws {
         for method in allMethods where method != .PATCH {
             ScriptedURLProtocol.reset()
-            let fixture = URLSessionNetworkClientFixture(tokenExpiresIn: 3600, token: "token-A")
+            let fixture = URLSessionNetworkClientFixture(tokenURL: tokenURL, tokenExpiresIn: 3600, token: "token-A")
             ScriptedURLProtocol.route(apiURL, .respond(status: 200, headers: nil, body: Data()))
 
             _ = try await send(fixture.client, method, headers: ["X-Caller": "yes"])
@@ -98,7 +101,7 @@ final class URLSessionNetworkClientDispatchTests: XCTestCase {
     /// PATCH replaces any caller Authorization with the legacy class-level
     /// bearer, as `addBearerAndExecute` did.
     func testSend_patch_replacesTheCallerAuthorizationWithTheLegacyBearer() async throws {
-        let fixture = URLSessionNetworkClientFixture(tokenExpiresIn: 3600, token: "token-A")
+        let fixture = URLSessionNetworkClientFixture(tokenURL: tokenURL, tokenExpiresIn: 3600, token: "token-A")
         ScriptedURLProtocol.route(apiURL, .respond(status: 200, headers: nil, body: Data()))
         let legacy = TPPNetworkExecutor.bearerAuthorized(request: URLRequest(url: apiURL))
             .value(forHTTPHeaderField: "Authorization") ?? ""
@@ -116,7 +119,7 @@ final class URLSessionNetworkClientDispatchTests: XCTestCase {
     func testSend_success_returnsBodyStatusAndHeadersForEveryMethod() async throws {
         for method in allMethods {
             ScriptedURLProtocol.reset()
-            let fixture = URLSessionNetworkClientFixture(tokenExpiresIn: 3600)
+            let fixture = URLSessionNetworkClientFixture(tokenURL: tokenURL, tokenExpiresIn: 3600)
             ScriptedURLProtocol.route(apiURL, .respond(status: 201,
                                                        headers: ["Content-Type": "application/opds+json"],
                                                        body: Data("payload".utf8)))
@@ -137,7 +140,7 @@ final class URLSessionNetworkClientDispatchTests: XCTestCase {
         """.utf8)
         for method in allMethods {
             ScriptedURLProtocol.reset()
-            let fixture = URLSessionNetworkClientFixture(tokenExpiresIn: 3600)
+            let fixture = URLSessionNetworkClientFixture(tokenURL: tokenURL, tokenExpiresIn: 3600)
             ScriptedURLProtocol.route(apiURL, .respond(status: 403, headers: nil, body: problem))
 
             do {
@@ -154,7 +157,7 @@ final class URLSessionNetworkClientDispatchTests: XCTestCase {
     func testSend_errorWithEmptyBody_throwsTheResponseFailError() async {
         for method in allMethods {
             ScriptedURLProtocol.reset()
-            let fixture = URLSessionNetworkClientFixture(tokenExpiresIn: 3600)
+            let fixture = URLSessionNetworkClientFixture(tokenURL: tokenURL, tokenExpiresIn: 3600)
             ScriptedURLProtocol.route(apiURL, .respond(status: 500, headers: nil, body: nil))
 
             do {
@@ -172,9 +175,10 @@ final class URLSessionNetworkClientDispatchTests: XCTestCase {
     /// `send` names no account, so the current account's credentials and token
     /// state apply, not another library's.
     func testSend_usesTheCurrentAccountForBearerAndRefresh() async throws {
-        let fixture = URLSessionNetworkClientFixture(tokenExpiresIn: 3600)
-        let otherTokenURL = URL(string: "https://other.example.com/token")!
-        let current = URLSessionNetworkClientFixture.tokenUser(token: "token-current", expiresIn: 60)
+        let fixture = URLSessionNetworkClientFixture(tokenURL: tokenURL, tokenExpiresIn: 3600)
+        let otherTokenURL = URL(string: "https://other.example.com/\(runID)/token")!
+        let current = URLSessionNetworkClientFixture.tokenUser(token: "token-current", expiresIn: 60,
+                                                               tokenURL: tokenURL)
         let other = URLSessionNetworkClientFixture.tokenUser(token: "token-other", expiresIn: 60,
                                                              tokenURL: otherTokenURL)
         let currentId = fixture.accounts.currentAccountId
