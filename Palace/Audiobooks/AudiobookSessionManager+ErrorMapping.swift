@@ -28,11 +28,23 @@ extension AudiobookSessionManager {
         case .networkUnavailable:
             return (Strings.Error.networkUnavailableErrorTitle, error.localizedDescription)
         case .manifestLoadFailed, .playerCreationFailed, .alreadyLoading, .unknown:
-            // Loader failures → BookService.showAudiobookTryAgainError.
+            // Loader failures → AudiobookOpenFailureAlert.
             // Cold-load .unknown("Playback failed") → cold-load alert branch.
             // .alreadyLoading is a programmer-facing signal, not user-facing.
             return nil
         }
+    }
+
+    /// Presents the `phoneAlertContent` alert, if the error has one.
+    static func presentPhoneSideAlert(for error: AudiobookSessionError) {
+        guard let alertContent = phoneAlertContent(for: error) else { return }
+        let alert = TPPAlertUtils.alert(title: alertContent.title, message: alertContent.message)
+        TPPAlertUtils.presentFromViewControllerOrNil(
+            alertController: alert,
+            viewController: nil,
+            animated: true,
+            completion: nil
+        )
     }
 
     static func mapLoadError(_ error: AudiobookLoadError) -> AudiobookSessionError {

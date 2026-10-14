@@ -49,7 +49,7 @@ def _build_tree(tmp_path: Path) -> Path:
     (root / "Packages" / "Pkg" / "Sources").mkdir(parents=True, exist_ok=True)
 
     # counted: 2 real locator uses in an ordinary file
-    (root / "Book" / "BookService.swift").write_text(
+    (root / "Book" / "BookOpener.swift").write_text(
         "let am = AppContainer.production().accountsManager\n"
         "let br = AppContainer.production().bookRegistry\n"
         "let e = something // @Environment placeholder unrelated\n"

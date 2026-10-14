@@ -113,7 +113,9 @@ func makeTestAppContainer(
     accessibilityAnnouncements: accessibilityAnnouncer,
     downloadAnnouncementService: downloadAnnouncementService,
     reachability: reachability,
-    authCoordinator: authCoordinator
+    authCoordinator: authCoordinator,
+    // Sign-out through a test container must not reach the app-wide offline queue.
+    offlineActionRemover: { _ in }
   )
 
   // PP-4957: force the LCP-audiobook-streaming flag OFF for the test download

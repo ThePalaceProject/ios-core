@@ -187,6 +187,19 @@ final class TokenRefreshRetryRequestShapeTests: XCTestCase {
         assertSameRequestWithFreshBearer(retry, method: "PUT", body: body)
     }
 
+    /// PATCH reaches this path even though the executor has no PATCH entry
+    /// point. `URLSessionNetworkClient` emulates one by setting the method and
+    /// calling `addBearerAndExecute`, whose `enableTokenRefresh: false` only
+    /// suppresses the *proactive* near-expiry refresh. DELETE is the
+    /// responder's only method-based decline; it also declines without stored
+    /// credentials, on a foreign-host 401, and for browser auth either way, so
+    /// SAML and OIDC never reach the rebuild at all. A token-auth library's
+    /// 401 on a PATCH does. Checklist §7 carries the full list.
+    func testRetryAfterRefresh_PATCH_KeepsMethodBodyAndHeadersWithFreshBearer() async throws {
+        let retry = try await retryAfterRefresh(of: callerRequest(method: "PATCH", body: body))
+        assertSameRequestWithFreshBearer(retry, method: "PATCH", body: body)
+    }
+
     // The responder does not refresh on a DELETE 401, so production never retries one; kept to pin the rebuild.
     func testRetryAfterRefresh_DELETE_KeepsMethodAndHeadersWithFreshBearer() async throws {
         let retry = try await retryAfterRefresh(of: callerRequest(method: "DELETE", body: nil))

@@ -389,7 +389,7 @@ private final class RedirectCompletionBox: @unchecked Sendable {
         directoryProvider: ((String?) -> URL?)? = nil,
         // Routes 401/403 handling through PalaceAuth's coordinator. nil falls
         // back to the reauthenticator path.
-        authCoordinator: AuthCoordinator? = nil
+        authCoordinator: AuthCoordinator? = nil, offlineActionRemover: @escaping @Sendable (String) -> Void = OfflineQueueService.productionRemoveActions
     ) {
         self.injectedUserAccount = userAccount
         self.bookRegistry = bookRegistry
@@ -658,7 +658,7 @@ private final class RedirectCompletionBox: @unchecked Sendable {
             stateManager: stateManager,
             bookFileManager: self.bookFileManager,
             progressReporter: reporter,
-            localContentService: self.localContentService
+            localContentService: self.localContentService, offlineActionRemover: offlineActionRemover
         )
         #if FEATURE_OVERDRIVE
         self.overdriveDownloadHandler = OverdriveDownloadHandler(

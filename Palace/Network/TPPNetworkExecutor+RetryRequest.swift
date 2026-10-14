@@ -2,7 +2,8 @@
 //  TPPNetworkExecutor+RetryRequest.swift
 //  Palace
 //
-//  Building and failing the request resent after a token refresh.
+//  Building the request sent after a token refresh, and failing a retry
+//  that cannot be resent.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -33,24 +34,76 @@ extension TPPNetworkExecutor {
         if original.httpBody == nil, original.httpBodyStream != nil {
             return nil
         }
-        var retry = original
-        retry.setValue(snapshot.authToken.map { "Bearer \($0)" }, forHTTPHeaderField: "Authorization")
-        return retry
+        return replacingBearer(in: original, with: snapshot)
     }
 
-    /// Fails a queued retry that `retryRequest` could not rebuild. Delivered on
-    /// the session's delegate queue, where the responder delivers every other
-    /// task completion.
+    /// `request` re-authorized with the token `accountId` holds now; nil
+    /// resolves the selected library. A proactive refresh runs after its
+    /// request was built, so the request still carries the token the refresh
+    /// replaced. A request the caller sent without a bearer is returned as is.
+    func withCurrentBearer(_ request: URLRequest, accountId: String?) -> URLRequest {
+        guard request.value(forHTTPHeaderField: "Authorization")?.hasPrefix("Bearer ") == true else {
+            return request
+        }
+        let resolvedId = accountId ?? accountsManager.currentAccountId ?? ""
+        return Self.replacingBearer(in: request,
+                                    with: accountsManager.userAccount(for: resolvedId).credentialSnapshot())
+    }
+
+    /// `request` with its bearer set to `snapshot`'s token, or removed when
+    /// the snapshot has none. Method, body and other headers are kept.
+    private static func replacingBearer(in request: URLRequest,
+                                        with snapshot: TPPUserAccount.CredentialSnapshot) -> URLRequest {
+        var request = request
+        request.setValue(snapshot.authToken.map { "Bearer \($0)" }, forHTTPHeaderField: "Authorization")
+        return request
+    }
+
+    /// Fails a queued retry that `retryRequest` could not rebuild.
     fileprivate func failUnresendableRetry(_ oldTask: URLSessionTask, url retryURL: URL?) {
         let host = retryURL?.host ?? "unknown-host"
         Log.error(#file, "Token-refresh retry not sent: stream body consumed (host: \(host))")
+        let message = "The request body could not be resent after a token refresh"
+        failQueuedRetry(oldTask, error: NSError(domain: TPPErrorLogger.clientDomain,
+                                                code: TPPErrorCode.responseFail.rawValue,
+                                                userInfo: [NSLocalizedDescriptionKey: message]))
+    }
+
+    /// A data task on this executor's session, marked as sent on it.
+    func makeSessionDataTask(with request: URLRequest) -> URLSessionDataTask {
+        let task = transport.urlSession.dataTask(with: request)
+        markSentOnOwnSession(task)
+        return task
+    }
+
+    func markSentOnOwnSession(_ task: URLSessionTask) {
+        TaskProvenance.set(sessionTaskTag, forKey: TaskProvenance.sessionKey, on: task)
+    }
+
+    /// Whether `task` was created on this executor's session. The responder
+    /// keys completions by `taskIdentifier`, which is unique only within one
+    /// URLSession, so a background download task handed to a refresh can carry
+    /// the identifier of a live request here.
+    func sentOnOwnSession(_ task: URLSessionTask) -> Bool {
+        TaskProvenance.value(forKey: TaskProvenance.sessionKey, of: task) == sessionTaskTag
+    }
+
+    /// Completes the caller of a request that was waiting on a token refresh
+    /// and will not be resent, with `error` and the response that started the
+    /// refresh. The task has already finished at the URLSession level, so
+    /// cancelling it delivers nothing; the responder's stored completion has to
+    /// be called directly. Delivered on the session's delegate queue, where the
+    /// responder delivers every other task completion. Another session's task
+    /// is only cancelled; its completion is not stored here.
+    func failQueuedRetry(_ oldTask: URLSessionTask, error: NSError) {
+        guard sentOnOwnSession(oldTask) else {
+            oldTask.cancel()
+            return
+        }
         let responder = self.responder
         transport.urlSession.delegateQueue.addOperation {
-            let message = "The request body could not be resent after a token refresh"
-            let error = NSError(domain: TPPErrorLogger.clientDomain,
-                                code: TPPErrorCode.responseFail.rawValue,
-                                userInfo: [NSLocalizedDescriptionKey: message])
-            responder.failRetry(taskID: oldTask.taskIdentifier, url: retryURL, error: error)
+            responder.failRetry(taskID: oldTask.taskIdentifier, url: oldTask.originalRequest?.url,
+                                error: error, response: oldTask.response)
             oldTask.cancel()
         }
     }

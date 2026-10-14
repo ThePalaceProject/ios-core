@@ -46,7 +46,7 @@ ceiling gate's own code-line counter:
 | file | before | after |
 |---|---|---|
 | `BookDetailViewModel.swift` | 971 | **867** |
-| `BookService.swift` | 167 | **97** |
+| `BookService.swift` (retired 2026-10-12, see below) | 167 | **97** |
 | `BookOpenRouter.swift` (new, AppInfrastructure) | — | 101 |
 | `BookMetadataService.swift` (new) | — | 58 |
 | `RelatedBooksService.swift` (new) | — | 54 |
@@ -57,13 +57,20 @@ across all of `Palace/Book/` now returns **zero**. Format routing lives in
 `BookOpenRouter` in the Application layer, which is where a component that knows
 every reader belongs.
 
-**`BookService` was deliberately not dissolved.** It keeps
-`showAudiobookTryAgainError` and `fetchManifestWithBearerToken` — audiobook-domain
-helpers with their own consumers (`AudiobookSessionManager`, `Adapters+Production`)
-whose wave is 6, not 5 — and its `open` forwards with an unchanged signature, which
-is what buys the zero-existing-tests-modified property §5 requires. Retire the
-forwarder when Wave 6 relocates those two helpers, or it becomes a permanent
-one-line indirection.
+**`BookService` is retired (2026-10-12).** Wave 5 left it two audiobook-domain
+helpers and an `open` forwarder. The helpers moved to the audiobook layer: the
+open-failure alert is `AudiobookOpenFailureAlert` (`Palace/Audiobooks/`), which
+`AudiobookSessionManager` receives as an injected closure and whose Retry reopens
+through `BookOpenRouter` with the manager's registry, and the second-leg
+bearer-token manifest fetch is owned by `ProductionBearerTokenManifestFetcher`
+(`Palace/Audiobooks/Vendors/Adapters+Production.swift`). Moving those helpers met the
+forwarder's removal condition, so `BookDetailViewModel` and `BookCellModel` now
+call `BookOpenRouter.open` with the registry they were built with, the router's
+audiobook tests are `BookOpenRouterAudiobookOpenTests`, and the file is deleted.
+In production both registries are the AppContainer's, so the open resolves the same
+book as before; a test that injects a registry now gets its open resolved through
+that registry, which `BookDetailOpenRoutingTests` and
+`BookCellModelAudiobookOpenTests` pin.
 
 **Cycle 7's navigation inversion is NOT done, and is deferred to Wave 7.** §6 risk 7
 already concedes this cycle ends gate-enforced rather than compiler-enforced while
@@ -271,7 +278,7 @@ Clusters are read from the files' own `// MARK:` structure (verified against sou
 | Metadata hydration (521–590) + Related books / series row (21–43, 591–683) | fetch full OPDS entry, related-works lanes | `BookMetadataService` + `RelatedBooksService` → app-target **Domain-in-transit**, backed by **PalaceCatalog**'s repository (candidate to fold into PalaceCatalog once TPPBook lives in PalaceBookModel) |
 | Button actions + Download/Return/Cancel (684–802, 894–948) | dispatch to downloadCenter/borrow | **Shell** (thin dispatch through injected `MyBooksDownloadCenterProtocol`) |
 | Authentication helper (803–893) | reauth-then-retry glue | delete in place — route through **PalaceAuth**'s `AuthCoordinator` (this is exactly what AuthCoordinator was built for; the VM-local copy is pre-coordinator legacy) |
-| Reading + Audiobook opening + Streaming HTML reader PP-4161 (949–1118) | open EPUB/PDF/audio/streaming | `BookOpenRouter` (app-target Application service; `BookService.swift` already holds the format-routing seam — consolidate there, see cycle 8). **DONE 2026-09-29 (Wave 5)** |
+| Reading + Audiobook opening + Streaming HTML reader PP-4161 (949–1118) | open EPUB/PDF/audio/streaming | `BookOpenRouter` (app-target Application service; the format routing that `BookService.swift` used to hold was consolidated there, see cycle 8). **DONE 2026-09-29 (Wave 5)** |
 | Samples (1119–1176) | sample playback | **Shell** dispatch to existing `SamplePreviewManager` (AppContainer seam exists) |
 | Error alerts (1177–…) + LCP streaming ext | present errors | **Shell** |
 
@@ -316,7 +323,7 @@ Each row names the *verified* code behind both directions (grepped this session)
 | 5 | **Accounts↔Settings** | `AccountsManager` stores `private let settings: TPPSettings` | `Palace/Settings/` UI (`AccountDetailViewModel`, `AdvancedSettingsView`, `TPPSettings+SE`) reads `AccountsManager`/`TPPUserAccount` | Split the Settings folder by layer: `TPPSettings` (pure prefs store) → **PalacePreferences** (Layer 0); Settings *screens* are Presentation and legitimately depend on PalaceAccounts one-way. The cycle existed only because store and screens shared a folder. (`TPPSettings+SE`'s hardcoded `AccountsManager.TPPAccountUUIDs` constant moves to PalaceAccounts as data) |
 | 6 | **Settings↔Audiobooks** | `AudiobookSessionManager` stores `private let settings: TPPSettings` | `DeveloperSettingsViewModel.emailAudiobookLogs` + `AudiobookMailComposeDelegate` (dev tooling — the only Settings→Audiobooks reach) | Same PalacePreferences split kills the down-edge's folder-coupling; the dev-tools log-email consumes a `LogArchiveExporting` protocol (declared in **PalaceLogging**, implemented by the audiobook stack) instead of importing audiobook types. Thinnest cycle of the nine |
 | 7 | **Book↔CatalogUI** | `CatalogState`/`CatalogSortService` operate on `[TPPBook]` | `BookDetailView` constructs `CatalogLaneMoreView` (series carousel / related lanes NavigationLinks) | `TPPBook` → **PalaceBookModel** makes CatalogUI→model a down-edge. The back-edge is Presentation-internal navigation: route via a destination-provider closure / `NavigationCoordinatorHub` (already an AppContainer member) instead of direct view construction. Both view folders stay app-target Presentation initially, so this one is gate-enforced (ledger) before it is compiler-enforced — flagged honestly |
-| 8 | **PDF↔Book** | `TPPPDFDocumentMetadata` uses `TPPBook` + `TPPBookRegistryProvider` (already protocol-typed) | `Palace/Book/.../BookService.swift` routes to PDF opening (`PDFDocument(url:)` path) | PDF→**PalaceBookModel**/**PalaceBookRegistry** is a clean down-edge (it already consumes the registry via protocol). The back-edge dies by *relocating* `BookService`'s format-routing to the Application layer (`BookOpenRouter`, §3a-4): a router that knows all readers is composition, not Book-domain code. **CLOSED 2026-09-29 (Wave 5)** — the PDF-routing grep across `Palace/Book/` returns zero |
+| 8 | **PDF↔Book** | `TPPPDFDocumentMetadata` uses `TPPBook` + `TPPBookRegistryProvider` (already protocol-typed) | Before Wave 5, `Palace/Book/.../BookService.swift` routed to PDF opening (`PDFDocument(url:)` path) | PDF→**PalaceBookModel**/**PalaceBookRegistry** is a clean down-edge (it already consumes the registry via protocol). The back-edge dies by *relocating* `BookService`'s format-routing to the Application layer (`BookOpenRouter`, §3a-4): a router that knows all readers is composition, not Book-domain code. **CLOSED 2026-09-29 (Wave 5)** — the PDF-routing grep across `Palace/Book/` returns zero |
 | 9 | **TriageBotUI↔Palace** | — | — | **False positive** (name-based inference; PalaceTriageBot is an SPM package that cannot import the app target). Action: Wave 0 annotates it in ledger config as a known-false-positive / adds a confidence field for name-inferred edges, so the trend gate doesn't count it. No code change |
 
 **Sanity check on completeness:** hubs named by the ledger = Accounts (cycles 1,2,4,5), Book (1,7,8), Settings (5,6), Audiobooks (6), Logging (3), Downloads (dissolved via PalaceDownloads even though it appears in longer paths, all of which thread the nine back-edges above). All 15 longer DFS cycles reuse these same back-edges, so dissolving the nine dissolves all 24.

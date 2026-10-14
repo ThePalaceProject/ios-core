@@ -439,17 +439,33 @@ private enum StorageKey: String {
 
     @objc(setAuthToken::::)
     func setAuthToken(_ token: String, barcode: String?, pin: String?, expirationDate: Date?) {
+        let written = TPPCredentials.token(authToken: token,
+                                           barcode: barcode,
+                                           pin: pin,
+                                           expirationDate: expirationDate)
         keychainTransaction.perform {
-            _credentials.write(.token(authToken: token, barcode: barcode, pin: pin, expirationDate: expirationDate))
-            // A fresh token is a successful auth signal. Flip authState to
-            // .loggedIn now so silent re-auth paths (TokenRefreshInterceptor
+            _credentials.write(written)
+            // A USABLE token is a successful auth signal. Flip authState to
+            // .loggedIn so silent re-auth paths (TokenRefreshInterceptor
             // OIDC/SAML refresh, OIDC callback handler) don't leave a
             // previously-set .credentialsStale flag persisted across launches.
             // Without this, the user is re-prompted to sign in on the next
             // cold start even though their token is valid — the responder's
             // self-heal block only fires when a subsequent 2xx response
             // happens to come back while this library is foregrounded.
-            _authState.write(.loggedIn)
+            //
+            // Conditional on the token not being expired ALREADY (PP-5318).
+            // Unconditionally, this claimed a healthy session for a dead
+            // token: it made the lapsed-token state unreachable, because
+            // marking credentials stale and then writing an expired token
+            // undid the marking, and it let a refresh that returns an expired
+            // token report itself signed in. A nil expirationDate is NOT
+            // expired — `isTokenExpired` treats it as non-expiring — which is
+            // what keeps OIDCReauth and TokenRefreshInterceptor, the two
+            // callers that pass nil, clearing the flag as before.
+            if !UserAccountAuthHelper.isTokenExpired(credentials: written) {
+                _authState.write(.loggedIn)
+            }
         }
         // Rotate the observable session identifier on successful sign-in.
         // Purely for test observation of session-fixation defense; not used

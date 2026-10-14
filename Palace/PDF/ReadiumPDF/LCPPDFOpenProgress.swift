@@ -51,7 +51,6 @@ final class LCPPDFOpenProgress: ObservableObject {
         /// `LCPPDFDiskExtract`). `bytesExtracted / totalExtractBytes` gives a
         /// real % for this phase.
         case extractingToDisk
-        case loadingFirstPage
     }
 
     @Published private(set) var phase: Phase = .idle

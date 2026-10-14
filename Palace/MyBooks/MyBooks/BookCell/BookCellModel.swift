@@ -78,6 +78,9 @@ class BookCellModel: ObservableObject {
     private let samplePreviewManager: SamplePreviewManager
     private let readerService: ReaderService
     private let reachability: Reachability
+    /// Nil in production, where `BookOpenRouter` uses the AppContainer session;
+    /// a test injects one to observe the audiobook open.
+    private let injectedAudiobookSession: AudiobookSessionManaging?
     private var isFetchingImage = false
     #if LCP
     private var didPrefetchLCPStreaming = false
@@ -175,7 +178,8 @@ class BookCellModel: ObservableObject {
         accountsManager: AccountsManager,
         samplePreviewManager: SamplePreviewManager,
         readerService: ReaderService,
-        reachability: Reachability = AppContainer.production().reachability
+        reachability: Reachability = AppContainer.production().reachability,
+        audiobookSession: AudiobookSessionManaging? = nil
     ) {
         self.book = book
         self.bookRegistry = bookRegistry
@@ -184,6 +188,7 @@ class BookCellModel: ObservableObject {
         self.samplePreviewManager = samplePreviewManager
         self.readerService = readerService
         self.reachability = reachability
+        self.injectedAudiobookSession = audiobookSession
         self.isLoading = bookRegistry.processing(forIdentifier: book.identifier)
         self.currentBookIdentifier = book.identifier
         self.imageCache = imageCache
@@ -775,14 +780,9 @@ extension BookCellModel {
     }
 
     private func openAudiobookFromCell() {
-        BookService.open(book) { [weak self] in
+        BookOpenRouter.open(book, bookRegistry: bookRegistry, audiobookSession: injectedAudiobookSession) { [weak self] in
             self?.isLoading = false
         }
-    }
-
-    private func presentAudiobookFrom(json: [String: Any], decryptor: DRMDecryptor?) {
-        BookService.open(book)
-        self.isLoading = false
     }
 
     private func licenseURL(forBookIdentifier identifier: String) -> URL? {

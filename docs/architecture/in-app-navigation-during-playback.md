@@ -112,7 +112,7 @@ SceneDelegate
                     └── .navigationDestination(for: AppRoute.self) {
                             case .audio(BookRoute):    AudiobookPlayerView  [tabBar hidden]
                             case .epub(BookRoute):     EPUBReaderView       [tabBar hidden]
-                            case .pdf(BookRoute):      ReadiumPDFReaderView [tabBar hidden]
+                            case .pdf(BookRoute):      TPPPDFReaderView     [tabBar hidden]
                             ...
                         }
                     .fullScreenCover(item: presentedEPUBSample)    ← EPUB sample modal

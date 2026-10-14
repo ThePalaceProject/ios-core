@@ -36,7 +36,8 @@ final class UserRetryTracker: @unchecked Sendable {
     /// Time interval after which retry counts reset (5 minutes)
     private let resetInterval: TimeInterval = 300
 
-    private init() {}
+    /// Production code shares `shared`; tests build an isolated instance.
+    init() {}
 
     /// Returns true if retry is allowed (under the limit), false if limit exceeded.
     func canRetry(operationId: String) -> Bool {

@@ -2,8 +2,8 @@ import UIKit
 import Combine
 import PalaceBookRegistry
 // `@preconcurrency`: ReadiumShared is not Sendable-audited upstream; its
-// `Publication`, `Link`, and `Locator` cross `await` boundaries into this
-// `@MainActor` type (TOC/positions loads, sync, locator conversion). Matches the
+// `Publication` and `Locator` cross `await` boundaries into this
+// `@MainActor` type (position sync, locator conversion). Matches the
 // established convention in `TPPBaseReaderViewController`, `ReaderModule`,
 // `TPPLastReadPositionSynchronizer`, etc. Honest ceiling until Readium annotates.
 @preconcurrency import ReadiumShared
@@ -51,7 +51,7 @@ final class ReaderService {
     private var redownloadTimeouts: [String: Task<Void, Never>] = [:]
 
     /// Generation counter per book id. Bumped every time `openPDF` starts a
-    /// new open and every time `releaseReadiumPDF` tears one down. The
+    /// new open and every time `releaseLCPPDFOpen` tears one down. The
     /// async `libraryService.openBook` completion captures the generation
     /// it was started under and bails out if it doesn't match — that's
     /// what prevents a stale callback from a back-and-forth re-entry
@@ -80,6 +80,29 @@ final class ReaderService {
     /// tab under a loading overlay that never resolves.
     private var openCoordinatorByBookId: [String: WeakCoordinator] = [:]
 
+    /// The disk extract each in-flight open is running, so a back-out can stop it
+    /// rather than leave it decrypting into the shared progress reporter.
+    private var extractTaskByBookId: [String: Task<Void, Never>] = [:]
+
+    /// Tells the patron an LCP-PDF open was aborted and logs it. `nil` uses the
+    /// UIKit alert and error log; tests substitute a recorder.
+    var abortedOpenReporter: ((TPPBook) -> Void)?
+
+    /// What the open's watchdog does after each sample.
+    enum WatchdogVerdict: Equatable {
+        /// The open is healthy so far.
+        case keepWatching
+        /// The open was superseded, or the progress reporter now tracks
+        /// another book, so this watchdog's samples no longer describe it.
+        case stop
+        /// The decrypt walk ran away; abort before the device runs out of memory.
+        case abort
+    }
+
+    /// Decrypted-block count above which an open is aborted. A healthy disk
+    /// extract peaks in the low tens of thousands.
+    static let runawayDecryptBlockLimit = 150_000
+
     @MainActor
     private func topPresenter() -> UIViewController? {
         guard let root = rootViewController() else {
@@ -91,23 +114,19 @@ final class ReaderService {
         return base
     }
 
-    /// Tears down all in-memory state for an LCP-protected PDF: drops the
-    /// `Publication` from the navigation coordinator and clears the
-    /// pending-open marker. The TOC + page-count snapshot is intentionally
-    /// preserved across this teardown so a re-open repopulates side panels
-    /// instantly.
+    /// Tears down the in-flight bookkeeping for an LCP-protected PDF open and
+    /// clears its pending-extract marker on the coordinator.
     @MainActor
-    func releaseReadiumPDF(forBookIdentifier identifier: String) {
+    func releaseLCPPDFOpen(forBookIdentifier identifier: String) {
         // Bump the generation so any in-flight openBook completion still
         // pending for this book id no-ops when it fires — otherwise an
         // exit-and-re-enter can land the OLD publication into the
         // coordinator after the NEW open already started.
         openGenerationByBookId[identifier, default: 0] += 1
         openInFlightBookIds.remove(identifier)
+        extractTaskByBookId.removeValue(forKey: identifier)?.cancel()
         // PP-5022 — tear down on the stack the open TARGETED when one was
-        // recorded; fall back to the visible stack for callers that never went
-        // through `openLCPPDF` (the reader view's own dismiss, where the two
-        // are the same object anyway).
+        // recorded; fall back to the visible stack when none is.
         let target = openCoordinatorByBookId[identifier]?.value
             ?? AppContainer.production().navigationCoordinatorHub.coordinator
         openCoordinatorByBookId.removeValue(forKey: identifier)
@@ -116,7 +135,7 @@ final class ReaderService {
         if LCPPDFOpenProgress.shared.bookIdentifier == identifier {
             LCPPDFOpenProgress.shared.finish()
         }
-        target?.removeReadiumPDF(forBookId: identifier)
+        target?.clearLCPPDFExtractPending(forBookId: identifier)
     }
 
     @MainActor
@@ -229,14 +248,11 @@ final class ReaderService {
             return
         }
 
-        if openInFlightBookIds.contains(book.identifier) {
+        guard let generation = beginLCPPDFOpen(for: book, on: coordinator) else {
             Log.info(#file, "[PERF] [LCP-PDF] open coalesced — already in flight for \(book.identifier)")
             onFinish?()
             return
         }
-        openInFlightBookIds.insert(book.identifier)
-        let generation = openGenerationByBookId[book.identifier, default: 0] + 1
-        openGenerationByBookId[book.identifier] = generation
 
         let openStartedAt = Date()
         Log.info(#file, "[PERF] [LCP-PDF] T0 open requested: \(book.title) (\(book.identifier)) gen=\(generation), residentMB=\(Self.residentMemoryMB())")
@@ -254,10 +270,6 @@ final class ReaderService {
             object: nil
         )
 
-        openCoordinatorByBookId[book.identifier] = WeakCoordinator(value: coordinator)
-        coordinator.store(book: book)
-        coordinator.markReadiumPDFPending(forBookId: book.identifier)
-        coordinator.push(.pdf(BookRoute(id: book.identifier)))
         Log.info(#file, "[PERF] [LCP-PDF] T1 route pushed (+\(Self.ms(since: openStartedAt))ms)")
         onFinish?()
 
@@ -268,7 +280,7 @@ final class ReaderService {
         if let accountId = AppContainer.production().accountsManager.currentAccountId,
            let cachedURL = LCPPDFDiskExtract.cachedURL(bookIdentifier: book.identifier, account: accountId) {
             Log.info(#file, "[PERF] [LCP-PDF] disk-extract cache hit — opening PDFKit directly: \(cachedURL.lastPathComponent)")
-            self.handOffExtractedPDF(at: cachedURL, for: book, openStartedAt: openStartedAt)
+            self.handOffExtractedPDF(at: cachedURL, for: book, generation: generation, openStartedAt: openStartedAt)
             return
         }
         #endif
@@ -280,18 +292,28 @@ final class ReaderService {
         // way above any healthy open and below the OOM ceiling.
         Task.detached(priority: .utility) { [weak self] in
             guard let self else { return }
-            while await LCPPDFOpenProgress.shared.phase != .idle {
+            let progress = LCPPDFOpenProgress.shared
+            while await progress.phase != .idle {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
                 let mb = Self.residentMemoryMB()
-                let blocks = await LCPPDFOpenProgress.shared.decryptedBlocks
-                let bytes = await LCPPDFOpenProgress.shared.bytesExtracted
-                let total = await LCPPDFOpenProgress.shared.totalExtractBytes
-                let phase = await LCPPDFOpenProgress.shared.phase
+                let blocks = await progress.decryptedBlocks
+                let bytes = await progress.bytesExtracted
+                let total = await progress.totalExtractBytes
+                let phase = await progress.phase
+                let trackedBook = await progress.bookIdentifier
                 Log.info(#file, "[PERF] [LCP-PDF] residentMB=\(mb) blocks=\(blocks) extracted=\(bytes)/\(total) phase=\(phase)")
 
-                if blocks > 150_000 {
+                switch await self.watchdogVerdict(forBookIdentifier: book.identifier,
+                                                  generation: generation,
+                                                  trackedBookIdentifier: trackedBook,
+                                                  decryptedBlocks: blocks) {
+                case .keepWatching:
+                    continue
+                case .stop:
+                    return
+                case .abort:
                     Log.error(#file, "[PERF] [LCP-PDF] abort: decrypt walk exceeded 150k blocks (\(blocks)) — aborting to avoid OOM")
-                    await self.abortRunawayOpen(for: book)
+                    await self.abortRunawayOpen(for: book, generation: generation)
                     return
                 }
             }
@@ -314,7 +336,7 @@ final class ReaderService {
                     #if LCP
                     guard let accountId = AppContainer.production().accountsManager.currentAccountId else {
                         Log.error(#file, "[PERF] [LCP-PDF] no current account — cannot resolve extract path")
-                        await self.abortRunawayOpen(for: book)
+                        self.abortRunawayOpen(for: book, generation: generation)
                         return
                     }
                     // Disk-extract on a background task — chunk writes
@@ -325,7 +347,7 @@ final class ReaderService {
                     // its job is to provide the decrypt context, and
                     // PDFKit owns the rendering surface from there.
                     let bookIdentifier = book.identifier
-                    Task.detached(priority: .userInitiated) {
+                    self.registerExtractTask(forBookIdentifier: bookIdentifier, Task.detached(priority: .userInitiated) {
                         do {
                             let extractStartedAt = Date()
                             let extractedURL = try await LCPPDFDiskExtract.extract(
@@ -335,30 +357,26 @@ final class ReaderService {
                             )
                             let extractMs = Self.ms(since: extractStartedAt)
                             await MainActor.run {
-                                // Stale-completion guard again — user
-                                // may have backed out during extract.
-                                guard !self.isSupersededOpen(forBookIdentifier: bookIdentifier, generation: generation) else {
-                                    Log.info(#file, "[PERF] [LCP-PDF] stale extract completion ignored for \(bookIdentifier)")
-                                    return
-                                }
                                 Log.info(#file, "[PERF] [LCP-PDF] T3 extracted+ready (+\(Self.ms(since: openStartedAt))ms total, extract=\(extractMs)ms)")
                                 // Readium publication's work is done (decrypt
                                 // context provided) — drop it; ARC frees it as
                                 // the enclosing closure's reference goes away.
-                                self.handOffExtractedPDF(at: extractedURL, for: book, openStartedAt: openStartedAt)
+                                self.handOffExtractedPDF(at: extractedURL, for: book, generation: generation, openStartedAt: openStartedAt)
                             }
                         } catch {
                             Log.error(#file, "[PERF] [LCP-PDF] extract failed: \(error)")
                             await MainActor.run {
-                                self.abortRunawayOpen(for: book)
+                                // Includes the cancellation a back-out causes;
+                                // that open is already superseded, so this no-ops.
+                                self.abortRunawayOpen(for: book, generation: generation)
                             }
                         }
-                    }
+                    })
                     #else
                     // Non-LCP build (open-source) — should never reach
                     // here because openPDF is only invoked for LCP books,
                     // but bail safely if it does.
-                    self.abortRunawayOpen(for: book)
+                    self.abortRunawayOpen(for: book, generation: generation)
                     #endif
                 }
             case .failure(let error):
@@ -374,13 +392,13 @@ final class ReaderService {
                     }
                     // Same ownership rule as `abortRunawayOpen`: this arm has the
                     // identical back-out-then-push window, so it must not pop
-                    // unconditionally either. Pop first — `removeReadiumPDF`
-                    // clears the flag that decides it.
+                    // unconditionally either. Pop first — clearing the pending
+                    // flag removes what decides it.
                     self.popRouteIfStillOwned(forBookIdentifier: book.identifier, on: coordinator)
                     self.openInFlightBookIds.remove(book.identifier)
                     self.openCoordinatorByBookId.removeValue(forKey: book.identifier)
                     self.presentOpenFailureAlert(for: error, book: book, isRetry: false)
-                    coordinator.removeReadiumPDF(forBookId: book.identifier)
+                    coordinator.clearLCPPDFExtractPending(forBookId: book.identifier)
                     LCPPDFOpenProgress.shared.finish()
                 }
             }
@@ -389,7 +407,7 @@ final class ReaderService {
 
     /// True when a completion belongs to an open that has since been superseded.
     ///
-    /// Every LCP-PDF open takes a generation number, and `releaseReadiumPDF`
+    /// Every LCP-PDF open takes a generation number, and `releaseLCPPDFOpen`
     /// bumps it on teardown. A completion that fires after a back-out-and-reopen
     /// therefore carries a stale generation, and acting on it would land the OLD
     /// open's publication — or the OLD open's cleanup — on top of the new one.
@@ -406,18 +424,20 @@ final class ReaderService {
     /// async. The patron can back out of the loading view (which restores the tab
     /// bar) and push something else on the same stack before the open finishes.
     /// An unconditional `path.removeLast()` at that point removes THEIR screen,
-    /// not ours. `isReadiumPDFPending` is the ownership question: it is set when
-    /// this open pushed the route and cleared when the route goes away.
+    /// not ours. `isLCPPDFExtractPending` is the ownership question: it is set when
+    /// this open pushes the route, and the coordinator clears it when that route
+    /// leaves the stack (`pushLCPPDFExtractRoute`), when the extract hands off, or
+    /// when the open is torn down.
     ///
     /// It is a PROXY, not a proof: `NavigationPath`'s elements cannot be read
     /// back, so there is no way to ask what is actually on top — the codebase
     /// answers the identical problem with a side flag elsewhere
     /// (`isTopRouteAudio` / `popIfTopRouteAudio`). The flag is ALSO cleared by
-    /// `markReadiumPDFFirstPageRendered`, so it goes false once page 1 renders
-    /// while the route is still on screen. Both callers here run strictly before
-    /// any render — the abort only fires while the open is still in progress, and
-    /// the failure arm precedes extraction — so the proxy holds for them. A
-    /// caller added after first-page render would silently decline to pop. That
+    /// the PDFKit handoff, so it goes false once the reader replaces the loading
+    /// view while the route is still on screen. Both callers here run strictly
+    /// before the handoff — the abort only fires while the open is still in
+    /// progress, and the failure arm precedes extraction — so the proxy holds for
+    /// them. A caller added after the handoff would silently decline to pop. That
     /// is the safe direction to be wrong in, but it is not "true exactly while
     /// the route is ours", so check this before adding a third caller.
     ///
@@ -428,7 +448,7 @@ final class ReaderService {
     func popRouteIfStillOwned(forBookIdentifier identifier: String,
                               on coordinator: NavigationCoordinator?) -> Bool {
         guard let coordinator,
-              coordinator.isReadiumPDFPending(for: BookRoute(id: identifier)),
+              coordinator.isLCPPDFExtractPending(for: BookRoute(id: identifier)),
               coordinator.path.count > 0 else {
             return false
         }
@@ -436,85 +456,63 @@ final class ReaderService {
         return true
     }
 
-    /// Stores the extracted on-disk PDF into the coordinator's plain-PDF
-    /// slot so `NavigationHostView` swaps the loading overlay out for
-    /// `TPPPDFReaderView` (PDFKit). Clears the pending flag, finishes
-    /// the progress reporter, and removes the in-flight bookkeeping.
-    @MainActor
-    private func handOffExtractedPDF(at url: URL, for book: TPPBook, openStartedAt: Date) {
-        let document = TPPPDFDocument(url: url)
-        let metadata = TPPPDFDocumentMetadata(with: book)
+    /// Takes out the in-flight bookkeeping for a new LCP-PDF open and pushes its
+    /// loading route onto `coordinator`. Returns the open's generation, or `nil`
+    /// when an open for this book is already in flight (a second tap coalesces).
+    ///
+    /// If the patron leaves the route before the extract completes, the
+    /// coordinator runs `releaseLCPPDFOpen`: the generation is bumped so the late
+    /// completion is ignored, and the book is no longer in flight, so a reopen
+    /// starts a new open instead of coalescing into the abandoned one.
+    @discardableResult
+    func beginLCPPDFOpen(for book: TPPBook, on coordinator: NavigationCoordinator) -> Int? {
+        let identifier = book.identifier
+        guard !openInFlightBookIds.contains(identifier) else { return nil }
+        openInFlightBookIds.insert(identifier)
+        let generation = openGenerationByBookId[identifier, default: 0] + 1
+        openGenerationByBookId[identifier] = generation
+        openCoordinatorByBookId[identifier] = WeakCoordinator(value: coordinator)
+        coordinator.store(book: book)
+        coordinator.pushLCPPDFExtractRoute(forBookId: identifier) { [weak self] in
+            self?.releaseLCPPDFOpen(forBookIdentifier: identifier)
+        }
+        return generation
+    }
+
+    /// Hands an extracted PDF to the stack the open targeted, so the route swaps
+    /// the loading view for `TPPPDFReaderView`, and removes the in-flight
+    /// bookkeeping. Returns `false` without building the content when the open
+    /// was superseded, for example by the patron backing out of the loading view.
+    @discardableResult
+    func completeLCPPDFOpen(forBookIdentifier identifier: String,
+                            generation: Int,
+                            content: () -> (TPPPDFDocument, TPPPDFDocumentMetadata)) -> Bool {
+        guard !isSupersededOpen(forBookIdentifier: identifier, generation: generation) else {
+            Log.info(#file, "[PERF] [LCP-PDF] stale extract completion ignored for \(identifier) (gen=\(generation))")
+            return false
+        }
+        let (document, metadata) = content()
         // The stack this open targeted — NOT whatever is visible now. See
         // `openCoordinatorByBookId`.
-        let coordinator = openCoordinatorByBookId[book.identifier]?.value
-        coordinator?.storePDF(document: document, metadata: metadata, forBookId: book.identifier)
-        coordinator?.removeReadiumPDF(forBookId: book.identifier)  // clears pending + drops any Readium publication leftovers
-        openCoordinatorByBookId.removeValue(forKey: book.identifier)
-        openInFlightBookIds.remove(book.identifier)
-        LCPPDFOpenProgress.shared.finish()
-        Log.info(#file, "[PERF] [LCP-PDF] T4 PDFKit handoff (+\(Self.ms(since: openStartedAt))ms total)")
+        let coordinator = openCoordinatorByBookId[identifier]?.value
+        coordinator?.completeLCPPDFExtract(document: document, metadata: metadata, forBookId: identifier)
+        openCoordinatorByBookId.removeValue(forKey: identifier)
+        openInFlightBookIds.remove(identifier)
+        extractTaskByBookId.removeValue(forKey: identifier)
+        let progress = LCPPDFOpenProgress.shared
+        if progress.bookIdentifier == identifier {
+            progress.finish()
+        }
+        return true
     }
 
-    /// Flattens a Readium publication's `[Link]` table of contents into a
-    /// `[TPPPDFLocation]` array, resolving each link's destination to a
-    /// 0-indexed page number via the publication's positions list.
-    /// Returns `[]` if either call fails — the chrome handles an empty
-    /// TOC gracefully (just no list items).
-    private static func loadTableOfContents(for publication: Publication) async -> [TPPPDFLocation] {
-        let tocResult = await publication.tableOfContents()
-        guard case .success(let links) = tocResult else {
-            return []
+    private func handOffExtractedPDF(at url: URL, for book: TPPBook, generation: Int, openStartedAt: Date) {
+        let handedOff = completeLCPPDFOpen(forBookIdentifier: book.identifier, generation: generation) {
+            (TPPPDFDocument(url: url), TPPPDFDocumentMetadata(with: book))
         }
-        let positionsResult = await publication.positions()
-        let positions: [Locator]
-        switch positionsResult {
-        case .success(let value): positions = value
-        case .failure: positions = []
+        if handedOff {
+            Log.info(#file, "[PERF] [LCP-PDF] T4 PDFKit handoff (+\(Self.ms(since: openStartedAt))ms total)")
         }
-        var out: [TPPPDFLocation] = []
-        flatten(links: links, level: 0, positions: positions, into: &out)
-        return out
-    }
-
-    private static func flatten(links: [ReadiumShared.Link],
-                                 level: Int,
-                                 positions: [Locator],
-                                 into result: inout [TPPPDFLocation]) {
-        for link in links {
-            let pageNumber = pageNumber(for: link, positions: positions)
-            result.append(
-                TPPPDFLocation(
-                    title: link.title,
-                    subtitle: nil,
-                    pageLabel: nil,
-                    pageNumber: pageNumber,
-                    level: level
-                )
-            )
-            if !link.children.isEmpty {
-                flatten(links: link.children, level: level + 1, positions: positions, into: &result)
-            }
-        }
-    }
-
-    /// Resolves a Readium `Link` to a 0-indexed page number. Falls back
-    /// to matching the link's href against the publication's positions
-    /// via stable string representation. Worst case: TOC entry jumps to
-    /// page 0.
-    private static func pageNumber(for link: ReadiumShared.Link, positions: [Locator]) -> Int {
-        let linkHrefDesc = String(describing: link.href)
-        if let matchIndex = positions.firstIndex(where: { String(describing: $0.href) == linkHrefDesc }) {
-            return matchIndex
-        }
-        return 0
-    }
-
-    private static func loadPageCount(for publication: Publication) async -> Int {
-        let result = await publication.positions()
-        if case .success(let value) = result {
-            return value.count
-        }
-        return 0
     }
 
     /// Milliseconds elapsed since the given timestamp. Used by the
@@ -526,27 +524,53 @@ final class ReaderService {
         Int(Date().timeIntervalSince(start) * 1000)
     }
 
-    /// Resident memory in MB, read from `mach_task_basic_info`. Used in
-    /// `[PERF] [LCP-PDF]` log lines to spot the open phase that pushes
-    /// the device over its jetsam ceiling — large LCP PDFs OOM'd on
-    /// device before we added the catalog pre-emptive clear, and the
-    /// log signal is what lets us tell whether the remaining pressure
-    /// is from PDFNavigator buffers, the decrypt cache, or something
-    /// upstream.
     /// Tears down an LCP-PDF open that's spiraling into OOM territory
     /// and surfaces a user-facing alert. Triggered by the periodic
     /// memory-log Task when the decrypt count crosses an absurd
     /// threshold — at that point the open is definitely not going to
     /// succeed and continuing risks a hard jetsam kill (worse UX than
     /// a clean alert).
+    ///
+    /// A no-op for a superseded open: every back-out cancels the extract, and
+    /// that cancellation arrives here.
     @MainActor
-    private func abortRunawayOpen(for book: TPPBook) {
-        // Pop BEFORE teardown: `releaseReadiumPDF` clears the pending flag that
+    func abortRunawayOpen(for book: TPPBook, generation: Int) {
+        guard !isSupersededOpen(forBookIdentifier: book.identifier, generation: generation) else { return }
+        // Pop BEFORE teardown: `releaseLCPPDFOpen` clears the pending flag that
         // answers "is this route still ours", and it drops the targeted-stack
-        // entry this needs to read.
+        // entry this needs to read. A pop runs the release through the
+        // coordinator's back-out, so release here only when it did not.
         popRouteIfStillOwned(forBookIdentifier: book.identifier,
                              on: openCoordinatorByBookId[book.identifier]?.value)
-        releaseReadiumPDF(forBookIdentifier: book.identifier)
+        if !isSupersededOpen(forBookIdentifier: book.identifier, generation: generation) {
+            releaseLCPPDFOpen(forBookIdentifier: book.identifier)
+        }
+        if let abortedOpenReporter {
+            abortedOpenReporter(book)
+        } else {
+            reportAbortedOpen(book)
+        }
+    }
+
+    /// Records the disk extract an open is running so `releaseLCPPDFOpen` can
+    /// cancel it.
+    func registerExtractTask(forBookIdentifier identifier: String, _ task: Task<Void, Never>) {
+        extractTaskByBookId[identifier] = task
+    }
+
+    /// The watchdog's decision for one sample of the shared progress reporter.
+    func watchdogVerdict(forBookIdentifier identifier: String,
+                         generation: Int,
+                         trackedBookIdentifier: String?,
+                         decryptedBlocks: Int) -> WatchdogVerdict {
+        guard !isSupersededOpen(forBookIdentifier: identifier, generation: generation),
+              trackedBookIdentifier == identifier else {
+            return .stop
+        }
+        return decryptedBlocks > Self.runawayDecryptBlockLimit ? .abort : .keepWatching
+    }
+
+    private func reportAbortedOpen(_ book: TPPBook) {
         guard let top = topPresenter() else { return }
         let alert = UIAlertController(
             title: NSLocalizedString("Unable to open book", comment: ""),
@@ -574,6 +598,9 @@ final class ReaderService {
         )
     }
 
+    /// Resident memory in MB, read from `mach_task_basic_info`. Used in
+    /// `[PERF] [LCP-PDF]` log lines to spot the open phase that pushes the
+    /// device over its jetsam ceiling.
     nonisolated static func residentMemoryMB() -> Int {
         var info = mach_task_basic_info()
         var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size / MemoryLayout<natural_t>.size)

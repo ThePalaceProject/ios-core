@@ -7,7 +7,8 @@
 //  defeat the decrypt cache and OOM on large PDFs, so we decrypt in one linear
 //  pass to a temp .pdf and hand it to PDFKit, which mmaps it.
 //
-//  Cache: <accountDir>/registry/lcp-pdf-extracts/<bookIdentifierSHA256>.pdf.
+//  Cache: <accountDir>/registry/lcp-pdf-extracts/<bookIdentifierSHA256>.pdf,
+//  written as a `.partial` beside it and renamed into place when complete.
 //  The LCP container is immutable for the loan, and `invalidate` runs on
 //  return. The extract sits in the app's private container under iOS data
 //  protection.
@@ -31,8 +32,9 @@ enum LCPPDFDiskExtract {
 
     /// Returns the cached extracted-PDF URL if a usable extract exists
     /// for this book. "Usable" means present on disk **and** parseable
-    /// as a PDF; a partial file from an aborted extract is deleted so the next
-    /// `extract` rebuilds it.
+    /// as a PDF; a file that fails the check is deleted so the next `extract`
+    /// rebuilds it. Extracts are renamed into place only once complete, so this
+    /// catches files from builds that wrote the cache path directly.
     ///
     /// Validation is a `%PDF-` magic-byte and minimum-size check rather than
     /// `PDFDocument(url:)`, which would parse the whole xref table of a large
@@ -111,65 +113,127 @@ enum LCPPDFDiskExtract {
         await LCPPDFOpenProgress.shared.setTotalExtractBytes(totalBytes ?? 0)
 
         Log.info(#file, "[PERF] [LCP-PDF] disk-extract begin: \(bookIdentifier) total=\(totalBytes ?? 0) bytes → \(destURL.lastPathComponent)")
-        let startedAt = Date()
-
-        FileManager.default.createFile(atPath: destURL.path, contents: nil)
-        guard let handle = try? FileHandle(forWritingTo: destURL) else {
-            throw ExtractError.writeFailed("could not open FileHandle for \(destURL.path)")
-        }
-        defer { try? handle.close() }
-
-        // 1MB chunks: enough to amortize the per-call decrypt overhead
-        // but small enough that peak transient memory stays bounded.
-        let chunkSize: UInt64 = 1024 * 1024
-        var offset: UInt64 = 0
 
         // If we don't know the total length we can't loop on ranges —
         // fall back to the stream(consume:) path for that case.
         guard let total = totalBytes, total > 0 else {
             Log.warn(#file, "[PERF] [LCP-PDF] no totalBytes — falling back to stream(consume:)")
-            let result = await resource.stream(range: nil) { chunk in
-                do { try handle.write(contentsOf: chunk) }
-                catch { Log.error(#file, "stream write failed: \(error.localizedDescription)") }
-                LCPPDFOpenProgress.shared.recordExtractedBytes(chunk.count)
-            }
-            switch result {
-            case .success:
-                return destURL
-            case .failure(let error):
-                try? FileManager.default.removeItem(at: destURL)
-                throw ExtractError.streamFailed(error.localizedDescription)
+            return try await writeFile(at: destURL) { handle in
+                let result = await resource.stream(range: nil) { chunk in
+                    guard !Task.isCancelled else { return }
+                    do { try handle.write(contentsOf: chunk) }
+                    catch { Log.error(#file, "stream write failed: \(error.localizedDescription)") }
+                    LCPPDFOpenProgress.shared.recordExtractedBytes(chunk.count)
+                }
+                if case .failure(let error) = result {
+                    throw ExtractError.streamFailed(error.localizedDescription)
+                }
             }
         }
 
-        while offset < total {
-            let end = min(offset + chunkSize, total)
-            let range = offset..<end
-            switch await resource.read(range: range) {
-            case .success(let chunk):
-                do { try handle.write(contentsOf: chunk) }
-                catch {
-                    try? FileManager.default.removeItem(at: destURL)
-                    throw ExtractError.writeFailed(error.localizedDescription)
+        return try await writeExtract(
+            to: destURL,
+            totalBytes: total,
+            read: { range in await resource.read(range: range) },
+            onChunk: { LCPPDFOpenProgress.shared.recordExtractedBytes($0) }
+        )
+    }
+
+    /// Writes `totalBytes` read in `chunkSize` ranges to `destURL` and returns it.
+    /// 1MB chunks amortize the per-call decrypt overhead while keeping peak
+    /// transient memory bounded.
+    static func writeExtract<Failure: Error>(
+        to destURL: URL,
+        totalBytes total: UInt64,
+        chunkSize: UInt64 = 1024 * 1024,
+        read: (Range<UInt64>) async -> Result<Data, Failure>,
+        onChunk: (Int) -> Void,
+        isolation: isolated (any Actor)? = #isolation
+    ) async throws -> URL {
+        let startedAt = Date()
+        let url = try await writeFile(at: destURL) { handle in
+            var offset: UInt64 = 0
+            while offset < total {
+                try Task.checkCancellation()
+                let end = min(offset + chunkSize, total)
+                let range = offset..<end
+                switch await read(range) {
+                case .success(let chunk):
+                    // A back-out cancels the extract; stop before this chunk
+                    // reaches the progress reporter the next open shares.
+                    try Task.checkCancellation()
+                    do { try handle.write(contentsOf: chunk) }
+                    catch { throw ExtractError.writeFailed(error.localizedDescription) }
+                    onChunk(chunk.count)
+                    offset = end
+                    // Forward-progress log on the first chunk and every 16 MB so
+                    // a stall is visible without flooding.
+                    if offset == chunkSize || offset % (16 * 1024 * 1024) == 0 {
+                        Log.info(#file, "[PERF] [LCP-PDF] extract progress: \(offset)/\(total) bytes (\(Int(Double(offset) * 100.0 / Double(total)))%) elapsed=\(Int(Date().timeIntervalSince(startedAt) * 1000))ms")
+                    }
+                case .failure(let error):
+                    Log.error(#file, "[PERF] [LCP-PDF] read(range: \(range)) failed: \(error.localizedDescription)")
+                    throw ExtractError.streamFailed(error.localizedDescription)
                 }
-                LCPPDFOpenProgress.shared.recordExtractedBytes(chunk.count)
-                offset = end
-                // Cheap forward-progress log on the first chunk + every
-                // 16 MB so a stall is visible without flooding.
-                if offset == end && (offset == chunkSize || offset % (16 * 1024 * 1024) == 0) {
-                    Log.info(#file, "[PERF] [LCP-PDF] extract progress: \(offset)/\(total) bytes (\(Int(Double(offset) * 100.0 / Double(total)))%) elapsed=\(Int(Date().timeIntervalSince(startedAt) * 1000))ms")
-                }
-            case .failure(let error):
-                try? FileManager.default.removeItem(at: destURL)
-                Log.error(#file, "[PERF] [LCP-PDF] read(range: \(range)) failed: \(error.localizedDescription)")
-                throw ExtractError.streamFailed(error.localizedDescription)
             }
         }
-
         let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1000)
-        let writtenBytes = (try? FileManager.default.attributesOfItem(atPath: destURL.path)[.size] as? Int) ?? 0
-        Log.info(#file, "[PERF] [LCP-PDF] disk-extract done: \(bookIdentifier) wrote=\(writtenBytes) bytes in \(elapsedMs)ms")
-        return destURL
+        let writtenBytes = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+        Log.info(#file, "[PERF] [LCP-PDF] disk-extract done: \(destURL.lastPathComponent) wrote=\(writtenBytes) bytes in \(elapsedMs)ms")
+        return url
+    }
+
+    /// Runs `write` against a new `.partial` file beside `destURL` and renames it
+    /// to `destURL` once `write` returns. `cachedURL` accepts any file at the
+    /// cache path with a PDF header, so a reopen during an extract must never
+    /// find a partly written one there; a unique name per extract also keeps a
+    /// cancelled extract and its replacement from writing the same file. On a
+    /// thrown error or cancellation the partial file is removed.
+    ///
+    /// Partial files an app kill left for this book are removed first: they hold
+    /// decrypted content that otherwise stays until the loan is returned. A
+    /// cancelled extract still writing one loses it too, which is safe: its
+    /// rename fails and its open is already superseded.
+    private static func writeFile(at destURL: URL,
+                                  isolation: isolated (any Actor)? = #isolation,
+                                  _ write: (FileHandle) async throws -> Void) async throws -> URL {
+        // A cancelled extract can resume here after a reopen started its own
+        // partial file; checking first keeps the sweep off that live file.
+        try Task.checkCancellation()
+        removePartialFiles(for: destURL)
+        let partialURL = destURL.deletingLastPathComponent()
+            .appendingPathComponent("\(partialPrefix(for: destURL))\(UUID().uuidString).partial")
+        FileManager.default.createFile(atPath: partialURL.path, contents: nil)
+        guard let handle = try? FileHandle(forWritingTo: partialURL) else {
+            throw ExtractError.writeFailed("could not open FileHandle for \(partialURL.path)")
+        }
+        do {
+            try await write(handle)
+            try handle.close()
+            try Task.checkCancellation()
+            // rename(2) replaces an earlier extract atomically.
+            guard rename(partialURL.path, destURL.path) == 0 else {
+                throw ExtractError.writeFailed("rename failed: \(String(cString: strerror(errno)))")
+            }
+            return destURL
+        } catch {
+            try? handle.close()
+            try? FileManager.default.removeItem(at: partialURL)
+            throw error
+        }
+    }
+
+    private static func partialPrefix(for destURL: URL) -> String {
+        "\(destURL.deletingPathExtension().lastPathComponent)-"
+    }
+
+    private static func removePartialFiles(for destURL: URL) {
+        let dir = destURL.deletingLastPathComponent()
+        let prefix = partialPrefix(for: destURL)
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+        for name in names where name.hasPrefix(prefix) && name.hasSuffix(".partial") {
+            try? FileManager.default.removeItem(at: dir.appendingPathComponent(name))
+        }
     }
 
     /// Drops the on-disk extracted PDF for one book. Call when the loan
@@ -178,6 +242,7 @@ enum LCPPDFDiskExtract {
     static func invalidate(bookIdentifier: String, account: String) {
         guard let url = fileURL(bookIdentifier: bookIdentifier, account: account) else { return }
         try? FileManager.default.removeItem(at: url)
+        removePartialFiles(for: url)
     }
 
     // MARK: - Path

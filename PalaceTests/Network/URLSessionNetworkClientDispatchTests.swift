@@ -187,7 +187,8 @@ final class URLSessionNetworkClientDispatchTests: XCTestCase {
 
         XCTAssertEqual(ScriptedURLProtocol.started.map(\.url), [tokenURL, apiURL],
                        "the current account's token endpoint must be the one refreshed")
-        XCTAssertEqual(ScriptedURLProtocol.started.last?.authorization, "Bearer token-current")
+        XCTAssertEqual(ScriptedURLProtocol.started.last?.authorization, "Bearer refreshed",
+                       "the request is sent with the current account's refreshed token")
         XCTAssertEqual(current.authToken, "refreshed")
         XCTAssertNotEqual(other.authToken, "refreshed")
     }

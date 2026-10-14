@@ -24,6 +24,8 @@ final class BookDetailOpenRoutingTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        // `_awaitOpenTasksForTesting` has no deadline; the allowance fails a hung open.
+        executionTimeAllowance = 60
         appContainer = makeTestAppContainer()
     }
 
@@ -35,8 +37,8 @@ final class BookDetailOpenRoutingTests: XCTestCase {
     // MARK: - Open-routing decision table
 
     /// AUDIOBOOK content type must route through `openBook` → `openAudiobook` →
-    /// `BookService.open` → the injected `AudiobookSessionManaging`. Pinning this
-    /// at the VM's `openBook` switch (rather than at BookService) is what locks
+    /// `BookOpenRouter.open` → the injected `AudiobookSessionManaging`. Pinning this
+    /// at the VM's `openBook` switch (rather than at the router) is what locks
     /// the routing decision: the session is opened exactly once, with the
     /// resolved book's identifier and `startPlaying: true`.
     ///
@@ -64,6 +66,27 @@ final class BookDetailOpenRoutingTests: XCTestCase {
                        "The routed identifier must be the audiobook under open")
         XCTAssertEqual(session.lastStartPlaying, true,
                        "Audiobook opens must request immediate playback (startPlaying: true)")
+    }
+
+    /// `openAudiobook` resolves the book through the view model's own registry,
+    /// so the session gets the registry's record rather than the caller's copy.
+    func testOpenAudiobook_resolvesTheBookThroughTheViewModelsRegistry() async {
+        let identifier = "vm-registry-\(UUID().uuidString)"
+        let callerCopy = TPPBookMocker.mockBook(identifier: identifier, title: "Caller copy", distributorType: .OpenAccessAudiobook)
+        let registryCopy = TPPBookMocker.mockBook(identifier: identifier, title: "Registry copy", distributorType: .OpenAccessAudiobook)
+        let registry = TPPBookRegistryMock()
+        registry.addBook(registryCopy, state: .downloadSuccessful)
+        let session = RecordingAudiobookSession()
+        let vm = makeVM(book: callerCopy, registry: registry, session: session)
+        var finishCount = 0
+
+        vm.openAudiobook(callerCopy, completion: { finishCount += 1 })
+
+        await BookOpenRouter._awaitOpenTasksForTesting()
+        XCTAssertEqual(finishCount, 1, "The open must report completion once")
+        XCTAssertTrue(session.lastOpenedBook === registryCopy,
+                      "The open must resolve through the registry the view model was built with")
+        XCTAssertEqual(session.openCount, 1)
     }
 
     /// The discriminator: a NON-audiobook format must NOT reach the audiobook
@@ -185,11 +208,11 @@ final class BookDetailOpenRoutingTests: XCTestCase {
 
 // MARK: - Recording session double
 
-/// Minimal `AudiobookSessionManaging` that records the open call BookService
+/// Minimal `AudiobookSessionManaging` that records the open call BookOpenRouter
 /// routes to it. Overrides the 3-arg `openAudiobook` witness (the variant
-/// `BookService.dispatchOpen` invokes) so the routing decision is observable.
+/// `BookOpenRouter.dispatch` invokes) so the routing decision is observable.
 /// Mirrors the compiling `HookRecordingSession` in
-/// `PalaceTests/Book/BookServiceAudiobookOpenTests.swift`.
+/// `PalaceTests/Book/BookOpenRouterAudiobookOpenTests.swift`.
 ///
 /// VERIFY: if `AudiobookSessionManaging` gains a required (non-defaulted) member,
 /// add a stub here.
@@ -197,6 +220,7 @@ final class BookDetailOpenRoutingTests: XCTestCase {
 private final class RecordingAudiobookSession: AudiobookSessionManaging {
     private(set) var openCount = 0
     private(set) var lastOpenedIdentifier: String?
+    private(set) var lastOpenedBook: TPPBook?
     private(set) var lastStartPlaying: Bool?
     var onOpen: (() -> Void)?
 
@@ -205,6 +229,7 @@ private final class RecordingAudiobookSession: AudiobookSessionManaging {
                        onLoadingShellPresented: (@MainActor () -> Void)?) async -> Result<Void, AudiobookSessionError> {
         openCount += 1
         lastOpenedIdentifier = book.identifier
+        lastOpenedBook = book
         lastStartPlaying = startPlaying
         onOpen?()
         return .success(())

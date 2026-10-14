@@ -18,9 +18,9 @@ import PalaceLogging
 @preconcurrency import PalaceAudiobookToolkit
 import PalaceBookModel
 
-/// Second-leg bearer-token manifest fetch. Wraps
-/// `BookService.fetchManifestWithBearerToken` so adapter tests can stub the
-/// recursion without spinning up URLSession or AppContainer.
+/// Second-leg bearer-token manifest fetch. Production conformer is
+/// `ProductionBearerTokenManifestFetcher`; the protocol lets adapter tests stub
+/// the recursion without spinning up URLSession or AppContainer.
 ///
 /// `@MainActor` and `async` for the reason recorded on `AudiobookVendorAdapter`
 /// (PP-5301).

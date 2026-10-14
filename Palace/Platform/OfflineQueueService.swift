@@ -10,6 +10,7 @@
 import Combine
 import Foundation
 import Network
+import PalaceLogging
 
 /// A closure that executes an offline action. Returns true on success, false on failure.
 typealias OfflineActionExecutor = @Sendable (OfflineAction) async -> Bool
@@ -34,6 +35,21 @@ actor OfflineQueueService: OfflineQueueServiceProtocol {
     /// inject `{ _ in }` to run the retry state machine with no wall-clock
     /// delay. Production uses `Task.sleep`.
     private let backoffSleep: @Sendable (TimeInterval) async -> Void
+
+    /// Reads the library whose actions may run now: the current library once
+    /// the registry has loaded it. The others keep their place and state.
+    /// Installed with the executor; until then it reports no library.
+    private var currentLibraryID: @Sendable () -> String?
+
+    /// The app-wide queue's entry points, used as production defaults by the
+    /// services that feed and prune it.
+    static let productionEnqueue: @Sendable (OfflineAction) async -> Void = { action in
+        await appQueue.enqueue(action)
+    }
+    static let productionRemoveActions: @Sendable (String) -> Void = { libraryID in
+        Task { await appQueue.removeActions(forLibrary: libraryID) }
+    }
+    private static var appQueue: OfflineQueueService { OfflineQueueService.shared }
 
     // MARK: - Network Monitoring
 
@@ -60,14 +76,29 @@ actor OfflineQueueService: OfflineQueueServiceProtocol {
         userDefaults: UserDefaults = .standard,
         backoffSleep: @escaping @Sendable (TimeInterval) async -> Void = { delay in
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-        }
+        },
+        currentLibraryID: @escaping @Sendable () -> String? = { nil },
+        monitorsNetwork: Bool = true
     ) {
         self.userDefaults = userDefaults
         self.backoffSleep = backoffSleep
+        self.currentLibraryID = currentLibraryID
 
         // Load persisted queue
         if let data = userDefaults.data(forKey: storageKey),
-           let saved = try? JSONDecoder().decode([OfflineAction].self, from: data) {
+           let decoded = try? JSONDecoder().decode([OfflineAction].self, from: data) {
+            // Actions saved before `libraryID` existed cannot be attributed to
+            // a library, and running one under the wrong library confirms a
+            // return that never happened. The loan they name is still held on
+            // the server and its book is still on the shelf, so dropping them
+            // loses no state the patron cannot see and redo.
+            let saved = decoded.filter { $0.libraryID != nil }
+            if saved.count != decoded.count {
+                Log.warn(#file, "Dropped \(decoded.count - saved.count) queued offline action(s) saved without a library")
+                if let data = try? JSONEncoder().encode(saved) {
+                    userDefaults.set(data, forKey: storageKey)
+                }
+            }
             // Reset any "processing" state from previous session
             self.queue = saved.map { action in
                 var a = action
@@ -78,7 +109,11 @@ actor OfflineQueueService: OfflineQueueServiceProtocol {
             }
         }
 
-        Task { await startNetworkMonitoring() }
+        // Tests pass false and drive `networkStatusChanged` themselves, so the
+        // monitor's first path update cannot race them.
+        if monitorsNetwork {
+            Task { await startNetworkMonitoring() }
+        }
     }
 
     // MARK: - Configuration
@@ -86,6 +121,16 @@ actor OfflineQueueService: OfflineQueueServiceProtocol {
     /// Set the executor that will process offline actions.
     func setExecutor(_ executor: @escaping OfflineActionExecutor) {
         self.executor = executor
+    }
+
+    /// Set the executor together with the current-library reader that scopes
+    /// which actions it is handed.
+    func setExecutor(
+        _ executor: @escaping OfflineActionExecutor,
+        currentLibraryID: @escaping @Sendable () -> String?
+    ) {
+        self.executor = executor
+        self.currentLibraryID = currentLibraryID
     }
 
     // MARK: - Queue Operations
@@ -129,6 +174,18 @@ actor OfflineQueueService: OfflineQueueServiceProtocol {
         publishStatus()
     }
 
+    /// Removes every action made under `libraryID`, in any state. Called when
+    /// that library's patron session ends, since its actions were made with
+    /// that patron's loans and credentials.
+    func removeActions(forLibrary libraryID: String) async {
+        let before = queue.count
+        queue.removeAll { $0.libraryID == libraryID }
+        guard queue.count != before else { return }
+        Log.info(#file, "Removed \(before - queue.count) queued offline action(s) for a signed-out library")
+        persist()
+        publishStatus()
+    }
+
     func clearFailed() async {
         queue.removeAll { $0.state == .failed }
         persist()
@@ -148,8 +205,8 @@ actor OfflineQueueService: OfflineQueueServiceProtocol {
         processing = true
         publishStatus()
 
-        // Process pending actions in FIFO order
-        while let index = queue.firstIndex(where: { $0.state == .pending }) {
+        // Process the current library's pending actions in FIFO order
+        while let index = nextRunnableIndex() {
             queue[index].state = .processing
             queue[index].lastAttemptAt = Date()
             persist()
@@ -188,6 +245,20 @@ actor OfflineQueueService: OfflineQueueServiceProtocol {
 
         processing = false
         publishStatus()
+    }
+
+    /// The first pending action that belongs to the current library, read
+    /// afresh on every pick so a mid-drain library switch stops the drain.
+    private func nextRunnableIndex() -> Int? {
+        let current = currentLibraryID()
+        return queue.firstIndex { $0.state == .pending && $0.belongs(toLibrary: current) }
+    }
+
+    /// Drains the actions of the library that just became runnable.
+    func drainIfOnline() async {
+        if isNetworkAvailable {
+            await processQueue()
+        }
     }
 
     // MARK: - Network Monitoring
@@ -235,3 +306,4 @@ actor OfflineQueueService: OfflineQueueServiceProtocol {
         statusSubject.send(computeStatus())
     }
 }
+
