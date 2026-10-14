@@ -17,6 +17,16 @@ import PalaceBookModel
 import PalaceBookRegistry
 import PalaceUtilities
 
+// MARK: - ReturnOrigin
+
+/// Who started a return.
+enum ReturnOrigin: Sendable {
+    case patron
+    /// A queued offline action. `unreachable` runs when the server cannot be
+    /// reached, so the queue can keep the action for a later drain.
+    case offlineQueue(unreachable: @Sendable () -> Void)
+}
+
 // MARK: - BookReturnServiceDelegate
 
 /// Surface MBDC needs to expose so the service can clean local content
@@ -63,6 +73,10 @@ final class BookReturnService: @unchecked Sendable {
     /// Production default for `offlineReturnEnqueuer`: the app-wide offline queue.
     static let productionOfflineReturnEnqueuer: @Sendable (OfflineAction) async -> Void =
         OfflineQueueService.productionEnqueue
+
+    /// Presents the return's alerts (failed, queued). Injected so tests can
+    /// read and act on them.
+    private let alertPresenter: @MainActor @Sendable (UIAlertController) -> Void
 
     /// Closure resolves the current user account each call so library
     /// switches mid-flow are observed correctly (matches MBDC's `userAccount`
@@ -111,6 +125,7 @@ final class BookReturnService: @unchecked Sendable {
         adobeDRMService: AdobeDRMService = .shared,
         authCoordinator: AuthCoordinator? = nil,
         offlineReturnEnqueuer: (@Sendable (OfflineAction) async -> Void)? = BookReturnService.productionOfflineReturnEnqueuer,
+        alertPresenter: @escaping @MainActor @Sendable (UIAlertController) -> Void = { TPPPresentationUtils.safelyPresent($0) },
         remotePositionWriteCanceller: @escaping @Sendable (String) -> Void = { _ in }
     ) {
         self.bookRegistry = bookRegistry
@@ -124,6 +139,7 @@ final class BookReturnService: @unchecked Sendable {
         self.adobeDRMService = adobeDRMService
         self.authCoordinator = authCoordinator
         self.offlineReturnEnqueuer = offlineReturnEnqueuer
+        self.alertPresenter = alertPresenter
         self.remotePositionWriteCanceller = remotePositionWriteCanceller
     }
     #else
@@ -138,6 +154,7 @@ final class BookReturnService: @unchecked Sendable {
         userAccountProvider: @escaping () -> TPPUserAccount,
         authCoordinator: AuthCoordinator? = nil,
         offlineReturnEnqueuer: (@Sendable (OfflineAction) async -> Void)? = BookReturnService.productionOfflineReturnEnqueuer,
+        alertPresenter: @escaping @MainActor @Sendable (UIAlertController) -> Void = { TPPPresentationUtils.safelyPresent($0) },
         remotePositionWriteCanceller: @escaping @Sendable (String) -> Void = { _ in }
     ) {
         self.bookRegistry = bookRegistry
@@ -150,6 +167,7 @@ final class BookReturnService: @unchecked Sendable {
         self.userAccountProvider = userAccountProvider
         self.authCoordinator = authCoordinator
         self.offlineReturnEnqueuer = offlineReturnEnqueuer
+        self.alertPresenter = alertPresenter
         self.remotePositionWriteCanceller = remotePositionWriteCanceller
     }
     #endif
@@ -236,6 +254,14 @@ final class BookReturnService: @unchecked Sendable {
     // MARK: - returnBook
 
     func returnBook(withIdentifier identifier: String, completion: (@Sendable () -> Void)? = nil) {
+        returnBook(withIdentifier: identifier, origin: .patron, completion: completion)
+    }
+
+    /// - Parameter origin: who started the return. A return the offline queue
+    ///   runs reports an unreachable server to the queue instead of queueing
+    ///   itself again.
+    func returnBook(withIdentifier identifier: String, origin: ReturnOrigin,
+                    completion: (@Sendable () -> Void)? = nil) {
         guard let book = bookRegistry.book(forIdentifier: identifier) else {
             completion?()
             return
@@ -330,7 +356,8 @@ final class BookReturnService: @unchecked Sendable {
                 }
 
                 self.handleRevokeError(error, book: book, identifier: identifier, libraryID: libraryID,
-                                       downloaded: downloaded, completion: completion)
+                                       downloaded: downloaded, origin: origin,
+                                       completion: completion)
             }
         }
     }
@@ -406,7 +433,8 @@ final class BookReturnService: @unchecked Sendable {
     /// loan-term-limit cleanup, invalid-credentials re-auth retry, or
     /// generic alert with retry / remove-from-device / cancel.
     private func handleRevokeError(_ error: Error, book: TPPBook, identifier: String, libraryID: String?,
-                                   downloaded: Bool, completion: (@Sendable () -> Void)?) {
+                                   downloaded: Bool, origin: ReturnOrigin,
+                                   completion: (@Sendable () -> Void)?) {
         // Pure classification facts. Parse-fail wraps a `PalaceError` (not an
         // NSError), so it is detected before the problem-doc extraction.
         let isOPDSParseFailure: Bool = {
@@ -460,7 +488,7 @@ final class BookReturnService: @unchecked Sendable {
                     guard let self else { return }
                     switch outcome {
                     case .success:
-                        self.returnBook(withIdentifier: identifier, completion: completion)
+                        self.returnBook(withIdentifier: identifier, origin: origin, completion: completion)
                     case .failure(let cancellation):
                         Log.info(#file, "Coordinator declined to refresh — \(cancellation)")
                         runOnMainAsync {
@@ -491,7 +519,7 @@ final class BookReturnService: @unchecked Sendable {
                 self.reauthenticator.authenticateIfNeeded(user, usingExistingCredentials: false) { [weak self] in
                     guard let self else { return }
                     if self.userAccountProvider().hasCredentials() {
-                        self.returnBook(withIdentifier: identifier, completion: completion)
+                        self.returnBook(withIdentifier: identifier, origin: origin, completion: completion)
                     } else {
                         runOnMainAsync {
                             self.downloadAnnouncementService.announceReturnFailed(for: book)
@@ -505,7 +533,13 @@ final class BookReturnService: @unchecked Sendable {
             // Offline is not a return failure: the loan is still held. Enqueue
             // for a later drain and tell the patron; do not delete local content
             // or unregister here.
-            if let enqueuer = self.offlineReturnEnqueuer, let libraryID {
+            if case .offlineQueue(let unreachable) = origin {
+                // The queued action that ran this return is still queued; the
+                // queue keeps it for a later drain rather than gaining a copy.
+                Log.info(#file, "Queued return for '\(book.title)' still offline — leaving it queued")
+                unreachable()
+                runOnMainAsync { completion?() }
+            } else if let enqueuer = self.offlineReturnEnqueuer, let libraryID {
                 Log.info(#file, "Offline return for '\(book.title)' — enqueuing for later; no local cleanup")
                 let action = OfflineAction(type: .return, bookID: identifier, bookTitle: book.title,
                                            libraryID: libraryID)
@@ -513,7 +547,7 @@ final class BookReturnService: @unchecked Sendable {
                     await enqueuer(action)
                     guard let self else { return }
                     runOnMainAsync {
-                        self.presentOfflineReturnQueuedAlert(for: book)
+                        self.alertPresenter(Self.offlineReturnQueuedAlert(for: book))
                         completion?()
                     }
                 }
@@ -538,6 +572,7 @@ final class BookReturnService: @unchecked Sendable {
                     book: book,
                     identifier: identifier,
                     downloaded: downloaded,
+                    origin: origin,
                     completion: completion
                 )
             }
@@ -551,6 +586,7 @@ final class BookReturnService: @unchecked Sendable {
         book: TPPBook,
         identifier: String,
         downloaded: Bool,
+        origin: ReturnOrigin,
         completion: (@Sendable () -> Void)?
     ) {
         let serverDetail = problemDoc?.detail
@@ -565,7 +601,7 @@ final class BookReturnService: @unchecked Sendable {
             return { [weak self] in
                 guard let self else { return }
                 self.userRetryTracker.recordRetry(operationId: operationId)
-                self.returnBook(withIdentifier: identifier, completion: completion)
+                self.returnBook(withIdentifier: identifier, origin: origin, completion: completion)
             }
         }()
 
@@ -598,7 +634,7 @@ final class BookReturnService: @unchecked Sendable {
             TPPAlertUtils.setProblemDocument(controller: alert, document: doc, append: true)
         }
 
-        TPPPresentationUtils.safelyPresent(alert)
+        alertPresenter(alert)
         downloadAnnouncementService.announceReturnFailed(for: book)
         completion?()
     }
@@ -627,7 +663,7 @@ final class BookReturnService: @unchecked Sendable {
     }
 
     @MainActor
-    private func presentOfflineReturnQueuedAlert(for book: TPPBook) {
+    static func offlineReturnQueuedAlert(for book: TPPBook) -> UIAlertController {
         let message = String(
             format: NSLocalizedString(
                 "\"%@\" will be returned automatically when you're back online.",
@@ -638,7 +674,7 @@ final class BookReturnService: @unchecked Sendable {
             message: message,
             preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: Strings.Generic.ok, style: .default))
-        TPPPresentationUtils.safelyPresent(alert)
+        return alert
     }
 
     // MARK: - Post-return sync

@@ -177,7 +177,7 @@ flows work at all.
 | ID | Area | Description | Automation | Notes |
 |----|------|-------------|------------|-------|
 | C1 | Catalog browsing | Browse lanes, scroll, facet switching | Partial (simdrive) | Check cover alignment (F-018), facet speed (F-041) |
-| C2 | Catalog search | Live search, filter pills, results | Partial (simdrive) | Check auto-search (F-025), button styling (F-045) |
+| C2 | Catalog search | Live search, filter pills, results | Partial (simdrive) | Check auto-search (F-025), button styling (F-045). Typing a straight apostrophe must reach the search request unchanged (PP-5021) — verified on 26.1 through the HID path; see "What automated text input reaches". The same check on a **non-ASCII** term stays manual: that input is pasted, so it never meets the substitution it is meant to test. |
 | C3 | My Books | Tab navigation, sort, state after borrow/return | Partial (simdrive) | Check auto-refresh on appear (F-035) |
 | C4 | Holds tab | Holds display, cancel from list vs detail | Manual | Check state sync after cancel (F-065) |
 | C5 | Catalog offline state | Put the device in Airplane Mode and open the Catalog tab. Assert the offline state renders and **directs the patron to their downloaded books** (a usable route to My Books), rather than an empty lane, a spinner, or a bare error. Restore connectivity and confirm the catalog recovers without a relaunch. | Manual | PP-4578 (#1112). The recovery half matters as much as the empty state — a stuck offline view that survives reconnection is the regression. |
@@ -312,6 +312,47 @@ When logging findings to the CSV, use these classifications:
 
 ---
 
+## What automated text input reaches (measured 2026-10-14, PP-5035)
+
+Automated "typing" is not one mechanism, and only some of it reaches the iOS input
+system — the layer that applies smart punctuation, autocorrection and predictive
+insertion before our code sees a character. Treat this table as the boundary of
+what a journey can honestly claim about typed text.
+
+| How the text is delivered | When that path is chosen | Reaches the input system? |
+|---------------------------|--------------------------|---------------------------|
+| Hardware-keyboard key events via the native HID helper | the text is all ASCII | **Yes — measured.** |
+| Clipboard write + Cmd-V | **any** character outside ASCII | **No.** Pasting bypasses the input system by construction. |
+| Typing into the host Mac window | neither of the above is available | No — the keystrokes never enter the simulator's input system. |
+
+**The measurement.** Typing the ASCII string `Alice's` (U+0027) through the HID path
+on iOS 26.1: into a field left at the system defaults it read back **`Alice’s`
+(U+2019)**, and into the catalog search field it read back **`Alice's` (U+0027)**.
+Same build, same session, same mechanism — the only difference is that catalog search
+disables the substituting traits (`VerbatimTextField`, PP-5021). Both values were read
+byte-exact off the simulator pasteboard, not from OCR, which cannot tell the two
+apostrophes apart.
+
+Two consequences follow:
+
+- **ASCII substitution behaviour IS automatable.** A journey that types ASCII exercises
+  the real substitution machinery, so it can legitimately cover PP-5021's class of bug.
+  No software-keyboard driver is needed for it, and none is planned: the recommendation
+  is to keep ASCII on the HID path rather than build a key-tapping layer.
+- **Non-ASCII input is manual-only, permanently.** Accents, curly quotes, emoji, CJK and
+  every other non-ASCII case switches to the clipboard — which is precisely the input
+  whose handling is most in doubt. Dictation and predictive insertion are out of reach on
+  every path. A test that pastes non-ASCII proves our code handles a string handed to it
+  directly; it proves nothing about what the input system would have done to it. Do not
+  record a journey that implies otherwise.
+
+As of this measurement the live journey corpus types no non-ASCII text at all, so no
+existing automated test is making that claim. The exposure is the next one written.
+`PalaceTests/CatalogUI/VerbatimTextFieldTests.swift` is the model to copy: it opens by
+stating which part of the behaviour a unit test cannot reach, and why.
+
+---
+
 ## Automation Gaps (roadmap, not blockers)
 
 These are the items currently requiring manual runs that would most reduce per-release regression cost if automated. Ordered by cost-of-delay for a solo dev.
@@ -351,6 +392,7 @@ Auth area has good depth on SAML (3 test files), basic (`TPPBasicAuthTests`), cr
 
 ## Change log
 
+- 2026-10-14 — **Recorded what automated text input actually reaches (PP-5035).** Added the measured boundary between the three text-delivery paths and annotated C2. The ticket asked whether the hardware-key path is also blind; it is not — ASCII typed through the HID helper is substituted by the input system exactly as a patron's typing would be, measured byte-exact on iOS 26.1 against a defaults field and the catalog field in one session. The clipboard path used for non-ASCII remains blind by construction, so that class is recorded as permanently manual rather than left as an implied coverage claim. No software-keyboard driver is proposed, because the path that needed one turns out to be faithful already.
 - 2026-08-20 — **3.3.0 delta sweep: +26 rows.** The matrix had not been re-derived since 2026-07-08, while 280 commits, 115 PP tickets, 584 changed production files and 163 new production files landed on `develop`. Audit finding: the *unit* layer kept pace (712 test files changed in the same window) and the *journey* layer partly did, but the release-regression layer had zero rows for surfaces a patron can now reach. Added: **PR1–PR4** (P0 platform-risk — Swift 6 language-mode flip, Readium 3.9→3.11, iOS 17 floor, decomp Waves 1–3), **E9/E10** (offline-queued position writes; long-locked-playback autosave cadence), **E3-Skip/Sleep/Speed/Mini/Icons/Stream** (audiobook features added since 3.2.0), **C5–C7** (catalog offline state, static branding, Continue lane), **S1–S4 + R1–R2** (new Support & Feedback section — triage bot and app rating, neither of which existed in 3.2.0), **U3-Footnote/PrintPage/WhereAmI/BlockNav/SearchFocus** (Reader2 VoiceOver work), **U5/U6** (skeletons; chrome, tab bar and motion), **X7–X9** (Developer settings screen, Hidden Libraries, side loading). Two rows deliberately encode *known* state rather than asking a tester to rediscover it: **X8** (Hidden Libraries toggle deadlock, open since the 2026-08-10 sweep) and **E10** (main-runloop autosave cadence). Also corrected: the `C-ios18` cell is described in `.simdrive/regression-areas.json` as an "iOS-16 substitute" — the deployment floor is now iOS 17.0, so that label is stale (noted in PR3).
 
 - 2026-07-08 — Added P0 in-place upgrade-path rows (UP1 / UP1-Result) for the 3.3.0 cycle. Motivation: 3.3.0 carries PR #1212 (registry "Bulletproof Ownership" — quarantine + `.bak` backup + `schemaVersion` bump) and PR #1199 (Swift 6 language-mode flip), and there was ZERO coverage of the in-place upgrade path — the highest-consequence failure class (user data loss). Row references the real persistence mechanism: `registry.json` + `registry.json.bak` + `.corrupt-<ts>` quarantine + INV-1 empty-save guard.

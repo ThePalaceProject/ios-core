@@ -18,6 +18,10 @@ import PalaceBookRegistry
 /// from the existing DispatchQueue-based synchronization.
 extension TPPBookRegistry {
 
+    /// How long `syncAsync` waits for the current account's details. Matches
+    /// the registry sync's own readiness wait (HelpSpot #18414).
+    static let syncReadinessTimeout: TimeInterval = 30
+
     // MARK: - Async State Access
 
     /// Async version of book(forIdentifier:)
@@ -40,18 +44,22 @@ extension TPPBookRegistry {
     /// - Returns: Tuple of (errorDocument, hasNewBooks)
     /// - Throws: PalaceError if sync fails
     ///
-    /// Awaits `Account.awaitReady()` before reading `loansUrl`, so a sync that
-    /// starts before the auth document has loaded waits instead of throwing
-    /// `.accountNotFound`. Not wrapped in `withTimeout`: the fetch below already
-    /// has its own timeout (single-timeout policy).
-    func syncAsync(accountsManager: AccountsManager = AppContainer.production().accountsManager) async throws -> (errorDocument: [AnyHashable: Any]?, hasNewBooks: Bool) {
+    /// Waits up to `readinessTimeout` for the account's details before reading
+    /// `loansUrl`, so a sync that starts before the auth document has loaded
+    /// waits instead of throwing `.accountNotFound`. The wait is bounded because
+    /// an auth document that never loads would otherwise hold the caller (the
+    /// post-return sync, whose completion ends the return) forever.
+    func syncAsync(
+        accountsManager: AccountsManager = AppContainer.production().accountsManager,
+        readinessTimeout: TimeInterval = TPPBookRegistry.syncReadinessTimeout
+    ) async throws -> (errorDocument: [AnyHashable: Any]?, hasNewBooks: Bool) {
         guard let currentAccount = accountsManager.currentAccount else {
             throw PalaceError.authentication(.accountNotFound)
         }
 
         let details: AccountDetails
         do {
-            details = try await currentAccount.awaitReady()
+            details = try await currentAccount.awaitReady(timeout: readinessTimeout)
         } catch {
             Log.warn(#file, "syncAsync: awaitReady failed for \(currentAccount.uuid): \(error)")
             throw PalaceError.authentication(.accountNotFound)
