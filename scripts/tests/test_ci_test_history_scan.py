@@ -278,6 +278,15 @@ def test_scan_readsAUIJourneysRunInsteadOfRefusingIt(fake_runs, capsys):
     assert "3 executions / 3 tests" in out
 
 
+def test_lookup_readsAUIJourneysRunNamedByItsWorkflowFile(fake_runs, capsys):
+    """gh accepts the workflow file name too; the floor must follow either spelling."""
+    fake_runs["log"] = journey_log()
+    cth.main(["x", "SignInAndBorrowJourneyTests", "--workflow", "ui-journeys.yml", "--repo", "o/r"])
+    out = capsys.readouterr().out
+    assert "REFUSED" not in out
+    assert "passed 51.462s" in out
+
+
 def test_uiJourneysStillRefusesALogWithNoResults(fake_runs, capsys):
     fake_runs["log"] = "##[group]Run actions/checkout@v4\n"
     cth.main(["x", "SignInAndBorrowJourneyTests", "--workflow", "UI Journeys", "--repo", "o/r"])

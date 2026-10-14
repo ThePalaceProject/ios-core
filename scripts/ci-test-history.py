@@ -200,7 +200,7 @@ MIN_TEST_LINES = 100
 # Workflows that run a handful of tests on purpose. UI Journeys runs three
 # journeys serially, so one result line already measured something; a floor of
 # 100 refused every one of its runs. Any other workflow keeps the floor above.
-MIN_RESULTS_BY_WORKFLOW = {"UI Journeys": 1}
+MIN_RESULTS_BY_WORKFLOW = {"UI Journeys": 1, "ui-journeys.yml": 1}
 
 
 def min_results_for(workflow: str, override: int | None = None) -> int:
