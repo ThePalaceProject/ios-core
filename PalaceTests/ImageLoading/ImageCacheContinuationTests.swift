@@ -13,80 +13,62 @@ import UIKit
 /// warning was trying to relieve. The fix guarantees exactly one resume via the
 /// operation's completion block.
 ///
-/// `ImageCache` has a private init, so only `.shared` is constructible. To make
-/// the cancellation deterministic (and avoid spamming a global memory-warning
-/// notification through the whole launched app), we suspend the processing
-/// queue, enqueue the awaits so they are *guaranteed* still queued, cancel all
-/// operations, then resume the queue. Every cancelled-while-queued operation
-/// must still resume its continuation.
+/// The test runs on its own cache instance: the shared queue also carries the
+/// test host app's cover loads, so its `operationCount` cannot say whether the
+/// test's own operations are queued yet. It suspends the queue, enqueues the
+/// awaits so they are still queued, cancels all operations, then resumes the
+/// queue. Every cancelled-while-queued operation must still resume its
+/// continuation.
 @MainActor
 final class ImageCacheContinuationTests: XCTestCase {
 
+    private var cache: ImageCache?
+
     override func tearDown() {
-        // This test deliberately suspends the shared cache's processing queue.
-        // Restore it (and drain any operations) so a mid-test assertion failure
-        // can't leave the singleton queue suspended and pollute later tests that
-        // call `ImageCache.shared.getAsync`. Required by TearDownRequiredLintTests.
-        ImageCache.shared.processingQueue.cancelAllOperations()
-        ImageCache.shared.processingQueue.isSuspended = false
+        // Resume the queue even when an assertion failed mid-test, so no
+        // operation stays parked. Required by TearDownRequiredLintTests.
+        cache?.processingQueue.cancelAllOperations()
+        cache?.processingQueue.isSuspended = false
+        cache = nil
         super.tearDown()
     }
 
     func testGetAsync_whenOperationsCancelledWhileQueued_everyCallResumes() async {
-        let cache = ImageCache.shared
-
-        // Suspend so nothing starts running: the operations we enqueue below
-        // are deterministically still *queued* when we cancel them.
+        let cache = ImageCache._makeIsolatedForTesting()
+        self.cache = cache
         cache.processingQueue.isSuspended = true
 
         let count = 50
-
-        // Structured fan-out. Each child awaits `getAsync`; a child returns
-        // ONLY when its continuation resumes. `withTaskGroup` returns only when
-        // ALL children have returned — so `resumedCount == count` after the
-        // group is an EXACT proof that every getAsync resumed, with NO
-        // fixed-timeout `XCTestExpectation` gamble.
-        //
-        // Why this is scheduling-independent (fixes the parallel-clone timeout,
-        // CI run 29805821296): the resume is driven by the OperationQueue
-        // completion block, not the cooperative pool. Once the driver cancels +
-        // unsuspends the queue, every operation's completion block runs (the
-        // OperationQueue owns its own worker threads) and resumes its
-        // continuation, so every child returns and the group completes. The
-        // completion of `withTaskGroup` — which returns ONLY when all 50
-        // children have returned — is the exact resume-completeness proof. The
-        // previous version spawned 50 unstructured `Task {}` and waited on
-        // `XCTestExpectation` timeouts, which under 4-clone CPU oversubscription
-        // could exceed 15s purely because the cooperative pool never scheduled
-        // the 50 tasks — a wall-clock race this structured form removes.
         let resumedCount = LockIsolated<Int>(0)
 
-        // Detached driver: once the (synchronous) `addOperation` calls inside
-        // each `getAsync` have run — observed via `operationCount` reaching
-        // `count`, not a fixed sleep — cancel every queued op and unsuspend so
-        // the completion blocks fire and resume the continuations.
-        let driver = Task.detached {
-            while cache.processingQueue.operationCount < count {
-                await Task.yield()
-            }
-            cache.processingQueue.cancelAllOperations()
-            cache.processingQueue.isSuspended = false
-        }
-
-        await withTaskGroup(of: Void.self) { group in
-            for i in 0..<count {
-                let key = "imagecache_leak_probe_\(i)_\(UUID().uuidString)"
-                group.addTask {
-                    _ = await cache.getAsync(for: key)
-                    resumedCount.withValue { $0 += 1 }
+        // Each child returns only when its continuation resumes. The fan-out
+        // runs in its own task so a leaked continuation (the bug this test
+        // pins) fails the bounded wait below instead of hanging the test.
+        let fanOut = Task.detached {
+            await withTaskGroup(of: Void.self) { group in
+                for i in 0..<count {
+                    let key = "imagecache_leak_probe_\(i)_\(UUID().uuidString)"
+                    group.addTask {
+                        _ = await cache.getAsync(for: key)
+                        resumedCount.withValue { $0 += 1 }
+                    }
                 }
+                await group.waitForAll()
             }
-            await group.waitForAll()
         }
-        await driver.value
 
+        // The queue is this test's alone, so the count reaching 50 means every
+        // getAsync has enqueued its operation and none has started.
+        await awaitConditionAsync(timeout: 45) { cache.processingQueue.operationCount >= count } // FLAKE-003-OK: hang guard below the execution-time allowance, not a timing assertion
+        cache.processingQueue.cancelAllOperations()
+        cache.processingQueue.isSuspended = false
+
+        await awaitConditionAsync(timeout: 45) { count == resumedCount.value } // FLAKE-003-OK: hang guard below the execution-time allowance, not a timing assertion
         XCTAssertEqual(resumedCount.value, count,
                        "Every cancelled-while-queued getAsync must resume its continuation exactly once")
+        if resumedCount.value == count {
+            await fanOut.value
+        }
     }
 }
 
