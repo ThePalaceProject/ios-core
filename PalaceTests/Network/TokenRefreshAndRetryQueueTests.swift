@@ -20,14 +20,19 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
     private var libraryAccount: TPPLibraryAccountMock!
     private var userAccount: TPPUserAccountMock!
 
-    /// Fixed token endpoint URL. The stub matches by absolute string so we
-    /// can route /token traffic separately from arbitrary API requests.
-    private let tokenURL = URL(string: "https://token.example.com/oauth/token")!
-    private let apiURL = URL(string: "https://api.example.com/protected")!
+    /// Token and API endpoints, unique to each run. The stub is process-wide,
+    /// and a token request answered with a 5xx is retried after a backoff of
+    /// up to 1.2s, so a retry left by an earlier test would otherwise be
+    /// answered, and counted, by whichever test is running then.
+    private var tokenURL: URL!
+    private var apiURL: URL!
 
     override func setUp() async throws {
         try await super.setUp()
         HTTPStubURLProtocol.reset()
+        let runID = UUID().uuidString
+        tokenURL = URL(string: "https://token.example.com/\(runID)/oauth/token")!
+        apiURL = URL(string: "https://api.example.com/\(runID)/protected")!
         TPPUserAccountMock.resetShared()
 
         // Build a token-typed authentication definition. We need
@@ -115,7 +120,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // matches what the responder would normally see. We deliberately
         // do NOT call resume() — the refresh code only reads
         // originalRequest / taskIdentifier and then cancels it.
-        return executor.transport.urlSession.dataTask(with: request)
+        return executor.makeSessionDataTask(with: request)
     }
 
     /// Deterministic barrier for ABSENCE assertions ("no spurious refresh",
@@ -131,6 +136,17 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         for _ in 0..<8 {
             await Task { }.value
             await Task { @MainActor in }.value
+        }
+    }
+
+    /// Barrier on the session's delegate queue, where the responder delivers
+    /// every completion: after the refresh work has drained, a duplicate
+    /// delivery it enqueued has run before an exactly-once count is read.
+    private func drainRefreshAndDelivery() async {
+        await drainPendingRefreshWork()
+        let delegateQueue = executor.transport.urlSession.delegateQueue
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            delegateQueue.addOperation { done.resume() }
         }
     }
 
@@ -764,5 +780,390 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         // work finishes. Without this, that work outlives the test and lands in
         // whichever test runs next on the shared executor.
         await drainPendingRefreshWork()
+    }
+
+    // MARK: - A failed refresh completes the request that queued it
+
+    /// Records every call of a caller completion, from whichever queue the
+    /// responder delivers it on.
+    private final class CompletionLog: @unchecked Sendable {
+        private let lock = NSLock()
+        private var results: [NYPLResult<Data>] = []
+        let delivered = DispatchSemaphore(value: 0)
+        func record(_ result: NYPLResult<Data>) {
+            lock.lock(); results.append(result); lock.unlock()
+            delivered.signal()
+        }
+        var all: [NYPLResult<Data>] { lock.lock(); defer { lock.unlock() }; return results }
+    }
+
+    /// Puts the executor where the responder leaves it after a 401 that starts
+    /// a refresh: the request has been sent and answered 401, and the caller's
+    /// completion is still registered for its task, waiting on the refresh.
+    private func sentRequestAwaitingRefresh(to url: URL? = nil) async throws -> (URLSessionTask, CompletionLog) {
+        let apiURL: URL = url ?? self.apiURL
+        // Spending the URL's retry budget first lets the 401 complete at once
+        // instead of starting a refresh of its own.
+        executor.responder.markRetried(url: apiURL)
+        let answered = expectation(description: "the 401 reaches the first completion")
+        let task = try XCTUnwrap(executor.executeRequest(executor.request(for: apiURL),
+                                                         enableTokenRefresh: false,
+                                                         accountId: nil) { @Sendable _ in
+            answered.fulfill()
+        })
+        await fulfillment(of: [answered], timeout: 5.0)   // STARVE-001-OK: the stub answers at once
+
+        // The responder marks the URL when a 401 starts a refresh.
+        executor.responder.markRetried(url: apiURL)
+        let log = CompletionLog()
+        executor.responder.addCompletion({ @Sendable result in log.record(result) },
+                                         taskID: task.taskIdentifier)
+        return (task, log)
+    }
+
+    /// Answers every request to the API host with a 401 and the token
+    /// endpoint with `tokenStatus`; returns the count of token requests.
+    @discardableResult
+    private func registerAPI401(tokenStatus: Int) -> LockIsolated<Int> {
+        let tokenHits = LockIsolated(0)
+        HTTPStubURLProtocol.register { @Sendable [tokenURL, apiURL] request in
+            if request.url == tokenURL {
+                tokenHits.withValue { $0 += 1 }
+                let body = tokenStatus == 200 ? Self.tokenResponseJSON(accessToken: "fresh") : Data("denied".utf8)
+                return .init(statusCode: tokenStatus, headers: nil, body: body)
+            }
+            guard request.url?.host == apiURL?.host else { return nil }
+            return .init(statusCode: 401, headers: nil, body: nil)
+        }
+        return tokenHits
+    }
+
+    private func assertFailedOnceWith401(_ log: CompletionLog,
+                                         file: StaticString = #filePath, line: UInt = #line) {
+        let results = log.all
+        XCTAssertEqual(results.count, 1, "the caller must be completed exactly once", file: file, line: line)
+        guard case .failure(_, let response)? = results.first else {
+            return XCTFail("the caller must receive a failure, got \(String(describing: results.first))",
+                           file: file, line: line)
+        }
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 401,
+                       "the failure carries the 401 that started the refresh", file: file, line: line)
+    }
+
+    /// The token endpoint refuses the stored credentials. The request that
+    /// queued the refresh has already finished at the URLSession level, so
+    /// cancelling it delivers nothing; its caller must be failed directly.
+    func testQueuedRetry_WhenTheRefreshIsRefused_FailsTheCallerOnce() async throws {
+        registerAPI401(tokenStatus: 401)
+        let (task, log) = try await sentRequestAwaitingRefresh()
+
+        executor.refreshTokenAndResume(task: task, accountId: nil)
+
+        let delivered = await awaitSemaphore(log.delivered, timeout: .now() + 10.0)
+        XCTAssertEqual(delivered, .success, "the caller was never completed")
+        await drainRefreshAndDelivery()
+        assertFailedOnceWith401(log)
+        XCTAssertTrue(executor.responder.canRetry(url: apiURL),
+                      "the failed retry clears the URL's mark so its next 401 can refresh again")
+    }
+
+    /// A refresh that cannot start, because the account has no stored card,
+    /// must still complete the request waiting on it.
+    func testQueuedRetry_WhenTheAccountHasNoCredentials_FailsTheCallerOnce() async throws {
+        registerAPI401(tokenStatus: 200)
+        let (task, log) = try await sentRequestAwaitingRefresh()
+        userAccount._credentials = nil
+
+        executor.refreshTokenAndResume(task: task, accountId: nil)
+
+        let delivered = await awaitSemaphore(log.delivered, timeout: .now() + 10.0)
+        XCTAssertEqual(delivered, .success, "the caller was never completed")
+        await drainRefreshAndDelivery()
+        assertFailedOnceWith401(log)
+    }
+
+    /// A refresh that never answers is released by the watchdog; the requests
+    /// waiting on it must be completed, not left hanging.
+    func testQueuedRetry_WhenTheWatchdogReleasesAWedgedRefresh_FailsTheCallerOnce() async throws {
+        let releaseTokenEndpoint = DispatchSemaphore(value: 0)
+        HTTPStubURLProtocol.register { @Sendable [tokenURL, apiURL] request in
+            if request.url == tokenURL {
+                _ = releaseTokenEndpoint.wait(timeout: .now() + 10.0)
+                // Not a 5xx: the token request retries those after the test ends.
+                return .init(statusCode: 400, headers: nil, body: nil)
+            }
+            guard request.url == apiURL else { return nil }
+            return .init(statusCode: 401, headers: nil, body: nil)
+        }
+        let (task, log) = try await sentRequestAwaitingRefresh()
+        executor.tokenRefreshWatchdogSeconds = 0.2
+
+        executor.refreshTokenAndResume(task: task, accountId: nil)
+
+        let delivered = await awaitSemaphore(log.delivered, timeout: .now() + 5.0)
+        releaseTokenEndpoint.signal()
+        XCTAssertEqual(delivered, .success, "the caller was never completed")
+        await drainRefreshAndDelivery()
+        assertFailedOnceWith401(log)
+    }
+
+    /// A queued task with no request to rebuild from cannot be resent.
+    private final class TaskWithoutRequest: URLSessionDataTask, @unchecked Sendable {
+        override var originalRequest: URLRequest? { nil }
+        override var taskIdentifier: Int { 987_654 }
+        override var response: URLResponse? { nil }
+        override func cancel() {}
+        private let storedDescription = LockIsolated<String?>(nil)
+        override var taskDescription: String? {
+            get { storedDescription.value }
+            set { storedDescription.value = newValue }
+        }
+    }
+
+    /// A queued retry that cannot be rebuilt after a successful refresh must
+    /// still complete its caller rather than be skipped.
+    func testQueuedRetry_WithNoRequestToRebuild_FailsTheCallerOnce() async throws {
+        HTTPStubURLProtocol.register { @Sendable [tokenURL] request in
+            guard request.url == tokenURL else { return nil }
+            return .init(statusCode: 200, headers: nil, body: Self.tokenResponseJSON(accessToken: "fresh"))
+        }
+        let task = TaskWithoutRequest()
+        executor.markSentOnOwnSession(task)
+        let log = CompletionLog()
+        executor.responder.addCompletion({ @Sendable result in log.record(result) },
+                                         taskID: task.taskIdentifier)
+
+        executor.refreshTokenAndResume(task: task, accountId: nil)
+
+        let delivered = await awaitSemaphore(log.delivered, timeout: .now() + 10.0)
+        XCTAssertEqual(delivered, .success, "the caller was never completed")
+        await drainRefreshAndDelivery()
+        XCTAssertEqual(log.all.count, 1, "the caller must be completed exactly once")
+        guard case .failure? = log.all.first else {
+            return XCTFail("the caller must receive a failure, got \(String(describing: log.all.first))")
+        }
+        XCTAssertEqual(userAccount.authToken, "fresh", "the refresh itself still succeeded")
+    }
+
+    // MARK: - A 401 is refreshed by the executor that sent the request
+
+    /// A URL on a host the injected library authenticates, so the 401 is
+    /// classified as this library's rather than a foreign host's.
+    private func libraryURL() throws -> URL {
+        let host = try XCTUnwrap(libraryAccount.tppAccount.authSurfaceHosts.sorted().first)
+        return try XCTUnwrap(URL(string: "https://\(host)/loans/"))
+    }
+
+    /// Answers the first request to `url` with a 401 and later ones with
+    /// `retry-body`, and the token endpoint with `tokenStatus`. Records the
+    /// bearer each request to `url` carried and how many token requests came.
+    private func stub401ThenOK(at url: URL, tokenStatus: Int)
+        -> (bearers: LockIsolated<[String?]>, tokenHits: LockIsolated<Int>) {
+        let bearers = LockIsolated<[String?]>([])
+        let tokenHits = LockIsolated(0)
+        HTTPStubURLProtocol.register { @Sendable [tokenURL] request in
+            if request.url == tokenURL {
+                tokenHits.withValue { $0 += 1 }
+                let body = tokenStatus == 200 ? Self.tokenResponseJSON(accessToken: "fresh") : Data("denied".utf8)
+                return .init(statusCode: tokenStatus, headers: nil, body: body)
+            }
+            guard request.url == url else { return nil }
+            let seen = bearers.withValue { list -> Int in
+                list.append(request.value(forHTTPHeaderField: "Authorization"))
+                return list.count
+            }
+            return seen == 1 ? .init(statusCode: 401, headers: nil, body: nil)
+                             : .init(statusCode: 200, headers: nil, body: Data("retry-body".utf8))
+        }
+        return (bearers, tokenHits)
+    }
+
+    /// The responder refreshes with the accounts its executor was given and
+    /// resends through that executor, so the caller gets the retry's body.
+    /// Read from the app's accounts instead, the outcome depended on whoever
+    /// was signed in on the device running the tests.
+    func testResponder401_RefreshesWithTheExecutorsAccounts_AndDeliversTheRetry() async throws {
+        let url = try libraryURL()
+        let (bearers, tokenHits) = stub401ThenOK(at: url, tokenStatus: 200)
+        let log = CompletionLog()
+
+        _ = executor.executeRequest(executor.request(for: url), enableTokenRefresh: false,
+                                    accountId: nil) { @Sendable result in log.record(result) }
+
+        let delivered = await awaitSemaphore(log.delivered, timeout: .now() + 10.0)
+        XCTAssertEqual(delivered, .success, "the caller was never completed")
+        await drainRefreshAndDelivery()
+        XCTAssertEqual(log.all.count, 1, "the caller must be completed exactly once")
+        guard case .success(let data, _)? = log.all.first else {
+            return XCTFail("the retried request must succeed, got \(String(describing: log.all.first))")
+        }
+        XCTAssertEqual(data, Data("retry-body".utf8))
+        XCTAssertEqual(tokenHits.value, 1, "the injected library's token endpoint is refreshed once")
+        XCTAssertEqual(bearers.value, ["Bearer stale-token", "Bearer fresh"])
+    }
+
+    /// The same path when the token endpoint refuses: the caller is failed
+    /// once with the 401 rather than left waiting.
+    func testResponder401_WhenTheRefreshIsRefused_FailsTheCallerOnce() async throws {
+        let url = try libraryURL()
+        let (bearers, tokenHits) = stub401ThenOK(at: url, tokenStatus: 401)
+        let log = CompletionLog()
+
+        _ = executor.executeRequest(executor.request(for: url), enableTokenRefresh: false,
+                                    accountId: nil) { @Sendable result in log.record(result) }
+
+        let delivered = await awaitSemaphore(log.delivered, timeout: .now() + 10.0)
+        XCTAssertEqual(delivered, .success, "the caller was never completed")
+        await drainRefreshAndDelivery()
+        assertFailedOnceWith401(log)
+        XCTAssertEqual(tokenHits.value, 1, "the injected library's token endpoint is asked once")
+        XCTAssertEqual(bearers.value.count, 1, "nothing is resent after a refused refresh")
+        XCTAssertEqual(userAccount.authState, .credentialsStale)
+    }
+
+    /// The host set that keeps a foreign 401 from logging the patron out comes
+    /// from the executor's accounts too: a 401 from a host the injected library
+    /// does not use is returned to the caller without a refresh (PR #1018).
+    func testResponder401_FromAHostOutsideTheExecutorsLibrary_DoesNotRefresh() async throws {
+        let (bearers, tokenHits) = stub401ThenOK(at: apiURL, tokenStatus: 200)
+        let log = CompletionLog()
+
+        _ = executor.executeRequest(executor.request(for: apiURL), enableTokenRefresh: false,
+                                    accountId: nil) { @Sendable result in log.record(result) }
+
+        let delivered = await awaitSemaphore(log.delivered, timeout: .now() + 10.0)
+        XCTAssertEqual(delivered, .success, "the caller was never completed")
+        await drainRefreshAndDelivery()
+        assertFailedOnceWith401(log)
+        XCTAssertEqual(tokenHits.value, 0, "a foreign host's 401 must not start a refresh")
+        XCTAssertEqual(bearers.value.count, 1)
+        XCTAssertEqual(userAccount.authState, .loggedIn, "a foreign host's 401 must not mark the library stale")
+    }
+
+    /// A refused refresh that two requests are waiting on fails each caller
+    /// exactly once with its own 401, after a single token request.
+    func testQueuedRetry_TwoRequestsBehindOneRefusedRefresh_EachCallerFailsOnce() async throws {
+        let tokenHits = registerAPI401(tokenStatus: 401)
+        let (first, firstLog) = try await sentRequestAwaitingRefresh()
+        let (second, secondLog) = try await sentRequestAwaitingRefresh(
+            to: try XCTUnwrap(URL(string: "https://api.example.com/protected/second")))
+        // Where a second 401 leaves its task while a refresh is in flight.
+        await executor.appendTokenRetryForTesting(second)
+
+        executor.refreshTokenAndResume(task: first, accountId: nil)
+
+        let firstDelivered = await awaitSemaphore(firstLog.delivered, timeout: .now() + 10.0)
+        let secondDelivered = await awaitSemaphore(secondLog.delivered, timeout: .now() + 10.0)
+        XCTAssertEqual(firstDelivered, .success, "the first caller was never completed")
+        XCTAssertEqual(secondDelivered, .success, "the second caller was never completed")
+        await drainRefreshAndDelivery()
+        assertFailedOnceWith401(firstLog)
+        assertFailedOnceWith401(secondLog)
+        XCTAssertEqual(tokenHits.value, 1, "both requests wait on one token request")
+    }
+
+    /// The refresh succeeds but the server refuses the retry too: the caller
+    /// is failed once with that 401, and nothing refreshes or resends again.
+    func testResponder401_WhenTheRetryIsRefusedAgain_FailsTheCallerOnceWithoutASecondRefresh() async throws {
+        let url = try libraryURL()
+        let bearers = LockIsolated<[String?]>([])
+        let tokenHits = LockIsolated(0)
+        HTTPStubURLProtocol.register { @Sendable [tokenURL] request in
+            if request.url == tokenURL {
+                tokenHits.withValue { $0 += 1 }
+                return .init(statusCode: 200, headers: nil, body: Self.tokenResponseJSON(accessToken: "fresh"))
+            }
+            guard request.url == url else { return nil }
+            bearers.withValue { $0.append(request.value(forHTTPHeaderField: "Authorization")) }
+            return .init(statusCode: 401, headers: nil, body: nil)
+        }
+        let log = CompletionLog()
+
+        _ = executor.executeRequest(executor.request(for: url), enableTokenRefresh: false,
+                                    accountId: nil) { @Sendable result in log.record(result) }
+
+        let delivered = await awaitSemaphore(log.delivered, timeout: .now() + 10.0)
+        XCTAssertEqual(delivered, .success, "the caller was never completed")
+        await drainRefreshAndDelivery()
+        assertFailedOnceWith401(log)
+        XCTAssertEqual(tokenHits.value, 1, "the retry's 401 must not start a second refresh")
+        XCTAssertEqual(bearers.value, ["Bearer stale-token", "Bearer fresh"])
+    }
+
+    // MARK: - A refresh for another session's task
+
+    /// A task from another URLSession carrying the identifier of `live`, a
+    /// request on the executor's session. Identifiers are unique only within
+    /// one session, so a background download task can share one.
+    private func otherSessionsTask(withIdentifierOf live: URLSessionTask) throws -> URLSessionTask {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [HTTPStubURLProtocol.self]
+        let session = URLSession(configuration: config)
+        addTeardownBlock { session.invalidateAndCancel() }
+        for _ in 0..<1_000 {
+            let task = session.dataTask(with: URLRequest(url: apiURL))
+            if task.taskIdentifier == live.taskIdentifier { return task }
+            if task.taskIdentifier > live.taskIdentifier { break }
+        }
+        XCTFail("no task on a second session took identifier \(live.taskIdentifier)")
+        throw CancellationError()
+    }
+
+    /// A live request on the executor's session, its caller still waiting,
+    /// and a queued request of the executor's own whose completion marks the
+    /// moment the refresh has dealt with every queued task.
+    private func liveRequestAndQueuedProbe() async -> (live: URLSessionTask, liveLog: CompletionLog, probeLog: CompletionLog) {
+        let live = executor.makeSessionDataTask(with: executor.request(for: apiURL))
+        let liveLog = CompletionLog()
+        executor.responder.addCompletion({ @Sendable result in liveLog.record(result) },
+                                         taskID: live.taskIdentifier)
+        let probe = makeQueueableTask(url: URL(string: "https://api.example.com/protected/probe"))
+        let probeLog = CompletionLog()
+        executor.responder.addCompletion({ @Sendable result in probeLog.record(result) },
+                                         taskID: probe.taskIdentifier)
+        await executor.appendTokenRetryForTesting(probe)
+        return (live, liveLog, probeLog)
+    }
+
+    /// A refused refresh started for another session's task (the background
+    /// download path) must not fail the executor's live request that happens
+    /// to share its identifier. The other task is cancelled, as before.
+    func testRefusedRefresh_ForAnotherSessionsTask_DoesNotFailTheLiveRequestSharingItsIdentifier() async throws {
+        registerAPI401(tokenStatus: 401)
+        let (live, liveLog, probeLog) = await liveRequestAndQueuedProbe()
+        let foreign = try otherSessionsTask(withIdentifierOf: live)
+
+        executor.refreshTokenAndResume(task: foreign, accountId: nil)
+
+        let probeDelivered = await awaitSemaphore(probeLog.delivered, timeout: .now() + 10.0)
+        XCTAssertEqual(probeDelivered, .success, "the refused refresh never failed its queue")
+        await drainRefreshAndDelivery()
+        XCTAssertTrue(liveLog.all.isEmpty, "the live request must not receive another session's failure")
+        XCTAssertNotNil(executor.responder.accumulatedBytesForTesting(taskID: live.taskIdentifier),
+                        "the live request's completion stays registered")
+        XCTAssertNotEqual(foreign.state, .suspended, "the other session's task is cancelled")
+    }
+
+    /// A successful refresh for another session's task must not move the
+    /// completion of the executor's live request onto the retry.
+    func testSuccessfulRefresh_ForAnotherSessionsTask_LeavesTheLiveRequestsCompletionInPlace() async throws {
+        HTTPStubURLProtocol.register { @Sendable [tokenURL, apiURL] request in
+            if request.url == tokenURL {
+                return .init(statusCode: 200, headers: nil, body: Self.tokenResponseJSON(accessToken: "fresh"))
+            }
+            guard request.url?.host == apiURL?.host else { return nil }
+            return .init(statusCode: 200, headers: nil, body: Data("ok".utf8))
+        }
+        let (live, liveLog, probeLog) = await liveRequestAndQueuedProbe()
+        let foreign = try otherSessionsTask(withIdentifierOf: live)
+
+        executor.refreshTokenAndResume(task: foreign, accountId: nil)
+
+        let probeDelivered = await awaitSemaphore(probeLog.delivered, timeout: .now() + 10.0)
+        XCTAssertEqual(probeDelivered, .success, "the refresh never retried its queue")
+        await drainRefreshAndDelivery()
+        XCTAssertNotNil(executor.responder.accumulatedBytesForTesting(taskID: live.taskIdentifier),
+                        "the live request's completion must stay under its own task")
+        XCTAssertTrue(liveLog.all.isEmpty, "the live request must not receive another session's retry")
     }
 }

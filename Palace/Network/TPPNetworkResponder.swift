@@ -62,7 +62,9 @@ private struct TPPNetworkTaskInfo {
 /// and only read thereafter; the remaining stored members are immutable `let`s —
 /// including `fallbackCredentialsProvider`, a non-`Sendable` closure written once
 /// in `init` and only invoked (never reassigned), and
-/// `wasSuppliedCredentialsProvider`, a `Bool` captured at init (PP-4969).
+/// `wasSuppliedCredentialsProvider`, a `Bool` captured at init (PP-4969). `owner`
+/// is a `weak var` set once by the owning executor's init, before any task runs,
+/// and only read thereafter.
 /// Documented invariant, not a bare waiver. (Critical-path: isolation via existing
 /// locks only — no broadening of the 401/auth decision.)
 class TPPNetworkResponder: NSObject, @unchecked Sendable {
@@ -99,6 +101,18 @@ class TPPNetworkResponder: NSObject, @unchecked Sendable {
     /// "died" from "never had one" and deciding to cancel instead of substitute,
     /// which is a behavior change on a credential path and needs its own ticket.
     private weak var credentialsProvider: NYPLBasicAuthCredentialsProvider?
+
+    /// The executor that sends this responder's tasks. A 401 is refreshed and
+    /// retried through it, with its accounts manager, so the retry is rebuilt
+    /// where the caller's completion is stored and for the accounts that
+    /// executor was given. Weak because the executor owns this responder. Nil
+    /// only for a responder built on its own, which uses the app's executor.
+    private(set) weak var owner: TPPNetworkExecutor?
+
+    /// Called once by the executor that owns this responder, from its init.
+    func bind(to executor: TPPNetworkExecutor) {
+        owner = executor
+    }
 
     /// Tracks URLs that have been retried after a 401 to prevent infinite retry loops.
     /// Key is the URL absoluteString, value is the number of retry attempts.
@@ -272,16 +286,16 @@ class TPPNetworkResponder: NSObject, @unchecked Sendable {
         }
     }
 
-    /// Fails a queued retry that cannot be resent: clears the URL's retry mark,
-    /// so its next 401 can refresh again, then removes the completion
-    /// registered for `taskID` and calls it with `error`.
-    func failRetry(taskID: TaskID, url: URL?, error: NSError) {
+    /// Fails a queued retry that will not be resent: clears the URL's retry
+    /// mark, so its next 401 can refresh again, then removes the completion
+    /// registered for `taskID` and calls it with `error` and `response`.
+    func failRetry(taskID: TaskID, url: URL?, error: NSError, response: URLResponse? = nil) {
         clearRetry(url: url)
         var info: TPPNetworkTaskInfo?
         taskInfoQueue.sync {
             info = self.taskInfo.removeValue(forKey: taskID)
         }
-        info?.completion(.failure(error, nil))
+        info?.completion(.failure(error, response))
     }
 
     /// Test seam: the bytes accumulated for `taskID` so far, or nil if no task
@@ -437,7 +451,8 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
         if let http = task.response as? HTTPURLResponse,
            http.statusCode == 401,
            canRetry(url: requestURL),
-           handleExpiredTokenIfNeeded(for: http, with: task) {
+           handleExpiredTokenIfNeeded(for: http, with: task,
+                                      networkExecutor: owner ?? AppContainer.production().networkExecutor) {
             // Mark this URL as retried to prevent infinite loops
             markRetried(url: requestURL)
             // Don't remove taskInfo - it will be transferred to the retry task via updateCompletionId
@@ -559,7 +574,8 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
                 let sentAuthHeader = (task.originalRequest?.value(forHTTPHeaderField: "Authorization") != nil)
                     || (task.currentRequest?.value(forHTTPHeaderField: "Authorization") != nil)
                 if sentAuthHeader {
-                    let user = AppContainer.production().accountsManager.currentUserAccount
+                    let accounts = owner?.accountsManager ?? AppContainer.production().accountsManager
+                    let user = accounts.currentUserAccount
                     if user.authState == .credentialsStale {
                         Log.info(#file, "Authenticated request \(taskID) returned \(http.statusCode) — server accepted credentials, reconciling authState credentialsStale → loggedIn")
                         user.setAuthState(.loggedIn)
@@ -608,7 +624,7 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
 
 private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
                                        with task: URLSessionTask,
-                                       networkExecutor: TPPNetworkExecutor = AppContainer.production().networkExecutor) -> Bool {
+                                       networkExecutor: TPPNetworkExecutor) -> Bool {
     // Skip DELETE requests - intentionally don't refresh tokens for deletes
     // This prevents refresh loops when revoking/returning items
     if task.originalRequest?.httpMethod == "DELETE" {
@@ -620,7 +636,7 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
     // whatever account is current at call time — if the user switched accounts
     // between sending the request and receiving the 401, the wrong account's
     // credentials would be checked/marked stale.
-    let accountsManager = AppContainer.production().accountsManager
+    let accountsManager = networkExecutor.accountsManager
     let accountId = accountsManager.currentAccountId
     let snapshot = accountsManager.currentUserAccount.credentialSnapshot()
 
@@ -644,10 +660,9 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
     // The classifier gets the current account's auth-surface hosts so a 401
     // from a foreign host (e.g. a lingering upload to another library's
     // server) is ignored instead of logging the patron out (PR #1018).
+    let currentAccountHosts = accountsManager.currentAccount?.authSurfaceHosts
     let classifier = AuthErrorClassifier(
-        currentAccountHostsProvider: {
-            AppContainer.production().accountsManager.currentAccount?.authSurfaceHosts
-        }
+        currentAccountHostsProvider: { currentAccountHosts }
     )
     let outcome = classifier.classify(
         response: response,

@@ -21,16 +21,25 @@ import PalaceCatalog
 @MainActor
 final class TPPNetworkResponderAuthCoordinatorTests: XCTestCase {
 
+    private var executor: TPPNetworkExecutor!
     private var responder: TPPNetworkResponder!
     private var session: URLSession!
 
+    /// The responder is an executor's, so its 401 handling reads the signed-out
+    /// accounts injected here rather than the simulator's signed-in account.
     override func setUp() {
         super.setUp()
         HTTPStubURLProtocol.reset()
-        responder = TPPNetworkResponder(credentialsProvider: nil, useFallbackCaching: false)
+        TPPUserAccountMock.resetShared()
 
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [HTTPStubURLProtocol.self]
+        executor = TPPNetworkExecutor(credentialsProvider: nil,
+                                      cachingStrategy: .ephemeral,
+                                      sessionConfiguration: config,
+                                      accountsManager: TPPLibraryAccountMock(),
+                                      delegateQueue: nil)
+        responder = executor.responder
         session = URLSession(configuration: config, delegate: responder, delegateQueue: nil)
     }
 
@@ -39,6 +48,7 @@ final class TPPNetworkResponderAuthCoordinatorTests: XCTestCase {
         session.invalidateAndCancel()
         session = nil
         responder = nil
+        executor = nil
         super.tearDown()
     }
 
@@ -126,10 +136,10 @@ final class TPPNetworkResponderAuthCoordinatorTests: XCTestCase {
             // `handleExpiredTokenIfNeeded` returns false (no creds in the
             // test AccountsManager) and the completion fires here.
             //
-            // The latter is the deterministic behavior in a unit-test env
-            // (no logged-in user means handleExpiredTokenIfNeeded returns
-            // false at line 430). The completion fires with failure
-            // because the 401 is treated as a permanent client error.
+            // The latter is the deterministic behavior here: the injected
+            // accounts are signed out, so handleExpiredTokenIfNeeded returns
+            // false. The completion fires with failure because the 401 is
+            // treated as a permanent client error.
             switch result {
             case .failure:
                 exp.fulfill()

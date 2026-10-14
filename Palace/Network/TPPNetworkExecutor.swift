@@ -52,6 +52,9 @@ enum TaskProvenance {
     /// value carrying either is silently truncated or dropped on the next parse.
     /// Account ids are UUID URNs and cannot; a future co-tenant key must check.
     private static let accountKey = "acct"
+    /// The executor whose session created the task; see
+    /// `TPPNetworkExecutor.sentOnOwnSession(_:)`.
+    static let sessionKey = "sess"
 
     static func setAccount(_ accountId: String?, on task: URLSessionTask) {
         guard let accountId, !accountId.isEmpty else { return }
@@ -223,8 +226,10 @@ struct RefreshOutcomeBox: @unchecked Sendable {
 /// across concurrency domains as it already is in production. The conformance is
 /// honest, not a blanket silence — every stored property is immutable-after-init
 /// or independently synchronized:
-///   • `transport` / `responder` — `let`; both wrap the shared, thread-safe
-///     `URLSession` and are shared-by-design (the app routes through one executor).
+///   • `transport` / `responder` — `let`; the executor's own thread-safe
+///     `URLSession` and its delegate. Each executor refreshes and retries its
+///     own requests through them, so several executors can coexist.
+///   • `sessionTaskTag` — `let`, set at init.
 ///   • `tokenCoordinator` — a `private actor` (its `isRefreshing`/`retryQueue`
 ///     state is actor-isolated).
 ///   • `_accountsManager` — `var`, but assigned ONLY in the DI initializers
@@ -240,6 +245,8 @@ struct RefreshOutcomeBox: @unchecked Sendable {
 @objc class TPPNetworkExecutor: NSObject, @unchecked Sendable {
     let transport: NetworkTransport
     private let tokenCoordinator = TokenRefreshCoordinator()
+    /// Marks the tasks this executor's session creates. See `sentOnOwnSession(_:)`.
+    let sessionTaskTag = UUID().uuidString
 
     /// Ceiling on a single token refresh before the watchdog force-releases a
     /// wedged slot. Set comfortably above the shared session's resource
@@ -263,7 +270,7 @@ struct RefreshOutcomeBox: @unchecked Sendable {
     // through the executor's higher-level GET / PUT / POST / DELETE surface.
     let responder: TPPNetworkResponder
     private var _accountsManager: TPPLibraryAccountsProvider?
-    private var accountsManager: TPPLibraryAccountsProvider {
+    var accountsManager: TPPLibraryAccountsProvider {
         _accountsManager ?? AppContainer.production().accountsManager
     }
 
@@ -279,6 +286,7 @@ struct RefreshOutcomeBox: @unchecked Sendable {
         // accountsManager is lazy — accessed on first use, not during init
         // This avoids circular singleton deadlock: TPPNetworkExecutor ↔ AccountsManager
         super.init()
+        responder.bind(to: self)
     }
 
     /// Test-friendly initializer allowing a custom URLSessionConfiguration (e.g., with custom URLProtocol classes)
@@ -295,6 +303,7 @@ struct RefreshOutcomeBox: @unchecked Sendable {
                                           requestTimeout: TPPNetworkExecutor.defaultRequestTimeout)
         // accountsManager is lazy — avoids circular init deadlock
         super.init()
+        responder.bind(to: self)
     }
 
     /// DI-friendly initializer for testing
@@ -310,6 +319,7 @@ struct RefreshOutcomeBox: @unchecked Sendable {
                                           delegateQueue: delegateQueue)
         self._accountsManager = accountsManager
         super.init()
+        responder.bind(to: self)
     }
 
     /// Full-DI initializer used by adversarial tests that need BOTH a custom
@@ -336,6 +346,7 @@ struct RefreshOutcomeBox: @unchecked Sendable {
                                           requestTimeout: TPPNetworkExecutor.defaultRequestTimeout)
         self._accountsManager = accountsManager
         super.init()
+        responder.bind(to: self)
     }
 
     #if DEBUG
@@ -383,7 +394,9 @@ struct RefreshOutcomeBox: @unchecked Sendable {
                 return // refresh completed normally, or a newer one took over
             }
             Log.error(#file, "Token refresh watchdog fired after \(timeout)s — force-releasing wedged refresh (generation \(generation)); failing \(stranded.count) stranded request(s)")
-            stranded.forEach { $0.task.cancel() }
+            let error = NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut,
+                                userInfo: [NSLocalizedDescriptionKey: "Token refresh did not finish"])
+            stranded.forEach { self.failQueuedRetry($0.task, error: error) }
         }
     }
 
@@ -476,7 +489,9 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
         case .refreshThenDispatch(let accountId):
             Log.info(#file, "Token near expiry - proactively refreshing before request")
             refreshTokenAndResume(task: nil, accountId: accountId) { [weak self] _ in
-                _ = self?.performDataTask(with: req, accountId: accountId, completion: completion)
+                guard let self else { return }
+                _ = self.performDataTask(with: self.withCurrentBearer(req, accountId: accountId),
+                                         accountId: accountId, completion: completion)
             }
             return nil
         }
@@ -566,7 +581,7 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
             } onCancel: {
                 refreshed.cancel()
             }
-            return await dataTask(req, accountId: accountId)
+            return await dataTask(withCurrentBearer(req, accountId: accountId), accountId: accountId)
         }
     }
 
@@ -599,7 +614,7 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
     private func performDataTask(with request: URLRequest,
                                  accountId: String?,
                                  completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask {
-        let task = transport.urlSession.dataTask(with: request)
+        let task = makeSessionDataTask(with: request)
         // Stamp the account this task is being DISPATCHED for. Unlike
         // `currentAccountId` read later, this cannot drift under a library
         // switch — which is the whole defect (PP-4986).
@@ -767,6 +782,7 @@ extension TPPNetworkExecutor {
         }
 
         let task = transport.urlSession.downloadTask(with: req)
+        markSentOnOwnSession(task)
         // Fifth producer. It registers with the responder, so a 401 reaches the
         // retry queue like any other task. Zero production callers today (tests
         // only), which is why it was missed — but "no caller" is a fact about
@@ -906,6 +922,13 @@ extension TPPNetworkExecutor {
                 return
             }
 
+            // A completion passed with a task replaces the one the responder
+            // holds for it; every outcome below then completes the task through
+            // the responder, exactly once.
+            if let task, let completionBox {
+                self.responder.addCompletion(completionBox.call, taskID: task.taskIdentifier)
+            }
+
             // Atomic check-and-claim: only one caller can take the refresh slot.
             let claimed = await self.tokenCoordinator.tryClaimRefreshSlot()
 
@@ -913,9 +936,6 @@ extension TPPNetworkExecutor {
                 Log.debug(#file, "Token refresh already in progress, queueing task for retry")
                 if let task {
                     await self.tokenCoordinator.appendToRetryQueue(task, accountIdAtRefreshStart: capturedAccountId)
-                    if let completionBox {
-                        self.responder.addCompletion(completionBox.call, taskID: task.taskIdentifier)
-                    }
                 } else {
                     let error = NSError(domain: TPPErrorLogger.clientDomain,
                                         code: TPPErrorCode.invalidCredentials.rawValue,
@@ -943,7 +963,13 @@ extension TPPNetworkExecutor {
                 Log.error(#file, "Cannot refresh token: missing credentials or tokenURL for account \(capturedAccountId ?? "nil")")
                 await self.tokenCoordinator.setRefreshing(false)
                 let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Cannot request token with empty credentials"])
-                completionBox?.call(NYPLResult.failure(error, nil))
+                // Another session's task is left running; its completion is
+                // not stored in this executor's responder.
+                if let task, self.sentOnOwnSession(task) {
+                    self.failQueuedRetry(task, error: error)
+                } else {
+                    completionBox?.call(NYPLResult.failure(error, nil))
+                }
                 return
             }
 
@@ -952,9 +978,6 @@ extension TPPNetworkExecutor {
 
             if let task {
                 await self.tokenCoordinator.appendToRetryQueue(task, accountIdAtRefreshStart: capturedAccountId)
-                if let completionBox {
-                    self.responder.addCompletion(completionBox.call, taskID: task.taskIdentifier)
-                }
             }
 
             self.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL, accountId: capturedAccountId) { [weak self] result in
@@ -981,6 +1004,12 @@ extension TPPNetworkExecutor {
                             let oldTask = queued.task
                             guard let originalRequest = oldTask.originalRequest,
                                   originalRequest.url != nil else {
+                                if self.sentOnOwnSession(oldTask) {
+                                    let message = "The request could not be rebuilt after a token refresh"
+                                    self.failQueuedRetry(oldTask, error: NSError(domain: TPPErrorLogger.clientDomain,
+                                                                                 code: TPPErrorCode.responseFail.rawValue,
+                                                                                 userInfo: [NSLocalizedDescriptionKey: message]))
+                                }
                                 continue
                             }
 
@@ -1012,11 +1041,15 @@ extension TPPNetworkExecutor {
                             let snapshot = self.accountsManager.userAccount(for: resolvedId).credentialSnapshot()
                             guard let mutableRequest = self.resendableRetry(of: oldTask, original: originalRequest,
                                                                             credentials: snapshot) else { continue }
-                            let newTask = self.transport.urlSession.dataTask(with: mutableRequest)
+                            let newTask = self.makeSessionDataTask(with: mutableRequest)
                             // A retry can itself 401. Without this the second
                             // round loses provenance and falls back to current.
                             TaskProvenance.setAccount(rebuildAccountId, on: newTask)
-                            self.responder.updateCompletionId(oldTask.taskIdentifier, newId: newTask.taskIdentifier)
+                            // The responder keys completions by identifier, which
+                            // another session's task can share with a live request here.
+                            if self.sentOnOwnSession(oldTask) {
+                                self.responder.updateCompletionId(oldTask.taskIdentifier, newId: newTask.taskIdentifier)
+                            }
                             newTasks.append(newTask)
                             oldTask.cancel()
                         }
@@ -1034,7 +1067,6 @@ extension TPPNetworkExecutor {
                         Log.error(#file, "Failed to refresh token with error: \(error.localizedDescription)")
 
                         let failedTasks = await self.tokenCoordinator.drainRetryQueue()
-                        failedTasks.forEach { $0.task.cancel() }
 
                         await self.tokenCoordinator.setRefreshing(false)
 
@@ -1072,7 +1104,12 @@ extension TPPNetworkExecutor {
                                               code: TPPErrorCode.invalidCredentials.rawValue,
                                               userInfo: userInfo)
                         }
-                        completionBox?.call(NYPLResult.failure(nsError, nil))
+                        // Failed after the stale mark above, so a caller that
+                        // reads the account's state on failure sees it.
+                        failedTasks.forEach { self.failQueuedRetry($0.task, error: nsError) }
+                        if task == nil {
+                            completionBox?.call(NYPLResult.failure(nsError, nil))
+                        }
                     }
                 }
             }
