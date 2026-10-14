@@ -17,6 +17,7 @@ class TPPAgeCheckTests: XCTestCase {
     var userAccountProviderMock: TPPUserAccountProviderMock!
     var simplyeLibraryAccountProviderMock: TPPCurrentLibraryAccountProviderMock!
     var ageCheck: TPPAgeCheck!
+    var presenterSpy: AgeVerificationPresenterSpy!
 
     // TPPAgeCheck checks the property userAboveAgeLimit in AccountDetails before performing age check
     // This property is store in UserDefault which can be different value when testing on different machine
@@ -49,7 +50,9 @@ class TPPAgeCheckTests: XCTestCase {
 
         expectation = self.expectation(description: "AgeChecking")
 
-        ageCheck = TPPAgeCheck(ageCheckChoiceStorage: ageCheckChoiceStorageMock)
+        presenterSpy = AgeVerificationPresenterSpy()
+        ageCheck = TPPAgeCheck(ageCheckChoiceStorage: ageCheckChoiceStorageMock,
+                               presentAgeVerification: presenterSpy.present)
     }
 
     override func tearDownWithError() throws {
@@ -142,5 +145,79 @@ class TPPAgeCheckTests: XCTestCase {
         let userAboveAgeLimit = simplyeLibraryAccountProviderMock.currentAccount?.details?.userAboveAgeLimit ?? false
         XCTAssertFalse(userAboveAgeLimit,
                        "userAboveAgeLimit should not be set to true when age check fails")
+    }
+}
+
+/// Presentation tests count completions after draining the age check's serial
+/// queue, so they live apart from `TPPAgeCheckTests`, whose `setUp` creates an
+/// expectation every test must wait on.
+@MainActor
+final class TPPAgeCheckPresentationTests: XCTestCase {
+    private var userAccountProviderMock: TPPUserAccountProviderMock!
+    private var simplyeLibraryAccountProviderMock: TPPCurrentLibraryAccountProviderMock!
+    private var ageCheck: TPPAgeCheck!
+    private var presenterSpy: AgeVerificationPresenterSpy!
+    private var defaultUserAboveAgeLimit = false
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        simplyeLibraryAccountProviderMock = TPPCurrentLibraryAccountProviderMock()
+        userAccountProviderMock = TPPUserAccountProviderMock()
+        defaultUserAboveAgeLimit = simplyeLibraryAccountProviderMock.currentAccount?.details?.userAboveAgeLimit ?? false
+        simplyeLibraryAccountProviderMock.currentAccount?.details?.userAboveAgeLimit = false
+        if let account = simplyeLibraryAccountProviderMock.currentAccount,
+           let details = account.details {
+            account._setState(.detailsLoaded(details))
+        }
+        presenterSpy = AgeVerificationPresenterSpy()
+        ageCheck = TPPAgeCheck(ageCheckChoiceStorage: TPPAgeCheckChoiceStorageMock(),
+                               presentAgeVerification: presenterSpy.present)
+    }
+
+    override func tearDownWithError() throws {
+        simplyeLibraryAccountProviderMock.currentAccount?.details?.userAboveAgeLimit = defaultUserAboveAgeLimit
+        #if DEBUG
+        AccountStateStore.shared._resetAllForTesting()
+        #endif
+    }
+
+    /// The age-check screen goes through the injected presenter, wrapped in a
+    /// navigation controller, so tests never put it on the host window.
+    func testVerify_WhenAgeNotYetChecked_PresentsAgeCheckScreenThroughPresenter() throws {
+        var completions = 0
+        ageCheck.verifyCurrentAccountAgeRequirement(userAccountProvider: userAccountProviderMock,
+                                                    currentLibraryAccountProvider: simplyeLibraryAccountProviderMock) { _ in
+            completions += 1
+        }
+        ageCheck.flushPendingForTests()
+        drainMainQueue()
+
+        XCTAssertEqual(presenterSpy.presented.count, 1)
+        let nav = try XCTUnwrap(presenterSpy.presented.first as? UINavigationController)
+        XCTAssertTrue(nav.viewControllers.first is TPPAgeCheckViewController)
+
+        ageCheck.didCompleteAgeCheck(Calendar.current.component(.year, from: Date()) - 30)
+        ageCheck.flushPendingForTests()
+        XCTAssertEqual(completions, 1)
+    }
+
+    /// A second request while the screen is up queues its completion rather
+    /// than presenting a second screen; both completions fire once answered.
+    func testVerify_WhileAlreadyPresenting_DoesNotPresentAgain() throws {
+        var completions = 0
+        for _ in 0..<2 {
+            ageCheck.verifyCurrentAccountAgeRequirement(userAccountProvider: userAccountProviderMock,
+                                                        currentLibraryAccountProvider: simplyeLibraryAccountProviderMock) { _ in
+                completions += 1
+            }
+        }
+        ageCheck.flushPendingForTests()
+        drainMainQueue()
+
+        XCTAssertEqual(presenterSpy.presented.count, 1)
+
+        ageCheck.didCompleteAgeCheck(Calendar.current.component(.year, from: Date()) - 30)
+        ageCheck.flushPendingForTests()
+        XCTAssertEqual(completions, 2)
     }
 }

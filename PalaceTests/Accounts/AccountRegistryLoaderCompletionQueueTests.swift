@@ -218,7 +218,7 @@ final class AccountRegistryLoaderCompletionQueueTests: PalaceWiringTestCase {
             settings: settings,
             imageCache: ImageCache.shared,
             accountStateStore: AccountStateStore(),
-            ageCheck: TPPAgeCheck(ageCheckChoiceStorage: settings),
+            ageCheck: TPPAgeCheck(ageCheckChoiceStorage: settings, presentAgeVerification: { _ in }),
             networkExecutorProvider: { networking },
             currentAccountProvider: { nil },
             currentAccountIdProvider: { nil },

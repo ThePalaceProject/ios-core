@@ -28,8 +28,9 @@ protocol TPPAgeCheckChoiceStorage: AnyObject {
     // (`handlerList`, `isPresenting`) is read and written exclusively inside
     // `serialQueue.async` blocks, which provide mutual exclusion. The remaining
     // stored properties (`serialQueue`, `ageCheckChoiceStorage`, `minYear`,
-    // `currentYear`, `birthYearList`) are immutable `let`s. `ageCheckCompleted`
-    // is a delegate-protocol flag touched on the main thread during presentation.
+    // `currentYear`, `birthYearList`, `presentAgeVerification`) are immutable
+    // `let`s. `ageCheckCompleted` is a delegate-protocol flag touched on the
+    // main thread during presentation.
     // This resolves the 'capture of self in @Sendable closure' diagnostic on the
     // serialQueue closures. No logic change.
 
@@ -38,14 +39,19 @@ protocol TPPAgeCheckChoiceStorage: AnyObject {
     private var handlerList = [((Bool) -> ())]()
     private var isPresenting = false
     private let ageCheckChoiceStorage: TPPAgeCheckChoiceStorage
+    private let presentAgeVerification: @MainActor (UIViewController) -> Void
     var ageCheckCompleted: Bool = false
 
     let minYear: Int
     let currentYear: Int
     let birthYearList: [Int]
 
-    init(ageCheckChoiceStorage: TPPAgeCheckChoiceStorage) {
+    /// - Parameter presentAgeVerification: shows the age-check screen. Tests
+    ///   pass a spy so the screen never reaches the host app's window.
+    init(ageCheckChoiceStorage: TPPAgeCheckChoiceStorage,
+         presentAgeVerification: @escaping @MainActor (UIViewController) -> Void = { TPPPresentationUtils.safelyPresent($0) }) {
         self.ageCheckChoiceStorage = ageCheckChoiceStorage
+        self.presentAgeVerification = presentAgeVerification
         minYear = 1900
         currentYear = Calendar.current.component(.year, from: Date())
         birthYearList = Array(minYear...currentYear)
@@ -156,10 +162,10 @@ protocol TPPAgeCheckChoiceStorage: AnyObject {
     }
 
     fileprivate func presentAgeVerificationView() {
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [presentAgeVerification] in
             let vc = TPPAgeCheckViewController(ageCheckDelegate: self)
             let navigationVC = UINavigationController(rootViewController: vc)
-            TPPPresentationUtils.safelyPresent(navigationVC)
+            presentAgeVerification(navigationVC)
         }
     }
 
