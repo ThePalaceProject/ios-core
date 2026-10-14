@@ -1,6 +1,6 @@
 # 🧪 Palace iOS Unit Test Results
 
-**Generated:** 2026-10-14 21:12:41 UTC
+**Generated:** 2026-10-14 22:46:13 UTC
 **Commit:** `6750d106a0c5`
 **Branch:** `fix/refresh-slot-generation`
 
