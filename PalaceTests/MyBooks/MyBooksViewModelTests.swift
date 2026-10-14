@@ -1483,7 +1483,15 @@ final class MyBooksViewModelSearchEdgeCaseTests: XCTestCase {
         XCTAssertEqual(filtered.count, 1, "Whitespace query should match all books (empty query)")
     }
 
-    /// Tests filtering with Unicode characters
+    /// Pins that case-insensitive matching treats `café` as matching `Café`.
+    ///
+    /// Two limits, both deliberate to state rather than imply. The predicate under
+    /// test is built in this test body, not taken from the view model, so this
+    /// exercises `localizedCaseInsensitiveContains` and not the production filter.
+    /// And the query is assigned, never typed: accented input from a patron goes
+    /// through the iOS input system, which no unit test reaches, and which the
+    /// simulator driver also bypasses because it pastes non-ASCII text (PP-5035).
+    /// See docs/Testing/REGRESSION_TEST_MATRIX.md, "What automated text input reaches".
     func testFilterLogic_UnicodeCharacters_Matches() {
         let books = [
             TPPBookMocker.mockBook(identifier: "1", title: "Café Stories", authors: "François"),
@@ -1500,7 +1508,11 @@ final class MyBooksViewModelSearchEdgeCaseTests: XCTestCase {
         XCTAssertEqual(filtered.first?.identifier, "1")
     }
 
-    /// Tests filtering with emoji in title
+    /// Pins that an emoji query matches an emoji in a title.
+    ///
+    /// Same two limits as the accented-input test above: the predicate is this
+    /// test's own closure rather than the production filter, and an emoji a patron
+    /// enters arrives through an input path no automated test exercises (PP-5035).
     func testFilterLogic_EmojiInContent_HandledCorrectly() {
         let books = [
             TPPBookMocker.mockBook(identifier: "1", title: "Happy 😊 Book", authors: "Author")
