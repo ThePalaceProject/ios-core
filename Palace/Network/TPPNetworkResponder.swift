@@ -105,8 +105,9 @@ class TPPNetworkResponder: NSObject, @unchecked Sendable {
     /// The executor that sends this responder's tasks. A 401 is refreshed and
     /// retried through it, with its accounts manager, so the retry is rebuilt
     /// where the caller's completion is stored and for the accounts that
-    /// executor was given. Weak because the executor owns this responder. Nil
-    /// only for a responder built on its own, which uses the app's executor.
+    /// executor was given. Weak because the executor owns this responder. When
+    /// nil (the executor was released, or the responder was built on its own)
+    /// a 401 completes without a refresh and a 2xx heals nothing.
     private(set) weak var owner: TPPNetworkExecutor?
 
     /// Called once by the executor that owns this responder, from its init.
@@ -448,11 +449,14 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
         // Check for 401 BEFORE removing taskInfo, so completion can be preserved for retry
         // Use URL-based retry tracking instead of associated objects (which don't work on structs)
         let requestURL = task.originalRequest?.url
+        // A released owner means the caller that built this task is gone, so
+        // the 401 completes as-is: refreshing through another executor would
+        // retry a task whose completion that executor does not hold.
         if let http = task.response as? HTTPURLResponse,
            http.statusCode == 401,
            canRetry(url: requestURL),
-           handleExpiredTokenIfNeeded(for: http, with: task,
-                                      networkExecutor: owner ?? AppContainer.production().networkExecutor) {
+           let owner,
+           handleExpiredTokenIfNeeded(for: http, with: task, networkExecutor: owner) {
             // Mark this URL as retried to prevent infinite loops
             markRetried(url: requestURL)
             // Don't remove taskInfo - it will be transferred to the retry task via updateCompletionId
@@ -573,9 +577,10 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
                 // or other unauthenticated discovery calls.
                 let sentAuthHeader = (task.originalRequest?.value(forHTTPHeaderField: "Authorization") != nil)
                     || (task.currentRequest?.value(forHTTPHeaderField: "Authorization") != nil)
-                if sentAuthHeader {
-                    let accounts = owner?.accountsManager ?? AppContainer.production().accountsManager
-                    let user = accounts.currentUserAccount
+                if sentAuthHeader, let accounts = owner?.accountsManager {
+                    // Heal the library the request was sent for; the patron
+                    // may have switched libraries while it was in flight.
+                    let user = accounts.userAccount(forRequestOf: task)
                     if user.authState == .credentialsStale {
                         Log.info(#file, "Authenticated request \(taskID) returned \(http.statusCode) — server accepted credentials, reconciling authState credentialsStale → loggedIn")
                         user.setAuthState(.loggedIn)
@@ -622,6 +627,15 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
     }
 }
 
+private extension TPPLibraryAccountsProvider {
+    /// The user account for the library `task` was dispatched for, or the
+    /// current one when the task carries no dispatch stamp.
+    func userAccount(forRequestOf task: URLSessionTask) -> TPPUserAccount {
+        guard let stamped = TaskProvenance.account(of: task) else { return currentUserAccount }
+        return userAccount(for: stamped)
+    }
+}
+
 private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
                                        with task: URLSessionTask,
                                        networkExecutor: TPPNetworkExecutor) -> Bool {
@@ -631,14 +645,13 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
         return false
     }
 
-    // Use atomic snapshot to prevent TOCTOU races during account switches.
-    // Previously this used TPPUserAccount.sharedAccount() which resolves to
-    // whatever account is current at call time — if the user switched accounts
-    // between sending the request and receiving the 401, the wrong account's
-    // credentials would be checked/marked stale.
+    // Resolve the library the request was dispatched for, not the one
+    // selected now: a 401 for library A that arrives after the patron switched
+    // to B must not mark B stale or refresh B's token. The current library is
+    // the fallback only for a task that carries no dispatch stamp.
     let accountsManager = networkExecutor.accountsManager
-    let accountId = accountsManager.currentAccountId
-    let snapshot = accountsManager.currentUserAccount.credentialSnapshot()
+    let accountId = TaskProvenance.account(of: task) ?? accountsManager.currentAccountId
+    let snapshot = accountsManager.userAccount(forRequestOf: task).credentialSnapshot()
 
     guard snapshot.hasCredentials else {
         return false
@@ -657,12 +670,13 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
     // telemetry); the non-browser branch refreshes inline because only the
     // responder can re-run this URLSessionTask.
     //
-    // The classifier gets the current account's auth-surface hosts so a 401
+    // The classifier gets the request account's auth-surface hosts so a 401
     // from a foreign host (e.g. a lingering upload to another library's
     // server) is ignored instead of logging the patron out (PR #1018).
-    let currentAccountHosts = accountsManager.currentAccount?.authSurfaceHosts
+    let requestAccount = accountId.flatMap { accountsManager.account($0) } ?? accountsManager.currentAccount
+    let requestAccountHosts = requestAccount?.authSurfaceHosts
     let classifier = AuthErrorClassifier(
-        currentAccountHostsProvider: { currentAccountHosts }
+        currentAccountHostsProvider: { requestAccountHosts }
     )
     let outcome = classifier.classify(
         response: response,

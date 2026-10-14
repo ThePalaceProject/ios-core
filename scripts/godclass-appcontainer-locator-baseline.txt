@@ -59,4 +59,6 @@
 #   the classifier's host set through the executor that owns the responder.
 # 226 -> 225: ReadiumPDFReaderView deleted. The Readium PDF navigator path it
 #   hosted had no caller since PR #1008; its readerService read went with it.
-225
+# 225 -> 223: a 401 or 2xx on a responder whose executor was released no
+#   longer falls back to the app executor and accounts manager.
+223
