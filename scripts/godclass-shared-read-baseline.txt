@@ -38,4 +38,6 @@
 # 159 -> 158: ReadiumPDFReaderView deleted. The Readium PDF navigator path it
 #   hosted had no caller since PR #1008; its LCPPDFOpenProgress.shared read went
 #   with it.
-158
+# 158 -> 154: the LCP PDF open watchdog in ReaderService reads
+#   LCPPDFOpenProgress.shared once into a local instead of once per sampled field.
+154
