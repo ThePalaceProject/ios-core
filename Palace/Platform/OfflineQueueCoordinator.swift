@@ -45,7 +45,14 @@ protocol OfflineCirculationPerforming: AnyObject, Sendable {
     func startBorrow(for book: TPPBook, attemptDownload: Bool, borrowCompletion: (() -> Void)?)
 }
 
-extension MyBooksDownloadCenter: OfflineCirculationPerforming {}
+extension MyBooksDownloadCenter: OfflineCirculationPerforming {
+    func returnQueuedBook(withIdentifier identifier: String,
+                          unreachable: @escaping @Sendable () -> Void,
+                          completion: (@Sendable () -> Void)?) {
+        returnService.returnBook(withIdentifier: identifier, origin: .offlineQueue(unreachable: unreachable),
+                                 completion: completion)
+    }
+}
 
 // MARK: - OfflineQueueCoordinator
 

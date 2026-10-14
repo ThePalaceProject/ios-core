@@ -133,7 +133,8 @@ private final class RedirectCompletionBox: @unchecked Sendable {
     /// with a hand-injected reporter, so without this the line could be deleted
     /// with every unit test still passing.
     let localContentService: LocalBookContentService
-    private let returnService: BookReturnService
+    /// Internal so the offline queue's entry point (OfflineQueueCoordinator.swift) can reach it.
+    let returnService: BookReturnService
     private let alertPresenter: DownloadAlertPresenter
     private let authRetryHandler: DownloadAuthRetryHandler
     private let throttlingService: DownloadThrottlingService
@@ -1277,14 +1278,6 @@ extension MyBooksDownloadCenter {
     // BookCellModel), which are already `Sendable`-compatible.
     @objc func returnBook(withIdentifier identifier: String, completion: (@Sendable () -> Void)? = nil) {
         returnService.returnBook(withIdentifier: identifier, completion: completion)
-    }
-
-    /// Runs a return queued while offline; `unreachable` runs if the server cannot be reached.
-    func returnQueuedBook(withIdentifier identifier: String,
-                          unreachable: @escaping @Sendable () -> Void,
-                          completion: (@Sendable () -> Void)?) {
-        returnService.returnBook(withIdentifier: identifier, origin: .offlineQueue(unreachable: unreachable),
-                                 completion: completion)
     }
 
     // returnBook full body + performPostReturnSyncThen moved to
