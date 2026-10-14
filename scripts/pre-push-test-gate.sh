@@ -220,7 +220,9 @@ derive_test_classes_for() {
       # `extension XCTestCase` or a base from elsewhere is never selected.
       line ~ /^extension[[:space:]]/ { split(line, w, /[[:space:]:{<]+/); cur = (w[2] in here) ? w[2] : ""; next }
       line ~ /^(struct|enum|actor|protocol|class|final|open|public|internal|private|fileprivate|func|let|var)[[:space:]]/ { cur = ""; next }
-      cur != "" && /func[[:space:]]+test[A-Z0-9_]/ { print cur; exit }
+      # Every test class in the file, once each: a file such as
+      # MyBooksViewModelTests.swift declares many.
+      cur != "" && /func[[:space:]]+test[A-Z0-9_]/ && !(cur in printed) { printed[cur] = 1; print cur }
     ' "$candidate"
   done <<< "$candidates" | sort -u
 }
