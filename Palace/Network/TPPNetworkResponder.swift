@@ -62,7 +62,8 @@ private struct TPPNetworkTaskInfo {
 /// and only read thereafter; the remaining stored members are immutable `let`s —
 /// including `fallbackCredentialsProvider`, a non-`Sendable` closure written once
 /// in `init` and only invoked (never reassigned), and
-/// `wasSuppliedCredentialsProvider`, a `Bool` captured at init (PP-4969). `owner`
+/// `wasSuppliedCredentialsProvider`, a `Bool` captured at init (PP-4969).
+/// `dispatchBrowserReauth` is replaced only by tests before any task runs. `owner`
 /// is a `weak var` set once by the owning executor's init, before any task runs,
 /// and only read thereafter.
 /// Documented invariant, not a bare waiver. (Critical-path: isolation via existing
@@ -109,6 +110,14 @@ class TPPNetworkResponder: NSObject, @unchecked Sendable {
     /// nil (the executor was released, or the responder was built on its own)
     /// a 401 completes without a refresh and a 2xx heals nothing.
     private(set) weak var owner: TPPNetworkExecutor?
+
+    /// Starts browser re-authentication (SAML web sheet, OIDC session) for
+    /// the selected library after a 401. Replaced only by tests, before any
+    /// request runs; the container is read only when it is called.
+    var dispatchBrowserReauth: @Sendable (ReauthReason) -> Void = { reason in
+        let coordinator = AppContainer.production().authCoordinator
+        Task { _ = await coordinator.refreshCredentialsIfNeeded(reason: reason) }
+    }
 
     /// Called once by the executor that owns this responder, from its init.
     func bind(to executor: TPPNetworkExecutor) {
@@ -456,7 +465,8 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
            http.statusCode == 401,
            canRetry(url: requestURL),
            let owner,
-           handleExpiredTokenIfNeeded(for: http, with: task, networkExecutor: owner) {
+           handleExpiredTokenIfNeeded(for: http, with: task, networkExecutor: owner,
+                                      dispatchBrowserReauth: dispatchBrowserReauth) {
             // Mark this URL as retried to prevent infinite loops
             markRetried(url: requestURL)
             // Don't remove taskInfo - it will be transferred to the retry task via updateCompletionId
@@ -638,7 +648,8 @@ private extension TPPLibraryAccountsProvider {
 
 private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
                                        with task: URLSessionTask,
-                                       networkExecutor: TPPNetworkExecutor) -> Bool {
+                                       networkExecutor: TPPNetworkExecutor,
+                                       dispatchBrowserReauth: (ReauthReason) -> Void) -> Bool {
     // Skip DELETE requests - intentionally don't refresh tokens for deletes
     // This prevents refresh loops when revoking/returning items
     if task.originalRequest?.httpMethod == "DELETE" {
@@ -709,6 +720,14 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
                 return false
             }
 
+            // Browser re-authentication acts on the selected library. A 401
+            // for a library the patron has since switched away from completes
+            // as-is rather than marking stale, or prompting for, the new one.
+            guard accountId == accountsManager.currentAccountId else {
+                Log.info(#file, "Browser-auth 401 for a library that is no longer selected — not dispatching coordinator")
+                return false
+            }
+
             // Browser-auth action endpoint 401 → dispatch through the
             // AuthCoordinator. The coordinator marks credentials stale
             // internally before dispatching the IdP-appropriate refresh
@@ -717,14 +736,11 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
             // wouldn't be re-driven by the coordinator anyway; downstream
             // user-action paths see the credentials-stale state and surface
             // the modal on the next interaction.
-            let coordinator = AppContainer.production().authCoordinator
             let reason: ReauthReason = (authDef?.isSaml == true)
                 ? .samlSessionExpired
                 : (authDef?.isOidc == true ? .oidcRefreshFailed : .invalidCredentials)
             Log.info(#file, "Server returned 401 for browser-based auth on action endpoint — dispatching coordinator with reason=\(reason) (was: inline markCredentialsStale)")
-            Task {
-                _ = await coordinator.refreshCredentialsIfNeeded(reason: reason)
-            }
+            dispatchBrowserReauth(reason)
             return false
         }
 

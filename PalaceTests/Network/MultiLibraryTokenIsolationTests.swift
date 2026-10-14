@@ -1007,4 +1007,86 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
         XCTAssertNotEqual(errorCode.value, NSURLErrorCancelled, "the caller must not see a cancel in place of its 401")
         XCTAssertEqual(tokenHits.value, 0, "no token refresh runs once the sending executor is gone")
     }
+
+    // MARK: - Browser re-authentication is for the selected library only
+
+    private nonisolated static func makeSamlAuth() -> AccountDetails.Authentication {
+        let json = """
+        {
+          "type": "http://librarysimplified.org/authtype/SAML-2.0",
+          "links": [{"rel": "authenticate", "href": "https://idp.example.com/sso"}]
+        }
+        """
+        let docAuth = try! JSONDecoder().decode(
+            OPDS2AuthenticationDocument.Authentication.self, from: Data(json.utf8))
+        return AccountDetails.Authentication(auth: docAuth)
+    }
+
+    private nonisolated static let samlExpiredProblem = Data(#"{"type":"http://librarysimplified.org/terms/problem/credentials-invalid","title":"SAML session expired","status":401}"#.utf8)
+
+    /// A SAML library's 401 that lands after the patron switched to a token
+    /// library must not start re-authentication, which acts on the selected library.
+    func test_SamlLibrary401_ArrivingAfterSwitchToTokenLibrary_DoesNotDispatchReauth() async {
+        libraryProvider.accountA._authDefinition = Self.makeSamlAuth()
+        libraryProvider.switchToA()
+        let dispatched = LockIsolated<[String]>([])
+        executor.responder.dispatchBrowserReauth = { reason in
+            dispatched.withValue { $0.append(String(describing: reason)) }
+        }
+        let requestArrived = DispatchSemaphore(value: 0)
+        let releaseResponse = DispatchSemaphore(value: 0)
+        let tokenHitsB = LockIsolated(0)
+        HTTPStubURLProtocol.register { @Sendable [tokenURL_B, apiURL_A] request in
+            if request.url == tokenURL_B {
+                tokenHitsB.withValue { $0 += 1 }
+                return .init(statusCode: 200, headers: nil, body: Self.tokenResponseJSON(accessToken: "freshB"))
+            }
+            guard request.url == apiURL_A else { return nil }
+            requestArrived.signal()
+            _ = releaseResponse.wait(timeout: .now() + 10.0)
+            return .init(statusCode: 401, headers: ["Content-Type": "application/problem+json"],
+                         body: Self.samlExpiredProblem)
+        }
+        let request = executor.request(for: apiURL_A)
+        let executor: TPPNetworkExecutor = self.executor
+
+        async let sent = executor.execute(request, enableTokenRefresh: false, accountId: nil)
+        let arrived = await signalled(requestArrived)
+        libraryProvider.switchToB()
+        releaseResponse.signal()
+        let result = await sent
+
+        XCTAssertEqual(arrived, .success, "the request for A never reached the server")
+        guard case .failure(_, let response) = result else {
+            return XCTFail("the caller should receive the 401; got \(result)")
+        }
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 401, "the caller sees the server's 401")
+        XCTAssertEqual(dispatched.value, [], "re-authentication must not start for a library that is no longer selected")
+        XCTAssertEqual(libraryProvider.accountB.authState, .loggedIn, "B is not marked stale by A's 401")
+        XCTAssertEqual(tokenHitsB.value, 0, "B's token is not refreshed by A's 401")
+    }
+
+    /// The selected SAML library's own 401 still starts re-authentication.
+    func test_SamlLibrary401_ForSelectedLibrary_DispatchesSamlReauth() async {
+        libraryProvider.accountA._authDefinition = Self.makeSamlAuth()
+        libraryProvider.switchToA()
+        let dispatched = LockIsolated<[String]>([])
+        executor.responder.dispatchBrowserReauth = { reason in
+            dispatched.withValue { $0.append(String(describing: reason)) }
+        }
+        HTTPStubURLProtocol.register { @Sendable [apiURL_A] request in
+            guard request.url == apiURL_A else { return nil }
+            return .init(statusCode: 401, headers: ["Content-Type": "application/problem+json"],
+                         body: Self.samlExpiredProblem)
+        }
+
+        let result = await executor.execute(executor.request(for: apiURL_A), enableTokenRefresh: false, accountId: nil)
+
+        guard case .failure(_, let response) = result else {
+            return XCTFail("the caller should receive the 401; got \(result)")
+        }
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 401)
+        XCTAssertEqual(dispatched.value, [String(describing: ReauthReason.samlSessionExpired)],
+                       "the selected library's SAML 401 starts SAML re-authentication once")
+    }
 }
