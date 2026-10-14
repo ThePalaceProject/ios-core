@@ -61,13 +61,16 @@ final class ImageCacheContinuationTests: XCTestCase {
         // the 50 tasks — a wall-clock race this structured form removes.
         let resumedCount = LockIsolated<Int>(0)
 
-        // Detached driver: once the (synchronous) `addOperation` calls inside
-        // each `getAsync` have run — observed via `operationCount` reaching
-        // `count`, not a fixed sleep — cancel every queued op and unsuspend so
-        // the completion blocks fire and resume the continuations.
-        let driver = Task.detached {
-            while cache.processingQueue.operationCount < count {
-                await Task.yield()
+        // Driver: once the (synchronous) `addOperation` calls inside each
+        // `getAsync` have run — observed via `operationCount` reaching `count`
+        // — cancel every queued op and unsuspend so the completion blocks fire
+        // and resume the continuations. The poll sleeps between checks so it
+        // does not hold a cooperative thread on a loaded runner, and it fails
+        // at a deadline below the execution-time allowance instead of hanging
+        // to it. It unsuspends the queue either way, so the group still drains.
+        let driver = Task { @MainActor in
+            await self.awaitConditionAsync(timeout: 60) {
+                cache.processingQueue.operationCount >= count
             }
             cache.processingQueue.cancelAllOperations()
             cache.processingQueue.isSuspended = false
