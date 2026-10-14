@@ -110,6 +110,26 @@ final class BookReturnServiceTests: XCTestCase {
         await awaitConditionAsync(timeout: timeout, file: file, line: line, predicate)
     }
 
+    /// Joins every tracked Task of `service` until its retention set is empty.
+    /// A tracked body can launch a further tracked Task (`performPostReturnSyncThen`,
+    /// `launchTrackedMainActorTask`), which a single up-front snapshot misses.
+    /// Throws, rather than falling through to a later assertion that would
+    /// misreport the cause, when work is still pending after `maxRounds` joins;
+    /// a Task that finished but never removed itself fails here too.
+    private func joinAllTrackedTasks(of service: BookReturnService, maxRounds: Int = 8) async throws {
+        var rounds = 0
+        while true {
+            let pending = service.inFlightTasksSnapshotForTesting()
+            if pending.isEmpty { return }
+            if rounds >= maxRounds {
+                XCTFail("tracked Tasks still pending after \(rounds) join rounds")
+                throw TrackedTaskQuiescenceError.didNotQuiesce(rounds: rounds)
+            }
+            for task in pending { _ = await task.value }
+            rounds += 1
+        }
+    }
+
     // MARK: - Branch 1: book not in registry
 
     func testReturnBook_bookNotInRegistry_callsCompletionAndDoesNothing() async throws {
@@ -412,17 +432,18 @@ final class BookReturnServiceTests: XCTestCase {
         // pool and cannot auto-remove until we yield the main actor. So the
         // count is deterministically ≥ 1 right now — assert directly instead
         // of polling a wall-clock deadline that starves under CI
-        // oversubscription. Capture the tracked Tasks here so we can JOIN
-        // them below rather than poll the count back to zero.
-        let tracked = service.inFlightTasksSnapshotForTesting()
+        // oversubscription.
         XCTAssertGreaterThanOrEqual(service.inFlightTaskCount, 1,
                        "returnBook must synchronously retain its revokeURL cleanup Task")
 
         await fulfillment(of: [exp], timeout: 3.0)
 
-        // Auto-removal is the last step of the tracked Task body; awaiting
-        // each Task's value joins that removal deterministically — no poll.
-        for task in tracked { _ = await task.value }
+        // The treat-as-success branch launches a second tracked Task
+        // (`performPostReturnSyncThen`) that delivers the completion before it
+        // removes itself, so the count can still read 1 here. Join every
+        // tracked Task, including ones launched after returnBook returned; the
+        // join fails if a finished Task never auto-removes.
+        try await joinAllTrackedTasks(of: service)
         XCTAssertEqual(service.inFlightTaskCount, 0,
                        "After completion, Tasks must auto-remove from the retention set")
     }
@@ -547,37 +568,11 @@ final class BookReturnServiceTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(service.inFlightTaskCount, 1,
                                         "returnBook must synchronously retain its cleanup Task")
 
-            // Join by re-snapshotting: a tracked body can itself launch a
-            // further tracked Task — the `launchTrackedMainActorTask` hop in
-            // `handleRevokeError`'s `.genericFailureAlert` branch
-            // (BookReturnService.swift:602), which in turn calls
-            // `presentReturnFailureAlert` — which a single snapshot taken up
-            // front would never join. Bounded, and every wait is a real
-            // Task join rather than a wall-clock poll.
-            var rounds = 0
-            while true {
-                let pending = service.inFlightTasksSnapshotForTesting()
-                if pending.isEmpty { break }
-                // Checked BEFORE joining, so it fires only when work REMAINS
-                // after `rounds` completed rounds — a true statement. Checking
-                // after the join instead would throw on a round that had just
-                // drained everything, dropping the success ceiling below the
-                // bound the message names.
-                //
-                // THROW rather than break: a `break` falls through to the
-                // `XCTAssertNil(weakSvc)` below, which then fails too and
-                // reports "something still retains BookReturnService" — the
-                // wrong diagnosis, since a still-running body legitimately
-                // pins `self`. Throwing keeps the failure truthful; XCTest
-                // still records two entries (the XCTFail and the thrown
-                // error), both naming this same cause.
-                if rounds >= 8 {
-                    XCTFail("tracked Tasks still pending after \(rounds) join rounds")
-                    throw TrackedTaskQuiescenceError.didNotQuiesce(rounds: rounds)
-                }
-                for task in pending { _ = await task.value }
-                rounds += 1
-            }
+            // The `.genericFailureAlert` branch of `handleRevokeError` launches a
+            // further tracked Task, so join until the set is empty. The helper
+            // throws on a stuck Task instead of letting `XCTAssertNil(weakSvc)`
+            // below misreport a still-running body as a retain cycle.
+            try await self.joinAllTrackedTasks(of: service)
             XCTAssertEqual(service.inFlightTaskCount, 0,
                            "Tracked Tasks must auto-remove once their bodies finish")
         }()
