@@ -208,6 +208,49 @@ final class LibrariesSectionViewModelTests: XCTestCase {
         XCTAssertNil(env.persistedIds, "No churn → no UserDefaults write.")
     }
 
+    /// Removing a library drops its queued offline actions, so a later re-add
+    /// cannot run a stale return or borrow against the patron's current shelf.
+    func test_deleteSecondary_removesThatLibrarysQueuedOfflineActions() {
+        let bookshelf = makeAccount(uuid: "bookshelf", name: "Palace Bookshelf")
+        let toDelete = makeAccount(uuid: "to_delete", name: "To Delete")
+        let env = FakeLibrariesEnvironment(currentUUID: bookshelf.uuid, persisted: [bookshelf, toDelete])
+        env.lookupResponses = [bookshelf.uuid: bookshelf, toDelete.uuid: toDelete]
+        let sut = LibrariesSectionViewModel(environment: env, observeNotifications: false)
+
+        sut.deleteSecondary(toDelete)
+
+        XCTAssertEqual(env.queuedActionsRemoved, ["to_delete"])
+    }
+
+    /// The active library cannot be removed here, so its queue is untouched.
+    func test_deleteSecondary_onCurrentAccount_keepsItsQueuedOfflineActions() {
+        let bookshelf = makeAccount(uuid: "bookshelf", name: "Palace Bookshelf")
+        let other = makeAccount(uuid: "other", name: "Other")
+        let env = FakeLibrariesEnvironment(currentUUID: bookshelf.uuid, persisted: [bookshelf, other])
+        env.lookupResponses = [bookshelf.uuid: bookshelf, other.uuid: other]
+        let sut = LibrariesSectionViewModel(environment: env, observeNotifications: false)
+
+        sut.deleteSecondary(bookshelf)
+
+        XCTAssertEqual(env.queuedActionsRemoved, [])
+    }
+
+    /// The production environment hands the removed library's ID to the queue remover.
+    func test_productionEnvironment_removeQueuedActions_passesTheLibraryID() {
+        let container = makeTestAppContainer()
+        let removed = LockIsolated<[String]>([])
+        let env = ProductionLibrariesSectionEnvironment(
+            accountsManager: container.accountsManager,
+            settings: container.settings,
+            tokenDeleter: { _ in },
+            queuedActionRemover: { id in removed.withValue { $0.append(id) } }
+        )
+
+        env.removeQueuedActions(for: makeAccount(uuid: "removed-library", name: "Removed"))
+
+        XCTAssertEqual(removed.value, ["removed-library"])
+    }
+
     // MARK: - switchToAccount
 
     func test_switchToAccount_callsEnvironment_andUpdatesCurrentUUID_andResortsAccounts() {
@@ -307,6 +350,7 @@ private final class FakeLibrariesEnvironment: LibrariesSectionEnvironment {
     var lookupResponses: [String: Account] = [:]
     var persistedIds: [String]?
     var tokensDeleted: [String] = []
+    var queuedActionsRemoved: [String] = []
     var switchedTo: [String] = []
     var accountsLoaded: Bool = true
     // Parked in nonisolated, lock-guarded storage — NOT main-actor state — so the
@@ -337,6 +381,9 @@ private final class FakeLibrariesEnvironment: LibrariesSectionEnvironment {
     }
     nonisolated func deleteToken(for account: Account) {
         MainActor.assumeIsolated { self.tokensDeleted.append(account.uuid) }
+    }
+    nonisolated func removeQueuedActions(for account: Account) {
+        MainActor.assumeIsolated { self.queuedActionsRemoved.append(account.uuid) }
     }
     nonisolated func accountsHaveLoaded() -> Bool {
         MainActor.assumeIsolated { self.accountsLoaded }

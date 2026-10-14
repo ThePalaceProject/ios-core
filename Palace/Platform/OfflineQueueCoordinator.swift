@@ -98,7 +98,10 @@ final class OfflineQueueCoordinator: @unchecked Sendable {
         }, currentLibraryID: runnableLibraryID)
         let queue = self.queue
         let readyDrains = self.readyDrains
-        readyDrains.set(libraryReady.sink { _ in
+        // Weak: the box owns this subscription, so a strong capture would keep
+        // both alive after the coordinator is released.
+        readyDrains.set(libraryReady.sink { [weak readyDrains] _ in
+            guard let readyDrains else { return }
             readyDrains.track(Task { await queue.drainIfOnline() })
         })
         // A library that became runnable before registration has no pending trigger.
