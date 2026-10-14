@@ -25,6 +25,17 @@ enum OfflineActionState: String, Codable, Sendable {
     case completed
 }
 
+/// What running a queued action established.
+enum OfflineActionOutcome: Sendable, Equatable {
+    /// The server confirmed the action; it leaves the queue.
+    case confirmed
+    /// The server did not confirm it; the attempt counts toward `maxRetries`.
+    case failed
+    /// The server could not be reached; the action stays pending with its
+    /// retries intact, and the drain stops until the next trigger.
+    case deferred
+}
+
 /// A user-initiated action that was queued while offline.
 struct OfflineAction: Codable, Identifiable, Equatable, Sendable {
     let id: UUID
