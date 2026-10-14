@@ -179,10 +179,22 @@ private actor TokenRefreshCoordinator {
                                       accountIdAtRefreshStart: accountIdAtRefreshStart))
     }
 
-    func drainRetryQueue() -> [QueuedRetry] {
+    /// The finishing refresh's queue, or nil when `generation` no longer owns
+    /// the slot. A token request can outlive the watchdog (it retries a
+    /// timeout), and by then the queue belongs to the refresh that claimed the
+    /// slot next.
+    func drainRetryQueue(ownedBy generation: Int) -> [QueuedRetry]? {
+        guard isRefreshing, refreshGeneration == generation else { return nil }
         let entries = retryQueue
         retryQueue.removeAll()
         return entries
+    }
+
+    /// Releases the slot only if `generation` still holds it, so a refresh
+    /// finishing after the watchdog cannot free a newer refresh's slot.
+    func releaseSlot(ownedBy generation: Int) {
+        guard refreshGeneration == generation else { return }
+        isRefreshing = false
     }
 }
 
@@ -975,7 +987,7 @@ extension TPPNetworkExecutor {
                   let password = snapshot.pin,
                   let tokenURL = snapshot.authDefinition?.tokenURL else {
                 Log.error(#file, "Cannot refresh token: missing credentials or tokenURL for account \(capturedAccountId ?? "nil")")
-                await self.tokenCoordinator.setRefreshing(false)
+                await self.tokenCoordinator.releaseSlot(ownedBy: refreshGeneration)
                 let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Cannot request token with empty credentials"])
                 // Another session's task is left running; its completion is
                 // not stored in this executor's responder.
@@ -1010,7 +1022,7 @@ extension TPPNetworkExecutor {
                     case .success(let tokenResponse):
                         Log.info(#file, "Token refresh successful for account \(capturedAccountId ?? "current"), expires in \(tokenResponse.expiresIn)s")
 
-                        let queuedTasks = await self.tokenCoordinator.drainRetryQueue()
+                        let queuedTasks = await self.tokenCoordinator.drainRetryQueue(ownedBy: refreshGeneration) ?? []
                         let retryCount = queuedTasks.count
                         var newTasks = [URLSessionTask]()
 
@@ -1071,7 +1083,7 @@ extension TPPNetworkExecutor {
                         Log.info(#file, "Retrying \(retryCount) failed request(s) with new token")
                         newTasks.forEach { $0.resume() }
 
-                        await self.tokenCoordinator.setRefreshing(false)
+                        await self.tokenCoordinator.releaseSlot(ownedBy: refreshGeneration)
 
                         if task == nil {
                             completionBox?.call(NYPLResult.success(Data(), nil))
@@ -1080,9 +1092,9 @@ extension TPPNetworkExecutor {
                     case .failure(let error):
                         Log.error(#file, "Failed to refresh token with error: \(error.localizedDescription)")
 
-                        let failedTasks = await self.tokenCoordinator.drainRetryQueue()
+                        let failedTasks = await self.tokenCoordinator.drainRetryQueue(ownedBy: refreshGeneration) ?? []
 
-                        await self.tokenCoordinator.setRefreshing(false)
+                        await self.tokenCoordinator.releaseSlot(ownedBy: refreshGeneration)
 
                         if let nsError = error as? NSError, nsError.code == 401 {
                             Log.info(#file, "Token refresh failed due to invalid credentials - marking credentials stale for account \(capturedAccountId ?? "current")")
