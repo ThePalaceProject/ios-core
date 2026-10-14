@@ -177,7 +177,8 @@ final class TokenRequestCredentialGuardTests: XCTestCase {
         let request = TokenRequest(url: tokenURL, username: "mybarcode", password: "mypin")
         var capturedAuthHeader: String?
 
-        HTTPStubURLProtocol.register { urlRequest in
+        HTTPStubURLProtocol.register { [tokenURL] urlRequest in
+            guard urlRequest.url == tokenURL else { return nil }
             capturedAuthHeader = urlRequest.value(forHTTPHeaderField: "Authorization")
             let json = """
             {"access_token":"t","token_type":"Bearer","expires_in":3600}
@@ -200,7 +201,8 @@ final class TokenRequestCredentialGuardTests: XCTestCase {
         let request = TokenRequest(url: tokenURL, username: "user@lib.org", password: "p@ss:word!")
         var capturedAuthHeader: String?
 
-        HTTPStubURLProtocol.register { urlRequest in
+        HTTPStubURLProtocol.register { [tokenURL] urlRequest in
+            guard urlRequest.url == tokenURL else { return nil }
             capturedAuthHeader = urlRequest.value(forHTTPHeaderField: "Authorization")
             let json = """
             {"access_token":"t","token_type":"Bearer","expires_in":3600}
@@ -224,7 +226,8 @@ final class TokenRequestCredentialGuardTests: XCTestCase {
         let request = TokenRequest(url: tokenURL, username: "user", password: "pass:with:colons")
         var capturedAuthHeader: String?
 
-        HTTPStubURLProtocol.register { urlRequest in
+        HTTPStubURLProtocol.register { [tokenURL] urlRequest in
+            guard urlRequest.url == tokenURL else { return nil }
             capturedAuthHeader = urlRequest.value(forHTTPHeaderField: "Authorization")
             let json = """
             {"access_token":"t","token_type":"Bearer","expires_in":3600}
@@ -248,7 +251,8 @@ final class TokenRequestCredentialGuardTests: XCTestCase {
         let request = TokenRequest(url: tokenURL, username: "user", password: "pass")
         var capturedMethod: String?
 
-        HTTPStubURLProtocol.register { urlRequest in
+        HTTPStubURLProtocol.register { [tokenURL] urlRequest in
+            guard urlRequest.url == tokenURL else { return nil }
             capturedMethod = urlRequest.httpMethod
             let json = """
             {"access_token":"t","token_type":"Bearer","expires_in":3600}
@@ -463,8 +467,10 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
 
     func testExecuteTokenRefresh_EmptyUsername_FailsViaTokenRequestGuard() async {
         let executor = makeExecutor()
+        let tokenURL = URL(string: "https://example.com/\(UUID().uuidString)/token")!
 
-        HTTPStubURLProtocol.register { _ in
+        HTTPStubURLProtocol.register { urlRequest in
+            guard urlRequest.url == tokenURL else { return nil }
             XCTFail("Should not reach the network with empty username")
             return nil
         }
@@ -472,7 +478,6 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
         // Deterministic join: await executeTokenRefresh's actual completion.
         // The empty-credential guard fires the completion directly, so the
         // continuation resumes the instant the guard rejects — no clock.
-        let tokenURL = URL(string: "https://example.com/token")!
         let result = await withCheckedContinuation { (cont: CheckedContinuation<Result<TokenResponse, Error>, Never>) in
             executor.executeTokenRefresh(
                 username: "",
