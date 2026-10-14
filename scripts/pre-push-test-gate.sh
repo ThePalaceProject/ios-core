@@ -11,10 +11,9 @@
 #   1. Compute changed Swift files: `git diff --name-only @{u}..HEAD`
 #      filtered to `Palace/**/*.swift`. If any changed, run
 #      `scripts/check-file-size-ceiling.sh`; a non-zero exit blocks the push.
-#   2. For each changed file, derive a test class via the same lookup
-#      logic used by `scripts/regression-report.sh::derive_test_class_for`
-#      — Foo.swift -> Foo*Tests.swift, then the first class in each candidate
-#      file that declares a `func test` and whose superclass chain reaches
+#   2. For each changed file, derive its test classes: Foo.swift ->
+#      Foo*Tests.swift, then every class in each candidate file that
+#      declares a `func test` and whose superclass chain reaches
 #      XCTestCase (directly or through a PalaceTests base such as
 #      PalaceTestCase). Candidate files that the PalaceTests target does not
 #      compile (per check-swift-sources-compiled.py --list-compiled) are

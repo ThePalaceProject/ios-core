@@ -363,13 +363,16 @@ def test_every_test_class_in_a_matched_file_is_selected(tmp_path):
             "    func makeWidget() {}\n}\n\n"
             "extension WidgetTests {\n"
             "    func testFromAnExtension() {}\n}\n\n"
+            "final class WidgetHostTests: XCTestCase {}\n\n"
+            "extension WidgetHostTests {\n"
+            "    func testOnlyInAnExtension() {}\n}\n\n"
             "@MainActor final class WidgetSortTests: XCTestCase {\n"
             "    func testSort() {}\n}\n",
     })
 
     _run_gate(repo, tmp_path, "one-class-passed.log")
 
-    assert _selected(tmp_path) == ["WidgetFacetTests", "WidgetSortTests", "WidgetTests"]
+    assert _selected(tmp_path) == ["WidgetFacetTests", "WidgetHostTests", "WidgetSortTests", "WidgetTests"]
 
 
 def test_a_test_named_helper_is_not_a_test_method(tmp_path):
