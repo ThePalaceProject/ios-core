@@ -64,6 +64,10 @@ final class BookReturnService: @unchecked Sendable {
     static let productionOfflineReturnEnqueuer: @Sendable (OfflineAction) async -> Void =
         OfflineQueueService.productionEnqueue
 
+    /// Tells the patron an offline return was queued. Injected so tests can
+    /// observe it; production presents an alert.
+    private let offlineReturnQueuedAlert: @MainActor @Sendable (TPPBook) -> Void
+
     /// Closure resolves the current user account each call so library
     /// switches mid-flow are observed correctly (matches MBDC's `userAccount`
     /// computed property semantics).
@@ -111,6 +115,7 @@ final class BookReturnService: @unchecked Sendable {
         adobeDRMService: AdobeDRMService = .shared,
         authCoordinator: AuthCoordinator? = nil,
         offlineReturnEnqueuer: (@Sendable (OfflineAction) async -> Void)? = BookReturnService.productionOfflineReturnEnqueuer,
+        offlineReturnQueuedAlert: @escaping @MainActor @Sendable (TPPBook) -> Void = BookReturnService.presentOfflineReturnQueuedAlert,
         remotePositionWriteCanceller: @escaping @Sendable (String) -> Void = { _ in }
     ) {
         self.bookRegistry = bookRegistry
@@ -124,6 +129,7 @@ final class BookReturnService: @unchecked Sendable {
         self.adobeDRMService = adobeDRMService
         self.authCoordinator = authCoordinator
         self.offlineReturnEnqueuer = offlineReturnEnqueuer
+        self.offlineReturnQueuedAlert = offlineReturnQueuedAlert
         self.remotePositionWriteCanceller = remotePositionWriteCanceller
     }
     #else
@@ -138,6 +144,7 @@ final class BookReturnService: @unchecked Sendable {
         userAccountProvider: @escaping () -> TPPUserAccount,
         authCoordinator: AuthCoordinator? = nil,
         offlineReturnEnqueuer: (@Sendable (OfflineAction) async -> Void)? = BookReturnService.productionOfflineReturnEnqueuer,
+        offlineReturnQueuedAlert: @escaping @MainActor @Sendable (TPPBook) -> Void = BookReturnService.presentOfflineReturnQueuedAlert,
         remotePositionWriteCanceller: @escaping @Sendable (String) -> Void = { _ in }
     ) {
         self.bookRegistry = bookRegistry
@@ -150,6 +157,7 @@ final class BookReturnService: @unchecked Sendable {
         self.userAccountProvider = userAccountProvider
         self.authCoordinator = authCoordinator
         self.offlineReturnEnqueuer = offlineReturnEnqueuer
+        self.offlineReturnQueuedAlert = offlineReturnQueuedAlert
         self.remotePositionWriteCanceller = remotePositionWriteCanceller
     }
     #endif
@@ -236,6 +244,15 @@ final class BookReturnService: @unchecked Sendable {
     // MARK: - returnBook
 
     func returnBook(withIdentifier identifier: String, completion: (@Sendable () -> Void)? = nil) {
+        returnBook(withIdentifier: identifier, fromOfflineQueue: false, completion: completion)
+    }
+
+    /// - Parameter fromOfflineQueue: true when a queued offline action runs
+    ///   this return. That action stays queued until the return is confirmed,
+    ///   so an unreachable server is reported by completing, not by queueing
+    ///   the return again.
+    func returnBook(withIdentifier identifier: String, fromOfflineQueue: Bool,
+                    completion: (@Sendable () -> Void)? = nil) {
         guard let book = bookRegistry.book(forIdentifier: identifier) else {
             completion?()
             return
@@ -330,7 +347,8 @@ final class BookReturnService: @unchecked Sendable {
                 }
 
                 self.handleRevokeError(error, book: book, identifier: identifier, libraryID: libraryID,
-                                       downloaded: downloaded, completion: completion)
+                                       downloaded: downloaded, fromOfflineQueue: fromOfflineQueue,
+                                       completion: completion)
             }
         }
     }
@@ -406,7 +424,8 @@ final class BookReturnService: @unchecked Sendable {
     /// loan-term-limit cleanup, invalid-credentials re-auth retry, or
     /// generic alert with retry / remove-from-device / cancel.
     private func handleRevokeError(_ error: Error, book: TPPBook, identifier: String, libraryID: String?,
-                                   downloaded: Bool, completion: (@Sendable () -> Void)?) {
+                                   downloaded: Bool, fromOfflineQueue: Bool,
+                                   completion: (@Sendable () -> Void)?) {
         // Pure classification facts. Parse-fail wraps a `PalaceError` (not an
         // NSError), so it is detected before the problem-doc extraction.
         let isOPDSParseFailure: Bool = {
@@ -460,7 +479,7 @@ final class BookReturnService: @unchecked Sendable {
                     guard let self else { return }
                     switch outcome {
                     case .success:
-                        self.returnBook(withIdentifier: identifier, completion: completion)
+                        self.returnBook(withIdentifier: identifier, fromOfflineQueue: fromOfflineQueue, completion: completion)
                     case .failure(let cancellation):
                         Log.info(#file, "Coordinator declined to refresh — \(cancellation)")
                         runOnMainAsync {
@@ -491,7 +510,7 @@ final class BookReturnService: @unchecked Sendable {
                 self.reauthenticator.authenticateIfNeeded(user, usingExistingCredentials: false) { [weak self] in
                     guard let self else { return }
                     if self.userAccountProvider().hasCredentials() {
-                        self.returnBook(withIdentifier: identifier, completion: completion)
+                        self.returnBook(withIdentifier: identifier, fromOfflineQueue: fromOfflineQueue, completion: completion)
                     } else {
                         runOnMainAsync {
                             self.downloadAnnouncementService.announceReturnFailed(for: book)
@@ -505,7 +524,13 @@ final class BookReturnService: @unchecked Sendable {
             // Offline is not a return failure: the loan is still held. Enqueue
             // for a later drain and tell the patron; do not delete local content
             // or unregister here.
-            if let enqueuer = self.offlineReturnEnqueuer, let libraryID {
+            if fromOfflineQueue {
+                // The queued action that ran this return is still queued.
+                // Completing with the loan still held reports it unconfirmed,
+                // so the queue keeps that action rather than gaining a copy.
+                Log.info(#file, "Queued return for '\(book.title)' still offline — leaving it queued")
+                runOnMainAsync { completion?() }
+            } else if let enqueuer = self.offlineReturnEnqueuer, let libraryID {
                 Log.info(#file, "Offline return for '\(book.title)' — enqueuing for later; no local cleanup")
                 let action = OfflineAction(type: .return, bookID: identifier, bookTitle: book.title,
                                            libraryID: libraryID)
@@ -513,7 +538,7 @@ final class BookReturnService: @unchecked Sendable {
                     await enqueuer(action)
                     guard let self else { return }
                     runOnMainAsync {
-                        self.presentOfflineReturnQueuedAlert(for: book)
+                        self.offlineReturnQueuedAlert(book)
                         completion?()
                     }
                 }
@@ -538,6 +563,7 @@ final class BookReturnService: @unchecked Sendable {
                     book: book,
                     identifier: identifier,
                     downloaded: downloaded,
+                    fromOfflineQueue: fromOfflineQueue,
                     completion: completion
                 )
             }
@@ -551,6 +577,7 @@ final class BookReturnService: @unchecked Sendable {
         book: TPPBook,
         identifier: String,
         downloaded: Bool,
+        fromOfflineQueue: Bool,
         completion: (@Sendable () -> Void)?
     ) {
         let serverDetail = problemDoc?.detail
@@ -565,7 +592,7 @@ final class BookReturnService: @unchecked Sendable {
             return { [weak self] in
                 guard let self else { return }
                 self.userRetryTracker.recordRetry(operationId: operationId)
-                self.returnBook(withIdentifier: identifier, completion: completion)
+                self.returnBook(withIdentifier: identifier, fromOfflineQueue: fromOfflineQueue, completion: completion)
             }
         }()
 
@@ -627,7 +654,7 @@ final class BookReturnService: @unchecked Sendable {
     }
 
     @MainActor
-    private func presentOfflineReturnQueuedAlert(for book: TPPBook) {
+    static func presentOfflineReturnQueuedAlert(for book: TPPBook) {
         let message = String(
             format: NSLocalizedString(
                 "\"%@\" will be returned automatically when you're back online.",

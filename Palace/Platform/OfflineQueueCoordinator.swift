@@ -3,7 +3,7 @@
 //  Palace
 //
 //  Supplies `OfflineQueueService`'s executor, dispatching queued actions:
-//    .return / .cancelHold -> BookReturnService revoke (via MBDC.returnBook)
+//    .return / .cancelHold -> BookReturnService revoke (via MBDC.returnQueuedBook)
 //    .borrow  / .hold      -> MyBooksDownloadCenter.startBorrow
 //  Deduped by `bookID`+`type` so a succeeded return is not re-applied. Returns
 //  `true` only on server-confirmed success. Registered once from `AppContainer`.
@@ -36,7 +36,9 @@ extension OfflineQueueService: OfflineExecutorRegistering {}
 /// The two circulation entry points the production executor drives, narrowed
 /// from `MyBooksDownloadCenter` so the executor is testable with a fake.
 protocol OfflineCirculationPerforming: AnyObject, Sendable {
-    func returnBook(withIdentifier identifier: String, completion: (@Sendable () -> Void)?)
+    /// `completion` may run more than once: the return-failure alert completes
+    /// when shown, and again on Remove from Device or after Retry.
+    func returnQueuedBook(withIdentifier identifier: String, completion: (@Sendable () -> Void)?)
     func startBorrow(for book: TPPBook, attemptDownload: Bool, borrowCompletion: (() -> Void)?)
 }
 
@@ -249,7 +251,7 @@ extension OfflineQueueCoordinator {
 
     /// Builds the production coordinator wired to the real services via
     /// their EXISTING public APIs. `.return`/`.cancelHold` route through
-    /// `MyBooksDownloadCenter.returnBook` (the revoke flow owned by
+    /// `MyBooksDownloadCenter.returnQueuedBook` (the revoke flow owned by
     /// `BookReturnService`); `.borrow`/`.hold` route through
     /// `MyBooksDownloadCenter.startBorrow`. Server-confirmation for a
     /// return is read from the registry after the flow completes: a book
@@ -278,13 +280,14 @@ extension OfflineQueueCoordinator {
 
         let performReturn: @Sendable (OfflineAction) async -> Bool = { action in
             let bookID = action.bookID
-            return await withCheckedContinuation { continuation in
+            return await withCheckedContinuation { checked in
+                let continuation = ResumeOnce(checked)
                 Task { @MainActor in
                     guard action.belongs(toLibrary: runnableLibraryID()) else {
                         continuation.resume(returning: false)
                         return
                     }
-                    downloadCenter.returnBook(withIdentifier: bookID) {
+                    downloadCenter.returnQueuedBook(withIdentifier: bookID) {
                         // Server-confirmed if the registry no longer holds
                         // the book as an active downloaded loan.
                         let confirmed = action.belongs(toLibrary: runnableLibraryID())
@@ -299,7 +302,8 @@ extension OfflineQueueCoordinator {
 
         let performBorrow: @Sendable (OfflineAction) async -> Bool = { action in
             let bookID = action.bookID
-            return await withCheckedContinuation { continuation in
+            return await withCheckedContinuation { checked in
+                let continuation = ResumeOnce(checked)
                 Task { @MainActor in
                     guard action.belongs(toLibrary: runnableLibraryID()),
                           let book = bookRegistry.book(forIdentifier: bookID) else {
@@ -323,7 +327,8 @@ extension OfflineQueueCoordinator {
 
         let performHold: @Sendable (OfflineAction) async -> Bool = { action in
             let bookID = action.bookID
-            return await withCheckedContinuation { continuation in
+            return await withCheckedContinuation { checked in
+                let continuation = ResumeOnce(checked)
                 Task { @MainActor in
                     guard action.belongs(toLibrary: runnableLibraryID()),
                           let book = bookRegistry.book(forIdentifier: bookID) else {
@@ -355,6 +360,25 @@ extension OfflineQueueCoordinator {
             runnableLibraryID: runnableLibraryID,
             libraryReady: libraryReady
         )
+    }
+}
+
+/// Resumes a continuation at most once. A circulation completion can run more
+/// than once, and the first call's outcome is the one the queue acts on.
+private final class ResumeOnce<Value: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Value, Never>?
+
+    init(_ continuation: CheckedContinuation<Value, Never>) {
+        self.continuation = continuation
+    }
+
+    func resume(returning value: Value) {
+        let pending: CheckedContinuation<Value, Never>? = lock.withLock {
+            defer { continuation = nil }
+            return continuation
+        }
+        pending?.resume(returning: value)
     }
 }
 

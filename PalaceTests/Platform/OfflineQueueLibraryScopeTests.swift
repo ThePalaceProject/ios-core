@@ -80,7 +80,8 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
     private func makeReturnService(
         userAccountProvider: @escaping () -> TPPUserAccount = { TPPUserAccountMock() },
         feedFetcher: OPDSFeedFetching = OfflineFeedFetcher(),
-        enqueuer: (@Sendable (OfflineAction) async -> Void)? = nil
+        enqueuer: (@Sendable (OfflineAction) async -> Void)? = nil,
+        queuedAlert: @escaping @MainActor @Sendable (TPPBook) -> Void = { _ in }
     ) -> BookReturnService {
         BookReturnService(
             bookRegistry: registry,
@@ -94,7 +95,8 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
             reauthenticator: TPPReauthenticatorMock(),
             userRetryTracker: .shared,
             userAccountProvider: userAccountProvider,
-            offlineReturnEnqueuer: enqueuer
+            offlineReturnEnqueuer: enqueuer,
+            offlineReturnQueuedAlert: queuedAlert
         )
     }
 
@@ -687,6 +689,97 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
         XCTAssertEqual(circulation.borrowCalls.count, 2)
     }
 
+    // MARK: - Completion called more than once
+
+    /// The return flow's failure alert completes once when shown and again if
+    /// the patron picks Remove from Device; the first report decides, and the
+    /// second does not resume the drain a second time.
+    func testExecute_returnWhoseCompletionFiresTwice_reportsFirstOutcomeOnly() async {
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        registry.addBook(book, state: .downloadSuccessful)
+        let registry = self.registry!
+        circulation.completionCalls = 2
+        circulation.betweenCompletions = { registry.removeBook(forIdentifier: book.identifier) }
+
+        let result = await makeCoordinator().execute(action(.return, book.identifier, in: Self.libraryA))
+
+        XCTAssertFalse(result, "the return was not confirmed when it first completed")
+        XCTAssertEqual(circulation.returnCalls, [book.identifier])
+    }
+
+    /// Borrow and hold tolerate a repeated completion the same way.
+    func testExecute_borrowAndHoldWhoseCompletionFiresTwice_reportFirstOutcomeOnly() async {
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        registry.addBook(book, state: .unregistered)
+        let registry = self.registry!
+        circulation.completionCalls = 2
+        let coordinator = makeCoordinator()
+
+        circulation.betweenCompletions = { registry.setState(.downloadNeeded, for: book.identifier) }
+        let borrowed = await coordinator.execute(action(.borrow, book.identifier, in: Self.libraryA))
+        registry.setState(.unregistered, for: book.identifier)
+        circulation.betweenCompletions = { registry.setState(.holding, for: book.identifier) }
+        let held = await coordinator.execute(action(.hold, book.identifier, in: Self.libraryA))
+
+        XCTAssertFalse(borrowed)
+        XCTAssertFalse(held)
+        XCTAssertEqual(circulation.borrowCalls.count, 2)
+    }
+
+    // MARK: - Unreachable server during a drain
+
+    /// A drained return that fails as unreachable leaves its own action queued:
+    /// no copy is added and no "Return Queued" alert is shown, however many
+    /// attempts the drain makes.
+    func testDrain_returnFailingAsUnreachable_keepsOneActionAndShowsNoQueuedAlert() async {
+        let book = makeBookWithRevokeURL()
+        registry.addBook(book, state: .downloadSuccessful)
+        let queue = self.queue!
+        let enqueueCalls = LockIsolated(0)
+        let queuedAlerts = LockIsolated(0)
+        circulation.returnService = makeReturnService(
+            userAccountProvider: { TPPUserAccountMock(libraryUUID: Self.libraryA) },
+            enqueuer: { action in
+                // Forwards only the first few, so a regression ends instead of looping.
+                let calls = enqueueCalls.withValue { $0 += 1; return $0 }
+                if calls <= 3 { await queue.enqueue(action) }
+            },
+            queuedAlert: { _ in queuedAlerts.withValue { $0 += 1 } })
+        let queued = action(.return, book.identifier, in: Self.libraryA)
+        await queue.enqueue(queued)
+
+        await makeCoordinator().registerExecutor()
+        await joinReturnTasks(circulation.returnService!)
+
+        let status = await queue.currentStatus()
+        XCTAssertEqual(status.pendingCount + status.processingCount + status.failedCount, 1)
+        XCTAssertEqual(enqueueCalls.value, 0, "a queued return is not queued again")
+        XCTAssertEqual(queuedAlerts.value, 0)
+        XCTAssertEqual(circulation.returnCalls.count, queued.maxRetries)
+        XCTAssertNotNil(registry.book(forIdentifier: book.identifier), "the loan stays until the server confirms")
+    }
+
+    /// Control: the same unreachable error on a return the patron starts
+    /// queues it and tells the patron.
+    func testPatronReturn_failingAsUnreachable_queuesAndShowsQueuedAlert() async {
+        let book = makeBookWithRevokeURL()
+        registry.addBook(book, state: .downloadSuccessful)
+        let enqueued = LockIsolated<[OfflineAction]>([])
+        let queuedAlerts = LockIsolated(0)
+        let service = makeReturnService(
+            userAccountProvider: { TPPUserAccountMock(libraryUUID: Self.libraryA) },
+            enqueuer: { action in enqueued.withValue { $0.append(action) } },
+            queuedAlert: { _ in queuedAlerts.withValue { $0 += 1 } })
+
+        // The alert is shown just before the return completes.
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            service.returnBook(withIdentifier: book.identifier) { done.resume() }
+        }
+
+        XCTAssertEqual(enqueued.value.map(\.bookID), [book.identifier])
+        XCTAssertEqual(queuedAlerts.value, 1)
+    }
+
     // MARK: - Creation site
 
     /// The offline return carries the library the return started under, even
@@ -790,19 +883,23 @@ private final class FakeCirculation: OfflineCirculationPerforming, @unchecked Se
     var borrowEndState: (TPPBookRegistryMock, TPPBookState)?
     /// Runs inside each call, before completion.
     var onCall: (() -> Void)?
+    /// How many times each call invokes its completion.
+    var completionCalls = 1
+    /// Runs between repeated completions of one call.
+    var betweenCompletions: (() -> Void)?
     private var _returnCalls: [String] = []
     private var _borrowCalls: [String] = []
     var returnCalls: [String] { lock.withLock { _returnCalls } }
     var borrowCalls: [String] { lock.withLock { _borrowCalls } }
 
-    func returnBook(withIdentifier identifier: String, completion: (@Sendable () -> Void)?) {
+    func returnQueuedBook(withIdentifier identifier: String, completion: (@Sendable () -> Void)?) {
         lock.withLock { _returnCalls.append(identifier) }
         removesBookOnReturn?.removeBook(forIdentifier: identifier)
         onCall?()
         if let returnService {
-            returnService.returnBook(withIdentifier: identifier, completion: completion)
+            returnService.returnBook(withIdentifier: identifier, fromOfflineQueue: true, completion: completion)
         } else {
-            completion?()
+            complete(completion)
         }
     }
 
@@ -812,7 +909,14 @@ private final class FakeCirculation: OfflineCirculationPerforming, @unchecked Se
             end.0.setState(end.1, for: book.identifier)
         }
         onCall?()
-        borrowCompletion?()
+        complete(borrowCompletion)
+    }
+
+    private func complete(_ completion: (() -> Void)?) {
+        for call in 0..<completionCalls {
+            if call > 0 { betweenCompletions?() }
+            completion?()
+        }
     }
 }
 

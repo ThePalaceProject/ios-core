@@ -136,6 +136,18 @@ actor OfflineQueueService: OfflineQueueServiceProtocol {
     // MARK: - Queue Operations
 
     func enqueue(_ action: OfflineAction) async {
+        // One queued copy of an action is enough. A second can arrive while the
+        // first is running, e.g. a return that finds the server unreachable.
+        let alreadyQueued = queue.contains { queued in
+            (queued.state == .pending || queued.state == .processing)
+                && queued.libraryID == action.libraryID
+                && queued.type == action.type
+                && queued.bookID == action.bookID
+        }
+        guard !alreadyQueued else {
+            Log.info(#file, "Offline \(action.type.rawValue) for a book already queued — not adding a copy")
+            return
+        }
         queue.append(action)
         persist()
         publishStatus()

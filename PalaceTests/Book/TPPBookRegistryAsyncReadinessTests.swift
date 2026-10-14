@@ -15,9 +15,10 @@
 import XCTest
 @testable import Palace
 import PalaceBookRegistry
+import PalaceCatalog
 
 @MainActor
-final class TPPBookRegistryAsyncReadinessTests: XCTestCase {
+final class TPPBookRegistryAsyncReadinessTests: PalaceWiringTestCase {
 
     private var libraryMock: TPPLibraryAccountMock!
 
@@ -131,6 +132,34 @@ final class TPPBookRegistryAsyncReadinessTests: XCTestCase {
                 break // expected
             default:
                 XCTFail("Expected .authentication(.accountNotFound), got \(error)")
+            }
+        } catch {
+            XCTFail("Expected PalaceError, got \(type(of: error)): \(error)")
+        }
+    }
+
+    // MARK: - Bounded readiness wait
+
+    /// A sync for an account whose details never load ends with
+    /// `.accountNotFound` once the readiness wait runs out. The post-return
+    /// sync awaits this, and the return's completion awaits the sync.
+    func testSyncAsync_whenAccountNeverBecomesReady_throwsAccountNotFoundAfterReadinessWait() async {
+        let manager = makeFreshAccountsManager(defaults: Self.testUserDefaults())
+        let pub = OPDS2Publication(
+            links: [OPDS2Link(href: "https://example.com/catalog", rel: "http://opds-spec.org/catalog")],
+            metadata: OPDS2Publication.Metadata(id: "never-ready-\(UUID().uuidString)", title: "Never Ready"),
+            images: nil)
+        let account = Account(publication: pub, imageCache: MockImageCache())
+        _ = manager._seedAccountForTesting(account)
+        account._setState(.detailsLoading)
+        let registry = TPPBookRegistry(accountsManager: manager, imageLoader: MockImageLoader())
+
+        do {
+            _ = try await registry.syncAsync(accountsManager: manager, readinessTimeout: 0.05)
+            XCTFail("a sync for an account that never loads must not succeed")
+        } catch let error as PalaceError {
+            guard case .authentication(.accountNotFound) = error else {
+                return XCTFail("Expected .authentication(.accountNotFound), got \(error)")
             }
         } catch {
             XCTFail("Expected PalaceError, got \(type(of: error)): \(error)")

@@ -1279,6 +1279,11 @@ extension MyBooksDownloadCenter {
         returnService.returnBook(withIdentifier: identifier, completion: completion)
     }
 
+    /// Runs a return queued while offline; see `BookReturnService.returnBook(withIdentifier:fromOfflineQueue:completion:)`.
+    func returnQueuedBook(withIdentifier identifier: String, completion: (@Sendable () -> Void)?) {
+        returnService.returnBook(withIdentifier: identifier, fromOfflineQueue: true, completion: completion)
+    }
+
     // returnBook full body + performPostReturnSyncThen moved to
     // BookReturnService. ~230 LOC of return-state-machine + the
     // post-return sync helper now lives in that file.
