@@ -187,6 +187,25 @@ final class OfflineQueueServiceTests: XCTestCase {
         XCTAssertEqual(executedActions.value[1].bookID, "book2")
     }
 
+    /// An action whose server is unreachable keeps its place and its retries,
+    /// and the drain stops before later actions, which would hit the same server.
+    func testProcessQueue_deferredAction_staysPendingAndStopsTheDrain() async {
+        await service.enqueue(OfflineAction(type: .return, bookID: "first", bookTitle: "First"))
+        await service.enqueue(OfflineAction(type: .return, bookID: "second", bookTitle: "Second"))
+        let ran = LockIsolated<[String]>([])
+        await service.setExecutor({ action in
+            ran.withValue { $0.append(action.bookID) }
+            return .deferred
+        }, currentLibraryID: { OfflineAction.testLibraryID })
+
+        await service.processQueue()
+
+        XCTAssertEqual(ran.value, ["first"])
+        let pending = await service.actions(withState: .pending)
+        XCTAssertEqual(pending.map(\.bookID), ["first", "second"])
+        XCTAssertEqual(pending.map(\.retryCount), [0, 0])
+    }
+
     // MARK: - Retry
 
     func testRetryFailedAction() async {

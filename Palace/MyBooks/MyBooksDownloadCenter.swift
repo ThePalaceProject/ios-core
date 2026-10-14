@@ -1279,9 +1279,12 @@ extension MyBooksDownloadCenter {
         returnService.returnBook(withIdentifier: identifier, completion: completion)
     }
 
-    /// Runs a return queued while offline; see `BookReturnService.returnBook(withIdentifier:fromOfflineQueue:completion:)`.
-    func returnQueuedBook(withIdentifier identifier: String, completion: (@Sendable () -> Void)?) {
-        returnService.returnBook(withIdentifier: identifier, fromOfflineQueue: true, completion: completion)
+    /// Runs a return queued while offline; `unreachable` runs if the server cannot be reached.
+    func returnQueuedBook(withIdentifier identifier: String,
+                          unreachable: @escaping @Sendable () -> Void,
+                          completion: (@Sendable () -> Void)?) {
+        returnService.returnBook(withIdentifier: identifier, origin: .offlineQueue(unreachable: unreachable),
+                                 completion: completion)
     }
 
     // returnBook full body + performPostReturnSyncThen moved to

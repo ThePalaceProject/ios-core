@@ -8,6 +8,8 @@
 //
 
 import XCTest
+import UIKit
+import PalaceAuth
 import PalaceCatalog
 @testable import Palace
 @testable import PalaceBookRegistry
@@ -81,7 +83,9 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
         userAccountProvider: @escaping () -> TPPUserAccount = { TPPUserAccountMock() },
         feedFetcher: OPDSFeedFetching = OfflineFeedFetcher(),
         enqueuer: (@Sendable (OfflineAction) async -> Void)? = nil,
-        queuedAlert: @escaping @MainActor @Sendable (TPPBook) -> Void = { _ in }
+        authCoordinator: AuthCoordinator? = nil,
+        reauthenticator: Reauthenticator = TPPReauthenticatorMock(),
+        alerts: AlertSpy = AlertSpy()
     ) -> BookReturnService {
         BookReturnService(
             bookRegistry: registry,
@@ -92,11 +96,12 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
             opdsFeedService: feedFetcher,
             downloadAnnouncementService: DownloadAnnouncementService(),
             bookmarkDeletionLog: .shared,
-            reauthenticator: TPPReauthenticatorMock(),
-            userRetryTracker: .shared,
+            reauthenticator: reauthenticator,
+            userRetryTracker: UserRetryTracker(),
             userAccountProvider: userAccountProvider,
+            authCoordinator: authCoordinator,
             offlineReturnEnqueuer: enqueuer,
-            offlineReturnQueuedAlert: queuedAlert
+            alertPresenter: { alerts.record($0) }
         )
     }
 
@@ -571,7 +576,7 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
 
         for type in [OfflineActionType.return, .borrow, .hold, .cancelHold] {
             let result = await coordinator.execute(action(type, book.identifier, in: Self.libraryA))
-            XCTAssertFalse(result, "\(type) from another library must not be confirmed")
+            XCTAssertEqual(result, .failed, "\(type) from another library must not be confirmed")
         }
         XCTAssertEqual(circulation.returnCalls, [])
         XCTAssertEqual(circulation.borrowCalls, [])
@@ -585,7 +590,7 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
 
         let result = await makeCoordinator().execute(action(.return, book.identifier, in: Self.libraryA))
 
-        XCTAssertTrue(result)
+        XCTAssertEqual(result, .confirmed)
         XCTAssertEqual(circulation.returnCalls, [book.identifier])
     }
 
@@ -597,7 +602,7 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
 
         let result = await makeCoordinator().execute(action(.return, book.identifier, in: Self.libraryA))
 
-        XCTAssertFalse(result)
+        XCTAssertEqual(result, .failed)
         XCTAssertEqual(circulation.returnCalls, [book.identifier])
     }
 
@@ -612,7 +617,7 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
 
         let result = await makeCoordinator().execute(action(.return, book.identifier, in: Self.libraryA))
 
-        XCTAssertFalse(result)
+        XCTAssertEqual(result, .failed)
         XCTAssertEqual(circulation.returnCalls, [book.identifier])
     }
 
@@ -627,7 +632,7 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
 
         let result = await makeCoordinator().execute(action(.return, book.identifier, in: Self.libraryA))
 
-        XCTAssertFalse(result)
+        XCTAssertEqual(result, .failed)
     }
 
     /// Handed an action before the current library's registry has loaded,
@@ -640,7 +645,7 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
 
         for type in [OfflineActionType.return, .borrow, .hold, .cancelHold] {
             let result = await coordinator.execute(action(type, book.identifier, in: Self.libraryA))
-            XCTAssertFalse(result, "\(type) must wait for the library's registry")
+            XCTAssertEqual(result, .failed, "\(type) must wait for the library's registry")
         }
         XCTAssertEqual(circulation.returnCalls, [])
         XCTAssertEqual(circulation.borrowCalls, [])
@@ -664,8 +669,8 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
         circulation.borrowEndState = (registry, .holding)
         let held = await coordinator.execute(action(.hold, borrowBook.identifier, in: Self.libraryA))
 
-        XCTAssertTrue(borrowed)
-        XCTAssertTrue(held)
+        XCTAssertEqual(borrowed, .confirmed)
+        XCTAssertEqual(held, .confirmed)
         XCTAssertEqual(circulation.borrowCalls, [borrowBook.identifier, borrowBook.identifier])
     }
 
@@ -684,8 +689,8 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
         circulation.borrowEndState = (registry, .holding)
         let held = await coordinator.execute(action(.hold, book.identifier, in: Self.libraryA))
 
-        XCTAssertFalse(borrowed)
-        XCTAssertFalse(held)
+        XCTAssertEqual(borrowed, .failed)
+        XCTAssertEqual(held, .failed)
         XCTAssertEqual(circulation.borrowCalls.count, 2)
     }
 
@@ -703,7 +708,7 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
 
         let result = await makeCoordinator().execute(action(.return, book.identifier, in: Self.libraryA))
 
-        XCTAssertFalse(result, "the return was not confirmed when it first completed")
+        XCTAssertEqual(result, .failed, "the return was not confirmed when it first completed")
         XCTAssertEqual(circulation.returnCalls, [book.identifier])
     }
 
@@ -721,22 +726,22 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
         circulation.betweenCompletions = { registry.setState(.holding, for: book.identifier) }
         let held = await coordinator.execute(action(.hold, book.identifier, in: Self.libraryA))
 
-        XCTAssertFalse(borrowed)
-        XCTAssertFalse(held)
+        XCTAssertEqual(borrowed, .failed)
+        XCTAssertEqual(held, .failed)
         XCTAssertEqual(circulation.borrowCalls.count, 2)
     }
 
     // MARK: - Unreachable server during a drain
 
-    /// A drained return that fails as unreachable leaves its own action queued:
-    /// no copy is added and no "Return Queued" alert is shown, however many
-    /// attempts the drain makes.
-    func testDrain_returnFailingAsUnreachable_keepsOneActionAndShowsNoQueuedAlert() async {
+    /// A drained return that finds the server unreachable stays pending with
+    /// its retries intact, and the drain stops: no copy is added, no "Return
+    /// Queued" alert is shown, and the next drain runs it.
+    func testDrain_returnFailingAsUnreachable_staysPendingAndStopsTheDrain() async {
         let book = makeBookWithRevokeURL()
         registry.addBook(book, state: .downloadSuccessful)
         let queue = self.queue!
         let enqueueCalls = LockIsolated(0)
-        let queuedAlerts = LockIsolated(0)
+        let alerts = AlertSpy()
         circulation.returnService = makeReturnService(
             userAccountProvider: { TPPUserAccountMock(libraryUUID: Self.libraryA) },
             enqueuer: { action in
@@ -744,19 +749,51 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
                 let calls = enqueueCalls.withValue { $0 += 1; return $0 }
                 if calls <= 3 { await queue.enqueue(action) }
             },
-            queuedAlert: { _ in queuedAlerts.withValue { $0 += 1 } })
+            alerts: alerts)
         let queued = action(.return, book.identifier, in: Self.libraryA)
         await queue.enqueue(queued)
 
         await makeCoordinator().registerExecutor()
         await joinReturnTasks(circulation.returnService!)
 
+        let pending = await queue.actions(withState: .pending)
+        XCTAssertEqual(pending.map(\.id), [queued.id])
+        XCTAssertEqual(pending.first?.retryCount, 0, "an unreachable server spends no retry")
         let status = await queue.currentStatus()
-        XCTAssertEqual(status.pendingCount + status.processingCount + status.failedCount, 1)
+        XCTAssertEqual(status.failedCount + status.processingCount, 0)
+        XCTAssertEqual(circulation.returnCalls, [book.identifier], "the drain stops after the unreachable attempt")
         XCTAssertEqual(enqueueCalls.value, 0, "a queued return is not queued again")
-        XCTAssertEqual(queuedAlerts.value, 0)
-        XCTAssertEqual(circulation.returnCalls.count, queued.maxRetries)
+        XCTAssertEqual(alerts.count(titled: AlertSpy.returnQueued), 0)
         XCTAssertNotNil(registry.book(forIdentifier: book.identifier), "the loan stays until the server confirms")
+    }
+
+    /// A return deferred by an unreachable server is sent on the next drain
+    /// and, once the server answers, confirmed and removed.
+    func testDrain_unreachableThenServerBack_returnIsSentOnNextDrainAndConfirmed() async {
+        let book = makeBookWithRevokeURL()
+        registry.addBook(book, state: .downloadSuccessful)
+        // A revoke response the parser rejects is treated as a completed return.
+        circulation.returnService = makeReturnService(
+            userAccountProvider: { TPPUserAccountMock(libraryUUID: Self.libraryA) },
+            feedFetcher: SequencedFeedFetcher(errors: [
+                NSError(domain: NSURLErrorDomain, code: NSURLErrorCannotConnectToHost),
+                PalaceError.parsing(.opdsFeedInvalid)
+            ]),
+            enqueuer: { _ in })
+        let queued = action(.return, book.identifier, in: Self.libraryA)
+        await queue.enqueue(queued)
+        await makeCoordinator().registerExecutor()
+        await joinReturnTasks(circulation.returnService!)
+        let afterFirst = await queue.actions(withState: .pending)
+        XCTAssertEqual(afterFirst.map(\.id), [queued.id], "precondition: deferred by the first drain")
+
+        await queue.drainIfOnline()
+        await joinReturnTasks(circulation.returnService!)
+
+        XCTAssertEqual(circulation.returnCalls, [book.identifier, book.identifier])
+        let status = await queue.currentStatus()
+        XCTAssertEqual(status.pendingCount + status.processingCount + status.failedCount, 0)
+        XCTAssertNil(registry.book(forIdentifier: book.identifier))
     }
 
     /// Control: the same unreachable error on a return the patron starts
@@ -765,11 +802,11 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
         let book = makeBookWithRevokeURL()
         registry.addBook(book, state: .downloadSuccessful)
         let enqueued = LockIsolated<[OfflineAction]>([])
-        let queuedAlerts = LockIsolated(0)
+        let alerts = AlertSpy()
         let service = makeReturnService(
             userAccountProvider: { TPPUserAccountMock(libraryUUID: Self.libraryA) },
             enqueuer: { action in enqueued.withValue { $0.append(action) } },
-            queuedAlert: { _ in queuedAlerts.withValue { $0 += 1 } })
+            alerts: alerts)
 
         // The alert is shown just before the return completes.
         await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
@@ -777,7 +814,117 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
         }
 
         XCTAssertEqual(enqueued.value.map(\.bookID), [book.identifier])
-        XCTAssertEqual(queuedAlerts.value, 1)
+        XCTAssertEqual(alerts.count(titled: AlertSpy.returnQueued), 1)
+    }
+
+    // MARK: - Queued return through the download center and its retry paths
+
+    /// The download center's queued-return entry point marks the return as
+    /// queued, so an unreachable server defers the action instead of queueing
+    /// a copy.
+    func testExecute_returnThroughDownloadCenter_whenUnreachable_isDeferredWithoutCopyOrAlert() async {
+        let book = makeBookWithRevokeURL()
+        registry.addBook(book, state: .downloadSuccessful)
+        let enqueued = LockIsolated(0)
+        let alerts = AlertSpy()
+        let service = makeReturnService(
+            userAccountProvider: { TPPUserAccountMock(libraryUUID: Self.libraryA) },
+            enqueuer: { _ in enqueued.withValue { $0 += 1 } },
+            alerts: alerts)
+        let center = MyBooksDownloadCenter(
+            bookRegistry: registry,
+            returnService: service,
+            stateManager: DownloadStateManager(taskPersistence: DownloadTaskPersistence(
+                fileURL: URL(fileURLWithPath: NSTemporaryDirectory())
+                    .appendingPathComponent("OfflineQueueLibraryScope-\(UUID().uuidString).json"))))
+        let current = currentLibrary!
+        let coordinator = OfflineQueueCoordinator.production(
+            queue: queue, downloadCenter: center, bookRegistry: registry,
+            currentLibraryID: { current.value })
+
+        let outcome = await coordinator.execute(action(.return, book.identifier, in: Self.libraryA))
+        await joinReturnTasks(service)
+
+        XCTAssertEqual(outcome, .deferred)
+        XCTAssertEqual(enqueued.value, 0)
+        XCTAssertEqual(alerts.count(titled: AlertSpy.returnQueued), 0)
+    }
+
+    /// A queued return retried after the auth coordinator refreshes credentials
+    /// is still the queued return: unreachable defers it, no copy, no alert.
+    func testQueuedReturn_retriedAfterCoordinatorRefresh_whenUnreachable_isNotQueuedAgain() async {
+        let (coordinator, _, _, _, _) = SpyAuthCoordinatorFactory.make(mechanism: .token, stubModalResult: true)
+        let result = await runQueuedReturn(firstError: Self.invalidCredentialsError(), authCoordinator: coordinator)
+
+        XCTAssertEqual(result.unreachable, 1)
+        XCTAssertEqual(result.enqueued, 0)
+        XCTAssertEqual(result.queuedAlerts, 0)
+    }
+
+    /// The same after the reauthenticator signs the patron in again.
+    func testQueuedReturn_retriedAfterReauthentication_whenUnreachable_isNotQueuedAgain() async {
+        let result = await runQueuedReturn(firstError: Self.invalidCredentialsError())
+
+        XCTAssertEqual(result.unreachable, 1)
+        XCTAssertEqual(result.enqueued, 0)
+        XCTAssertEqual(result.queuedAlerts, 0)
+    }
+
+    /// The same when the patron taps Retry on the return-failed alert.
+    func testQueuedReturn_retriedFromFailureAlert_whenUnreachable_isNotQueuedAgain() async {
+        let result = await runQueuedReturn(
+            firstError: NSError(domain: "test", code: 500),
+            beforeRetry: { alerts in alerts.tap(Strings.MyDownloadCenter.retry, inAlertTitled: Strings.MyDownloadCenter.returnFailed) })
+
+        XCTAssertEqual(result.unreachable, 1)
+        XCTAssertEqual(result.enqueued, 0)
+        XCTAssertEqual(result.queuedAlerts, 0)
+    }
+
+    private static func invalidCredentialsError() -> NSError {
+        let data = try! JSONSerialization.data(withJSONObject: ["type": TPPProblemDocument.TypeInvalidCredentials])
+        let doc = TPPProblemDocument.fromProblemResponseData(data)!
+        return NSError(domain: "test", code: 401, userInfo: ["problemDocument": doc])
+    }
+
+    /// Runs a queued return whose first revoke fails with `firstError` and whose
+    /// retry finds the server unreachable. With `beforeRetry`, the first
+    /// attempt completes on its own and `beforeRetry` starts the retry.
+    private func runQueuedReturn(
+        firstError: Error,
+        authCoordinator: AuthCoordinator? = nil,
+        beforeRetry: (@MainActor (AlertSpy) -> Void)? = nil
+    ) async -> (unreachable: Int, enqueued: Int, queuedAlerts: Int) {
+        let book = makeBookWithRevokeURL()
+        registry.addBook(book, state: .downloadSuccessful)
+        let account = TPPUserAccountMock(libraryUUID: Self.libraryA)
+        account.setAuthToken("token", barcode: nil, pin: nil, expirationDate: nil)
+        let enqueued = LockIsolated(0)
+        let unreachable = LockIsolated(0)
+        let alerts = AlertSpy()
+        let service = makeReturnService(
+            userAccountProvider: { account },
+            feedFetcher: SequencedFeedFetcher(errors: [
+                firstError, NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut)
+            ]),
+            enqueuer: { _ in enqueued.withValue { $0 += 1 } },
+            authCoordinator: authCoordinator,
+            alerts: alerts)
+        let (completions, completed) = AsyncStream<Void>.makeStream()
+        var next = completions.makeAsyncIterator()
+
+        service.returnBook(withIdentifier: book.identifier,
+                           origin: .offlineQueue(unreachable: { unreachable.withValue { $0 += 1 } })) {
+            completed.yield()
+        }
+        await next.next()
+        if let beforeRetry {
+            beforeRetry(alerts)
+            await next.next()
+        }
+        await joinReturnTasks(service)
+
+        return (unreachable.value, enqueued.value, alerts.count(titled: AlertSpy.returnQueued))
     }
 
     // MARK: - Creation site
@@ -892,12 +1039,15 @@ private final class FakeCirculation: OfflineCirculationPerforming, @unchecked Se
     var returnCalls: [String] { lock.withLock { _returnCalls } }
     var borrowCalls: [String] { lock.withLock { _borrowCalls } }
 
-    func returnQueuedBook(withIdentifier identifier: String, completion: (@Sendable () -> Void)?) {
+    func returnQueuedBook(withIdentifier identifier: String,
+                          unreachable: @escaping @Sendable () -> Void,
+                          completion: (@Sendable () -> Void)?) {
         lock.withLock { _returnCalls.append(identifier) }
         removesBookOnReturn?.removeBook(forIdentifier: identifier)
         onCall?()
         if let returnService {
-            returnService.returnBook(withIdentifier: identifier, fromOfflineQueue: true, completion: completion)
+            returnService.returnBook(withIdentifier: identifier, origin: .offlineQueue(unreachable: unreachable),
+                                     completion: completion)
         } else {
             complete(completion)
         }
@@ -920,6 +1070,26 @@ private final class FakeCirculation: OfflineCirculationPerforming, @unchecked Se
     }
 }
 
+/// Records the alerts a return presents and taps their buttons.
+@MainActor
+private final class AlertSpy {
+    static let returnQueued = "Return Queued"
+    private var alerts: [UIAlertController] = []
+
+    func record(_ alert: UIAlertController) { alerts.append(alert) }
+
+    func count(titled title: String) -> Int { alerts.filter { $0.title == title }.count }
+
+    func tap(_ button: String, inAlertTitled title: String) {
+        typealias Handler = @convention(block) (UIAlertAction) -> Void
+        guard let action = alerts.last(where: { $0.title == title })?.actions.first(where: { $0.title == button }),
+              let block = action.value(forKey: "handler") else {
+            return XCTFail("no '\(button)' button on an alert titled '\(title)'")
+        }
+        unsafeBitCast(block as AnyObject, to: Handler.self)(action)
+    }
+}
+
 /// Counts writes to one key, to show a launch rewrites storage only when it
 /// drops something.
 private final class CountingDefaults: UserDefaults, @unchecked Sendable {
@@ -935,6 +1105,17 @@ private final class CountingDefaults: UserDefaults, @unchecked Sendable {
     override func set(_ value: Any?, forKey defaultName: String) {
         if defaultName == key { writes.withValue { $0 += 1 } }
         super.set(value, forKey: defaultName)
+    }
+}
+
+/// Throws the given errors in order, one per fetch, repeating the last.
+private final class SequencedFeedFetcher: OPDSFeedFetching, @unchecked Sendable {
+    private let lock = NSLock()
+    private var errors: [Error]
+    init(errors: [Error]) { self.errors = errors }
+
+    func fetchFeed(from url: URL) async throws -> TPPOPDSFeed {
+        throw lock.withLock { errors.count > 1 ? errors.removeFirst() : errors[0] }
     }
 }
 

@@ -154,15 +154,31 @@ final class TPPBookRegistryAsyncReadinessTests: PalaceWiringTestCase {
         account._setState(.detailsLoading)
         let registry = TPPBookRegistry(accountsManager: manager, imageLoader: MockImageLoader())
 
-        do {
-            _ = try await registry.syncAsync(accountsManager: manager, readinessTimeout: 0.05)
-            XCTFail("a sync for an account that never loads must not succeed")
-        } catch let error as PalaceError {
-            guard case .authentication(.accountNotFound) = error else {
-                return XCTFail("Expected .authentication(.accountNotFound), got \(error)")
+        let sync = Task { @MainActor () -> String in
+            do {
+                _ = try await registry.syncAsync(accountsManager: manager, readinessTimeout: 0.05)
+                return "succeeded"
+            } catch PalaceError.authentication(.accountNotFound) {
+                return "accountNotFound"
+            } catch {
+                return "\(error)"
             }
-        } catch {
-            XCTFail("Expected PalaceError, got \(type(of: error)): \(error)")
         }
+        // A far deadline that only matters if the wait stops being bounded: the
+        // test then fails here instead of hanging until the runner kills it.
+        let outcome: String? = await withTaskGroup(of: String?.self) { group in
+            group.addTask { await sync.value }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                return nil
+            }
+            let first = await group.next() ?? nil
+            if first == nil { sync.cancel() }
+            group.cancelAll()
+            return first
+        }
+
+        XCTAssertEqual(outcome, "accountNotFound",
+                       "nil means the sync was still waiting on the account after 10 s")
     }
 }
