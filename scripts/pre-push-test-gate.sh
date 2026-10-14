@@ -11,10 +11,9 @@
 #   1. Compute changed Swift files: `git diff --name-only @{u}..HEAD`
 #      filtered to `Palace/**/*.swift`. If any changed, run
 #      `scripts/check-file-size-ceiling.sh`; a non-zero exit blocks the push.
-#   2. For each changed file, derive a test class via the same lookup
-#      logic used by `scripts/regression-report.sh::derive_test_class_for`
-#      — Foo.swift -> Foo*Tests.swift, then the first class in each candidate
-#      file that declares a `func test` and whose superclass chain reaches
+#   2. For each changed file, derive its test classes: Foo.swift ->
+#      Foo*Tests.swift, then every class in each candidate file that
+#      declares a `func test` and whose superclass chain reaches
 #      XCTestCase (directly or through a PalaceTests base such as
 #      PalaceTestCase). Candidate files that the PalaceTests target does not
 #      compile (per check-swift-sources-compiled.py --list-compiled) are
@@ -220,7 +219,9 @@ derive_test_classes_for() {
       # `extension XCTestCase` or a base from elsewhere is never selected.
       line ~ /^extension[[:space:]]/ { split(line, w, /[[:space:]:{<]+/); cur = (w[2] in here) ? w[2] : ""; next }
       line ~ /^(struct|enum|actor|protocol|class|final|open|public|internal|private|fileprivate|func|let|var)[[:space:]]/ { cur = ""; next }
-      cur != "" && /func[[:space:]]+test[A-Z0-9_]/ { print cur; exit }
+      # Every test class in the file, once each: a file such as
+      # MyBooksViewModelTests.swift declares many.
+      cur != "" && /func[[:space:]]+test[A-Z0-9_]/ && !(cur in printed) { printed[cur] = 1; print cur }
     ' "$candidate"
   done <<< "$candidates" | sort -u
 }

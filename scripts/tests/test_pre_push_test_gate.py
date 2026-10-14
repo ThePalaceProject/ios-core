@@ -345,6 +345,36 @@ def test_an_extension_of_xctestcase_is_not_selected(tmp_path):
     assert _selected(tmp_path) == ["WidgetTests"]
 
 
+def test_every_test_class_in_a_matched_file_is_selected(tmp_path):
+    """MyBooksViewModelTests.swift declares many XCTestCase classes; a change to
+    MyBooksViewModel must run all of them, not only the first one in the file."""
+    repo = _gate_repo(tmp_path, test_classes=(), files={
+        "WidgetTests.swift":
+            "import XCTest\n\nextension XCTestCase {\n"
+            "    func test_helper() {}\n}\n\n"
+            "final class WidgetTests: XCTestCase {\n"
+            "    func testWidget() {}\n}\n\n"
+            "final class WidgetSpy: NSObject {\n"
+            "    func testSpyLooksLikeATest() {}\n}\n\n"
+            "final class WidgetFacetTests: XCTestCase {\n"
+            "    func testFacet() {}\n"
+            "    func testFacetAgain() {}\n}\n\n"
+            "class WidgetFixture: XCTestCase {\n"
+            "    func makeWidget() {}\n}\n\n"
+            "extension WidgetTests {\n"
+            "    func testFromAnExtension() {}\n}\n\n"
+            "final class WidgetHostTests: XCTestCase {}\n\n"
+            "extension WidgetHostTests {\n"
+            "    func testOnlyInAnExtension() {}\n}\n\n"
+            "@MainActor final class WidgetSortTests: XCTestCase {\n"
+            "    func testSort() {}\n}\n",
+    })
+
+    _run_gate(repo, tmp_path, "one-class-passed.log")
+
+    assert _selected(tmp_path) == ["WidgetFacetTests", "WidgetHostTests", "WidgetSortTests", "WidgetTests"]
+
+
 def test_a_test_named_helper_is_not_a_test_method(tmp_path):
     """`func testableX` is a helper, not an XCTest method, so a base that only
     declares one is not selected."""
