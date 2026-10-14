@@ -1000,6 +1000,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         XCTAssertEqual(data, Data("retry-body".utf8))
         XCTAssertEqual(tokenHits.value, 1, "the injected library's token endpoint is refreshed once")
         XCTAssertEqual(bearers.value, ["Bearer stale-token", "Bearer fresh"])
+        XCTAssertEqual(executor.heldTaskCount, 0, "the original request is released once its retry completes")
     }
 
     /// The same path when the token endpoint refuses: the caller is failed
@@ -1019,6 +1020,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         XCTAssertEqual(tokenHits.value, 1, "the injected library's token endpoint is asked once")
         XCTAssertEqual(bearers.value.count, 1, "nothing is resent after a refused refresh")
         XCTAssertEqual(userAccount.authState, .credentialsStale)
+        XCTAssertEqual(executor.heldTaskCount, 0, "the failed request is released from the active-tasks store")
     }
 
     /// The host set that keeps a foreign 401 from logging the patron out comes
