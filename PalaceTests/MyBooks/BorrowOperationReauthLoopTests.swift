@@ -65,9 +65,9 @@ final class BorrowOperationReauthLoopTests: XCTestCase {
         operation = BorrowOperation(
             bookRegistry: bookRegistry,
             downloadAnnouncementService: DownloadAnnouncementService(),
-            errorActivityTracker: .shared,
+            errorActivityTracker: ErrorActivityTracker(),
             debugSettings: DebugSettings(),
-            userRetryTracker: .shared,
+            userRetryTracker: UserRetryTracker(),
             userAccountProvider: { account },
             adobeDRMService: AdobeDRMService.shared,
             fetchBook: { [weak self] _, _, _ in
@@ -208,6 +208,36 @@ final class BorrowOperationReauthLoopTests: XCTestCase {
                        "a successful borrow clears the breaker")
     }
 
+    func testBorrow_OIDCSilentReauthSucceeds_retrySucceeds_returnsTheBook() async throws {
+        makeOperation(coordinator: nil)
+        signIn(try SyntheticAuthDef.oidc)
+        oidcReauthResult = true
+        fetchError = try problemError(TPPProblemDocument.TypeInvalidCredentials)
+        retrySucceeds = true
+
+        let borrowed = try await operation.borrowAsync(book, attemptDownload: false)
+
+        XCTAssertEqual(borrowed.identifier, book.identifier)
+        XCTAssertEqual(oidcReauthCount, 1)
+        XCTAssertEqual(alertCount, 0)
+    }
+
+    func testBorrow_OIDCSilentReauthFails_coordinatorSignInSucceeds_retrySucceeds_returnsTheBook() async throws {
+        let (coordinator, _, modal, _, _) = SpyAuthCoordinatorFactory.make(mechanism: .oidc, stubModalResult: true)
+        makeOperation(coordinator: coordinator)
+        signIn(try SyntheticAuthDef.oidc)
+        oidcReauthResult = false
+        fetchError = try problemError(TPPProblemDocument.TypeInvalidCredentials)
+        retrySucceeds = true
+
+        let borrowed = try await operation.borrowAsync(book, attemptDownload: false)
+
+        XCTAssertEqual(borrowed.identifier, book.identifier)
+        XCTAssertEqual(oidcReauthCount, 1)
+        XCTAssertEqual(modal.presentCallCount, 1)
+        XCTAssertEqual(alertCount, 0)
+    }
+
     // MARK: - The breaker after a failed retry
 
     /// Retry in the error alert is the patron asking again, so it may sign in again.
@@ -311,8 +341,8 @@ final class BorrowOperationReauthLoopTests: XCTestCase {
     func testBorrow_basicToken_failedRefreshWithServerDocument_showsTheErrorWithoutASecondPrompt() async throws {
         makeOperation(coordinator: nil)
         signIn(try SyntheticAuthDef.basicToken)
-        let data = try JSONSerialization.data(withJSONObject: ["type": "http://librarysimplified.org/terms/problem/expired-credentials",
-                                                              "title": "Expired Card"])
+        let data = try JSONSerialization.data(withJSONObject: [
+            "type": "http://librarysimplified.org/terms/problem/credentials-expired", "title": "Expired Card"])
         let doc = try XCTUnwrap(TPPProblemDocument.fromProblemResponseData(data))
         fetchError = NSError.makeFromProblemDocument(doc, domain: TPPErrorLogger.clientDomain,
                                                      code: TPPErrorCode.invalidCredentials.rawValue,
@@ -322,6 +352,57 @@ final class BorrowOperationReauthLoopTests: XCTestCase {
 
         XCTAssertEqual(signInModalCount, 0)
         XCTAssertEqual(alertCount, 1)
+        XCTAssertEqual(userAccount.authState, .loggedIn, "the borrow does not re-classify the refresh failure as its own")
+        XCTAssertFalse(BorrowOperation.isBorrowReauthGatedForTesting(book.identifier))
+    }
+
+    /// The server's credentials types: these mean the stored credentials were
+    /// refused, so signing in again is the fix.
+    func testBorrow_SAML_credentialsRefusedDocuments_routeToSignIn() async throws {
+        let types = [
+            TPPProblemDocument.TypeInvalidCredentials,
+            "http://librarysimplified.org/terms/problem/invalid-credentials",
+            "http://palaceproject.io/terms/problem/auth/unrecoverable/credentials/invalid",
+            "http://palaceproject.io/terms/problem/auth/recoverable/token/expired",
+        ]
+        for type in types {
+            BorrowOperation.clearAllBorrowReauthState()
+            let (coordinator, _, modal, _, _) = SpyAuthCoordinatorFactory.make(mechanism: .saml, stubModalResult: false)
+            makeOperation(coordinator: coordinator)
+            signIn(try SyntheticAuthDef.saml)
+            fetchError = try problemError(type)
+
+            await borrow()
+
+            XCTAssertEqual(modal.presentCallCount, 1, "\(type) should prompt sign-in")
+        }
+    }
+
+    /// An expired, suspended or blocked card, or a limit: signing in cannot fix
+    /// these, so the server's text is shown and sign-in state is untouched.
+    func testBorrow_SAML_documentsSigningInCannotFix_showTheError() async throws {
+        let types = [
+            TPPProblemDocument.TypePatronLoanLimit,
+            TPPProblemDocument.TypePatronHoldLimit,
+            "http://librarysimplified.org/terms/problem/credentials-expired",
+            TPPProblemDocument.TypeCredentialsSuspended,
+            "http://librarysimplified.org/terms/problem/credentials-blocked-by-policy",
+            "http://palaceproject.io/terms/problem/auth/unrecoverable/patron/no-access",
+        ]
+        for type in types {
+            BorrowOperation.clearAllBorrowReauthState()
+            alertCount = 0
+            let (coordinator, _, modal, _, _) = SpyAuthCoordinatorFactory.make(mechanism: .saml, stubModalResult: true)
+            makeOperation(coordinator: coordinator)
+            signIn(try SyntheticAuthDef.saml)
+            fetchError = try problemError(type)
+
+            await borrow()
+
+            XCTAssertEqual(modal.presentCallCount, 0, "\(type) should not prompt sign-in")
+            XCTAssertEqual(alertCount, 1, "\(type) should show the error")
+            XCTAssertEqual(userAccount.authState, .loggedIn, "\(type) should leave sign-in state alone")
+        }
     }
 
     func testBorrow_loanAlreadyExists_whenTheBookIsOnLoan_isSuppressed() async throws {

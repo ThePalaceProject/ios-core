@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceCatalog
 
 /// Books whose borrow has already tried re-authentication. A second auth
 /// failure on the same book shows an error instead of signing in again.
@@ -53,6 +54,17 @@ final class BorrowRetryRecorder: @unchecked Sendable {
 }
 
 extension BorrowOperation {
+
+    /// Problem documents that mean the stored credentials were refused, so
+    /// signing in again can fix the borrow. The Circulation Manager sends the
+    /// `auth/unrecoverable/credentials/invalid` form with a 401; the other two
+    /// are older spellings still in use. An expired, suspended or blocked card
+    /// is not here: signing in cannot fix it, so its text is shown instead.
+    static let credentialsProblemTypes: Set<String> = [
+        TPPProblemDocument.TypeInvalidCredentials,
+        "http://librarysimplified.org/terms/problem/invalid-credentials",
+        "http://palaceproject.io/terms/problem/auth/unrecoverable/credentials/invalid",
+    ]
 
     static let reauthTracker = BorrowReauthTracker()
 

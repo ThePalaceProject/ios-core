@@ -48,13 +48,17 @@ final class SpyCoordinatorModalPresenter: SignInModalPresenting, @unchecked Send
     /// explicitly opt in to the success path.
     var stubbedResult: Bool = false
 
+    /// Successes stop after this many presentations, so a caller that keeps
+    /// re-presenting fails a test quickly instead of recursing until timeout.
+    var maxSuccessfulPresentations = 3
+
     private(set) var presentCallCount: Int = 0
     private let lock = NSLock()
 
     func presentSignInModalForCurrentAccount() async -> Bool {
         lock.withLock {
             presentCallCount += 1
-            return stubbedResult
+            return stubbedResult && presentCallCount <= maxSuccessfulPresentations
         }
     }
 }

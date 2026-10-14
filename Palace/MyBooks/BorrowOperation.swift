@@ -477,7 +477,7 @@ final class BorrowOperation: @unchecked Sendable {
             if case .authentication = error { return true }
 
             if let problemDoc = problemDocument {
-                if problemDoc.type == TPPProblemDocument.TypeInvalidCredentials { return true }
+                if Self.credentialsProblemTypes.contains(problemDoc.type ?? "") { return true }
 
                 if problemDoc.isRecoverableAuthError {
                     Log.info(#file, "Recoverable auth error detected: \(problemDoc.type ?? "unknown") — triggering re-auth (PP-3716)")
