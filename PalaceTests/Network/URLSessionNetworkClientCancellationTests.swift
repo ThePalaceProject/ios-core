@@ -82,7 +82,7 @@ final class URLSessionNetworkClientCancellationTests: XCTestCase {
         } catch {
             XCTAssertTrue(error is CancellationError, "expected CancellationError, got \(error)")
         }
-        XCTAssertEqual(ScriptedURLProtocol.started.count, 0,
+        XCTAssertEqual(ScriptedURLProtocol.started(inRun: runID).count, 0,
                        "no request may reach the server for a Task cancelled before send")
     }
 
@@ -109,7 +109,7 @@ final class URLSessionNetworkClientCancellationTests: XCTestCase {
         }
         let refreshing = await fixture.executor.isTokenRefreshingForTesting
         XCTAssertFalse(refreshing, "a cancelled send must not claim the refresh slot")
-        XCTAssertEqual(ScriptedURLProtocol.started.count, 0,
+        XCTAssertEqual(ScriptedURLProtocol.started(inRun: runID).count, 0,
                        "neither the token endpoint nor the API may be contacted")
     }
 
@@ -173,7 +173,7 @@ final class URLSessionNetworkClientCancellationTests: XCTestCase {
         let refreshing = await fixture.executor.isTokenRefreshingForTesting
         XCTAssertFalse(refreshing, "a cancelled request must not claim the refresh slot")
         XCTAssertEqual(fixture.executor.registeredTaskCount, 0, "no API task may be created")
-        XCTAssertEqual(ScriptedURLProtocol.started.count, 0,
+        XCTAssertEqual(ScriptedURLProtocol.started(inRun: runID).count, 0,
                        "neither the token endpoint nor the API may be contacted")
     }
 
@@ -189,7 +189,7 @@ final class URLSessionNetworkClientCancellationTests: XCTestCase {
         // Counted at creation: a task resumed and cancelled at once may never
         // reach the URLProtocol, so `started` alone cannot show it was sent.
         XCTAssertEqual(fixture.executor.registeredTaskCount, 0, "no task may be created")
-        XCTAssertEqual(ScriptedURLProtocol.started.count, 0, "no request may reach the server")
+        XCTAssertEqual(ScriptedURLProtocol.started(inRun: runID).count, 0, "no request may reach the server")
     }
 
     // MARK: - Helpers

@@ -62,6 +62,13 @@ final class ScriptedURLProtocol: URLProtocol {
 
     static var started: [Seen] { state.value.started }
 
+    /// The started requests whose path carries `runID`, the per-test path
+    /// segment. A request a previous test left in flight can start after
+    /// `reset()`; filtering on the run keeps it out of this test's assertions.
+    static func started(inRun runID: String) -> [Seen] {
+        state.value.started.filter { $0.url.path.contains("/\(runID)/") }
+    }
+
     static func startCount(of url: URL) -> Int {
         state.value.started.filter { $0.url == url }.count
     }

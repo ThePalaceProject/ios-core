@@ -54,7 +54,7 @@ final class URLSessionNetworkClientDispatchTests: XCTestCase {
 
             _ = try await send(fixture.client, method)
 
-            let seen = try XCTUnwrap(ScriptedURLProtocol.started.first, "\(method) sent nothing")
+            let seen = try XCTUnwrap(ScriptedURLProtocol.started(inRun: runID).first, "\(method) sent nothing")
             XCTAssertEqual(seen.method, expected[method]?.0, "\(method): wire method")
             XCTAssertEqual(seen.cachePolicy, expected[method]?.1, "\(method): cache policy")
         }
@@ -73,7 +73,7 @@ final class URLSessionNetworkClientDispatchTests: XCTestCase {
 
             _ = try await send(fixture.client, method)
 
-            let order = ScriptedURLProtocol.started.map(\.url)
+            let order = ScriptedURLProtocol.started(inRun: runID).map(\.url)
             if refreshes.contains(method) {
                 XCTAssertEqual(order, [tokenURL, apiURL], "\(method) must refresh, then dispatch once")
             } else {
@@ -92,7 +92,7 @@ final class URLSessionNetworkClientDispatchTests: XCTestCase {
 
             _ = try await send(fixture.client, method, headers: ["X-Caller": "yes"])
 
-            let seen = try XCTUnwrap(ScriptedURLProtocol.started.first)
+            let seen = try XCTUnwrap(ScriptedURLProtocol.started(inRun: runID).first)
             XCTAssertEqual(seen.authorization, "Bearer token-A", "\(method): bearer")
             XCTAssertEqual(seen.headers["X-Caller"], "yes", "\(method): caller header")
         }
@@ -108,7 +108,7 @@ final class URLSessionNetworkClientDispatchTests: XCTestCase {
 
         _ = try await send(fixture.client, .PATCH, headers: ["Authorization": "Bearer caller-supplied"])
 
-        let seen = try XCTUnwrap(ScriptedURLProtocol.started.first)
+        let seen = try XCTUnwrap(ScriptedURLProtocol.started(inRun: runID).first)
         XCTAssertNotEqual(seen.authorization, "Bearer caller-supplied")
         XCTAssertEqual(seen.authorization ?? "", legacy)
     }
@@ -189,9 +189,9 @@ final class URLSessionNetworkClientDispatchTests: XCTestCase {
 
         _ = try await send(fixture.client, .GET)
 
-        XCTAssertEqual(ScriptedURLProtocol.started.map(\.url), [tokenURL, apiURL],
+        XCTAssertEqual(ScriptedURLProtocol.started(inRun: runID).map(\.url), [tokenURL, apiURL],
                        "the current account's token endpoint must be the one refreshed")
-        XCTAssertEqual(ScriptedURLProtocol.started.last?.authorization, "Bearer refreshed",
+        XCTAssertEqual(ScriptedURLProtocol.started(inRun: runID).last?.authorization, "Bearer refreshed",
                        "the request is sent with the current account's refreshed token")
         XCTAssertEqual(current.authToken, "refreshed")
         XCTAssertNotEqual(other.authToken, "refreshed")
