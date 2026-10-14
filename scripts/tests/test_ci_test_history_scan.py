@@ -237,3 +237,69 @@ def test_scanModeCleanVerdict_alsoCarriesTheWindow():
     line = cth.scan_clean_verdict_line({"oldest": "2026-08-21T16:02",
                                         "newest": "2026-08-21T19:10", "hours": 3.1})
     assert "3.1 hours" in line and "widen" in line.lower()
+
+
+# ------------------------------- the floor follows the workflow being read
+
+def journey_log() -> str:
+    """The UI Journeys workflow runs three tests, serially, so its log is real at 3 lines."""
+    return "\n".join(
+        f"Test Case '-[PalaceUITests.{c} {m}]' passed ({s} seconds)."
+        for c, m, s in (("AudiobookCloseMidLoadJourneyTests", "testClosing", "167.137"),
+                        ("ResumeReadingJourneyTests", "testReadingPosition", "80.247"),
+                        ("SignInAndBorrowJourneyTests", "testSignInThenBorrow", "51.462")))
+
+
+@pytest.fixture
+def fake_runs(monkeypatch):
+    """Serve one run whose log is whatever the test sets, without calling gh."""
+    served = {"log": ""}
+    run = {"databaseId": 1, "createdAt": "2026-10-14T00:31:00Z", "headSha": "fa1a9aed00",
+           "headBranch": "develop", "conclusion": "success", "attempt": 1}
+    monkeypatch.setattr(cth, "runs", lambda *a, **k: [run])
+    monkeypatch.setattr(cth, "run_meta", lambda *a, **k: dict(run))
+    monkeypatch.setattr(cth, "log_for", lambda *a, **k: served["log"])
+    return served
+
+
+def test_lookup_readsAUIJourneysRunInsteadOfRefusingIt(fake_runs, capsys):
+    fake_runs["log"] = journey_log()
+    cth.main(["x", "SignInAndBorrowJourneyTests", "--workflow", "UI Journeys", "--repo", "o/r"])
+    out = capsys.readouterr().out
+    assert "REFUSED" not in out
+    assert "passed 51.462s" in out
+
+
+def test_scan_readsAUIJourneysRunInsteadOfRefusingIt(fake_runs, capsys):
+    fake_runs["log"] = journey_log()
+    cth.main(["x", "--scan", "--workflow", "UI Journeys", "--repo", "o/r"])
+    out = capsys.readouterr().out
+    assert "REFUSED" not in out
+    assert "3 executions / 3 tests" in out
+
+
+def test_uiJourneysStillRefusesALogWithNoResults(fake_runs, capsys):
+    fake_runs["log"] = "##[group]Run actions/checkout@v4\n"
+    cth.main(["x", "SignInAndBorrowJourneyTests", "--workflow", "UI Journeys", "--repo", "o/r"])
+    assert "REFUSED" in capsys.readouterr().out
+
+
+def test_unitTestsStillRefusesAThreeResultLog(fake_runs, capsys):
+    """A three-line Unit Tests log is a truncated download, not a measured run."""
+    fake_runs["log"] = journey_log()
+    cth.main(["x", "SignInAndBorrowJourneyTests", "--repo", "o/r"])
+    assert "REFUSED" in capsys.readouterr().out
+
+
+def test_minResultsOverridesTheWorkflowFloor(fake_runs, capsys):
+    fake_runs["log"] = journey_log()
+    cth.main(["x", "SignInAndBorrowJourneyTests", "--min-results", "3", "--repo", "o/r"])
+    out = capsys.readouterr().out
+    assert "REFUSED" not in out and "passed 51.462s" in out
+
+
+@pytest.mark.parametrize("bad", ["0", "-1"])
+def test_minResultsBelowOneIsRejected(bad):
+    """A floor of 0 would read an empty download as a clean run."""
+    with pytest.raises(SystemExit):
+        cth.main(["x", "SomeTests", "--min-results", bad, "--repo", "o/r"])
