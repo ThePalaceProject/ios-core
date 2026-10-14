@@ -36,6 +36,7 @@ final class BookContentResetService: @unchecked Sendable {
     private let progressReporter: DownloadProgressReporter
     private let localContentService: LocalBookContentService
     private let fileManager: FileManager
+    private let offlineActionRemover: @Sendable (String) -> Void
 
     init(
         bookRegistry: TPPBookRegistryProvider,
@@ -44,7 +45,8 @@ final class BookContentResetService: @unchecked Sendable {
         bookFileManager: BookFileManager,
         progressReporter: DownloadProgressReporter,
         localContentService: LocalBookContentService,
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        offlineActionRemover: @escaping @Sendable (String) -> Void = OfflineQueueService.productionRemoveActions
     ) {
         self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager
@@ -53,6 +55,7 @@ final class BookContentResetService: @unchecked Sendable {
         self.progressReporter = progressReporter
         self.localContentService = localContentService
         self.fileManager = fileManager
+        self.offlineActionRemover = offlineActionRemover
     }
 
     // MARK: - reset(account:)
@@ -62,6 +65,9 @@ final class BookContentResetService: @unchecked Sendable {
     /// bookkeeping; otherwise just deletes audiobooks + the content
     /// directory for the named account.
     func reset(account: String) {
+        // Queued offline actions were made with this account's loans and
+        // credentials; after a sign-out they would run for whoever signs in next.
+        offlineActionRemover(account)
         if accountsManager.currentAccountId == account {
             reset()
         } else {

@@ -10,6 +10,7 @@
 //  path (a genuine failure is retryable).
 //
 
+import Combine
 import XCTest
 @testable import Palace
 import PalaceBookModel
@@ -32,20 +33,20 @@ final class OfflineQueueCoordinatorTests: XCTestCase {
 
         func handlers() -> OfflineQueueCoordinator.Handlers {
             OfflineQueueCoordinator.Handlers(
-                performReturn: { [weak self] id in
-                    self?.lock.withLock { self?.returnIDs.append(id) }
+                performReturn: { [weak self] action in
+                    self?.lock.withLock { self?.returnIDs.append(action.bookID) }
                     return self?.returnSucceeds ?? false
                 },
-                performBorrow: { [weak self] id in
-                    self?.lock.withLock { self?.borrowIDs.append(id) }
+                performBorrow: { [weak self] action in
+                    self?.lock.withLock { self?.borrowIDs.append(action.bookID) }
                     return self?.borrowSucceeds ?? false
                 },
-                performHold: { [weak self] id in
-                    self?.lock.withLock { self?.holdIDs.append(id) }
+                performHold: { [weak self] action in
+                    self?.lock.withLock { self?.holdIDs.append(action.bookID) }
                     return true
                 },
-                performCancelHold: { [weak self] id in
-                    self?.lock.withLock { self?.cancelHoldIDs.append(id) }
+                performCancelHold: { [weak self] action in
+                    self?.lock.withLock { self?.cancelHoldIDs.append(action.bookID) }
                     return true
                 })
         }
@@ -57,15 +58,29 @@ final class OfflineQueueCoordinatorTests: XCTestCase {
     private final class FakeRegistrar: OfflineExecutorRegistering, @unchecked Sendable {
         private let lock = NSLock()
         private var _executor: OfflineActionExecutor?
+        private var _currentLibraryID: (@Sendable () -> String?)?
         var executor: OfflineActionExecutor? { lock.withLock { _executor } }
-        func setExecutor(_ executor: @escaping OfflineActionExecutor) async {
-            lock.withLock { _executor = executor }
+        var currentLibraryID: (@Sendable () -> String?)? { lock.withLock { _currentLibraryID } }
+        private var _drainCount = 0
+        var drainCount: Int { lock.withLock { _drainCount } }
+        func setExecutor(
+            _ executor: @escaping OfflineActionExecutor,
+            currentLibraryID: @escaping @Sendable () -> String?
+        ) async {
+            lock.withLock {
+                _executor = executor
+                _currentLibraryID = currentLibraryID
+            }
+        }
+        func drainIfOnline() async {
+            lock.withLock { _drainCount += 1 }
         }
     }
 
     private func coordinator(_ spy: HandlerSpy, queue: OfflineExecutorRegistering = FakeRegistrar())
         -> OfflineQueueCoordinator {
-        OfflineQueueCoordinator(queue: queue, handlers: spy.handlers())
+        OfflineQueueCoordinator(queue: queue, handlers: spy.handlers(),
+                                runnableLibraryID: { OfflineAction.testLibraryID })
     }
 
     // MARK: - INV-8: dedupe
@@ -106,6 +121,32 @@ final class OfflineQueueCoordinatorTests: XCTestCase {
 
         XCTAssertEqual(spy.withLock { spy.returnIDs }, ["x"])
         XCTAssertEqual(spy.withLock { spy.borrowIDs }, ["x"])
+    }
+
+    /// A return of a book completed at one library must not suppress a queued
+    /// return of the same book ID at another library.
+    func testSameBookAndTypeAtDifferentLibraries_areNotDeduped() async {
+        let spy = HandlerSpy()
+        let coord = coordinator(spy)
+
+        let atA = await coord.execute(OfflineAction(type: .return, bookID: "x", bookTitle: "X", libraryID: "lib-A"))
+        let atB = await coord.execute(OfflineAction(type: .return, bookID: "x", bookTitle: "X", libraryID: "lib-B"))
+
+        XCTAssertTrue(atA)
+        XCTAssertTrue(atB)
+        XCTAssertEqual(spy.withLock { spy.returnIDs }, ["x", "x"],
+            "each library's return runs; a completion at A is not a completion at B")
+    }
+
+    /// The same holds for a borrow of the same book ID at two libraries.
+    func testSameBookBorrowAtDifferentLibraries_areNotDeduped() async {
+        let spy = HandlerSpy()
+        let coord = coordinator(spy)
+
+        _ = await coord.execute(OfflineAction(type: .borrow, bookID: "x", bookTitle: "X", libraryID: "lib-A"))
+        _ = await coord.execute(OfflineAction(type: .borrow, bookID: "x", bookTitle: "X", libraryID: "lib-B"))
+
+        XCTAssertEqual(spy.withLock { spy.borrowIDs }, ["x", "x"])
     }
 
     // MARK: - Failure rollback (retryable)
@@ -209,6 +250,7 @@ final class OfflineQueueCoordinatorTests: XCTestCase {
         let clock = MutableClock(Date(timeIntervalSince1970: 0))
         let coord = OfflineQueueCoordinator(
             queue: FakeRegistrar(), handlers: spy.handlers(),
+            runnableLibraryID: { OfflineAction.testLibraryID },
             dedupeTTL: 100, now: { clock.now })
 
         _ = await coord.execute(OfflineAction(type: .return, bookID: "k", bookTitle: "K"))
@@ -243,5 +285,33 @@ final class OfflineQueueCoordinatorTests: XCTestCase {
         XCTAssertEqual(ok, true)
         XCTAssertEqual(spy.withLock { spy.borrowIDs }, ["wired"],
             "the installed executor dispatches through the coordinator to the handler")
+    }
+
+    /// The queue scopes its drain with the coordinator's current-library
+    /// reader, installed alongside the executor.
+    func testRegisterExecutor_installsCurrentLibraryReader() async {
+        let registrar = FakeRegistrar()
+        let coord = OfflineQueueCoordinator(queue: registrar, handlers: HandlerSpy().handlers(),
+                                            runnableLibraryID: { "library-under-test" })
+
+        await coord.registerExecutor()
+
+        XCTAssertEqual(registrar.currentLibraryID?(), "library-under-test")
+    }
+
+    /// Registration drains once, and each library-ready signal drains again.
+    func testRegisterExecutor_drainsNowAndOnEachLibraryReadySignal() async {
+        let registrar = FakeRegistrar()
+        let ready = PassthroughSubject<Void, Never>()
+        let coord = OfflineQueueCoordinator(queue: registrar, handlers: HandlerSpy().handlers(),
+                                            runnableLibraryID: { "lib" },
+                                            libraryReady: ready.eraseToAnyPublisher())
+
+        await coord.registerExecutor()
+        XCTAssertEqual(registrar.drainCount, 1)
+
+        ready.send(())
+        await coord._awaitTriggeredDrainsForTesting()
+        XCTAssertEqual(registrar.drainCount, 2)
     }
 }

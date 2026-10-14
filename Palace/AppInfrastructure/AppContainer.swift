@@ -432,9 +432,11 @@ struct AppContainer: @unchecked Sendable {
         let coordinator: OfflineQueueCoordinator? =
             AppContainer._offlineQueueCoordinator.withLock { slot in
                 if slot != nil { return nil }
+                let accountsManager = self.accountsManager
                 let c = OfflineQueueCoordinator.production(
                     downloadCenter: self.downloadCenter,
-                    bookRegistry: self.bookRegistry
+                    bookRegistry: self.bookRegistry,
+                    currentLibraryID: { [weak accountsManager] in accountsManager?.currentAccountId }
                 )
                 slot = c
                 return c
