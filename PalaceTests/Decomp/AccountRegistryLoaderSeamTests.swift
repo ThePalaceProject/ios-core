@@ -75,7 +75,7 @@ final class AccountRegistryLoaderSeamTests: XCTestCase {
             settings: TPPSettings(),
             imageCache: MockImageCache(),
             accountStateStore: AccountStateStore(),
-            ageCheck: TPPAgeCheck(ageCheckChoiceStorage: TPPSettings()),
+            ageCheck: TPPAgeCheck(ageCheckChoiceStorage: TPPSettings(), presentAgeVerification: { _ in }),
             networkExecutorProvider: { StubNetworking() },
             currentAccountProvider: { nil },
             currentAccountIdProvider: { nil },
