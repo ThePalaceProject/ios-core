@@ -4,7 +4,7 @@
 //  LCP-PDF loading view; wrong progress math showed a bar stuck at 1% or an
 //  early "Finishing up...". Phases:
 //    .idle -> .preparing -> .openingPublication -> .decryptingContent
-//    -> .extractingToDisk -> .loadingFirstPage -> .idle (via finish)
+//    -> .extractingToDisk -> .idle (via finish)
 //  The automatic transitions (on first decrypt, on first extracted byte) get
 //  explicit coverage, since a wrong phase guard leaves the status text stuck.
 
@@ -222,7 +222,7 @@ final class LCPPDFOpenProgressTests: XCTestCase {
     func testFinish_resetsToIdleAndClearsIdentifier() {
         let progress = LCPPDFOpenProgress.shared
         progress.begin(bookIdentifier: bookID)
-        progress.setPhase(.loadingFirstPage)
+        progress.setPhase(.extractingToDisk)
         progress.recordExtractedBytes(1_024)
 
         let wait = expectation(description: "settled")

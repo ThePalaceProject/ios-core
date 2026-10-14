@@ -453,10 +453,10 @@ applied again.
 ### The reading engine (Readium 3.x) — clear, and enforced by the compiler
 
 `NavigatorDelegate`, `VisualNavigatorDelegate` and `EPUBNavigatorDelegate` are
-declared `@MainActor` in the pinned toolkit, and `PDFNavigatorDelegate` inherits
-it. Readium states the isolation in its own types, so the four Palace
-conformances cannot be entered off the main actor without a build error. This is
-remedy 2 from 7c applied upstream, and it is why none of those four needs
+declared `@MainActor` in the pinned toolkit. Readium states the isolation in
+its own types, so the three Palace conformances cannot be entered off the main
+actor without a build error. This is
+remedy 2 from 7c applied upstream, and it is why none of those three needs
 `@preconcurrency`.
 
 `DecorableNavigator` is the exception: it is nonisolated, and

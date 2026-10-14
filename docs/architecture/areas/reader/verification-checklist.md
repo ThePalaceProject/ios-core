@@ -9,11 +9,11 @@ owners: [reader]
 description: Per-area verification reference; refresh before changing this area
 ---
 
-<!-- audit-verified: file paths in Section 1 (Palace/Reader2/UI/TPPEPUBViewController.swift, Palace/Reader2/UI/ReaderEditingActions.swift, Palace/PDF/Views/PalacePDFView.swift, Palace/PDF/Views/TPPPDFView.swift, Palace/PDF/LCP/LCPPDFs.swift, Palace/PDF/ReadiumPDF/ReadiumPDFViewController.swift, Palace/AppInfrastructure/ReaderService.swift, Palace/AppInfrastructure/NavigationHostView.swift, Palace/Reader2/BusinessLogic/*) were all confirmed to exist via ls/grep on 2026-05-28. PR #1012 (PP-4297) and PR #1008 (PP-4454) verified in `git log --oneline origin/develop -- Palace/Reader2/ Palace/Reader3/`. `TPPBook.isDRMProtected` definition confirmed at Palace/Packages/PalaceBookModel/Sources/PalaceBookModel/TPPBook.swift:652. simdrive journeys enumerated from `.simdrive/journeys/reader2-*.yaml`. Regression matrix rows E1, E1-LCP, E1-Adobe, E2, E2-Hang verified in docs/Testing/REGRESSION_TEST_MATRIX.md. Reader3/ confirmed empty except for .DS_Store + an empty ReaderStackConfiguration/ subdirectory — there is no live "Reader3" code; PDF lives under Palace/PDF/. -->
+<!-- audit-verified: file paths in Section 1 (Palace/Reader2/UI/TPPEPUBViewController.swift, Palace/Reader2/UI/ReaderEditingActions.swift, Palace/PDF/Views/PalacePDFView.swift, Palace/PDF/Views/TPPPDFView.swift, Palace/PDF/LCP/LCPPDFs.swift, Palace/AppInfrastructure/ReaderService.swift, Palace/AppInfrastructure/NavigationHostView.swift, Palace/Reader2/BusinessLogic/*) were all confirmed to exist via ls/grep on 2026-05-28. PR #1012 (PP-4297) and PR #1008 (PP-4454) verified in `git log --oneline origin/develop -- Palace/Reader2/ Palace/Reader3/`. `TPPBook.isDRMProtected` definition confirmed at Palace/Packages/PalaceBookModel/Sources/PalaceBookModel/TPPBook.swift:652. simdrive journeys enumerated from `.simdrive/journeys/reader2-*.yaml`. Regression matrix rows E1, E1-LCP, E1-Adobe, E2, E2-Hang verified in docs/Testing/REGRESSION_TEST_MATRIX.md. Reader3/ confirmed empty except for .DS_Store + an empty ReaderStackConfiguration/ subdirectory — there is no live "Reader3" code; PDF lives under Palace/PDF/. -->
 
 # Reader area — verification checklist
 
-**Owner area:** `Palace/Reader2/` (EPUB via Readium 3.x WKWebView, SwiftUI nav), `Palace/PDF/` (PDFKit + Readium-PDF), and the reader open-path / DRM-gating seams in `Palace/AppInfrastructure/ReaderService.swift`, `Palace/AppInfrastructure/NavigationHostView.swift`.
+**Owner area:** `Palace/Reader2/` (EPUB via Readium 3.x WKWebView, SwiftUI nav), `Palace/PDF/` (PDFKit; LCP PDFs are decrypted to disk first), and the reader open-path / DRM-gating seams in `Palace/AppInfrastructure/ReaderService.swift`, `Palace/AppInfrastructure/NavigationHostView.swift`.
 
 **Note on `Palace/Reader3/`:** the directory exists but is empty (only `.DS_Store` + an empty `ReaderStackConfiguration/` subdirectory). PDF rendering lives under `Palace/PDF/`, not `Reader3/`. Treat `Reader3/` as a reserved namespace pending a future move; do not add code there without an explicit ADR.
 
@@ -34,7 +34,7 @@ description: Per-area verification reference; refresh before changing this area
 | `Palace/Reader2/UI/ReaderEditingActions.swift` | 15 (enum), 32 (`resolve`), 34 (`isDRMProtected && !isSample`) | Single source of truth for EPUB editing-action gating. Samples treated as non-DRM regardless of book DRM (sample = open-access preview). | **LIVE.** |
 | `Palace/PDF/Views/PalacePDFView.swift` | 20 (`allowsCopy`), 22 (`canPerformAction`), 29 (`buildMenu`), 55–56+ (blocked-selector list incl. `_share:`, `_lookup:`, `_define:`, `_translate:`) | PDFKit subclass for forward-looking PDFKit-rendered DRM-PDF path. `buildMenu` order is **super-then-strip** so PDFKit late-inserts can't leak through. | **LIVE.** Gating in place; currently not the active PDF-render path for DRM (see Section 7). |
 | `Palace/PDF/Views/TPPPDFView.swift` | 83 (`pdfView.allowsCopy = !metadata.book.isDRMProtected`) | Today's PDFKit-rendered PDF path; wires `allowsCopy` from the DRM predicate. | **LIVE.** |
-| `Palace/PDF/ReadiumPDF/ReadiumPDFViewController.swift` | 21 (class), 59 (`installNavigator`), 106 (`restoreInitialPageIfNeeded`), 140–148 (Navigator delegate: `locationDidChange`, `presentError`, `didFailToLoadResourceAt`) | Readium-PDF navigator wrapper. PP-4454 wired DRM gating into this path post-merge (see commit `29156e0f7` on current branch). | **LIVE on `fix/PP-4297-reader-copy-paste-gating` branch.** Verify on develop after this PR lands. |
+| `Palace/PDF/ReadiumPDF/LCPPDFDiskExtract.swift` | (full file) | Decrypts an LCP PDF to a cached file on disk in one linear pass; `ReaderService.openLCPPDF` then opens that file in PDFKit. `ReadiumPDFLoadingView` shows progress meanwhile. | **LIVE.** The only LCP PDF render path. Readium's `PDFNavigatorViewController` is not used: its random-access reads caused ~800k decrypts and an OOM (PR #1008), and its never-reached wrapper was removed. |
 | `Palace/PDF/LCP/LCPPDFs.swift` | 35 (`canOpenBook`), 63 (`hasLCPAcquisition`) | Recursive predicate walking the WHOLE acquisition chain (top-level + nested `indirectAcquisitions[*]`). Mirror of `LCPAudiobooks.hasLCPAcquisition` from PP-4407. | **MIGRATED** in PR #1008 (PP-4454). |
 | `Palace/Packages/PalaceBookModel/Sources/PalaceBookModel/TPPBook.swift` | 652 (`@objc var isDRMProtected: Bool`) | Single source of truth for "is this book DRM-protected?" — walks the nested acquisition chain via `TPPOPDSAcquisitionPath.supportedAcquisitionPaths(...)` for Adobe Adept, Readium LCP, Audiobook LCP. | **LIVE.** Adding a new DRM scheme = one line here. |
 | `Palace/Reader2/BusinessLogic/TPPLastReadPositionPoster.swift` | (full file) | Posts reading-position updates to the annotation sync server. | **LIVE.** Cross-device sync surface. |
@@ -46,7 +46,6 @@ description: Per-area verification reference; refresh before changing this area
 | `Palace/Reader2/Bookmarks/TPPAnnotations.swift` | (full file) | Server-side annotation CRUD. | **LIVE.** |
 
 **STILL UNVERIFIED on develop** (next-sprint candidates):
-- `ReadiumPDFViewController` DRM gating wired on `fix/PP-4297-reader-copy-paste-gating` only — must be re-confirmed on develop after PR merge.
 - Reader-open-hang HelpSpot 17966 root cause (non-Marketplace EPUB / non-LCP-PDF) — open investigation; PP-4454 only fixed Marketplace LCP-wrapped PDFs.
 
 ---
@@ -56,11 +55,11 @@ description: Per-area verification reference; refresh before changing this area
 | Module | Owner | Public surface (what changes here is a contract break) |
 |--------|-------|---------------------------------------------------------|
 | `Palace/Reader2/` | Main target — EPUB reading surface | `TPPEPUBViewController`, `TPPBaseReaderViewController`, `EPUBReaderView` (SwiftUI host), `ReaderEditingActions.resolve(...)`, `TPPLastReadPositionPoster`, `TPPLastReadPositionSynchronizer`, `TPPReaderBookmarksBusinessLogic`, `EPUBPositionAdapter`, `TPPAnnotations` |
-| `Palace/PDF/` | Main target — PDF rendering surface | `TPPPDFReaderView`, `TPPPDFView`, `PalacePDFView` (PDFKit subclass), `ReadiumPDFReaderView` / `ReadiumPDFViewController` (Readium-PDF), `LCPPDFs.canOpenBook` + `hasLCPAcquisition`, `TPPPDFDocument`, `TPPPDFDocumentMetadata`, `TPPPDFLocation` |
+| `Palace/PDF/` | Main target — PDF rendering surface | `TPPPDFReaderView`, `TPPPDFView`, `PalacePDFView` (PDFKit subclass), `ReadiumPDFLoadingView` + `LCPPDFDiskExtract` (LCP PDF extract), `LCPPDFs.canOpenBook` + `hasLCPAcquisition`, `TPPPDFDocument`, `TPPPDFDocumentMetadata`, `TPPPDFLocation` |
 | `Palace/AppInfrastructure/ReaderService.swift` | Main target — open-path router | `openEPUB(_:)`, `openPDF(_:onFinish:)`, `openSample(_:url:)`. Generation-counter staleness pattern is load-bearing — do not remove. |
 | `Palace/Reader2/ReaderStackConfiguration/` | Main target — Readium R3 dependency wiring | `TPPR3Owner`, `LibraryService`, `DRMLibraryService` (Adobe + LCP subdirs), `LibraryServiceError` |
 | `PalaceReadingPosition` (SPM) | SPM trunk | Unified read-position write contract (extracted in PR #980); consumed by audiobook + EPUB + PDF. Changes here ripple across all three readers. |
-| Readium 3.x (`swift-toolkit`) | External SPM | `EditingAction`, `Navigator`, `Locator`, `PDFNavigatorViewController`, `EPUBNavigatorViewController`. Upgrades may shift `defaultActions` set — see Section 7. |
+| Readium 3.x (`swift-toolkit`) | External SPM | `EditingAction`, `Navigator`, `Locator`, `EPUBNavigatorViewController`. Upgrades may shift `defaultActions` set — see Section 7. |
 
 ---
 
@@ -94,9 +93,13 @@ ReaderService.openBook(book)
   │                         └── present TPPEPUBViewController (Readium WKWebView)
   │                               └── ReaderEditingActions.resolve(for: book, isSample: ...)
   │                                     └── DRM ? [] : defaultActions + [Highlight]
-  └── isPDF
-        ├── canRenderViaReadium(book) → ReadiumPDFContainer (Readium-PDF + PDFNavigatorViewController)
-        └── else → TPPPDFReaderView(document:) (PDFKit, via NavigationHostView:85)
+  └── isPDF → openPDF(book)
+        ├── LCPPDFs.hasLCPAcquisition(book) → openLCPPDF
+        │     ├── push .pdf route, mark extract pending → ReadiumPDFLoadingView
+        │     ├── LCPPDFDiskExtract (cached file, or Readium publication decrypted to disk)
+        │     └── NavigationCoordinator.completeLCPPDFExtract → TPPPDFReaderView (PDFKit)
+        │           (failure / runaway abort: pop if still owned, clear pending, alert)
+        └── else → openPlainPDF → TPPPDFReaderView(document:) (PDFKit)
                     └── TPPPDFView.allowsCopy = !book.isDRMProtected
 ```
 
@@ -114,9 +117,7 @@ Sample path is separate: `openSample(_:url:)`. Samples bypass DRM gating (isSamp
 | Position post | `TPPLastReadPositionPoster` | server PUT to annotation endpoint | book.identifier + locator |
 | Position pull | `TPPLastReadPositionSynchronizer` | server GET | book.identifier |
 | Bookmark CRUD | `TPPAnnotations` + `TPPReaderBookmarksBusinessLogic` | server PUT/DELETE | book + bookmark id |
-| Reader-mount failure | `ReadiumPDFViewController.presentFailure` (line 126) | UI alert + log | error |
-| Navigator error | `ReadiumPDFViewController.navigator(_:presentError:)` | log | NavigatorError |
-| Resource load failure | `ReadiumPDFViewController.navigator(_:didFailToLoadResourceAt:withError:)` | log | href + ReadError |
+| LCP-PDF extract failure or runaway abort | `ReaderService.abortRunawayOpen` | UI alert + `TPPErrorLogger` `.lcpDRMFulfillmentFail` | decryptedBlocks, residentMB |
 
 The reader area does **not** currently emit a unified `readerOpenOutcome` telemetry event — every regression that hits "blank screen / infinite spinner" (HelpSpot 17966 = E2-Hang) has to be diagnosed from the `[PERF]` log line trail. Adding a unified open-outcome event is a backlog candidate.
 
@@ -135,7 +136,7 @@ The reader area does **not** currently emit a unified `readerOpenOutcome` teleme
 - `reader2-back-button.yaml` — exit the reader via the nav bar back button
 - `reader2-toc-navigate.yaml` — open TOC, tap chapter, land on chapter
 
-**No PDF journeys exist yet** — `reader3-*.yaml` / `pdf-*.yaml` are gaps to fill before the next release-cut. Both the PDFKit path (`TPPPDFView`) and the Readium-PDF path (`ReadiumPDFContainer`) need at least one open-and-navigate journey.
+**No PDF journeys exist yet** — `reader3-*.yaml` / `pdf-*.yaml` are gaps to fill before the next release-cut. The PDFKit path (`TPPPDFView`) needs at least one open-and-navigate journey for a plain PDF and one for an LCP PDF (which adds the extract loading view).
 
 **Existing XCTest test files** (cover business logic + UIKit chrome, NOT WKWebView content):
 - `PalaceTests/Reader/ReaderEditingActionsTests.swift` — PP-4297 gating predicate
@@ -161,6 +162,8 @@ The reader area does **not** currently emit a unified `readerOpenOutcome` teleme
 - `PalaceTests/PDF/PalacePDFViewTests.swift` — PP-4297 PDFKit gating + buildMenu super-then-strip
 - `PalaceTests/PDF/LCPPDFOpenProgressTests.swift`
 - `PalaceTests/PDF/LCPPDFDiskExtractTests.swift`
+- `PalaceTests/AppInfrastructure/NavigationCoordinatorPDFRouteTests.swift` — what the `.pdf` route shows during and after an LCP extract
+- `PalaceTests/AppInfrastructure/ReaderServiceRouteOwnershipTests.swift` — PP-5022; a late LCP-PDF completion pops only a route it still owns
 - `PalaceTests/PDF/TPPPDFDocumentMetadataTests.swift`
 - `PalaceTests/PDF/TPPPDFModelTests.swift`
 - `PalaceTests/PDF/TPPPDFLocationTests.swift`
@@ -229,6 +232,7 @@ Before any non-trivial change in this area:
 
 | Date | Refreshed by | Notes |
 |------|-------------|-------|
+| 2026-10-12 | Readium PDF navigator wrapper removal | Removed the never-reached Readium PDF navigator path (`ReadiumPDFReaderView`, `ReadiumPDFViewController`, `ReadiumPDFTOCCache`) from §1, §2, §4 and §5; it had no caller at any tag from 3.2.0 to 3.3.1. Added `NavigationCoordinatorPDFRouteTests` to §6. |
 | 2026-09-14 | PP-5128 (reader TOC blank) | Added `TPPReaderPositionsVCTOCTests.swift` to the §6 XCTest inventory. It pins the main-actor ordering that decides whether the Contents tab renders at all, and the Contents-only scoping of the post-load reload. |
 | 2026-05-28 | PR #1019 (initial baseline) | Initial baseline. Derived from PR #1012 (PP-4297 copy/paste gating), PR #1008 (PP-4454 Marketplace LCP-PDF), and the in-flight `fix/PP-4297-reader-copy-paste-gating` branch wiring `ReadiumPDFViewController`. Reader3/ confirmed empty — PDF lives under `Palace/PDF/`. |
 

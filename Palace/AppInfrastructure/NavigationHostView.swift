@@ -60,53 +60,23 @@ struct NavigationHostView<Content: View>: View {
                             appContainer: appContainer
                         )
                     case .pdf(let bookRoute):
-                        // Readium-backed LCP PDF path takes precedence when a
-                        // Publication has been stored for this book. The
-                        // loading overlay stays on top of the navigator
-                        // until the navigator's first `locationDidChange`
-                        // fires — that's the real "page 1 rendered"
-                        // signal. Hiding the loader the instant the
-                        // publication landed in the coordinator showed
-                        // the user a blank navigator while the hundreds
-                        // of decrypt calls walked the PDF cross-ref.
-                        //
                         // `.tracksReaderActive(_:)` goes on each rendered
                         // sub-branch, not the case label (see
                         // IsReaderActiveTrackingModifier); EmptyView needs none.
-                        if let (publication, metadata) = coordinator.resolveReadiumPDF(for: bookRoute),
-                           let book = coordinator.resolveBook(for: bookRoute) {
-                            let toc = coordinator.resolveReadiumPDFTableOfContents(for: bookRoute)
-                            ZStack {
-                                ReadiumPDFReaderView(
-                                    publication: publication,
-                                    book: book,
-                                    tableOfContents: toc?.toc ?? [],
-                                    pageCount: toc?.pageCount ?? 0
-                                )
-                                    .environmentObject(metadata)
-
-                                if coordinator.isReadiumPDFPending(for: bookRoute) {
-                                    ReadiumPDFLoadingView(book: book)
-                                        .transition(.opacity)
-                                }
-                            }
-                            .toolbar(.hidden, for: .tabBar)
-                            .tracksReaderActive(appContainer.audiobookSessionPresenter)
-                        } else if coordinator.isReadiumPDFPending(for: bookRoute),
-                                  let book = coordinator.resolveBook(for: bookRoute) {
-                            // Publication hasn't landed yet — show a
-                            // loader inside the reader nav so the user
-                            // knows something's happening rather than
-                            // seeing a frozen book-detail page.
+                        switch coordinator.pdfRouteContent(for: bookRoute) {
+                        case .extracting(let book):
+                            // LCP PDF still decrypting to disk: show progress
+                            // inside the reader route rather than a frozen
+                            // book-detail page.
                             ReadiumPDFLoadingView(book: book)
                                 .toolbar(.hidden, for: .tabBar)
                                 .tracksReaderActive(appContainer.audiobookSessionPresenter)
-                        } else if let (document, metadata) = coordinator.resolvePDF(for: bookRoute) {
+                        case .reader(let document, let metadata):
                             TPPPDFReaderView(document: document)
                                 .environmentObject(metadata)
                                 .toolbar(.hidden, for: .tabBar)
                                 .tracksReaderActive(appContainer.audiobookSessionPresenter)
-                        } else {
+                        case .empty:
                             EmptyView()
                         }
                     case .epub(let bookRoute):

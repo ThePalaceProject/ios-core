@@ -260,9 +260,8 @@ final class LCPFulfillmentHandler: @unchecked Sendable {
                 self.delegate?.markDownloadSuccessful(for: book)
             }
 
-            // PDF fulfillment: Readium's PDFNavigator streams decrypted
-            // pages on demand via the shared GCDHTTPServer, so no eager
-            // zip→temp extract is needed here. Just mark the book
+            // PDF fulfillment: the decrypted PDF is extracted to disk on
+            // first open (`LCPPDFDiskExtract`), not here. Mark the book
             // successful once the LCP container + license are on disk.
             if book.defaultBookContentType == .pdf {
                 self.delegate?.markDownloadSuccessful(for: book)

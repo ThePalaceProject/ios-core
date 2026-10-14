@@ -5,11 +5,6 @@
 //  Created by Vladimir Fedorov on 17.06.2022.
 //  Copyright © 2022 The Palace Project. All rights reserved.
 //
-//  Covers both PDF pipelines: PDFKit-backed plain PDFs, and Readium-backed
-//  LCP PDFs, where this class only proxies the side-panel APIs (TOC, page
-//  count, labels). TOC and page count are snapshots taken at init because
-//  Readium's getters are async and the side panels expect sync ones.
-//
 
 import Foundation
 import PDFKit
@@ -19,22 +14,12 @@ protocol TPPPDFDocumentDelegate {
     func didMatchString(_ instance: TPPPDFLocation)
 }
 
-/// Thin wrapper around a PDF source — either a PDFKit `PDFDocument` (open-access
-/// path) or a Readium `Publication` (LCP path) — carrying a Palace-flavored
-/// search delegate and TOC/thumbnail helpers the reader views expect.
+/// Thin wrapper around a PDFKit `PDFDocument` — a plain PDF, or an LCP PDF
+/// already decrypted to disk — carrying a Palace-flavored search delegate and
+/// TOC/thumbnail helpers the reader views expect.
 @objcMembers class TPPPDFDocument: NSObject {
     let data: Data
     let fileURL: URL?
-
-    /// Snapshot of TOC + page count for the publication path. `nil` /
-    /// `0` for the PDFKit path (which derives them from `document`).
-    private let publicationTableOfContents: [TPPPDFLocation]
-    private let publicationPageCount: Int
-
-    /// `true` when this document wraps a Readium publication and should
-    /// skip PDFKit page access (no `document`, no thumbnails, no
-    /// PDFKit-backed search).
-    let isPublicationBacked: Bool
 
     var delegate: TPPPDFDocumentDelegate?
 
@@ -43,9 +28,6 @@ protocol TPPPDFDocumentDelegate {
     init(data: Data) {
         self.data = data
         self.fileURL = nil
-        self.publicationTableOfContents = []
-        self.publicationPageCount = 0
-        self.isPublicationBacked = false
     }
 
     /// Initialize from a file on disk — preferred. `PDFDocument(url:)` mmaps
@@ -55,26 +37,11 @@ protocol TPPPDFDocumentDelegate {
     init(url: URL) {
         self.data = Data()
         self.fileURL = url
-        self.publicationTableOfContents = []
-        self.publicationPageCount = 0
-        self.isPublicationBacked = false
-    }
-
-    /// Initialize from a pre-loaded snapshot of a Readium publication's
-    /// metadata (LCP path). Page rendering is owned by Readium; this wrapper
-    /// exposes only the side-panel metadata (see file header).
-    init(tableOfContents: [TPPPDFLocation], pageCount: Int) {
-        self.data = Data()
-        self.fileURL = nil
-        self.publicationTableOfContents = tableOfContents
-        self.publicationPageCount = pageCount
-        self.isPublicationBacked = true
     }
 
     /// PDFKit document — mmapped from `fileURL` when available, otherwise
-    /// parsed from the in-memory `data` buffer. `nil` in publication mode.
+    /// parsed from the in-memory `data` buffer.
     lazy var document: PDFKit.PDFDocument? = {
-        if isPublicationBacked { return nil }
         if let fileURL {
             return PDFKit.PDFDocument(url: fileURL)
         }
@@ -91,14 +58,12 @@ extension TPPPDFDocument {
         get async {
             // PDFKit's `PDFDocument.title` is a sync property, not async,
             // but the legacy API was async-wrapped — preserve that shape.
-            if isPublicationBacked { return nil }
             return document?.documentAttributes?[PDFDocumentAttribute.titleAttribute] as? String
         }
     }
 
     /// Number of pages in the PDF document
     var pageCount: Int {
-        if isPublicationBacked { return publicationPageCount }
         return document?.pageCount ?? 0
     }
 
@@ -108,16 +73,11 @@ extension TPPPDFDocument {
     ///
     /// `preview` returns a larger image than `thumbnail`
     func preview(for page: Int) -> UIImage? {
-        // Page-image rendering in the publication path lives inside Readium's
-        // PDFNavigator and isn't exposed as a thumbnail API — the preview
-        // grid in publication mode shows page labels only, no thumbnails.
-        if isPublicationBacked { return nil }
         return image(page: page, size: .pdfPreviewSize)
     }
 
     /// Thumbnail image for a page
     func thumbnail(for page: Int) -> UIImage? {
-        if isPublicationBacked { return nil }
         return image(page: page, size: .pdfThumbnailSize)
     }
 
@@ -128,31 +88,16 @@ extension TPPPDFDocument {
 
     /// Page size
     func size(page: Int) -> CGSize? {
-        // Approximate US-letter at @1x — used by the preview grid to size
-        // its cells when no PDFKit page is available. Real bounds would
-        // require reading the publication resource bytes; the grid layout
-        // looks fine with a constant guess.
-        if isPublicationBacked { return CGSize(width: 612, height: 792) }
         return document?.page(at: page)?.bounds(for: PDFDisplayBox.mediaBox).size
     }
 
     /// Page label
     func label(page: Int) -> String? {
-        // Readium's `Locator.locations.position` is 1-indexed and is the
-        // closest analog to a PDFKit page label. The caller already falls
-        // back to `"\(page + 1)"` so returning nil is safe and consistent
-        // with the publication's positions.
-        if isPublicationBacked { return nil }
         return document?.page(at: page)?.label
     }
 
     /// Search the document
     func search(text: String) {
-        // TODO: Bridge to `publication.search(query:)` via Readium 3's
-        // SearchService in a follow-up. For now publication-mode search
-        // is a no-op — the search button is hidden in the navigation
-        // chrome when the document is publication-backed.
-        if isPublicationBacked { return }
         let searchString = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         document?.delegate = self
         document?.cancelFindString()
@@ -160,13 +105,11 @@ extension TPPPDFDocument {
     }
 
     func cancelSearch() {
-        if isPublicationBacked { return }
         document?.cancelFindString()
     }
 
     /// Table of contents for PDF document
     var tableOfContents: [TPPPDFLocation] {
-        if isPublicationBacked { return publicationTableOfContents }
         guard let outlineRoot = document?.outlineRoot else {
             return []
         }
