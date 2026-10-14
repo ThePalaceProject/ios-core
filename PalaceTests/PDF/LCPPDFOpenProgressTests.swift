@@ -56,7 +56,7 @@ final class LCPPDFOpenProgressTests: XCTestCase {
         progress.setPhase(.decryptingContent)
         progress.recordDecrypt(byteCount: 2_048)
         progress.recordDecrypt(byteCount: 2_048)
-        progress.recordExtractedBytes(1_024)
+        progress.recordExtractedBytes(1_024, bookIdentifier: bookID)
 
         // Settle the nonisolated → MainActor hops.
         let firstOpenWait = expectation(description: "first-open counters published")
@@ -147,7 +147,7 @@ final class LCPPDFOpenProgressTests: XCTestCase {
         progress.begin(bookIdentifier: bookID)
         progress.setPhase(.openingPublication)
 
-        progress.recordExtractedBytes(1_048_576) // 1MB chunk
+        progress.recordExtractedBytes(1_048_576, bookIdentifier: bookID) // 1MB chunk
 
         let wait = expectation(description: "extract bytes flushed")
         Task { @MainActor in wait.fulfill() }
@@ -158,13 +158,54 @@ final class LCPPDFOpenProgressTests: XCTestCase {
                        "first chunk write must transition phase to extractingToDisk")
     }
 
+    // MARK: - Updates from another book's open
+
+    /// An extract abandoned by a back-out can still report; it must not move
+    /// the bar of a different book's open. The second, matching report proves
+    /// the queued updates have run.
+    func testRecordExtractedBytes_ForAnotherBook_IsIgnored() {
+        let progress = LCPPDFOpenProgress()
+        progress.begin(bookIdentifier: bookID)
+        progress.setPhase(.openingPublication)
+
+        progress.recordExtractedBytes(4_096, bookIdentifier: "urn:isbn:abandoned")
+        progress.recordExtractedBytes(1_024, bookIdentifier: bookID)
+        let wait = expectation(description: "extract bytes flushed")
+        Task { @MainActor in wait.fulfill() }
+        self.wait(for: [wait], timeout: 1.0)
+
+        XCTAssertEqual(progress.bytesExtracted, 1_024)
+    }
+
+    func testRecordExtractedBytes_ForAnotherBook_LeavesThePhase() {
+        let progress = LCPPDFOpenProgress()
+        progress.begin(bookIdentifier: bookID)
+        progress.setPhase(.openingPublication)
+
+        progress.recordExtractedBytes(4_096, bookIdentifier: "urn:isbn:abandoned")
+        let wait = expectation(description: "extract bytes flushed")
+        Task { @MainActor in wait.fulfill() }
+        self.wait(for: [wait], timeout: 1.0)
+
+        XCTAssertEqual(progress.phase, .openingPublication)
+    }
+
+    func testSetTotalExtractBytes_ForAnotherBook_IsIgnored() {
+        let progress = LCPPDFOpenProgress()
+        progress.begin(bookIdentifier: bookID)
+
+        progress.setTotalExtractBytes(8_192, bookIdentifier: "urn:isbn:abandoned")
+
+        XCTAssertEqual(progress.totalExtractBytes, 0)
+    }
+
     // MARK: - percentComplete: bytes-based vs curve fallback
 
     func testPercentComplete_withByteTotal_returnsTrueRatio() {
         let progress = LCPPDFOpenProgress.shared
         progress.begin(bookIdentifier: bookID)
-        progress.setTotalExtractBytes(100)
-        progress.recordExtractedBytes(50)
+        progress.setTotalExtractBytes(100, bookIdentifier: bookID)
+        progress.recordExtractedBytes(50, bookIdentifier: bookID)
 
         let wait = expectation(description: "bytes settled")
         Task { @MainActor in wait.fulfill() }
@@ -177,8 +218,8 @@ final class LCPPDFOpenProgressTests: XCTestCase {
     func testPercentComplete_clampsAt99NotAt100() {
         let progress = LCPPDFOpenProgress.shared
         progress.begin(bookIdentifier: bookID)
-        progress.setTotalExtractBytes(100)
-        progress.recordExtractedBytes(100) // ratio = 1.0
+        progress.setTotalExtractBytes(100, bookIdentifier: bookID)
+        progress.recordExtractedBytes(100, bookIdentifier: bookID) // ratio = 1.0
 
         let wait = expectation(description: "bytes settled")
         Task { @MainActor in wait.fulfill() }
@@ -223,7 +264,7 @@ final class LCPPDFOpenProgressTests: XCTestCase {
         let progress = LCPPDFOpenProgress.shared
         progress.begin(bookIdentifier: bookID)
         progress.setPhase(.extractingToDisk)
-        progress.recordExtractedBytes(1_024)
+        progress.recordExtractedBytes(1_024, bookIdentifier: bookID)
 
         let wait = expectation(description: "settled")
         Task { @MainActor in wait.fulfill() }

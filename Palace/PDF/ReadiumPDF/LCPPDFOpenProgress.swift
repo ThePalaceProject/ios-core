@@ -72,7 +72,7 @@ final class LCPPDFOpenProgress: ObservableObject {
     /// out-and-re-enter starts a different open.
     @Published private(set) var bookIdentifier: String?
 
-    nonisolated private init() {}
+    nonisolated init() {}
 
     func begin(bookIdentifier: String) {
         self.bookIdentifier = bookIdentifier
@@ -85,13 +85,16 @@ final class LCPPDFOpenProgress: ObservableObject {
         Self.setOpenInProgress(true)
     }
 
-    func setTotalExtractBytes(_ bytes: UInt64) {
+    /// Ignored unless `bookIdentifier` is the open being tracked, so an
+    /// abandoned extract cannot move the bar of the open that replaced it.
+    func setTotalExtractBytes(_ bytes: UInt64, bookIdentifier: String) {
+        guard self.bookIdentifier == bookIdentifier else { return }
         totalExtractBytes = bytes
     }
 
-    nonisolated func recordExtractedBytes(_ count: Int) {
+    nonisolated func recordExtractedBytes(_ count: Int, bookIdentifier: String) {
         Task { @MainActor in
-            guard phase != .idle else { return }
+            guard phase != .idle, self.bookIdentifier == bookIdentifier else { return }
             bytesExtracted += UInt64(count)
             if phase == .openingPublication || phase == .decryptingContent {
                 phase = .extractingToDisk
