@@ -161,31 +161,24 @@ final class LCPPDFOpenProgressTests: XCTestCase {
     // MARK: - Updates from another book's open
 
     /// An extract abandoned by a back-out can still report; it must not move
-    /// the bar of a different book's open. The second, matching report proves
-    /// the queued updates have run.
-    func testRecordExtractedBytes_ForAnotherBook_IsIgnored() {
+    /// the bar of a different book's open; the matching report still counts.
+    func testRecordExtractedBytes_ForAnotherBook_IsIgnored() async {
         let progress = LCPPDFOpenProgress()
         progress.begin(bookIdentifier: bookID)
         progress.setPhase(.openingPublication)
 
-        progress.recordExtractedBytes(4_096, bookIdentifier: "urn:isbn:abandoned")
-        progress.recordExtractedBytes(1_024, bookIdentifier: bookID)
-        let wait = expectation(description: "extract bytes flushed")
-        Task { @MainActor in wait.fulfill() }
-        self.wait(for: [wait], timeout: 1.0)
+        await progress.recordExtractedBytes(4_096, bookIdentifier: "urn:isbn:abandoned").value
+        await progress.recordExtractedBytes(1_024, bookIdentifier: bookID).value
 
         XCTAssertEqual(progress.bytesExtracted, 1_024)
     }
 
-    func testRecordExtractedBytes_ForAnotherBook_LeavesThePhase() {
+    func testRecordExtractedBytes_ForAnotherBook_LeavesThePhase() async {
         let progress = LCPPDFOpenProgress()
         progress.begin(bookIdentifier: bookID)
         progress.setPhase(.openingPublication)
 
-        progress.recordExtractedBytes(4_096, bookIdentifier: "urn:isbn:abandoned")
-        let wait = expectation(description: "extract bytes flushed")
-        Task { @MainActor in wait.fulfill() }
-        self.wait(for: [wait], timeout: 1.0)
+        await progress.recordExtractedBytes(4_096, bookIdentifier: "urn:isbn:abandoned").value
 
         XCTAssertEqual(progress.phase, .openingPublication)
     }

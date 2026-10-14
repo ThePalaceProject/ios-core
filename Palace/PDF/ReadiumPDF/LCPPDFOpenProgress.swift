@@ -92,7 +92,10 @@ final class LCPPDFOpenProgress: ObservableObject {
         totalExtractBytes = bytes
     }
 
-    nonisolated func recordExtractedBytes(_ count: Int, bookIdentifier: String) {
+    /// Returns the main-actor update so a caller can await it; the extract
+    /// path does not.
+    @discardableResult
+    nonisolated func recordExtractedBytes(_ count: Int, bookIdentifier: String) -> Task<Void, Never> {
         Task { @MainActor in
             guard phase != .idle, self.bookIdentifier == bookIdentifier else { return }
             bytesExtracted += UInt64(count)
