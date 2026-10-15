@@ -16,8 +16,11 @@ final class TokenRefreshRetryRequestShapeTests: XCTestCase {
     private var userAccount: TPPUserAccountMock!
     private var libraryAccount: TPPLibraryAccountMock!
 
-    private let tokenURL = URL(string: "https://token.example.com/oauth/token")!
-    private let apiURL = URL(string: "https://api.example.com/annotations/42")!
+    /// Per-test path segment: the stub handlers are process-wide, so a retry
+    /// left over from another test class must not reach or be counted by this one.
+    private let runID = UUID().uuidString
+    private lazy var tokenURL = URL(string: "https://token.example.com/\(runID)/oauth/token")!
+    private lazy var apiURL = URL(string: "https://api.example.com/\(runID)/annotations/42")!
     /// Whether the last caller completion ran on the session's delegate queue.
     private let completedOnDelegateQueue = LockIsolated<Bool?>(nil)
     private let body = Data(#"{"motivation":"bookmarking","id":"k-42"}"#.utf8)

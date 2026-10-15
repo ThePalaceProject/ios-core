@@ -349,6 +349,25 @@ final class HoldsViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.visibleBooks.count, 1, "Filter should be case insensitive")
     }
 
+    /// Same contract as the My Books filter (PP-5021): the apostrophe the keyboard
+    /// types must match the apostrophe the catalogue stored. Wiring test — the
+    /// folding's own unit tests pass whether or not this filter uses it.
+    func testFilterBooks_CurlyApostropheQuery_MatchesStraightApostropheTitle() async {
+        let book1 = TPPBookMocker.snapshotReservedBook(identifier: "book-1", title: "Alice's Adventures")
+        let book2 = TPPBookMocker.snapshotReservedBook(identifier: "book-2", title: "Python Basics")
+
+        mockRegistry.addBook(book1, state: .holding)
+        mockRegistry.addBook(book2, state: .holding)
+
+        let viewModel = createViewModel()
+
+        await viewModel.filterBooks(query: "Alice\u{2019}s")
+
+        XCTAssertEqual(viewModel.visibleBooks.count, 1,
+            "a held title typed correctly on the stock keyboard must still be findable")
+        XCTAssertEqual(viewModel.visibleBooks.first?.identifier, "book-1")
+    }
+
     // MARK: - OpenSearchDescription Tests (Enhanced)
 
     func testOpenSearchDescription_IncludesAllBooks() {

@@ -324,6 +324,19 @@ final class DebugSettings: @unchecked Sendable {
         }
     }
 
+    // MARK: - Cover Format and DRM Labels (PP-5285)
+
+    /// Read directly by `BookImageView` through `@AppStorage`, so a change
+    /// redraws covers already on screen.
+    static let coverFormatAndDRMLabelsKey = "debug.coverFormatAndDRMLabels"
+
+    /// Whether covers show their format and DRM labels. Off unless a tester
+    /// turns it on.
+    var showsCoverFormatAndDRMLabels: Bool {
+        get { defaults.bool(forKey: Self.coverFormatAndDRMLabelsKey) }
+        set { defaults.set(newValue, forKey: Self.coverFormatAndDRMLabelsKey) }
+    }
+
     // MARK: - Test Holds Configuration
 
     enum TestHoldsConfiguration: Int, CaseIterable {
@@ -506,6 +519,7 @@ final class DebugSettings: @unchecked Sendable {
         simulatedSyncFailure = .none
         isBadgeLoggingEnabled = false
         isAudiobookPositionTraceEnabled = false
+        showsCoverFormatAndDRMLabels = false
         testHoldsConfiguration = .none
     }
 

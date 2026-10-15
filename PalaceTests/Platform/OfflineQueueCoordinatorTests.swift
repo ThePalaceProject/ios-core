@@ -314,4 +314,28 @@ final class OfflineQueueCoordinatorTests: XCTestCase {
         await coord._awaitTriggeredDrainsForTesting()
         XCTAssertEqual(registrar.drainCount, 2)
     }
+
+    /// A released coordinator stops listening for registry loads; otherwise a
+    /// coordinator discarded by a container reset keeps draining the queue.
+    func testReleasedCoordinator_noLongerReceivesLibraryReadySignals() async {
+        let registrar = FakeRegistrar()
+        let ready = PassthroughSubject<Void, Never>()
+        let delivered = LockIsolated(0)
+        let observed = ready
+            .handleEvents(receiveOutput: { _ in delivered.withValue { $0 += 1 } })
+            .eraseToAnyPublisher()
+        var coord: OfflineQueueCoordinator? = OfflineQueueCoordinator(
+            queue: registrar, handlers: HandlerSpy().handlers(),
+            runnableLibraryID: { "lib" }, libraryReady: observed)
+        await coord?.registerExecutor()
+        ready.send(())
+        await coord?._awaitTriggeredDrainsForTesting()
+        XCTAssertEqual(delivered.value, 1, "precondition: the live coordinator is subscribed")
+
+        coord = nil
+        ready.send(())
+
+        XCTAssertEqual(delivered.value, 1, "a released coordinator must not receive the signal")
+        XCTAssertEqual(registrar.drainCount, 2, "only the registration drain and the live signal's drain ran")
+    }
 }

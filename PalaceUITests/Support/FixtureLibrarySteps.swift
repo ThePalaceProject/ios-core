@@ -33,9 +33,15 @@ extension JourneyTestCase {
             let barcode = waitFor(app.textFields[AccessibilityID.SignIn.barcodeField], "no barcode field")
             barcode.tap()
             barcode.typeText(FixtureLibrary.barcode)
+            // A dropped keystroke would otherwise reach the server as a different card.
+            XCTAssertEqual(barcode.value as? String, FixtureLibrary.barcode,
+                           "the typed barcode did not land exactly")
             let pin = app.secureTextFields[AccessibilityID.SignIn.pinField]
             waitFor(pin, "no PIN field").tap()
             pin.typeText(FixtureLibrary.pin)
+            // A secure field exposes only its masking characters, so compare the length.
+            XCTAssertEqual((pin.value as? String)?.count, FixtureLibrary.pin.count,
+                           "the typed PIN did not land with every character")
             app.buttons[AccessibilityID.SignIn.signInButton].tap()
         }
 

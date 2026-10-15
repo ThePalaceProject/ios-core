@@ -12,6 +12,7 @@ import Combine
 import PalaceLogging
 import PalaceBookModel
 import PalaceBookRegistry
+import PalaceUtilities
 
 enum Group: Int {
     case groupSortBy
@@ -260,15 +261,20 @@ enum Group: Int {
 
     @MainActor
     func filterBooks(query: String) async {
-        if query.isEmpty {
+        // PP-5021: fold both sides. The keyboard substitutes a curly apostrophe
+        // as the patron types, so `Alice's` arrives as `Alice\u{2019}s` while the
+        // title holds whichever form the catalogue used;
+        // `localizedCaseInsensitiveContains` treats those as different characters
+        // and the shelf came back empty for a correctly typed title.
+        let folded = FoldedSearchQuery(query)
+        if folded.isEmpty {
             self.books = allBooks
             self.sortData()
         } else {
             let allBooksCopy = self.allBooks
             let filteredBooks = await Task.detached(priority: .userInitiated) {
                 allBooksCopy.filter {
-                    $0.title.localizedCaseInsensitiveContains(query) ||
-                        ($0.authors?.localizedCaseInsensitiveContains(query) ?? false)
+                    folded.matches($0.title) || folded.matches($0.authors)
                 }
             }.value
 

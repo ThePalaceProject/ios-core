@@ -79,7 +79,8 @@ enum LCPPDFDiskExtract {
     static func extract(
         publication: Publication,
         bookIdentifier: String,
-        account: String
+        account: String,
+        progress: LCPPDFOpenProgress = .shared
     ) async throws -> URL {
         guard let destURL = fileURL(bookIdentifier: bookIdentifier, account: account) else {
             throw ExtractError.missingAccountDir
@@ -110,7 +111,10 @@ enum LCPPDFDiskExtract {
             Log.warn(#file, "[PERF] [LCP-PDF] estimatedLength failed: \(error.localizedDescription)")
             totalBytes = nil
         }
-        await LCPPDFOpenProgress.shared.setTotalExtractBytes(totalBytes ?? 0)
+        // A back-out cancels the extract while it awaits the length; stop before
+        // it reaches the reporter the next open shares.
+        try Task.checkCancellation()
+        await progress.setTotalExtractBytes(totalBytes ?? 0, bookIdentifier: bookIdentifier)
 
         Log.info(#file, "[PERF] [LCP-PDF] disk-extract begin: \(bookIdentifier) total=\(totalBytes ?? 0) bytes → \(destURL.lastPathComponent)")
 
@@ -118,25 +122,52 @@ enum LCPPDFDiskExtract {
         // fall back to the stream(consume:) path for that case.
         guard let total = totalBytes, total > 0 else {
             Log.warn(#file, "[PERF] [LCP-PDF] no totalBytes — falling back to stream(consume:)")
-            return try await writeFile(at: destURL) { handle in
-                let result = await resource.stream(range: nil) { chunk in
-                    guard !Task.isCancelled else { return }
-                    do { try handle.write(contentsOf: chunk) }
-                    catch { Log.error(#file, "stream write failed: \(error.localizedDescription)") }
-                    LCPPDFOpenProgress.shared.recordExtractedBytes(chunk.count)
-                }
-                if case .failure(let error) = result {
-                    throw ExtractError.streamFailed(error.localizedDescription)
-                }
-            }
+            return try await writeStreamedExtract(
+                to: destURL,
+                stream: { consume in await resource.stream(range: nil, consume: consume) },
+                onChunk: { progress.recordExtractedBytes($0, bookIdentifier: bookIdentifier) }
+            )
         }
 
         return try await writeExtract(
             to: destURL,
             totalBytes: total,
             read: { range in await resource.read(range: range) },
-            onChunk: { LCPPDFOpenProgress.shared.recordExtractedBytes($0) }
+            onChunk: { progress.recordExtractedBytes($0, bookIdentifier: bookIdentifier) }
         )
+    }
+
+    /// Writes every chunk `stream` delivers to `destURL` and returns it. The
+    /// first failed write stops the extract and throws, so a truncated file is
+    /// never renamed into the cache: `cachedURL` checks only the header and
+    /// size, and would otherwise serve it on every open until the loan ends.
+    static func writeStreamedExtract<Failure: Error>(
+        to destURL: URL,
+        stream: (@escaping (Data) -> Void) async -> Result<Void, Failure>,
+        onChunk: @escaping (Int) -> Void,
+        writeChunk: @escaping (FileHandle, Data) throws -> Void = { try $0.write(contentsOf: $1) },
+        isolation: isolated (any Actor)? = #isolation
+    ) async throws -> URL {
+        try await writeFile(at: destURL) { handle in
+            var writeError: Error?
+            let result = await stream { chunk in
+                guard writeError == nil, !Task.isCancelled else { return }
+                do {
+                    try writeChunk(handle, chunk)
+                } catch {
+                    writeError = error
+                    return
+                }
+                onChunk(chunk.count)
+            }
+            if let writeError {
+                Log.error(#file, "[PERF] [LCP-PDF] stream write failed: \(writeError.localizedDescription)")
+                throw ExtractError.writeFailed(writeError.localizedDescription)
+            }
+            if case .failure(let error) = result {
+                throw ExtractError.streamFailed(error.localizedDescription)
+            }
+        }
     }
 
     /// Writes `totalBytes` read in `chunkSize` ranges to `destURL` and returns it.
@@ -153,7 +184,7 @@ enum LCPPDFDiskExtract {
         let startedAt = Date()
         let url = try await writeFile(at: destURL) { handle in
             var offset: UInt64 = 0
-            while offset < total {
+            reading: while offset < total {
                 try Task.checkCancellation()
                 let end = min(offset + chunkSize, total)
                 let range = offset..<end
@@ -165,7 +196,10 @@ enum LCPPDFDiskExtract {
                     do { try handle.write(contentsOf: chunk) }
                     catch { throw ExtractError.writeFailed(error.localizedDescription) }
                     onChunk(chunk.count)
-                    offset = end
+                    offset += UInt64(chunk.count)
+                    // Readium clamps ranges to the resource length, so a short
+                    // read is the end even when the estimate was larger.
+                    if UInt64(chunk.count) < range.count { break reading }
                     // Forward-progress log on the first chunk and every 16 MB so
                     // a stall is visible without flooding.
                     if offset == chunkSize || offset % (16 * 1024 * 1024) == 0 {

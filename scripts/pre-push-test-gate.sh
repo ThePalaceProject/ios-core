@@ -328,10 +328,11 @@ fi
 # failure (the worktree itself builds fine with an isolated DerivedData). Scope
 # a per-checkout DerivedData + SourcePackages dir for worktree pushes only; the
 # main checkout keeps its warm default cache so the gate stays fast there.
+# The dir lives inside the worktree (gitignored) so removing the worktree
+# removes it. In $TMPDIR nothing deleted it: 46 copies held 221 GB.
 declare -a DERIVED_ARGS=()
 if [[ "$(git rev-parse --git-common-dir 2>/dev/null)" != "$(git rev-parse --git-dir 2>/dev/null)" ]]; then
-  _repo_slug="$(printf '%s' "$REPO_DIR" | shasum 2>/dev/null | cut -c1-12)"
-  _dd_dir="${TMPDIR:-/tmp}/prepush-dd-${_repo_slug:-wt}"
+  _dd_dir="$REPO_DIR/.dd-prepush"
   DERIVED_ARGS=(-derivedDataPath "$_dd_dir" -clonedSourcePackagesDirPath "$_dd_dir/SourcePackages")
   echo "[pre-push-test-gate] linked worktree detected — isolating DerivedData at $_dd_dir" >&2
 fi

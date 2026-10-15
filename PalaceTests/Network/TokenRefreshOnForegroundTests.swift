@@ -21,9 +21,12 @@ final class TokenRefreshOnForegroundTests: XCTestCase {
     private var libraryAccount: TPPLibraryAccountMock!
     private var userAccount: TPPUserAccountMock!
 
-    private let tokenURL = URL(string: "https://token.example.com/oauth/token")!
-    private let apiURL = URL(string: "https://api.example.com/protected")!
-    private let borrowURL = URL(string: "https://api.example.com/borrow/123")!
+    /// Per-test path segment: the stub handlers are process-wide, so a retry
+    /// left over from another test class must not reach or be counted by this one.
+    private let runID = UUID().uuidString
+    private lazy var tokenURL = URL(string: "https://token.example.com/\(runID)/oauth/token")!
+    private lazy var apiURL = URL(string: "https://api.example.com/\(runID)/protected")!
+    private lazy var borrowURL = URL(string: "https://api.example.com/\(runID)/borrow/123")!
 
     override func setUp() async throws {
         try await super.setUp()

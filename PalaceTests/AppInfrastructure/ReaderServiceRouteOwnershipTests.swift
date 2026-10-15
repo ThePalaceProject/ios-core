@@ -6,6 +6,7 @@
 //
 
 import XCTest
+import CryptoKit
 import PalaceBookModel
 import PalaceReadingPosition
 @testable import Palace
@@ -303,6 +304,35 @@ final class ReaderServiceRouteOwnershipTests: XCTestCase {
         XCTAssertEqual(service.beginLCPPDFOpen(for: book, on: coordinator), generation + 2,
                        "The abort must release the open exactly once")
     }
+
+    // MARK: - Opening a cached extract
+
+    #if LCP
+    /// The disk-cache hit skips the Readium open: a valid extract from an
+    /// earlier open must reach the reader as a document on that file.
+    func testHandOffExtractedPDF_CachedExtract_OpensTheReaderOnThatFile() throws {
+        let book = TPPBookMocker.snapshotPDF()
+        let route = BookRoute(id: book.identifier)
+        let account = "reader-service-handoff-test-account"
+        let accountDir = try XCTUnwrap(TPPBookContentMetadataFilesHelper.directory(for: account))
+        let hashed = SHA256.hash(data: Data(book.identifier.utf8)).map { String(format: "%02x", $0) }.joined()
+        let seeded = accountDir.appendingPathComponent("registry/lcp-pdf-extracts/\(hashed).pdf")
+        try FileManager.default.createDirectory(at: seeded.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try (Data("%PDF-1.4".utf8) + Data(repeating: 0x20, count: 2_048)).write(to: seeded)
+        addTeardownBlock { try? FileManager.default.removeItem(at: seeded) }
+        let cachedURL = try XCTUnwrap(LCPPDFDiskExtract.cachedURL(bookIdentifier: book.identifier, account: account))
+        let generation = try XCTUnwrap(service.beginLCPPDFOpen(for: book, on: coordinator))
+
+        service.handOffExtractedPDF(at: cachedURL, for: book, generation: generation, openStartedAt: Date(),
+                                    makeMetadata: { self.makeContent(for: $0).1 })
+
+        guard case .reader(let document, _) = coordinator.pdfRouteContent(for: route) else {
+            return XCTFail("The cached extract must open in the PDFKit reader")
+        }
+        XCTAssertEqual(document.fileURL, seeded)
+        XCTAssertFalse(coordinator.isLCPPDFExtractPending(for: route))
+    }
+    #endif
 
     // MARK: - Cancelling the extract
 

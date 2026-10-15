@@ -506,9 +506,12 @@ final class ReaderService {
         return true
     }
 
-    private func handOffExtractedPDF(at url: URL, for book: TPPBook, generation: Int, openStartedAt: Date) {
+    /// Opens the extracted PDF at `url`, from the disk cache or a fresh extract,
+    /// in the reader the open targeted.
+    func handOffExtractedPDF(at url: URL, for book: TPPBook, generation: Int, openStartedAt: Date,
+                             makeMetadata: (TPPBook) -> TPPPDFDocumentMetadata = { TPPPDFDocumentMetadata(with: $0) }) {
         let handedOff = completeLCPPDFOpen(forBookIdentifier: book.identifier, generation: generation) {
-            (TPPPDFDocument(url: url), TPPPDFDocumentMetadata(with: book))
+            (TPPPDFDocument(url: url), makeMetadata(book))
         }
         if handedOff {
             Log.info(#file, "[PERF] [LCP-PDF] T4 PDFKit handoff (+\(Self.ms(since: openStartedAt))ms total)")
