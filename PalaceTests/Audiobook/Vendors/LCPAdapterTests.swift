@@ -128,6 +128,16 @@ final class LCPAdapterTests: XCTestCase {
     /// (the Marketplace /groups/ JSON feed shape), LCP MIME nested inside
     /// `indirectAcquisitions`. `LCPAdapter.canHandle` must return TRUE so
     /// the loader routes this through the LCP chain.
+    /// The smallest whole ZIP: an end-of-central-directory record and nothing
+    /// else. The adapter now distinguishes a finished download from one still
+    /// arriving, and that record is what a partial file lacks, so a test that
+    /// means "the book is on disk" has to write one.
+    private func writeWholeArchive(to url: URL) {
+        var eocd = Data([0x50, 0x4B, 0x05, 0x06])
+        eocd.append(Data(repeating: 0, count: 18))
+        try? eocd.write(to: url)
+    }
+
     func testCanHandle_marketplaceJSONFeedFixture_returnsTrue() {
         let adapter = LCPAdapter(
             downloadCenter: SpyDownloadCenter(),
@@ -186,7 +196,7 @@ final class LCPAdapterTests: XCTestCase {
         )
         let localURL = tempBookFileURL(identifier: book.identifier)
         // Write a placeholder file so `fileManager.fileExists(atPath:)` is true
-        try? Data([0x01]).write(to: localURL)
+        writeWholeArchive(to: localURL)
         defer { try? FileManager.default.removeItem(at: localURL.deletingLastPathComponent()) }
 
         let downloadCenter = SpyDownloadCenter()
@@ -215,6 +225,52 @@ final class LCPAdapterTests: XCTestCase {
     /// No local `.lcpa`, but a `.lcpl` license sibling file exists. The
     /// adapter must reach for that license file as the LCP source. We force
     /// the factory to nil for the same reason as the previous test.
+    /// A download still in progress must not be read as the book.
+    ///
+    /// The source tiers tested only that a local file EXISTS, and a partial
+    /// download exists from its first byte. Opening it reads the archive from
+    /// disk, and the file fills from the start, so a chapter early in the
+    /// package plays at once while a chapter further in cannot be read until
+    /// the download reaches it. A patron sees playback start on chapter 1 and
+    /// stall on a resumed chapter until the download passes that point. The
+    /// licence URL streams from the origin and has no such gap (PP-5368).
+    func testResolveManifest_partiallyDownloadedLCPA_usesLicenseFileInstead() {
+        let book = makeBook(
+            acquisitionType: lcpLicenseMIME,
+            indirect: [indirect(audiobookLCPMIME)]
+        )
+        let localURL = tempBookFileURL(identifier: book.identifier)
+        // A download in progress: real bytes, but no end-of-central-directory
+        // record, because that is written last.
+        try? Data(repeating: 0x41, count: 4096).write(to: localURL)
+        let licenseURL = localURL.deletingPathExtension().appendingPathExtension("lcpl")
+        try? Data([0x7B, 0x7D]).write(to: licenseURL)
+        defer { try? FileManager.default.removeItem(at: localURL.deletingLastPathComponent()) }
+
+        let downloadCenter = SpyDownloadCenter()
+        downloadCenter.fileUrlByIdentifier[book.identifier] = localURL
+        let network = SpyNetworkExecutor()
+        var capturedFactoryURL: URL?
+        let adapter = LCPAdapter(
+            downloadCenter: downloadCenter,
+            networkExecutor: network,
+            lcpAudiobooksFactory: { url in
+                capturedFactoryURL = url
+                return nil
+            }
+        )
+
+        let expectation = expectation(description: "resolveManifest completes")
+        adapter.resolveManifest(for: book) { _ in expectation.fulfill() }
+        wait(for: [expectation], timeout: 1.0)
+
+        XCTAssertEqual(
+            capturedFactoryURL,
+            licenseURL,
+            "an incomplete archive must be streamed from the origin, not read from disk"
+        )
+    }
+
     func testResolveManifest_licenseFileExists_usesLicenseFile() {
         let book = makeBook(
             acquisitionType: lcpLicenseMIME,
@@ -340,7 +396,7 @@ final class LCPAdapterTests: XCTestCase {
             indirect: [indirect(audiobookLCPMIME)]
         )
         let localURL = tempBookFileURL(identifier: book.identifier)
-        try? Data([0x03]).write(to: localURL)
+        writeWholeArchive(to: localURL)
         defer { try? FileManager.default.removeItem(at: localURL.deletingLastPathComponent()) }
 
         let downloadCenter = SpyDownloadCenter()

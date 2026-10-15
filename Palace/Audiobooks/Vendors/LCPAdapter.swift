@@ -106,7 +106,8 @@ final class LCPAdapter: AudiobookVendorAdapter {
         completion: @escaping (Result<URL, AudiobookLoadError>) -> Void
     ) {
         if let localURL = downloadCenter.fileUrl(for: book.identifier),
-           fileManager.fileExists(atPath: localURL.path) {
+           fileManager.fileExists(atPath: localURL.path),
+           Self.archiveIsComplete(at: localURL) {
             completion(.success(localURL))
             return
         }
@@ -187,6 +188,43 @@ final class LCPAdapter: AudiobookVendorAdapter {
             completion(.success(licenseFileURL))
         }
     }
+
+    /// Whether a local `.lcpa` holds a whole archive, as opposed to a download
+    /// still in progress.
+    ///
+    /// Existence is not enough. A partial download exists from its first byte,
+    /// and reading the book from it reads the archive off disk, where the file
+    /// fills from the start: a chapter near the beginning plays at once while a
+    /// chapter further in cannot be read until the download reaches it. A
+    /// patron sees a resumed chapter stall, with no error, until the transfer
+    /// passes that offset. Streaming the licence from the origin has no such
+    /// gap, so an incomplete file must fall through to it.
+    ///
+    /// A ZIP ends with an end-of-central-directory record, written last, so its
+    /// signature is absent from every partial file and present in every whole
+    /// one. The record sits within the last 64 KB even with a maximal comment,
+    /// so this reads the tail rather than the file.
+    static func archiveIsComplete(at url: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? handle.close() }
+        guard let size = try? handle.seekToEnd(), size >= UInt64(eocdSignature.count) else {
+            return false
+        }
+        let tailLength = min(size, UInt64(maximumEOCDTailLength))
+        guard (try? handle.seek(toOffset: size - tailLength)) != nil,
+              let tail = try? handle.read(upToCount: Int(tailLength))
+        else {
+            return false
+        }
+        return tail.range(of: eocdSignature) != nil
+    }
+
+    /// `PK\u{05}\u{06}`, the end-of-central-directory signature.
+    private static let eocdSignature = Data([0x50, 0x4B, 0x05, 0x06])
+
+    /// The record is 22 bytes plus a comment of at most 65535, and ZIP64 adds
+    /// its own locator, so the last 64 KiB plus a margin always contains it.
+    private static let maximumEOCDTailLength = 66 * 1024
 
     private func licenseURL(forBookIdentifier identifier: String) -> URL? {
         guard let contentURL = downloadCenter.fileUrl(for: identifier) else { return nil }
