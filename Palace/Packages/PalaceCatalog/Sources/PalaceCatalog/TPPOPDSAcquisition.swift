@@ -101,8 +101,14 @@ public func NYPLOPDSAcquisitionRelationString(_ relation: TPPOPDSAcquisitionRela
   @objc public let hrefURL: URL
   @objc public let indirectAcquisitions: [TPPOPDSIndirectAcquisition]
   @objc public let availability: TPPOPDSAcquisitionAvailability
+  /// Vendor of the link's `drm:licensor`, kept only when the licensor also
+  /// carries a client token. Names the DRM on cover labels when no known
+  /// content type does (PP-5285).
+  // PUBLIC_INTENT: read by the app target's cover labels, outside this package.
+  @objc public let licensorVendor: String?
 
   private static let availabilityKey = "availability"
+  private static let licensorVendorKey = "licensorVendor"
   private static let hrefURLKey = "href"
   // NOTE: The misspelling "indirectAcqusitions" (missing 'i') is preserved for
   // backward compatibility with data persisted by older ObjC versions of this code.
@@ -110,12 +116,19 @@ public func NYPLOPDSAcquisitionRelationString(_ relation: TPPOPDSAcquisitionRela
   private static let relationKey = "rel"
   private static let typeKey = "type"
 
-  @objc public init(relation: TPPOPDSAcquisitionRelation, type: String, hrefURL: URL, indirectAcquisitions: [TPPOPDSIndirectAcquisition], availability: TPPOPDSAcquisitionAvailability) {
+  @objc public convenience init(relation: TPPOPDSAcquisitionRelation, type: String, hrefURL: URL, indirectAcquisitions: [TPPOPDSIndirectAcquisition], availability: TPPOPDSAcquisitionAvailability) {
+    self.init(relation: relation, type: type, hrefURL: hrefURL, indirectAcquisitions: indirectAcquisitions,
+              availability: availability, licensorVendor: nil)
+  }
+
+  // PUBLIC_INTENT: app-target tests build acquisitions that carry a licensor.
+  @objc public init(relation: TPPOPDSAcquisitionRelation, type: String, hrefURL: URL, indirectAcquisitions: [TPPOPDSIndirectAcquisition], availability: TPPOPDSAcquisitionAvailability, licensorVendor: String?) {
     self.relation = relation
     self.type = type
     self.hrefURL = hrefURL
     self.indirectAcquisitions = indirectAcquisitions
     self.availability = availability
+    self.licensorVendor = licensorVendor
     super.init()
   }
 
@@ -143,13 +156,26 @@ public func NYPLOPDSAcquisitionRelationString(_ relation: TPPOPDSAcquisitionRela
       }
     }
 
-    return acquisition(
-      withRelation: relation,
+    return TPPOPDSAcquisition(
+      relation: relation,
       type: type,
       hrefURL: hrefURL,
       indirectAcquisitions: indirectAcquisitions,
-      availability: NYPLOPDSAcquisitionAvailabilityWithLinkXML(linkXML)
+      availability: NYPLOPDSAcquisitionAvailabilityWithLinkXML(linkXML),
+      licensorVendor: licensorVendor(in: linkXML)
     )
+  }
+
+  /// A licensor needs both a vendor and a client token to count, matching the
+  /// account-level licensor rule. Attribute names keep their prefix after
+  /// namespace processing, so both spellings are read.
+  private static func licensorVendor(in linkXML: TPPXML) -> String? {
+    guard let licensorXML = linkXML.firstChild(withName: "licensor") else { return nil }
+    let attrs = licensorXML.attributes as? [String: String] ?? [:]
+    guard let vendor = attrs["drm:vendor"] ?? attrs["vendor"], !vendor.isEmpty,
+          let token = licensorXML.firstChild(withName: "clientToken")?.value,
+          !token.isEmpty else { return nil }
+    return vendor
   }
 
   @objc public static func acquisition(withDictionary dictionary: NSDictionary) -> TPPOPDSAcquisition? {
@@ -172,23 +198,28 @@ public func NYPLOPDSAcquisitionRelationString(_ relation: TPPOPDSAcquisitionRela
     guard let availDict = dictionary[TPPOPDSAcquisition.availabilityKey] as? NSDictionary,
           let availability = NYPLOPDSAcquisitionAvailabilityWithDictionary(availDict) else { return nil }
 
-    return acquisition(
-      withRelation: relation,
+    return TPPOPDSAcquisition(
+      relation: relation,
       type: type,
       hrefURL: hrefURL,
       indirectAcquisitions: indirectAcquisitions,
-      availability: availability
+      availability: availability,
+      licensorVendor: dictionary[TPPOPDSAcquisition.licensorVendorKey] as? String
     )
   }
 
   @objc public func dictionaryRepresentation() -> NSDictionary {
     let indirectDicts = indirectAcquisitions.map { $0.dictionaryRepresentation() }
-    return [
+    let representation: NSMutableDictionary = [
       TPPOPDSAcquisition.relationKey: NYPLOPDSAcquisitionRelationString(relation),
       TPPOPDSAcquisition.typeKey: type,
       TPPOPDSAcquisition.hrefURLKey: hrefURL.absoluteString,
       TPPOPDSAcquisition.indirectAcquisitionsKey: indirectDicts,
       TPPOPDSAcquisition.availabilityKey: NYPLOPDSAcquisitionAvailabilityDictionaryRepresentation(availability)
-    ] as NSDictionary
+    ]
+    if let licensorVendor {
+      representation[TPPOPDSAcquisition.licensorVendorKey] = licensorVendor
+    }
+    return representation
   }
 }
