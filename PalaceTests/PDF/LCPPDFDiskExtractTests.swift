@@ -10,6 +10,7 @@
 
 import XCTest
 import CryptoKit
+@preconcurrency import ReadiumShared
 @testable import Palace
 
 @MainActor
@@ -331,6 +332,130 @@ final class LCPPDFDiskExtractTests: XCTestCase {
         XCTAssertEqual(reads, 0)
     }
 
+    /// Readium clamps a range to the resource length, so when the length
+    /// estimate runs long the short read is the end and reading stops there.
+    func testWriteExtract_EstimateLongerThanResource_StopsAtTheShortRead() async throws {
+        let dir = try makeScratchDirectory()
+        let dest = dir.appendingPathComponent("book.pdf")
+        let source = Data((0..<10).map { UInt8($0) })
+        var reads: [Range<UInt64>] = []
+
+        _ = try await LCPPDFDiskExtract.writeExtract(
+            to: dest, totalBytes: 20, chunkSize: 4,
+            read: { range -> Result<Data, ReadFailure> in
+                reads.append(range)
+                // Fails instead of hanging if the short read is not taken as the end.
+                guard reads.count <= 10 else { return .failure(ReadFailure()) }
+                let upper = min(range.upperBound, UInt64(source.count))
+                let lower = min(range.lowerBound, upper)
+                return .success(self.bytes(lower..<upper, of: source))
+            },
+            onChunk: { _ in })
+
+        XCTAssertEqual(try Data(contentsOf: dest), source)
+        XCTAssertEqual(reads, [0..<4, 4..<8, 8..<12], "No read may follow the short one")
+    }
+
+    // MARK: - Writing a streamed extract (length unknown)
+
+    private struct WriteFailure: Error {}
+
+    private func stream(_ chunks: [Data]) -> (@escaping (Data) -> Void) async -> Result<Void, ReadFailure> {
+        { consume in
+            chunks.forEach(consume)
+            return .success(())
+        }
+    }
+
+    func testWriteStreamedExtract_AllChunksWritten_PublishesTheCompleteFileOnly() async throws {
+        let dir = try makeScratchDirectory()
+        let dest = dir.appendingPathComponent("book.pdf")
+        let chunks = [Data([0x25, 0x50]), Data([0x44, 0x46]), Data([0x2D])]
+        var reported = 0
+
+        let url = try await LCPPDFDiskExtract.writeStreamedExtract(
+            to: dest, stream: stream(chunks), onChunk: { reported += $0 })
+
+        XCTAssertEqual(url, dest)
+        XCTAssertEqual(try Data(contentsOf: dest), Data([0x25, 0x50, 0x44, 0x46, 0x2D]))
+        XCTAssertEqual(reported, 5)
+        XCTAssertEqual(try contents(of: dir), ["book.pdf"])
+    }
+
+    /// A failed write must fail the extract: renaming the truncated file into
+    /// the cache would serve it on every open until the loan is returned.
+    func testWriteStreamedExtract_WriteFails_ThrowsStopsWritingAndCachesNothing() async throws {
+        let dir = try makeScratchDirectory()
+        let dest = dir.appendingPathComponent("book.pdf")
+        let chunks = [Data(count: 4), Data(count: 4), Data(count: 4)]
+        var writes = 0
+        var reported = 0
+
+        do {
+            _ = try await LCPPDFDiskExtract.writeStreamedExtract(
+                to: dest, stream: stream(chunks), onChunk: { reported += $0 },
+                writeChunk: { handle, chunk in
+                    writes += 1
+                    if writes == 2 { throw WriteFailure() }
+                    try handle.write(contentsOf: chunk)
+                })
+            XCTFail("A failed write must fail the extract")
+        } catch LCPPDFDiskExtract.ExtractError.writeFailed {
+            // expected
+        } catch {
+            XCTFail("Expected writeFailed, got \(error)")
+        }
+
+        XCTAssertEqual(try contents(of: dir), [], "Neither the extract nor a partial file may remain")
+        XCTAssertEqual(writes, 2, "No chunk may be written after the first failure")
+        XCTAssertEqual(reported, 4, "Only the written chunk counts as progress")
+    }
+
+    func testWriteStreamedExtract_StreamFails_LeavesNoFiles() async throws {
+        let dir = try makeScratchDirectory()
+        let dest = dir.appendingPathComponent("book.pdf")
+
+        do {
+            _ = try await LCPPDFDiskExtract.writeStreamedExtract(
+                to: dest,
+                stream: { consume -> Result<Void, ReadFailure> in
+                    consume(Data(count: 4))
+                    return .failure(ReadFailure())
+                },
+                onChunk: { _ in })
+            XCTFail("A failed stream must fail the extract")
+        } catch LCPPDFDiskExtract.ExtractError.streamFailed {
+            XCTAssertEqual(try contents(of: dir), [])
+        }
+    }
+
+    // MARK: - Progress from an abandoned extract
+
+    /// A back-out cancels the extract while it awaits the resource length; it
+    /// must stop before setting the total on the reporter the reopen shares.
+    func testExtract_CancelledWhileAwaitingLength_DoesNotSetTheTotal() async throws {
+        let progress = LCPPDFOpenProgress()
+        progress.begin(bookIdentifier: bookIdentifier)
+        let resource = CancellingLengthResource(length: 4_096)
+        let account = testAccountID
+        let book = bookIdentifier
+
+        let task = Task { @MainActor in
+            let publication = Publication(
+                manifest: Manifest(metadata: Metadata(title: "Book"),
+                                   readingOrder: [Link(href: "book.pdf")]),
+                container: SingleResourceContainer(resource: resource, at: AnyURL(path: "book.pdf")!)
+            )
+            return try await LCPPDFDiskExtract.extract(
+                publication: publication, bookIdentifier: book, account: account, progress: progress)
+        }
+        let result = await task.result
+
+        XCTAssertThrowsError(try result.get()) { XCTAssertTrue($0 is CancellationError) }
+        XCTAssertEqual(progress.totalExtractBytes, 0)
+        XCTAssertEqual(resource.streamCalls, 0)
+    }
+
     /// Returning the loan drops the extract and any partial file an
     /// interrupted extract left for that book, but not other books' files.
     func testInvalidate_RemovesTheBooksPartialFilesOnly() throws {
@@ -350,6 +475,38 @@ final class LCPPDFDiskExtractTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: expectedURL.path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: partial.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: otherPartial.path))
+    }
+}
+
+/// Reports a length but cancels the calling task first, the way a back-out
+/// lands while the extract awaits `estimatedLength()`.
+private final class CancellingLengthResource: Resource, @unchecked Sendable {
+    let sourceURL: AbsoluteURL? = nil
+    private let length: UInt64
+    private let lock = NSLock()
+    private var calls = 0
+
+    init(length: UInt64) {
+        self.length = length
+    }
+
+    var streamCalls: Int {
+        lock.withLock { calls }
+    }
+
+    func properties() async -> ReadResult<ResourceProperties> {
+        .success(ResourceProperties())
+    }
+
+    func estimatedLength() async -> ReadResult<UInt64?> {
+        withUnsafeCurrentTask { $0?.cancel() }
+        return .success(length)
+    }
+
+    func stream(range: Range<UInt64>?, consume: @escaping (Data) -> Void) async -> ReadResult<Void> {
+        lock.withLock { calls += 1 }
+        consume(Data(count: Int(range?.count ?? Int(length))))
+        return .success(())
     }
 }
 
