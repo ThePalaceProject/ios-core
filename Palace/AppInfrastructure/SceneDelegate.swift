@@ -23,10 +23,19 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// The only foreground sync: in this scene-based app UIKit does not call
     /// `applicationDidBecomeActive`. The registry is resolved when a foreground
     /// actually syncs, so creating the delegate never touches the container.
-    lazy var foregroundShelfSync = ForegroundShelfSync(sync: ForegroundShelfSync.registrySync(
-        registry: { AppContainer.production().bookRegistry },
-        updateBadge: { NotificationService.updateAppIconBadge(heldBooks: $0) }
-    ))
+    ///
+    /// Nil in the unit-test host: its launch is a real app launch, and a real
+    /// registry sync plus a write to the shared timestamp would run under
+    /// every test. Tests that exercise the wiring set their own instance.
+    lazy var foregroundShelfSync: ForegroundShelfSync? = Self.isRunningUnderXCTest
+        ? nil
+        : ForegroundShelfSync(sync: ForegroundShelfSync.registrySync(
+            registry: { AppContainer.production().bookRegistry },
+            updateBadge: { NotificationService.updateAppIconBadge(heldBooks: $0) }
+        ))
+
+    private static let isRunningUnderXCTest =
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
     func scene(
         _ scene: UIScene,
@@ -100,7 +109,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func sceneWillEnterForeground(_ scene: UIScene) {
-        foregroundShelfSync.appWillEnterForeground()
+        foregroundShelfSync?.appWillEnterForeground()
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {

@@ -156,6 +156,12 @@ final class ForegroundShelfSyncTests: XCTestCase {
         XCTAssertEqual(defaults.double(forKey: "lastForegroundSyncTimestamp"), 123)
     }
 
+    /// The test host is a full app launch; its own foreground must not run a
+    /// real registry sync or write the shared timestamp under every test.
+    func testSceneDelegate_underXCTest_hasNoDefaultForegroundSync() {
+        XCTAssertNil(SceneDelegate().foregroundShelfSync)
+    }
+
     func testSceneWillEnterForeground_drivesTheShelfSync() throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first)
         let sceneDelegate = SceneDelegate()
