@@ -72,6 +72,9 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
             accountsManager: libraryAccount,
             delegateQueue: nil
         )
+        // A refused refresh would otherwise present the real sign-in modal on
+        // the test host's window, which crashes a later test's presentation.
+        executor.presentSignInAfterRefusedRefresh = {}
     }
 
     override func tearDown() {
@@ -1057,6 +1060,78 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         XCTAssertEqual(data, Data("ok".utf8))
     }
 
+    /// The retry sent after a refresh is in flight under the original
+    /// request's registration, so an account switch cancels it like any other
+    /// request instead of letting it complete under the previous library.
+    func testRetryAfterRefresh_WhileInFlight_IsCancelledByAnAccountSwitch() async throws {
+        let apiHits = LockIsolated(0)
+        let retryArrived = DispatchSemaphore(value: 0)
+        let releaseRetry = DispatchSemaphore(value: 0)
+        addTeardownBlock { releaseRetry.signal() }
+        HTTPStubURLProtocol.register { @Sendable [tokenURL, apiURL] request in
+            if request.url == tokenURL {
+                return .init(statusCode: 200, headers: nil, body: Self.tokenResponseJSON(accessToken: "fresh"))
+            }
+            guard request.url == apiURL else { return nil }
+            if apiHits.withValue({ $0 += 1; return $0 }) == 1 {
+                return .init(statusCode: 401, headers: nil, body: nil)
+            }
+            retryArrived.signal()
+            _ = releaseRetry.wait(timeout: .now() + 10.0)
+            return .init(statusCode: 200, headers: nil, body: Data("retry-body".utf8))
+        }
+        let (task, log) = try await sentRequestAwaitingRefresh()
+
+        executor.refreshTokenAndResume(task: task, accountId: nil)
+        await awaitSemaphore(retryArrived)
+        XCTAssertEqual(executor.liveTaskCount, 1, "the in-flight retry must be reachable by an account switch")
+        executor.cancelNonEssentialTasks()
+        releaseRetry.signal()
+
+        await awaitSemaphore(log.delivered)
+        await drainRefreshAndDelivery()
+        XCTAssertEqual(log.all.count, 1, "the caller must be completed exactly once")
+        guard case .failure(let error, _)? = log.all.first else {
+            return XCTFail("the cancelled retry must fail its caller, got \(String(describing: log.all.first))")
+        }
+        XCTAssertEqual((error as NSError).code, NSURLErrorCancelled)
+        XCTAssertEqual(executor.heldTaskCount, 0, "the account switch leaves nothing held")
+    }
+
+    /// A background download from another session that triggers a refresh is
+    /// left to that session: it is neither cancelled nor resent as a data task
+    /// here, which would drop its bytes. The caller still hears the outcome.
+    func testSuccessfulRefresh_ForAnotherSessionsDownload_LeavesTheDownloadRunning() async throws {
+        let downloadURL = URL(string: "https://api.example.com/\(UUID().uuidString)/book.epub")!
+        let downloadHits = LockIsolated(0)
+        HTTPStubURLProtocol.register { @Sendable [tokenURL] request in
+            if request.url == tokenURL {
+                return .init(statusCode: 200, headers: nil, body: Self.tokenResponseJSON(accessToken: "fresh"))
+            }
+            guard request.url == downloadURL else { return nil }
+            downloadHits.withValue { $0 += 1 }
+            return .init(statusCode: 200, headers: nil, body: Data("book".utf8))
+        }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [HTTPStubURLProtocol.self]
+        let downloadSession = URLSession(configuration: config)
+        addTeardownBlock { downloadSession.invalidateAndCancel() }
+        let download = downloadSession.downloadTask(with: URLRequest(url: downloadURL))
+        let log = CompletionLog()
+
+        executor.refreshTokenAndResume(task: download, accountId: nil) { @Sendable result in log.record(result) }
+
+        let delivered = await awaitSemaphore(log.delivered, timeout: .now() + 10.0)
+        XCTAssertEqual(delivered, .success, "the caller never heard the refresh outcome")
+        await drainRefreshAndDelivery()
+        guard case .success? = log.all.first else {
+            return XCTFail("the refresh succeeded, got \(String(describing: log.all.first))")
+        }
+        XCTAssertEqual(download.state, .suspended, "the download is left to its own session, not cancelled")
+        XCTAssertEqual(downloadHits.value, 0, "no data-task retry of the download is sent")
+        XCTAssertEqual(userAccount.authToken, "fresh")
+    }
+
     /// A queued task with no request to rebuild from cannot be resent.
     private final class TaskWithoutRequest: URLSessionDataTask, @unchecked Sendable {
         override var originalRequest: URLRequest? { nil }
@@ -1279,7 +1354,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
     /// A refused refresh started for another session's task (the background
     /// download path) must not fail the executor's live request that happens
-    /// to share its identifier. The other task is cancelled, as before.
+    /// to share its identifier. The other task is left running for its own session.
     func testRefusedRefresh_ForAnotherSessionsTask_DoesNotFailTheLiveRequestSharingItsIdentifier() async throws {
         registerAPI401(tokenStatus: 401)
         let (live, liveLog, probeLog) = await liveRequestAndQueuedProbe()
@@ -1293,7 +1368,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         XCTAssertTrue(liveLog.all.isEmpty, "the live request must not receive another session's failure")
         XCTAssertNotNil(executor.responder.accumulatedBytesForTesting(taskID: live.taskIdentifier),
                         "the live request's completion stays registered")
-        XCTAssertNotEqual(foreign.state, .suspended, "the other session's task is cancelled")
+        XCTAssertEqual(foreign.state, .suspended, "the other session's task is left to its own session")
     }
 
     /// A successful refresh for another session's task must not move the

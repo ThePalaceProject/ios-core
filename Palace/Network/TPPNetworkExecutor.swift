@@ -55,6 +55,10 @@ enum TaskProvenance {
     /// The executor whose session created the task; see
     /// `TPPNetworkExecutor.sentOnOwnSession(_:)`.
     static let sessionKey = "sess"
+    /// Shared by a request and the retries it moves to after a token refresh,
+    /// so delivering the request's completion releases all of them from the
+    /// active-tasks store.
+    static let registrationKey = "reg"
 
     static func setAccount(_ accountId: String?, on task: URLSessionTask) {
         guard let accountId, !accountId.isEmpty else { return }
@@ -672,9 +676,13 @@ extension TPPNetworkExecutor: TPPRequestExecuting {
         // failure, cancel, session invalidation, or after a 401 when the
         // retry it moved to finishes. Removed before the caller's completion
         // runs, so the caller observes the store already updated.
+        let registration = UUID().uuidString
+        TaskProvenance.set(registration, forKey: TaskProvenance.registrationKey, on: task)
         let activeTasks = transport.activeTasksStore
-        responder.addCompletion({ [weak task] result in
-            if let task { activeTasks.remove(task) }
+        responder.addCompletion({ result in
+            activeTasks.removeAll {
+                TaskProvenance.value(forKey: TaskProvenance.registrationKey, of: $0) == registration
+            }
             completion(result)
         }, taskID: task.taskIdentifier)
         activeTasks.add(task)
@@ -953,11 +961,18 @@ extension TPPNetworkExecutor {
                 return
             }
 
+            // A task from another session (the download center's background
+            // downloads) is left to the session that owns it: a data-task retry
+            // here would drop its bytes and cancel the download, and its
+            // identifier can match a live request in this responder. The refresh
+            // still runs, and the caller's completion is called directly.
+            let ownTask = task.flatMap { self.sentOnOwnSession($0) ? $0 : nil }
+
             // A completion passed with a task replaces the one the responder
             // holds for it; every outcome below then completes the task through
             // the responder, exactly once.
-            if let task, let completionBox {
-                self.responder.addCompletion(completionBox.call, taskID: task.taskIdentifier)
+            if let ownTask, let completionBox {
+                self.responder.addCompletion(completionBox.call, taskID: ownTask.taskIdentifier)
             }
 
             // Atomic check-and-claim: only one caller can take the refresh slot.
@@ -965,8 +980,8 @@ extension TPPNetworkExecutor {
 
             if !claimed {
                 Log.debug(#file, "Token refresh already in progress, queueing task for retry")
-                if let task {
-                    await self.tokenCoordinator.appendToRetryQueue(task, accountIdAtRefreshStart: capturedAccountId)
+                if let ownTask {
+                    await self.tokenCoordinator.appendToRetryQueue(ownTask, accountIdAtRefreshStart: capturedAccountId)
                 } else {
                     let error = NSError(domain: TPPErrorLogger.clientDomain,
                                         code: TPPErrorCode.invalidCredentials.rawValue,
@@ -994,10 +1009,8 @@ extension TPPNetworkExecutor {
                 Log.error(#file, "Cannot refresh token: missing credentials or tokenURL for account \(capturedAccountId ?? "nil")")
                 await self.tokenCoordinator.releaseSlot(ownedBy: refreshGeneration)
                 let error = NSError(domain: TPPErrorLogger.clientDomain, code: TPPErrorCode.invalidCredentials.rawValue, userInfo: [NSLocalizedDescriptionKey: "Cannot request token with empty credentials"])
-                // Another session's task is left running; its completion is
-                // not stored in this executor's responder.
-                if let task, self.sentOnOwnSession(task) {
-                    self.failQueuedRetry(task, error: error)
+                if let ownTask {
+                    self.failQueuedRetry(ownTask, error: error)
                 } else {
                     completionBox?.call(NYPLResult.failure(error, nil))
                 }
@@ -1007,8 +1020,8 @@ extension TPPNetworkExecutor {
             let authType = snapshot.authDefinition?.authType.rawValue ?? "unknown"
             Log.info(#file, "Refreshing token for auth type: \(authType), account: \(capturedAccountId ?? "current")")
 
-            if let task {
-                await self.tokenCoordinator.appendToRetryQueue(task, accountIdAtRefreshStart: capturedAccountId)
+            if let ownTask {
+                await self.tokenCoordinator.appendToRetryQueue(ownTask, accountIdAtRefreshStart: capturedAccountId)
             }
 
             self.executeTokenRefresh(username: username, password: password, tokenURL: tokenURL, accountId: capturedAccountId) { [weak self] result in
@@ -1076,6 +1089,12 @@ extension TPPNetworkExecutor {
                             // A retry can itself 401. Without this the second
                             // round loses provenance and falls back to current.
                             TaskProvenance.setAccount(rebuildAccountId, on: newTask)
+                            // Registered like the request it replaces, so an
+                            // account switch can cancel it while it is in flight.
+                            if let registration = TaskProvenance.value(forKey: TaskProvenance.registrationKey, of: oldTask) {
+                                TaskProvenance.set(registration, forKey: TaskProvenance.registrationKey, on: newTask)
+                                self.transport.activeTasksStore.add(newTask)
+                            }
                             // The responder keys completions by identifier, which
                             // another session's task can share with a live request here.
                             if self.sentOnOwnSession(oldTask) {
@@ -1088,7 +1107,7 @@ extension TPPNetworkExecutor {
                         Log.info(#file, "Retrying \(retryCount) failed request(s) with new token")
                         newTasks.forEach { $0.resume() }
 
-                        if task == nil {
+                        if ownTask == nil {
                             completionBox?.call(NYPLResult.success(Data(), nil))
                         }
 
@@ -1134,7 +1153,7 @@ extension TPPNetworkExecutor {
                         // Failed after the stale mark above, so a caller that
                         // reads the account's state on failure sees it.
                         failedTasks.forEach { self.failQueuedRetry($0.task, error: nsError) }
-                        if task == nil {
+                        if ownTask == nil {
                             completionBox?.call(NYPLResult.failure(nsError, nil))
                         }
                     }

@@ -3,7 +3,7 @@
 //  The Palace Project
 //
 //  Pure-transport HTTP layer: owns the URLSession and active tasks
-//  (cancelled on account switch) and exposes send/download.
+//  (cancelled on account switch) and exposes download.
 //  Credentials and sign-in live in the app target's TPPNetworkExecutor,
 //  which wraps a Transport and can reach AccountsManager / TPPUserAccount.
 //
@@ -33,11 +33,10 @@ public final class ActiveTasksStore {
         addedCount += 1
     }
 
-    public func remove(_ task: URLSessionTask) {
+    // PUBLIC_INTENT: called by TPPNetworkExecutor in the Palace app target to release a request together with its token-refresh retries.
+    public func removeAll(where shouldRemove: (URLSessionTask) -> Bool) {
         lock.lock(); defer { lock.unlock() }
-        if let index = tasks.firstIndex(of: task) {
-            tasks.remove(at: index)
-        }
+        tasks.removeAll(where: shouldRemove)
     }
 
     /// Number of registered tasks that are not yet finished or cancelling.
@@ -178,16 +177,6 @@ public final class ActiveTasksStore {
     #endif
 
     // MARK: - Send / download
-
-    /// Create + resume a data task. The task is auto-registered in the active
-    /// tasks store so account-switch cancellation can reach it.
-    @discardableResult
-    public func send(_ request: URLRequest) -> URLSessionDataTask {
-        let task = urlSession.dataTask(with: request)
-        activeTasksStore.add(task)
-        task.resume()
-        return task
-    }
 
     /// Create + resume a download task. Not added to the active-tasks store
     /// today — historical behavior; callers manage download lifecycle directly.
