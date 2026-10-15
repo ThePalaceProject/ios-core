@@ -81,14 +81,12 @@ final class AccountRegistryLoaderCompletionQueueTests: PalaceWiringTestCase {
     func testLoadCatalogs_WhenNetworkFailsWithNoCache_CompletesFalseOnMainQueue() async throws {
         let loader = makeLoader(store: AccountRegistryStore())
         let recorder = CompletionRecorder()
-        let done = expectation(description: "loadCatalogs completed")
 
         loader.loadCatalogs { @Sendable success in
             recorder.record(success: success, onMain: Thread.isMainThread)
-            done.fulfill()
         }
-        await fulfillment(of: [done], timeout: 10)  // STARVE-001-OK: completion fires inside an owned task, drained on the next line
         await loader._awaitCatalogLoadForTesting()
+        await drainMainQueue()
 
         XCTAssertEqual(recorder.success, false)
         XCTAssertEqual(recorder.onMain, true, "a failed load must complete on main, like a successful one")
@@ -101,15 +99,12 @@ final class AccountRegistryLoaderCompletionQueueTests: PalaceWiringTestCase {
         let loader = makeLoader(store: AccountRegistryStore(), networking: ScriptedNetworking(body: Data("<html>".utf8)))
         let posts = PostRecorder()
         let recorder = CompletionRecorder()
-        let done = expectation(description: "loadCatalogs completed")
 
         loader.loadCatalogs { @Sendable success in
             recorder.record(success: success, onMain: Thread.isMainThread)
-            done.fulfill()
         }
-        await fulfillment(of: [done], timeout: 10)  // STARVE-001-OK: completion fires inside an owned task, drained on the next line
         await loader._awaitCatalogLoadForTesting()
-        await MainActor.run {}  // drains main-queue deliveries enqueued before this hop
+        await drainMainQueue()
 
         XCTAssertEqual(recorder.success, false)
         XCTAssertEqual(recorder.onMain, true)
@@ -125,27 +120,23 @@ final class AccountRegistryLoaderCompletionQueueTests: PalaceWiringTestCase {
         let loader = makeLoader(store: AccountRegistryStore(),
                                 cache: FixedRegistryCache(data: garbage),
                                 networking: ScriptedNetworking(body: garbage))
-        let posted = expectation(description: "cache load and refresh fallback both posted")
-        posted.expectedFulfillmentCount = 2
-        posted.assertForOverFulfill = false
-        let posts = PostRecorder(onPost: posted)
+        let posts = PostRecorder()
         let recorder = CompletionRecorder()
-        let done = expectation(description: "loadCatalogs completed")
         let box = UncheckedBox(loader)
 
-        DispatchQueue.global(qos: .utility).async {
+        // `loadCatalogs` spawns the refresh Task before it returns, so joining after the
+        // background call returns guarantees the drain below sees the refresh.
+        await runOnBackgroundQueue {
             box.value.loadCatalogs { @Sendable success in
                 recorder.record(success: success, onMain: Thread.isMainThread)
-                done.fulfill()
             }
         }
-        // The refresh is spawned after the cache load completes, so the join seam alone
-        // can run before it exists; the second post is the synchronizer.
-        await fulfillment(of: [done, posted], timeout: 10)  // STARVE-001-OK: refresh Tasks are drained on the next line
         await loader._awaitCatalogLoadForTesting()
+        await drainMainQueue()
 
         XCTAssertEqual(recorder.success, false)
         XCTAssertEqual(recorder.onMain, true)
+        XCTAssertGreaterThanOrEqual(posts.count, 2, "premise: the cache load and the refresh fallback must both post")
         XCTAssertEqual(posts.offMainCount, 0, ".TPPCatalogDidLoad must be posted on main")
     }
 
@@ -166,9 +157,10 @@ final class AccountRegistryLoaderCompletionQueueTests: PalaceWiringTestCase {
         isCompleteFeed: Bool?
     ) async -> LoadResult {
         let recorder = CompletionRecorder()
-        let done = expectation(description: "loadAccountSetsAndAuthDoc completed")
         let box = UncheckedBox(loader)
-        DispatchQueue.global(qos: .utility).async {
+        // With no current account the DispatchGroup is empty, so every completion path
+        // is enqueued on main (or run inline) before the call returns.
+        await runOnBackgroundQueue {
             box.value.loadAccountSetsAndAuthDoc(
                 fromCatalogData: data,
                 key: hash,
@@ -176,13 +168,30 @@ final class AccountRegistryLoaderCompletionQueueTests: PalaceWiringTestCase {
                 didApplyBucketWrite: { @Sendable applied in recorder.recordApplied(applied) }
             ) { @Sendable success in
                 recorder.record(success: success, onMain: Thread.isMainThread)
-                done.fulfill()
             }
         }
-        // The completion is a DispatchGroup.notify or a direct call; the injected
-        // auth-doc fetch completes synchronously, so there is no Task to join.
-        await fulfillment(of: [done], timeout: 10)  // STARVE-001-OK: bounded DispatchGroup.notify, no Task to join
+        await drainMainQueue()
         return LoadResult(success: recorder.success, applied: recorder.applied, onMain: recorder.onMain ?? false)
+    }
+
+    /// Runs `body` on a global queue and resumes once it has returned.
+    private func runOnBackgroundQueue(_ body: @escaping @Sendable () -> Void) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global(qos: .utility).async {
+                body()
+                continuation.resume()
+            }
+        }
+    }
+
+    /// Resumes after every block already on the main queue has run. The main queue is
+    /// FIFO, so this joins the loader's main-queue deliveries without a deadline; a
+    /// busy main queue makes it slower, never red. `MainActor.run` would not hop here
+    /// because the class is main-actor isolated.
+    private func drainMainQueue() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DispatchQueue.main.async { continuation.resume() }
+        }
     }
 
     private func makeAccounts(_ uuids: [String]) -> [Account] {
@@ -297,15 +306,12 @@ private final class PostRecorder: @unchecked Sendable {
     private let lock = NSLock()
     private var threads: [Bool] = []
     private var token: NSObjectProtocol?
-    private let onPost: XCTestExpectation?
 
-    init(onPost: XCTestExpectation? = nil) {
-        self.onPost = onPost
+    init() {
         token = NotificationCenter.default.addObserver(forName: .TPPCatalogDidLoad, object: nil, queue: nil) { [weak self] _ in
             guard let self else { return }
             let onMain = Thread.isMainThread
             self.lock.withLock { self.threads.append(onMain) }
-            self.onPost?.fulfill()
         }
     }
     deinit { token.map(NotificationCenter.default.removeObserver) }
