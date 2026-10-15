@@ -1095,7 +1095,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
             return XCTFail("the cancelled retry must fail its caller, got \(String(describing: log.all.first))")
         }
         XCTAssertEqual((error as NSError).code, NSURLErrorCancelled)
-        XCTAssertEqual(executor.heldTaskCount, 0, "the request and its retry are both released")
+        XCTAssertEqual(executor.heldTaskCount, 0, "the account switch leaves nothing held")
     }
 
     /// A background download from another session that triggers a refresh is
@@ -1354,7 +1354,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
     /// A refused refresh started for another session's task (the background
     /// download path) must not fail the executor's live request that happens
-    /// to share its identifier. The other task is cancelled, as before.
+    /// to share its identifier. The other task is left running for its own session.
     func testRefusedRefresh_ForAnotherSessionsTask_DoesNotFailTheLiveRequestSharingItsIdentifier() async throws {
         registerAPI401(tokenStatus: 401)
         let (live, liveLog, probeLog) = await liveRequestAndQueuedProbe()
