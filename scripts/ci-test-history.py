@@ -53,6 +53,8 @@ at 1x is the thinly-measured one, not the healthy one.
       --workflow W    workflow name (default "Unit Tests")
       --repo R        owner/name (default: inferred from origin)
       --no-cache      re-download logs instead of reusing them
+      --min-results N fewest test results a log must hold to be read
+                      (default 1 for "UI Journeys", 100 otherwise)
 
 Exit 0 whatever the verdict — this is a diagnostic, not a gate.
 """
@@ -195,6 +197,18 @@ def results_for(log: str, cls: str, method: str | None) -> list[tuple[str, str, 
 # suite (the Palace scheme emits ~8,250) and far above any stub.
 MIN_TEST_LINES = 100
 
+# Workflows that run a handful of tests on purpose. UI Journeys runs three
+# journeys serially, so one result line already measured something; a floor of
+# 100 refused every one of its runs. Any other workflow keeps the floor above.
+MIN_RESULTS_BY_WORKFLOW = {"UI Journeys": 1, "ui-journeys.yml": 1}
+
+
+def min_results_for(workflow: str, override: int | None = None) -> int:
+    """The fewest result lines a log of `workflow` must hold before it is read."""
+    if override is not None:
+        return override
+    return MIN_RESULTS_BY_WORKFLOW.get(workflow, MIN_TEST_LINES)
+
 
 class NotATestLog(Exception):
     """Raised when the input has too few test results to have measured anything."""
@@ -318,7 +332,7 @@ def scan_clean_verdict_line(span: dict) -> str:
     return line
 
 
-def log_is_readable(log: str) -> bool:
+def log_is_readable(log: str, min_results: int = MIN_TEST_LINES) -> bool:
     """Did we actually get a test log? Distinguishes no-data from no-match.
 
     `gh` returning empty (auth expired, wrong repo, a run whose logs have been
@@ -328,12 +342,12 @@ def log_is_readable(log: str) -> bool:
     looks identical to passing", so without this check that failure mode was
     reachable through the tool's own error path.
     """
-    return len(_iter_results(log)) >= MIN_TEST_LINES
+    return len(_iter_results(log)) >= min_results
 
 
-def scan_run(log: str) -> dict[str, list[str]]:
+def scan_run(log: str, min_results: int = MIN_TEST_LINES) -> dict[str, list[str]]:
     """scan_log() that refuses input it cannot have measured."""
-    if len(_iter_results(log)) < MIN_TEST_LINES:
+    if len(_iter_results(log)) < min_results:
         raise NotATestLog(
             "log contains too few test results to scan — this is a refusal, not "
             "a clean bill of health (an empty or truncated download looks exactly "
@@ -378,7 +392,7 @@ def run_scan_mode(repo: str, args) -> int:
         log = log_for(repo, r["databaseId"], not args.no_cache, r.get("attempt") or 1)
         stamp = f"{r['createdAt'][5:16]}  {(r['headBranch'] or '?')[:32]:32s}  run={r['conclusion'] or '-'}"
         try:
-            failures = scan_run(log)
+            failures = scan_run(log, min_results_for(args.workflow, args.min_results))
         except NotATestLog as exc:
             print(f"  {stamp}")
             print(f"    REFUSED: {exc}")
@@ -429,7 +443,13 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--workflow", default="Unit Tests")
     ap.add_argument("--repo")
     ap.add_argument("--no-cache", action="store_true")
+    ap.add_argument("--min-results", type=int,
+                    help="fewest test results a log must hold to be read (default: 1 for "
+                         "UI Journeys, %d otherwise)" % MIN_TEST_LINES)
     args = ap.parse_args(argv[1:])
+    if args.min_results is not None and args.min_results < 1:
+        # At 0 an empty or failed download would read as a run with no failures.
+        ap.error("--min-results must be at least 1")
 
     repo = args.repo or infer_repo()
 
@@ -458,7 +478,7 @@ def main(argv: list[str]) -> int:
         log = log_for(repo, r["databaseId"], not args.no_cache, r.get("attempt") or 1)
         res = results_for(log, cls, method)
         stamp = f"{r['createdAt'][5:16]}  {r['headSha'][:8]}  {(r['headBranch'] or '?')[:34]:34s}"
-        if not log_is_readable(log):
+        if not log_is_readable(log, min_results_for(args.workflow, args.min_results)):
             print(f"  {stamp}  run={r['conclusion'] or '-':8s}  REFUSED: no test results in this "
                   f"log (not the same as 'test did not run')")
             continue
