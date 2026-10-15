@@ -377,6 +377,14 @@ def run_meta(repo: str, run_id: int) -> dict:
     return r
 
 
+def unreadable_window_line(refused: int) -> str:
+    """The verdict when every scanned log was refused: there is no evidence
+    either way, so it must not read as "never ran" or as a clean window."""
+    return (f"VERDICT: no run in the scanned window could be read ({refused} refused, 0 readable).\n"
+            "  Nothing can be concluded about any test from it. Check `gh auth status`, the repo,\n"
+            "  and whether the logs have expired, or widen with --limit.")
+
+
 def run_scan_mode(repo: str, args) -> int:
     if args.run:
         found = [run_meta(repo, int(args.run))]
@@ -388,6 +396,7 @@ def run_scan_mode(repo: str, args) -> int:
 
     total_masked = 0
     total_killed_only = 0
+    refused = 0
     for r in found:
         log = log_for(repo, r["databaseId"], not args.no_cache, r.get("attempt") or 1)
         stamp = f"{r['createdAt'][5:16]}  {(r['headBranch'] or '?')[:32]:32s}  run={r['conclusion'] or '-'}"
@@ -396,6 +405,7 @@ def run_scan_mode(repo: str, args) -> int:
         except NotATestLog as exc:
             print(f"  {stamp}")
             print(f"    REFUSED: {exc}")
+            refused += 1
             continue
         execs, distinct = log_shape(log)
         hist = depth_histogram(log)
@@ -417,7 +427,9 @@ def run_scan_mode(repo: str, args) -> int:
             print(f"    {label}  {name}\n                         {where}")
 
     print()
-    if total_masked:
+    if refused == len(found):
+        print(unreadable_window_line(refused))
+    elif total_masked:
         print(f"VERDICT: {total_masked} test(s) failed an iteration inside the scanned run(s).")
         print("  If the run reported green, retry masked every one of them. A green verdict")
         print("  over a masked failure is not a pass; it is an unread failure. Take each name")
@@ -473,6 +485,7 @@ def main(argv: list[str]) -> int:
     fail_secs: list[float] = []
     flaky_runs: list[str] = []
     any_seen = False
+    refused = 0
 
     for r in found:
         log = log_for(repo, r["databaseId"], not args.no_cache, r.get("attempt") or 1)
@@ -481,6 +494,7 @@ def main(argv: list[str]) -> int:
         if not log_is_readable(log, min_results_for(args.workflow, args.min_results)):
             print(f"  {stamp}  run={r['conclusion'] or '-':8s}  REFUSED: no test results in this "
                   f"log (not the same as 'test did not run')")
+            refused += 1
             continue
         if not res:
             print(f"  {stamp}  run={r['conclusion'] or '-':8s}  (test not in this run)")
@@ -501,6 +515,9 @@ def main(argv: list[str]) -> int:
         per_branch[r["headBranch"] or "?"].append("failed" if "failed" in verdicts else "passed")
 
     print()
+    if refused == len(found):
+        print(unreadable_window_line(refused))
+        return 0
     if not any_seen:
         print(f"VERDICT: {args.test} never ran in the scanned window.")
         print("  Widen with --limit, or check the name — a renamed/never-registered test")

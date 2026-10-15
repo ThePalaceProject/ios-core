@@ -312,3 +312,48 @@ def test_minResultsBelowOneIsRejected(bad):
     """A floor of 0 would read an empty download as a clean run."""
     with pytest.raises(SystemExit):
         cth.main(["x", "SomeTests", "--min-results", bad, "--repo", "o/r"])
+
+
+# ------------------------- a window where no log could be read is not a finding
+
+@pytest.fixture
+def two_runs(monkeypatch):
+    """Serve two runs whose logs the test sets by run id, without calling gh."""
+    logs = {1: "", 2: ""}
+    found = [{"databaseId": i, "createdAt": f"2026-10-14T0{i}:00:00Z", "headSha": f"{i}" * 10,
+              "headBranch": "develop", "conclusion": "success", "attempt": 1} for i in (1, 2)]
+    monkeypatch.setattr(cth, "runs", lambda *a, **k: found)
+    monkeypatch.setattr(cth, "log_for", lambda repo, run_id, *a, **k: logs[run_id])
+    return logs
+
+
+def test_lookup_whenEveryRunIsRefused_saysNothingWasReadable_notNeverRan(two_runs, capsys):
+    cth.main(["x", "SomeTests", "--repo", "o/r"])
+    out = capsys.readouterr().out
+    assert "never ran" not in out
+    assert "no run in the scanned window could be read (2 refused, 0 readable)" in out
+
+
+def test_lookup_whenSomeRunWasReadable_stillReportsNeverRan(two_runs, capsys):
+    """A readable run without the test is real evidence that it did not run there."""
+    two_runs[2] = clean_log(200)
+    cth.main(["x", "SomeTests", "--repo", "o/r"])
+    out = capsys.readouterr().out
+    assert "VERDICT: SomeTests never ran in the scanned window." in out
+    assert "could be read" not in out
+
+
+def test_scan_whenEveryRunIsRefused_saysNothingWasReadable_notClean(two_runs, capsys):
+    cth.main(["x", "--scan", "--repo", "o/r"])
+    out = capsys.readouterr().out
+    assert "no run in the scanned window could be read (2 refused, 0 readable)" in out
+    assert "no masked failures" not in out
+
+
+def test_scan_whenSomeRunWasReadable_keepsTheCleanVerdict(two_runs, capsys):
+    two_runs[2] = clean_log(200)
+    cth.main(["x", "--scan", "--repo", "o/r"])
+    out = capsys.readouterr().out
+    assert "could be read" not in out
+    assert cth.scan_clean_verdict_line(cth.window_span([{"createdAt": "2026-10-14T01:00:00Z"},
+                                                        {"createdAt": "2026-10-14T02:00:00Z"}])) in out
