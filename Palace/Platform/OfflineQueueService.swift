@@ -86,7 +86,7 @@ actor OfflineQueueService: OfflineQueueServiceProtocol {
 
         // Load persisted queue
         if let data = userDefaults.data(forKey: storageKey),
-           let decoded = try? JSONDecoder().decode([OfflineAction].self, from: data) {
+           let decoded = Self.decodeEachAction(from: data) {
             // Actions saved before `libraryID` existed cannot be attributed to
             // a library, and running one under the wrong library confirms a
             // return that never happened. The loan they name is still held on
@@ -113,6 +113,28 @@ actor OfflineQueueService: OfflineQueueServiceProtocol {
         // monitor's first path update cannot race them.
         if monitorsNetwork {
             Task { await startNetworkMonitoring() }
+        }
+    }
+
+    /// Decodes the stored queue one action at a time, so an action this build
+    /// cannot read (e.g. a type added by a newer build before a downgrade)
+    /// costs only itself. Nil when the data is not an array at all.
+    private static func decodeEachAction(from data: Data) -> [OfflineAction]? {
+        guard let elements = try? JSONDecoder().decode([LossyAction].self, from: data) else {
+            return nil
+        }
+        let decoded = elements.compactMap(\.action)
+        if decoded.count != elements.count {
+            Log.error(#file, "Dropped \(elements.count - decoded.count) queued offline action(s) this build cannot decode")
+        }
+        return decoded
+    }
+
+    /// An array element that decodes to nil instead of failing the whole array.
+    private struct LossyAction: Decodable {
+        let action: OfflineAction?
+        init(from decoder: Decoder) throws {
+            action = try? OfflineAction(from: decoder)
         }
     }
 

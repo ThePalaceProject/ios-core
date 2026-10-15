@@ -513,6 +513,28 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
         XCTAssertEqual(executed.value, ["scoped"], "the legacy action must never run")
     }
 
+    /// One action this build cannot decode, such as a type added by a newer
+    /// build before a downgrade, must not cost the patron every other queued action.
+    func testLoad_withAnUndecodableAction_keepsTheDecodableOnes() async throws {
+        let first = action(.return, "one", in: Self.libraryA)
+        let second = action(.borrow, "two", in: Self.libraryB)
+        var unknownJSON = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(first)) as? [String: Any])
+        unknownJSON["type"] = "typeFromANewerBuild"
+        unknownJSON["id"] = UUID().uuidString
+        let stored = try JSONSerialization.data(withJSONObject: [
+            try JSONSerialization.jsonObject(with: JSONEncoder().encode(first)),
+            unknownJSON,
+            try JSONSerialization.jsonObject(with: JSONEncoder().encode(second)),
+        ])
+        UserDefaults(suiteName: Self.suiteName)!.set(stored, forKey: Self.storageKey)
+
+        let reloaded = makeQueue()
+        let pending = await reloaded.actions(withState: .pending)
+
+        XCTAssertEqual(pending.map(\.id), [first.id, second.id])
+    }
+
     /// A stored queue made only of current actions is loaded unchanged.
     func testLoad_withOnlyScopedActions_keepsAll() async throws {
         let first = action(.return, "one", in: Self.libraryA)
