@@ -16,8 +16,12 @@ import PalaceNetwork
 @MainActor
 final class TPPNetworkExecutorTaskRegistryTests: XCTestCase {
 
-    private let apiURL = URL(string: "https://api.example.com/feed")!
-    private let audiobookURL = URL(string: "https://api.example.com/audiobook/manifest.json")!
+    /// Per-test path segment: `ScriptedURLProtocol` is process-wide, so a request
+    /// left over from another test class must not reach or be counted by this one.
+    private let runID = UUID().uuidString
+    private lazy var apiURL = URL(string: "https://api.example.com/\(runID)/feed")!
+    private lazy var audiobookURL = URL(string: "https://api.example.com/\(runID)/audiobook/manifest.json")!
+    private lazy var tokenURL = URL(string: "https://token.example.com/\(runID)/oauth/token")!
 
     override func setUp() async throws {
         try await super.setUp()
@@ -33,7 +37,7 @@ final class TPPNetworkExecutorTaskRegistryTests: XCTestCase {
 
     /// Successful requests, awaited one after another, leave nothing held.
     func testExecute_afterSuccessfulRequestsComplete_holdsNoTasks() async {
-        let fixture = URLSessionNetworkClientFixture(tokenExpiresIn: 3600)
+        let fixture = URLSessionNetworkClientFixture(tokenURL: tokenURL, tokenExpiresIn: 3600)
         ScriptedURLProtocol.route(apiURL, .respond(status: 200, headers: nil, body: Data("ok".utf8)))
 
         for _ in 0..<5 {
@@ -49,7 +53,7 @@ final class TPPNetworkExecutorTaskRegistryTests: XCTestCase {
     /// Error responses go down the responder's failure branch; they must be
     /// released as well.
     func testExecute_afterErrorResponsesComplete_holdsNoTasks() async {
-        let fixture = URLSessionNetworkClientFixture(tokenExpiresIn: 3600)
+        let fixture = URLSessionNetworkClientFixture(tokenURL: tokenURL, tokenExpiresIn: 3600)
         ScriptedURLProtocol.route(apiURL, .respond(status: 500, headers: nil, body: nil))
 
         for _ in 0..<3 {
@@ -65,7 +69,7 @@ final class TPPNetworkExecutorTaskRegistryTests: XCTestCase {
     /// Concurrent requests complete on URLSession's delegate queue while
     /// others are still being added, so additions and removals interleave.
     func testExecute_concurrentRequests_holdNoTasksOnceAllComplete() async {
-        let fixture = URLSessionNetworkClientFixture(tokenExpiresIn: 3600)
+        let fixture = URLSessionNetworkClientFixture(tokenURL: tokenURL, tokenExpiresIn: 3600)
         ScriptedURLProtocol.route(apiURL, .respond(status: 200, headers: nil, body: Data("ok".utf8)))
         let executor = fixture.executor
         let url = apiURL
@@ -93,7 +97,7 @@ final class TPPNetworkExecutorTaskRegistryTests: XCTestCase {
     /// A request still on the wire stays held, so an account switch can still
     /// reach it; it is released when its response arrives.
     func testExecuteRequest_inFlight_isHeldUntilItsCompletion() async {
-        let fixture = URLSessionNetworkClientFixture(tokenExpiresIn: 3600)
+        let fixture = URLSessionNetworkClientFixture(tokenURL: tokenURL, tokenExpiresIn: 3600)
         ScriptedURLProtocol.route(apiURL, .hold)
         let started = expectation(description: "request reached the server")
         ScriptedURLProtocol.expectStart(of: apiURL, started)
@@ -119,7 +123,7 @@ final class TPPNetworkExecutorTaskRegistryTests: XCTestCase {
     /// audiobook one; the cancelled task's completion must not disturb the
     /// survivor, which is released when it finishes.
     func testCancelNonEssential_cancelsOtherRequestsAndReleasesAudiobookOneOnCompletion() async {
-        let fixture = URLSessionNetworkClientFixture(tokenExpiresIn: 3600)
+        let fixture = URLSessionNetworkClientFixture(tokenURL: tokenURL, tokenExpiresIn: 3600)
         ScriptedURLProtocol.route(apiURL, .hold)
         ScriptedURLProtocol.route(audiobookURL, .hold)
         let apiStarted = expectation(description: "API request started")
