@@ -282,7 +282,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
     //
     // Catches: deletion of the early-return guard on missing barcode/pin
     // (`guard let username = ..., !username.isEmpty, let password = ..., let tokenURL = ...`)
-    // and the matching `setRefreshing(false)` release. If the guard is
+    // and the matching `releaseSlot(ownedBy:)` release. If the guard is
     // removed/inverted, the executor will either (a) attempt the /token
     // request with empty credentials, (b) leave isRefreshing latched at
     // true so subsequent refresh requests deadlock, or (c) fail to surface
@@ -324,7 +324,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         XCTAssertEqual(attempts, 1,
                        "The credentials-missing branch still claimed and released the slot exactly once")
 
-        // The slot must have been RELEASED (setRefreshing(false)). Verify
+        // The slot must have been released (`releaseSlot(ownedBy:)`). Verify
         // by issuing a second refresh — if the slot were still held, this
         // would coalesce as a queued retry (no task → returns
         // 'Token refresh in progress' error path), not the fresh failure
@@ -343,7 +343,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
         XCTAssertNotNil(secondMessage)
         XCTAssertFalse(secondMessage?.contains("in progress") ?? false,
-                       "After the credentials-missing branch the single-flight slot must be released — a second refresh must re-enter the missing-creds path, not stall behind a latched isRefreshing=true (kills deletion of setRefreshing(false) on the missing-creds branch)")
+                       "After the credentials-missing branch the single-flight slot must be released — a second refresh must re-enter the missing-creds path, not stall behind a latched isRefreshing=true (kills deletion of releaseSlot(ownedBy:) on the missing-creds branch)")
     }
 
     // MARK: - Test 4: Concurrent refreshes coalesce — only one /token fires
@@ -519,8 +519,8 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
     // MARK: - Test 6: Single-flight slot is released on success
     //
-    // Catches: deletion of `setRefreshing(false)` (line 471) on the success
-    // path. If the slot stays latched, subsequent refresh attempts will
+    // Catches: the success path not releasing the slot in `finish(ownedBy:)`.
+    // If the slot stays latched, subsequent refresh attempts will
     // be incorrectly coalesced into the (already-completed) refresh.
 
     func testRefresh_Success_ReleasesSingleFlightSlot() async throws {
@@ -543,7 +543,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         await fulfillment(of: [first], timeout: 5.0)
 
         // No wall-clock gap needed: the task==nil success completion is invoked
-        // AFTER `setRefreshing(false)` in the executor (the slot is released, then
+        // AFTER `finish(ownedBy:)` in the executor (the slot is released, then
         // the completion fires), so once `fulfillment(of: [first])` returns the
         // single-flight slot is deterministically released. Awaiting the completion
         // IS the join to slot-release — a fixed `waitForCondition(1.0) { false }`
@@ -555,7 +555,7 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
 
         let attempts = await executor.refreshAttemptCount
         XCTAssertEqual(attempts, 2,
-                       "Two successive successful refreshes must each claim the slot — kills deletion of setRefreshing(false) on the success branch")
+                       "Two successive successful refreshes must each claim the slot — kills a success branch that does not release the slot")
         XCTAssertEqual(tokenHits.value, 2,
                        "Each released-and-reclaimed refresh must fire its own /token request")
     }
@@ -905,6 +905,156 @@ final class TokenRefreshAndRetryQueueTests: XCTestCase {
         XCTAssertEqual(delivered, .success, "the caller was never completed")
         await drainRefreshAndDelivery()
         assertFailedOnceWith401(log)
+    }
+
+    /// Starts a refresh whose token request is held until `release` is
+    /// signalled, then force-releases it the way the watchdog does and lets a
+    /// second refresh claim the slot with a request of its own queued. Returns
+    /// the late refresh's completion signal and the queued request's log.
+    private func refreshOvertakenAfterWatchdog(tokenStatus: Int,
+                                               release: DispatchSemaphore)
+        async throws -> (lateRefreshDone: DispatchSemaphore, queuedLog: CompletionLog) {
+        let tokenRequestArrived = DispatchSemaphore(value: 0)
+        HTTPStubURLProtocol.register { @Sendable [tokenURL, apiURL] request in
+            if request.url == tokenURL {
+                tokenRequestArrived.signal()
+                _ = release.wait(timeout: .now() + 10.0)
+                // Not a 5xx or a timeout: the token request retries those.
+                let body = tokenStatus == 200 ? Self.tokenResponseJSON(accessToken: "late") : Data()
+                return .init(statusCode: tokenStatus, headers: nil, body: body)
+            }
+            guard request.url?.host == apiURL?.host else { return nil }
+            return .init(statusCode: 200, headers: nil, body: Data("retried".utf8))
+        }
+        // The watchdog is driven by hand below; keep the real one out of the way.
+        executor.tokenRefreshWatchdogSeconds = 60
+
+        let lateRefreshDone = DispatchSemaphore(value: 0)
+        executor.refreshTokenAndResume(task: nil, accountId: nil,
+                                       presentsSignInOnFailure: false) { @Sendable _ in
+            lateRefreshDone.signal()
+        }
+        await awaitSemaphore(tokenRequestArrived)
+        let lateGeneration = await executor.currentTokenRefreshGenerationForTesting()
+        let stranded = await executor.forceReleaseStuckTokenRefreshForTesting(generation: lateGeneration)
+        XCTAssertNotNil(stranded, "the held refresh must still own the slot when the watchdog fires")
+
+        let claimed = await executor.claimTokenRefreshSlotForTesting()
+        XCTAssertTrue(claimed, "a new refresh claims the slot the watchdog released")
+        let queued = makeQueueableTask()
+        let queuedLog = CompletionLog()
+        executor.responder.addCompletion({ @Sendable result in queuedLog.record(result) },
+                                         taskID: queued.taskIdentifier)
+        await executor.appendTokenRetryForTesting(queued)
+        return (lateRefreshDone, queuedLog)
+    }
+
+    /// A refresh that fails after the watchdog released it must not fail the
+    /// requests queued behind the refresh that took the slot next, nor free
+    /// that refresh's slot and let a third run alongside it.
+    func testLateRefreshFailure_AfterTheWatchdogReleasedIt_LeavesTheNextRefreshAlone() async throws {
+        let release = DispatchSemaphore(value: 0)
+        let (lateRefreshDone, queuedLog) = try await refreshOvertakenAfterWatchdog(tokenStatus: 400,
+                                                                                   release: release)
+
+        release.signal()
+
+        await awaitSemaphore(lateRefreshDone)
+        await drainRefreshAndDelivery()
+        XCTAssertTrue(queuedLog.all.isEmpty,
+                      "the next refresh's queued request must not receive the late refresh's failure")
+        let stillRefreshing = await executor.isTokenRefreshingForTesting
+        XCTAssertTrue(stillRefreshing, "the next refresh must still hold the single-flight slot")
+        let generation = await executor.currentTokenRefreshGenerationForTesting()
+        let queued = await executor.forceReleaseStuckTokenRefreshForTesting(generation: generation)
+        XCTAssertEqual(queued?.count, 1, "the next refresh's request is still queued for it")
+    }
+
+    /// Same, for a late success: it must not resend the next refresh's queue
+    /// or release its slot.
+    func testLateRefreshSuccess_AfterTheWatchdogReleasedIt_LeavesTheNextRefreshAlone() async throws {
+        let release = DispatchSemaphore(value: 0)
+        let (lateRefreshDone, queuedLog) = try await refreshOvertakenAfterWatchdog(tokenStatus: 200,
+                                                                                   release: release)
+
+        release.signal()
+
+        await awaitSemaphore(lateRefreshDone)
+        await drainRefreshAndDelivery()
+        let stillRefreshing = await executor.isTokenRefreshingForTesting
+        XCTAssertTrue(stillRefreshing, "the next refresh must still hold the single-flight slot")
+        let generation = await executor.currentTokenRefreshGenerationForTesting()
+        let queued = await executor.forceReleaseStuckTokenRefreshForTesting(generation: generation)
+        XCTAssertEqual(queued?.count, 1, "the next refresh's request is still queued for it")
+        XCTAssertTrue(queuedLog.all.isEmpty, "the late refresh must not resend the next refresh's request")
+    }
+
+    /// A queued task that runs `onRebuild` when the finishing refresh reads
+    /// its request, which happens after the refresh has taken its queue.
+    private final class TaskObservingRebuild: URLSessionDataTask, @unchecked Sendable {
+        var onRebuild: (@Sendable () -> Void)?
+        override var originalRequest: URLRequest? {
+            let hook = onRebuild
+            onRebuild = nil
+            hook?()
+            return nil
+        }
+        override var taskIdentifier: Int { 987_655 }
+        override var response: URLResponse? { nil }
+        override func cancel() {}
+        private let storedDescription = LockIsolated<String?>(nil)
+        override var taskDescription: String? {
+            get { storedDescription.value }
+            set { storedDescription.value = newValue }
+        }
+    }
+
+    /// A 401 that arrives while a successful refresh is resending its queue
+    /// must start a refresh of its own or be queued for one that will answer
+    /// it. Queued behind a refresh that has already taken its queue, it would
+    /// wait for the watchdog with the slot held by nobody.
+    func testRequestArrivingWhileTheQueueIsResent_IsAnsweredByARefresh() async throws {
+        HTTPStubURLProtocol.register { @Sendable [tokenURL, apiURL] request in
+            if request.url == tokenURL {
+                return .init(statusCode: 200, headers: nil, body: Self.tokenResponseJSON(accessToken: "fresh"))
+            }
+            guard request.url == apiURL else { return nil }
+            return .init(statusCode: 200, headers: nil, body: Data("ok".utf8))
+        }
+        await executor.resetRefreshAttemptCount()
+        let late = makeQueueableTask()
+        let lateLog = CompletionLog()
+        executor.responder.addCompletion({ @Sendable result in lateLog.record(result) },
+                                         taskID: late.taskIdentifier)
+        let first = TaskObservingRebuild()
+        executor.markSentOnOwnSession(first)
+        let executor: TPPNetworkExecutor = self.executor
+        first.onRebuild = { @Sendable in
+            // The late request's 401 reaches the executor now. Wait until it
+            // has either claimed a refresh or joined the queue.
+            executor.refreshTokenAndResume(task: late, accountId: nil)
+            for _ in 0..<2_000 {
+                let settled = DispatchSemaphore(value: 0)
+                let state = LockIsolated((pending: 0, attempts: 0))
+                Task {
+                    state.value = (await executor.pendingTokenRetryCountForTesting(),
+                                   await executor.refreshAttemptCount)
+                    settled.signal()
+                }
+                _ = settled.wait(timeout: .now() + 1.0)
+                if state.value.pending > 0 || state.value.attempts > 1 { break }
+            }
+        }
+
+        executor.refreshTokenAndResume(task: first, accountId: nil)
+
+        let delivered = await awaitSemaphore(lateLog.delivered, timeout: .now() + 10.0)
+        XCTAssertEqual(delivered, .success, "the late request was left waiting on a finished refresh")
+        await drainRefreshAndDelivery()
+        guard case .success(let data, _)? = lateLog.all.first else {
+            return XCTFail("the late request must be resent, got \(String(describing: lateLog.all.first))")
+        }
+        XCTAssertEqual(data, Data("ok".utf8))
     }
 
     /// A queued task with no request to rebuild from cannot be resent.
