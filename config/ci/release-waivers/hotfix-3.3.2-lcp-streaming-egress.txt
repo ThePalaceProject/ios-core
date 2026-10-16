@@ -1,0 +1,30 @@
+# 3.3.2 is a narrow hotfix for LCP audiobook streaming egress and for the
+# first-open playback failures that closed a book after 30 seconds. It is built
+# on the 3.3.1 release and carries that fix alone.
+#
+# Every entry below is sign-in, borrow or player-accessibility work that landed
+# on develop after 3.3.1. Cherry-picking it would widen the change under test
+# well past what was verified on device for this build. All of it forward-ports
+# to 3.4.0 once 3.3.2 has shipped.
+14b195b02 unrelated to the hotfix; forward-ports to 3.4.0
+434d82455 unrelated to the hotfix; forward-ports to 3.4.0
+57ced0271 unrelated to the hotfix; forward-ports to 3.4.0
+dbc9ee4ff unrelated to the hotfix; forward-ports to 3.4.0
+9a4b48aa2 unrelated to the hotfix; forward-ports to 3.4.0
+62627fd30 unrelated to the hotfix; forward-ports to 3.4.0
+4ea1cd0c0 unrelated to the hotfix; forward-ports to 3.4.0
+b00758d9e unrelated to the hotfix; forward-ports to 3.4.0
+ddc3a4cfa unrelated to the hotfix; forward-ports to 3.4.0
+805ce2c38 unrelated to the hotfix; forward-ports to 3.4.0
+ddd71100f unrelated to the hotfix; forward-ports to 3.4.0
+4fd2398f5 unrelated to the hotfix; forward-ports to 3.4.0
+45d82743f unrelated to the hotfix; forward-ports to 3.4.0
+0497fa1fc unrelated to the hotfix; forward-ports to 3.4.0
+e7cb3fb2a unrelated to the hotfix; forward-ports to 3.4.0
+8694fa746 unrelated to the hotfix; forward-ports to 3.4.0
+3ac01dcc0 unrelated to the hotfix; forward-ports to 3.4.0
+a6ae8e2ef unrelated to the hotfix; forward-ports to 3.4.0
+54212bf4f unrelated to the hotfix; forward-ports to 3.4.0
+5958e9235 unrelated to the hotfix; forward-ports to 3.4.0
+850643b41 unrelated to the hotfix; forward-ports to 3.4.0
+d31f2212a unrelated to the hotfix; forward-ports to 3.4.0
