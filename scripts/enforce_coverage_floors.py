@@ -11,6 +11,11 @@ Exit codes:
   2 — input error (missing/empty/invalid coverage data)
   3 — the coverage data is incomplete (`status` is not `complete`); floors are
       not compared, because a partial measurement reads as a coverage drop
+  4 — the same, with --abstain-on-incomplete: the floors abstain instead of
+      failing, because what went wrong is upstream of them and already red
+      there. Only a caller that fails the run on its own reading of why the
+      coverage is incomplete may pass that flag; unit-testing.yml's
+      `build-and-test` gate does.
 
 Floors:
   overall        app testable coverage (Palace/ outside Palace/Packages)
@@ -355,6 +360,13 @@ def main() -> int:
                              "measurements and fails only on a module with no data.")
     parser.add_argument("--write-baseline", action="store_true",
                         help="Write current coverage to the floors file and exit 0.")
+    parser.add_argument("--incomplete-reason", action="append", default=[], metavar="TEXT",
+                        help="a reason, known to the caller, that this coverage is "
+                             "incomplete: the floors are not compared. Repeatable.")
+    parser.add_argument("--abstain-on-incomplete", action="store_true",
+                        help="on incomplete coverage, report that the floors were NOT "
+                             "evaluated and exit 4 instead of 3, so the fault that made "
+                             "the coverage incomplete is the only failure reported.")
     parser.add_argument("--metric", choices=["testable", "total"], default="testable",
                         help="Which headline metric to gate on. 'testable' (default) "
                              "excludes UI/lifecycle files per coverage-exclude.json. "
@@ -369,9 +381,20 @@ def main() -> int:
         log("Error: coverage data is not a JSON object")
         return 2
 
-    if not is_complete(coverage):
-        reasons = coverage.get("incomplete_reasons") or [
-            "the coverage data does not declare itself complete (no `status: complete`)"]
+    reasons = list(args.incomplete_reason) + list(coverage.get("incomplete_reasons") or [])
+    if reasons or not is_complete(coverage):
+        if not reasons:
+            reasons = ["the coverage data does not declare itself complete "
+                       "(no `status: complete`)"]
+        # Below-floor rows measured over a run that lost tests are lower for
+        # that reason alone, so they are not evidence about the diff; the same
+        # reading verify-pr.sh takes. With --abstain-on-incomplete the floors
+        # say so and stop, rather than adding a red for a fault that is already
+        # red where it happened. The caller is then responsible for failing the
+        # run on that fault: an abstain is not a pass.
+        if args.abstain_on_incomplete:
+            print(f"Coverage gate: floors NOT evaluated: {'; '.join(reasons)}")
+            return 4
         print("Coverage gate: INCOMPLETE — floors not compared")
         for r in reasons:
             print(f"  - {r}")

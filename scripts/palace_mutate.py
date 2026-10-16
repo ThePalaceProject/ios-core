@@ -801,7 +801,7 @@ def cache_store(cache_dir: str, file_relpath: str, key: str, report: dict) -> st
 
 def compute_mutant_key(tests: list[str], context_before: str, line_text: str,
                        context_after: str, original: str, mutated: str,
-                       tests_fingerprint: str | None = None) -> str:
+                       *, tests_fingerprint: str | None) -> str:
     """Stable 16-hex key for one mutant.
 
     Hashed over (CACHE_VERSION, sorted(tests), tests_fingerprint, context_before
@@ -817,6 +817,11 @@ def compute_mutant_key(tests: list[str], context_before: str, line_text: str,
         the more dangerous of the two — it persists per-mutant verdicts across
         runs, so without the fingerprint a deleted test left "killed" in place
         indefinitely.
+    `tests_fingerprint` is keyword-only and has NO default. It carried one, the
+    sole caller omitted it, and every key hashed the "UNRESOLVED" placeholder
+    instead — so this cache was test-INSENSITIVE in production while the unit
+    tests above proved the opposite about the function. A verdict then outlived
+    the test written to change it.
     Pure — unit-tested for stability, disambiguation and test-sensitivity.
     """
     h = hashlib.sha256()
@@ -1270,7 +1275,8 @@ def main() -> int:
 
         # PER-MUTANT CACHE: reuse a prior status for an unchanged-context mutant.
         mkey = compute_mutant_key(args.tests, m.context_before, m.line_text,
-                                  m.context_after, m.original, m.mutated)
+                                  m.context_after, m.original, m.mutated,
+                                  tests_fingerprint=fingerprint)
         if not cache_disabled and mkey in mutant_cache:
             cached_entry = mutant_cache[mkey]
             cached_status = cached_entry.get("status")
