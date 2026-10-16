@@ -115,10 +115,17 @@ final class LCPAdapterTests: XCTestCase {
         )!
     }
 
-    private func tempBookFileURL(identifier: String) -> URL {
+    /// Fails the test if the directory cannot be made. With `try?` here a lost
+    /// fixture surfaced as the adapter reaching for the network, which reads as
+    /// a defect in the code under test rather than in the setup.
+    private func tempBookFileURL(identifier: String, file: StaticString = #filePath, line: UInt = #line) -> URL {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("LCPAdapterTests-\(UUID().uuidString)", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        } catch {
+            XCTFail("Fixture directory could not be created: \(error)", file: file, line: line)
+        }
         return dir.appendingPathComponent("\(identifier).lcpa")
     }
 
@@ -128,10 +135,29 @@ final class LCPAdapterTests: XCTestCase {
     /// else. The adapter now distinguishes a finished download from one still
     /// arriving, and that record is what a partial file lacks, so a test that
     /// means "the book is on disk" has to write one.
-    private func writeWholeArchive(to url: URL) {
+    /// Setup bytes a test's assertions depend on. A silent `try?` here turns a
+    /// missing fixture into a failure that names the code under test instead.
+    private func writeFixture(
+        _ data: Data,
+        to url: URL,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        do {
+            try data.write(to: url)
+        } catch {
+            XCTFail("Fixture could not be written to \(url.lastPathComponent): \(error)", file: file, line: line)
+        }
+    }
+
+    private func writeWholeArchive(to url: URL, file: StaticString = #filePath, line: UInt = #line) {
         var eocd = Data([0x50, 0x4B, 0x05, 0x06])
         eocd.append(Data(repeating: 0, count: 18))
-        try? eocd.write(to: url)
+        do {
+            try eocd.write(to: url)
+        } catch {
+            XCTFail("Fixture archive could not be written: \(error)", file: file, line: line)
+        }
     }
 
     /// PP-4407 fixture: top-level type is `application/opds-publication+json`
@@ -238,7 +264,7 @@ final class LCPAdapterTests: XCTestCase {
         // The comment length lives in the record; the bytes that follow push the
         // signature this far back from the end of the file.
         archive.append(Data(repeating: 0x20, count: 64 * 1024))
-        try? archive.write(to: localURL)
+        writeFixture(archive, to: localURL)
         defer { try? FileManager.default.removeItem(at: localURL.deletingLastPathComponent()) }
 
         let downloadCenter = SpyDownloadCenter()
@@ -278,9 +304,9 @@ final class LCPAdapterTests: XCTestCase {
         // One byte short of the smallest end-of-central-directory record.
         var truncated = Data([0x50, 0x4B, 0x05, 0x06])
         truncated.append(Data(repeating: 0, count: 17))
-        try? truncated.write(to: localURL)
+        writeFixture(truncated, to: localURL)
         let licenseURL = localURL.deletingPathExtension().appendingPathExtension("lcpl")
-        try? Data([0x7B, 0x7D]).write(to: licenseURL)
+        writeFixture(Data([0x7B, 0x7D]), to: licenseURL)
         defer { try? FileManager.default.removeItem(at: localURL.deletingLastPathComponent()) }
 
         let downloadCenter = SpyDownloadCenter()
@@ -306,19 +332,24 @@ final class LCPAdapterTests: XCTestCase {
         )
     }
 
-    /// A path that exists but cannot be opened for reading is not a readable
-    /// book, so the adapter must stream rather than assume the archive is whole.
-    /// A directory at the content path is the reachable form: it answers
-    /// `fileExists` and refuses a file handle.
+    /// A directory at the content path answers `fileExists` and refuses a file
+    /// handle, so the adapter must stream rather than assume the archive is
+    /// whole. Scoped deliberately to that case: a readable file that only
+    /// momentarily refuses a handle is a different question, and the check
+    /// cannot currently tell the two apart (PP-5368).
     func testResolveManifest_lcpaPathThatCannotBeOpened_usesLicenseFileInstead() {
         let book = makeBook(
             acquisitionType: lcpLicenseMIME,
             indirect: [indirect(audiobookLCPMIME)]
         )
         let localURL = tempBookFileURL(identifier: book.identifier)
-        try? FileManager.default.createDirectory(at: localURL, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(at: localURL, withIntermediateDirectories: true)
+        } catch {
+            XCTFail("Fixture directory could not be created: \(error)")
+        }
         let licenseURL = localURL.deletingPathExtension().appendingPathExtension("lcpl")
-        try? Data([0x7B, 0x7D]).write(to: licenseURL)
+        writeFixture(Data([0x7B, 0x7D]), to: licenseURL)
         defer { try? FileManager.default.removeItem(at: localURL.deletingLastPathComponent()) }
         XCTAssertTrue(
             FileManager.default.fileExists(atPath: localURL.path),
@@ -365,9 +396,9 @@ final class LCPAdapterTests: XCTestCase {
         let localURL = tempBookFileURL(identifier: book.identifier)
         // A download in progress: real bytes, but no end-of-central-directory
         // record, because that is written last.
-        try? Data(repeating: 0x41, count: 4096).write(to: localURL)
+        writeFixture(Data(repeating: 0x41, count: 4096), to: localURL)
         let licenseURL = localURL.deletingPathExtension().appendingPathExtension("lcpl")
-        try? Data([0x7B, 0x7D]).write(to: licenseURL)
+        writeFixture(Data([0x7B, 0x7D]), to: licenseURL)
         defer { try? FileManager.default.removeItem(at: localURL.deletingLastPathComponent()) }
 
         let downloadCenter = SpyDownloadCenter()
