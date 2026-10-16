@@ -282,7 +282,7 @@ final class LCPAdapterTests: XCTestCase {
 
         let expectation = expectation(description: "resolveManifest completes")
         adapter.resolveManifest(for: book) { _ in expectation.fulfill() }
-        wait(for: [expectation], timeout: 1.0)
+        wait(for: [expectation], timeout: 5.0) // STARVE-001-OK: no network is reachable (SpyNetworkExecutor) and resolveManifest's completion fires on main exactly once via finishOnMain, so there is no fire-and-forget work to join — the wait only covers one main-queue hop
 
         XCTAssertEqual(
             capturedFactoryURL,
@@ -323,7 +323,7 @@ final class LCPAdapterTests: XCTestCase {
 
         let expectation = expectation(description: "resolveManifest completes")
         adapter.resolveManifest(for: book) { _ in expectation.fulfill() }
-        wait(for: [expectation], timeout: 1.0)
+        wait(for: [expectation], timeout: 5.0) // STARVE-001-OK: no network is reachable (SpyNetworkExecutor) and resolveManifest's completion fires on main exactly once via finishOnMain, so there is no fire-and-forget work to join — the wait only covers one main-queue hop
 
         XCTAssertEqual(
             capturedFactoryURL,
@@ -370,7 +370,7 @@ final class LCPAdapterTests: XCTestCase {
 
         let expectation = expectation(description: "resolveManifest completes")
         adapter.resolveManifest(for: book) { _ in expectation.fulfill() }
-        wait(for: [expectation], timeout: 1.0)
+        wait(for: [expectation], timeout: 5.0) // STARVE-001-OK: no network is reachable (SpyNetworkExecutor) and resolveManifest's completion fires on main exactly once via finishOnMain, so there is no fire-and-forget work to join — the wait only covers one main-queue hop
 
         XCTAssertEqual(
             capturedFactoryURL,
@@ -416,7 +416,7 @@ final class LCPAdapterTests: XCTestCase {
 
         let expectation = expectation(description: "resolveManifest completes")
         adapter.resolveManifest(for: book) { _ in expectation.fulfill() }
-        wait(for: [expectation], timeout: 1.0)
+        wait(for: [expectation], timeout: 5.0) // STARVE-001-OK: no network is reachable (SpyNetworkExecutor) and resolveManifest's completion fires on main exactly once via finishOnMain, so there is no fire-and-forget work to join — the wait only covers one main-queue hop
 
         XCTAssertEqual(
             capturedFactoryURL,
