@@ -44,10 +44,14 @@ protocol BorrowOperationDelegate: AnyObject {
 ///   must not show the alert and must clear the cell spinner.
 /// - `showGenericError`: not an auth error, or auth recovery isn't
 ///   available — caller shows the standard `showBorrowError` alert.
+/// - `retrySucceeded`: re-authentication ran and the awaited retry borrowed
+///   the book; the caller returns it so the borrow reports success (and the
+///   download slot the retry handed on is not released as a failure).
 private enum BorrowAuthErrorDecision {
     case routeToReauth
     case suppressAndClearSpinner
     case showGenericError
+    case retrySucceeded(TPPBook)
 }
 
 // MARK: - BorrowOperation
@@ -55,52 +59,17 @@ private enum BorrowAuthErrorDecision {
 /// - Sendable invariant: every stored dependency is a `let` bound at init. The
 ///   only mutable member is `weak var delegate`, assigned once during
 ///   `MyBooksDownloadCenter` construction (weak reads are atomic).
-///   Circuit-breaker state lives in the lock-backed `static let reauthTracker`.
+///   Circuit-breaker state lives in the lock-backed `static let reauthTracker`
+///   and test-only retry handles in `retryRecorder` (see
+///   BorrowOperation+ReauthBreaker.swift).
 ///   `@unchecked` because the delegate existential and the shared service
 ///   types are not themselves `Sendable`.
 final class BorrowOperation: @unchecked Sendable {
 
     weak var delegate: BorrowOperationDelegate?
 
-    // MARK: - Borrow Re-auth Circuit Breaker
-
-    /// Tracks whether we've already attempted re-authentication for a
-    /// borrow operation. Prevents infinite re-auth loops for persistent
-    /// auth failures. Shared across BorrowOperation instances so
-    /// account-switch state can be cleared centrally.
-    ///
-    /// Set and lock live in one `@unchecked Sendable` holder: a mutable static
-    /// guarded by a sibling lock still warns under Swift 6 complete checking.
-    private final class ReauthTracker: @unchecked Sendable {
-        private let lock = NSLock()
-        private var attempted: Set<String> = []
-
-        func hasAttempted(_ bookId: String) -> Bool { lock.withLock { attempted.contains(bookId) } }
-        func mark(_ bookId: String) { lock.withLock { _ = attempted.insert(bookId) } }
-        func clear(_ bookId: String) { lock.withLock { attempted.remove(bookId) } }
-        func clearAll() { lock.withLock { attempted.removeAll() } }
-    }
-
-    private static let reauthTracker = ReauthTracker()
-
-    private static func hasBorrowReauthBeenAttempted(for bookId: String) -> Bool {
-        reauthTracker.hasAttempted(bookId)
-    }
-
-    private static func markBorrowReauthAttempted(for bookId: String) {
-        reauthTracker.mark(bookId)
-    }
-
-    private static func clearBorrowReauthAttempted(for bookId: String) {
-        reauthTracker.clear(bookId)
-    }
-
-    /// Clears all re-auth tracking. Called on account switch via the
-    /// MBDC forwarder so stale circuit-breaker state from the previous
-    /// account can't suppress legitimate re-auth attempts.
-    static func clearAllBorrowReauthState() {
-        reauthTracker.clearAll()
-    }
+    /// Test-only record of sign-in-modal retries; see `BorrowRetryRecorder`.
+    let retryRecorder = BorrowRetryRecorder()
 
     // MARK: - Pure Helpers
 
@@ -434,6 +403,8 @@ final class BorrowOperation: @unchecked Sendable {
             )
 
             switch decision {
+            case .retrySucceeded(let borrowedBook):
+                return borrowedBook
             case .routeToReauth:
                 throw error
             case .suppressAndClearSpinner:
@@ -467,6 +438,8 @@ final class BorrowOperation: @unchecked Sendable {
             )
 
             switch decision {
+            case .retrySucceeded(let borrowedBook):
+                return borrowedBook
             case .routeToReauth:
                 throw palaceError
             case .suppressAndClearSpinner:
@@ -503,14 +476,8 @@ final class BorrowOperation: @unchecked Sendable {
         let isAuthError: Bool = {
             if case .authentication = error { return true }
 
-            // A 401 surfacing as `.network(.unauthorized)` / `.forbidden`
-            // (an OPDS path can strip the problem doc) must route to reauth
-            // rather than a generic "Network request failed (912)" alert.
-            if case .network(.unauthorized) = error { return true }
-            if case .network(.forbidden) = error { return true }
-
             if let problemDoc = problemDocument {
-                if problemDoc.type == TPPProblemDocument.TypeInvalidCredentials { return true }
+                if Self.credentialsProblemTypes.contains(problemDoc.type ?? "") { return true }
 
                 if problemDoc.isRecoverableAuthError {
                     Log.info(#file, "Recoverable auth error detected: \(problemDoc.type ?? "unknown") — triggering re-auth (PP-3716)")
@@ -520,31 +487,47 @@ final class BorrowOperation: @unchecked Sendable {
                 if problemDoc.type == TPPProblemDocument.TypeNoActiveLoan,
                    authDef?.isBrowserBased == true,
                    hasCredentials {
-                    Log.info(#file, "Browser-based auth (SAML/OIDC/OAuth): 'no-active-loan' with active credentials — treating as auth error (PP-3716; swarm_66819d80 broadened from SAML+OIDC to include OAuth-intermediary)")
+                    Log.info(#file, "Browser-based auth (SAML/OIDC/OAuth): 'no-active-loan' with active credentials — treating as auth error (PP-3716)")
                     return true
                 }
+
+                // The server explained the failure and it is not about
+                // credentials (a loan limit arrives as 403 with this
+                // document). Re-authenticating cannot fix it (PP-5359).
+                return false
             }
+
+            // A 401 surfacing as `.network(.unauthorized)` / `.forbidden`
+            // (an OPDS path can strip the problem doc) must route to reauth
+            // rather than a generic "Network request failed (912)" alert.
+            if case .network(.unauthorized) = error { return true }
+            if case .network(.forbidden) = error { return true }
 
             if let nsError = originalError as NSError?, nsError.code == TPPErrorCode.invalidCredentials.rawValue {
                 return true
             }
 
-            return true
+            // Anything else (timeout, server error) is not a credentials
+            // problem; treating it as one marked valid accounts stale and,
+            // for browser sign-in, re-prompted on every retry (PP-5359).
+            return false
         }()
 
-        guard isAuthError else { return .showGenericError }
-
-        // SQ-007: suppress auth-error if the user already has an active
+        // SQ-007: suppress the error if the user already has an active
         // loan for this book. The auto-re-borrow path can fire 401
         // (loan-already-exists) which the network responder codes as
         // invalidCredentials — but credentials are valid, the borrow
-        // simply isn't needed.
+        // simply isn't needed. A loan-already-exists document is not an
+        // auth error, so it is checked here, before the auth guard.
+        let isLoanAlreadyExists = problemDocument?.type == TPPProblemDocument.TypeLoanAlreadyExists
         let registeredState = self.bookRegistry.state(for: book.identifier)
         let alreadyHasLoan = BorrowReducerCore.alreadyHasActiveLoan(state: registeredState)
-        if alreadyHasLoan && hasCredentials {
+        if (isAuthError || isLoanAlreadyExists) && alreadyHasLoan && hasCredentials {
             Log.warn(#file, "[SQ-007] Borrow auth-error suppressed for '\(book.title)' — book is already in registry with state \(registeredState) and credentials are present. Treating as benign auto-re-borrow failure, not a credentials problem.")
             return .suppressAndClearSpinner
         }
+
+        guard isAuthError else { return .showGenericError }
 
         // Circuit breaker: don't re-auth if we already tried for this book.
         guard !Self.hasBorrowReauthBeenAttempted(for: book.identifier) else {
@@ -568,26 +551,28 @@ final class BorrowOperation: @unchecked Sendable {
                 let oidcSuccess = await attemptOIDCReauth()
                 if oidcSuccess {
                     Log.info(#file, "OIDC silent re-auth succeeded, retrying borrow for '\(book.title)'")
-                    Self.clearBorrowReauthAttempted(for: book.identifier)
-                    Task { [weak self] in
-                        do {
-                            _ = try await self?.borrowAsync(book, attemptDownload: attemptDownload)
-                        } catch {
-                            Log.error(#file, "Retry borrow failed after OIDC re-auth: \(error.localizedDescription)")
-                        }
+                    // One awaited retry with the breaker still armed: a second
+                    // failure shows an error rather than re-authenticating
+                    // again, which no patron action would stop (PP-5359).
+                    do {
+                        return .retrySucceeded(try await borrowAsync(book, attemptDownload: attemptDownload))
+                    } catch {
+                        Log.error(#file, "Retry borrow failed after OIDC re-auth: \(error.localizedDescription)")
                     }
                 } else {
                     // Silent reauth failed, so the IdP session needs an
                     // interactive sign-in, same as SAML.
                     Log.info(#file, "OIDC silent re-auth failed/cancelled - falling back to sign-in modal")
                     if let coordinator = self.authCoordinator {
-                        await coordinatorRetryBorrow(
+                        if let borrowed = await coordinatorRetryBorrow(
                             book: book,
                             attemptDownload: attemptDownload,
                             coordinator: coordinator,
                             reason: .oidcRefreshFailed,
                             authLabel: "OIDC"
-                        )
+                        ) {
+                            return .retrySucceeded(borrowed)
+                        }
                     } else {
                         await presentSignInModalAndRetryBorrow(book: book, attemptDownload: attemptDownload, authLabel: "OIDC")
                     }
@@ -598,13 +583,15 @@ final class BorrowOperation: @unchecked Sendable {
                     let reason: ReauthReason = (authDef?.isSaml == true)
                         ? .samlSessionExpired
                         : .invalidCredentials
-                    await coordinatorRetryBorrow(
+                    if let borrowed = await coordinatorRetryBorrow(
                         book: book,
                         attemptDownload: attemptDownload,
                         coordinator: coordinator,
                         reason: reason,
                         authLabel: (authDef?.isSaml == true) ? "SAML" : "OAuth-intermediary"
-                    )
+                    ) {
+                        return .retrySucceeded(borrowed)
+                    }
                 } else {
                     await presentSignInModalAndRetryBorrow(book: book, attemptDownload: attemptDownload, authLabel: "SAML")
                 }
@@ -626,15 +613,14 @@ final class BorrowOperation: @unchecked Sendable {
                     }
 
                     Log.info(#file, "Sign-in completed, retrying borrow for '\(book.title)'")
-                    Self.clearBorrowReauthAttempted(for: book.identifier)
-
-                    Task { [weak self] in
+                    // Breaker stays armed for the retry (PP-5359).
+                    self.retainRetryForTesting(Task { [weak self] in
                         do {
                             _ = try await self?.borrowAsync(book, attemptDownload: attemptDownload)
                         } catch {
                             Log.error(#file, "Retry borrow failed after sign-in: \(error.localizedDescription)")
                         }
-                    }
+                    })
                 }
             }
             return .routeToReauth
@@ -694,6 +680,8 @@ final class BorrowOperation: @unchecked Sendable {
         let retryAction: (() -> Void)? = canRetry ? { [weak self] in
             guard let self else { return }
             self.userRetryTracker.recordRetry(operationId: operationId)
+            // Retry is the patron's own request, so it may sign in again.
+            Self.clearBorrowReauthAttempted(for: book.identifier)
             self.delegate?.startBorrow(for: book, attemptDownload: true, borrowCompletion: nil)
         } : nil
 
@@ -703,32 +691,34 @@ final class BorrowOperation: @unchecked Sendable {
     // MARK: - Coordinator-Routed Retry
 
     /// Asks the coordinator to refresh credentials (it dispatches the
-    /// appropriate modal flow per IdP); on success clears the per-book
-    /// circuit breaker and retries the borrow. On failure leaves the
-    /// circuit breaker armed and lets the caller surface the alert.
+    /// appropriate modal flow per IdP); on success retries the borrow once,
+    /// awaited, with the per-book circuit breaker still armed, and returns
+    /// the book if that retry borrowed it. A failed retry shows its own error.
     private func coordinatorRetryBorrow(
         book: TPPBook,
         attemptDownload: Bool,
         coordinator: AuthCoordinator,
         reason: ReauthReason,
         authLabel: String
-    ) async {
+    ) async -> TPPBook? {
         let outcome = await coordinator.refreshCredentialsIfNeeded(reason: reason)
         switch outcome {
         case .success:
             guard self.userAccountProvider().hasCredentials() else {
                 Log.info(#file, "\(authLabel) coordinator refresh reported success but credentials missing — not retrying borrow for '\(book.title)'")
                 Self.clearBorrowReauthAttempted(for: book.identifier)
-                return
+                return nil
             }
             Log.info(#file, "\(authLabel) coordinator refresh succeeded, retrying borrow for '\(book.title)'")
-            Self.clearBorrowReauthAttempted(for: book.identifier)
-            Task { [weak self] in
-                do {
-                    _ = try await self?.borrowAsync(book, attemptDownload: attemptDownload)
-                } catch {
-                    Log.error(#file, "Retry borrow failed after \(authLabel) coordinator refresh: \(error.localizedDescription)")
-                }
+            // Retry once with the breaker still armed: if the retry fails
+            // again it shows an error instead of signing in again. Clearing it
+            // here let an identity provider with a live session re-prompt and
+            // retry without end (PP-5359). A successful borrow clears it.
+            do {
+                return try await self.borrowAsync(book, attemptDownload: attemptDownload)
+            } catch {
+                Log.error(#file, "Retry borrow failed after \(authLabel) coordinator refresh: \(error.localizedDescription)")
+                return nil
             }
         case .failure(let cancellation):
             Log.info(#file, "\(authLabel) coordinator declined refresh for '\(book.title)' — \(cancellation)")
@@ -743,12 +733,14 @@ final class BorrowOperation: @unchecked Sendable {
             // (e.g., no active account) resolves.
             switch cancellation {
             case .userCancelled, .refreshAlreadyFailed:
-                // Keep breaker armed — book stays gated until retry button
-                // (explicit user action) clears or account-switch resets.
+                // Keep breaker armed — book stays gated until the alert's
+                // Retry (explicit user action), a successful borrow or an
+                // account switch clears it.
                 break
             case .noActiveAccount, .unsupportedAuthenticationType:
                 Self.clearBorrowReauthAttempted(for: book.identifier)
             }
+            return nil
         }
     }
 
@@ -769,15 +761,14 @@ final class BorrowOperation: @unchecked Sendable {
                 }
 
                 Log.info(#file, "\(authLabel) re-auth completed, retrying borrow for '\(book.title)'")
-                Self.clearBorrowReauthAttempted(for: book.identifier)
-
-                Task { [weak self] in
+                // Breaker stays armed for the retry (PP-5359).
+                self.retainRetryForTesting(Task { [weak self] in
                     do {
                         _ = try await self?.borrowAsync(book, attemptDownload: attemptDownload)
                     } catch {
                         Log.error(#file, "Retry borrow failed after \(authLabel) re-auth: \(error.localizedDescription)")
                     }
-                }
+                })
             }
         }
     }

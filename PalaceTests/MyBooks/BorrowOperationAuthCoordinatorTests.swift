@@ -104,7 +104,7 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
     func testCoordinator_SAML_authError_routesThroughCoordinator_skipsLegacyPresentSignInModal() async throws {
         let (coordinator, _, modal, userAcctSpy, _) = SpyAuthCoordinatorFactory.make(
             mechanism: .saml,
-            stubModalResult: false   // user cancels — avoids retry-loop on persistent fetchBook failure
+            stubModalResult: true   // sign-in succeeds; the one retry fails and shows an error (PP-5359)
         )
         makeOperation(coordinator: coordinator)
 
@@ -135,13 +135,12 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
 
     // MARK: - OAuth-intermediary (Clever) borrow auth error → coordinator routes through modal
 
-    /// Use `stubModalResult: false` (user cancels) so the retry doesn't
-    /// loop on the still-failing fetchBook — we want to assert the FIRST
-    /// dispatch routed through the coordinator, not the retry semantics.
+    /// Sign-in succeeds and the single retry fails again; the assertion is
+    /// that the first dispatch routed through the coordinator.
     func testCoordinator_OAuthIntermediary_authError_routesThroughCoordinator() async throws {
         let (coordinator, _, modal, _, _) = SpyAuthCoordinatorFactory.make(
             mechanism: .oauthIntermediary,
-            stubModalResult: false   // user cancels — no retry loop
+            stubModalResult: true   // the retry runs once (PP-5359)
         )
         makeOperation(coordinator: coordinator)
 
@@ -209,7 +208,7 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
     func testCoordinator_OIDC_silentReauthFails_fallsBackToCoordinator() async throws {
         let (coordinator, _, modal, _, _) = SpyAuthCoordinatorFactory.make(
             mechanism: .oidc,
-            stubModalResult: false   // user cancels modal — avoids retry-loop
+            stubModalResult: true   // the retry runs once (PP-5359)
         )
         makeOperation(coordinator: coordinator)
 

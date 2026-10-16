@@ -30,8 +30,18 @@ final class ReaderService {
     /// (`AppContainer._buildCachedAppContainer()`, which runs off the main
     /// actor on the first `production()` caller's thread) can construct the
     /// service without a `MainActor.assumeIsolated` hop. The initializer
-    /// stores nothing and touches no main-actor state.
-    nonisolated init() {}
+    /// stores only the root lookup and touches no main-actor state.
+    ///
+    /// - Parameter rootViewController: where reader UI is presented from.
+    ///   Tests pass a stub so opening a book never reaches the host app's
+    ///   window.
+    nonisolated init(rootViewController: @escaping @MainActor () -> UIViewController? = {
+        UIApplication.shared.mainKeyWindow?.rootViewController
+    }) {
+        self.rootViewController = rootViewController
+    }
+
+    private let rootViewController: @MainActor () -> UIViewController?
 
     private lazy var r3Owner: TPPR3Owner = TPPR3Owner()
 
@@ -95,7 +105,7 @@ final class ReaderService {
 
     @MainActor
     private func topPresenter() -> UIViewController? {
-        guard let root = UIApplication.shared.mainKeyWindow?.rootViewController else {
+        guard let root = rootViewController() else {
             Log.warn(#file, "No root view controller available — cannot present reader")
             return nil
         }
@@ -496,9 +506,12 @@ final class ReaderService {
         return true
     }
 
-    private func handOffExtractedPDF(at url: URL, for book: TPPBook, generation: Int, openStartedAt: Date) {
+    /// Opens the extracted PDF at `url`, from the disk cache or a fresh extract,
+    /// in the reader the open targeted.
+    func handOffExtractedPDF(at url: URL, for book: TPPBook, generation: Int, openStartedAt: Date,
+                             makeMetadata: (TPPBook) -> TPPPDFDocumentMetadata = { TPPPDFDocumentMetadata(with: $0) }) {
         let handedOff = completeLCPPDFOpen(forBookIdentifier: book.identifier, generation: generation) {
-            (TPPPDFDocument(url: url), TPPPDFDocumentMetadata(with: book))
+            (TPPPDFDocument(url: url), makeMetadata(book))
         }
         if handedOff {
             Log.info(#file, "[PERF] [LCP-PDF] T4 PDFKit handoff (+\(Self.ms(since: openStartedAt))ms total)")

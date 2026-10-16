@@ -180,3 +180,6 @@ Signing.local.xcconfig
 # is the intended trade — the corpus cannot be committed without committing
 # credentials.
 .simdrive/
+
+# Linked-worktree DerivedData from scripts/pre-push-test-gate.sh
+/.dd-prepush/

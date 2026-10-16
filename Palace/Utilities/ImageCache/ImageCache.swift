@@ -376,6 +376,13 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
         dataCache.clear()
     }
 
+    /// Test-only: a cache with its own `processingQueue`, so a test can count
+    /// exactly the operations it enqueued. The shared queue also carries the
+    /// test host app's cover loads.
+    internal static func _makeIsolatedForTesting() -> ImageCache {
+        ImageCache()
+    }
+
     /// Test-only: restore the shared `processingQueue` to its running state.
     ///
     /// `ImageCacheContinuationTests` is the only test that suspends this

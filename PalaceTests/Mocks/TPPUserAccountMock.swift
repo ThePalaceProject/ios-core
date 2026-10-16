@@ -205,9 +205,14 @@ class TPPUserAccountMock: TPPUserAccount, @unchecked Sendable {
         mockLock.withLock {
             _authToken = token
             __credentials = .token(authToken: token, barcode: barcode, pin: pin, expirationDate: expirationDate)
-            // Mirror real TPPUserAccount.setAuthToken: a fresh token clears any
-            // persisted .credentialsStale flag.
-            _authState = .loggedIn
+            // Mirror real TPPUserAccount.setAuthToken: a USABLE token clears
+            // any persisted .credentialsStale flag, an already-expired one
+            // leaves the state alone (PP-5318). Read the credential just
+            // written rather than `self.credentials`, whose getter re-enters
+            // mockLock.
+            if !UserAccountAuthHelper.isTokenExpired(credentials: __credentials) {
+                _authState = .loggedIn
+            }
         }
     }
 
@@ -244,7 +249,12 @@ class TPPUserAccountMock: TPPUserAccount, @unchecked Sendable {
     }
 
     override func markLoggedIn() {
-        mockLock.withLock { _authState = .loggedIn }
+        // Mirror real TPPUserAccount.markLoggedIn: declines for an
+        // already-expired stored token (PP-5318).
+        mockLock.withLock {
+            guard !UserAccountAuthHelper.isTokenExpired(credentials: __credentials) else { return }
+            _authState = .loggedIn
+        }
     }
 
     override class func credentialSnapshot(for libraryUUID: String?) -> CredentialSnapshot {

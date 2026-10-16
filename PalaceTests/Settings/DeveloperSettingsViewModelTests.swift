@@ -212,6 +212,25 @@ final class DeveloperSettingsViewModelOverrideTests: XCTestCase {
     /// The row must show the stored state on open. Without the init read-back
     /// the switch renders OFF over a trace that is ON, and a tester toggling it
     /// to "turn it on" silently turns it off.
+    /// PP-5285: the cover-labels toggle persists to the setting the cover reads.
+    func testCoverLabelsToggle_writesThroughToDebugSettings() {
+        let scoped = DebugSettings(defaults: testDefaults)
+        let vm = makeViewModel(debugSettings: scoped)
+
+        vm.coverFormatAndDRMLabelsEnabled = true
+        XCTAssertTrue(scoped.showsCoverFormatAndDRMLabels)
+
+        vm.coverFormatAndDRMLabelsEnabled = false
+        XCTAssertFalse(scoped.showsCoverFormatAndDRMLabels)
+    }
+
+    func testCoverLabelsToggle_seedsFromStoredStateOnInit() {
+        let scoped = DebugSettings(defaults: testDefaults)
+        scoped.showsCoverFormatAndDRMLabels = true
+
+        XCTAssertTrue(makeViewModel(debugSettings: scoped).coverFormatAndDRMLabelsEnabled)
+    }
+
     func testAudiobookPositionTraceToggle_seedsFromStoredStateOnInit() {
         let scoped = DebugSettings(defaults: testDefaults)
         scoped.isAudiobookPositionTraceEnabled = true

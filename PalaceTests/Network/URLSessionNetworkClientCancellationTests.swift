@@ -17,8 +17,11 @@ import PalaceNetwork
 @MainActor
 final class URLSessionNetworkClientCancellationTests: XCTestCase {
 
-    private let apiURL = URL(string: "https://api.example.com/feed")!
-    private let tokenURL = URLSessionNetworkClientFixture.tokenURL
+    /// Per-test path segment: `ScriptedURLProtocol` is process-wide, so a request
+    /// left over from another test class must not reach or be counted by this one.
+    private let runID = UUID().uuidString
+    private lazy var apiURL = URL(string: "https://api.example.com/\(runID)/feed")!
+    private lazy var tokenURL = URL(string: "https://token.example.com/\(runID)/oauth/token")!
 
     override func setUp() async throws {
         try await super.setUp()
@@ -39,7 +42,7 @@ final class URLSessionNetworkClientCancellationTests: XCTestCase {
     /// request is on the wire, cancelling must stop it at URLSession (the
     /// protocol is told to stop loading) and the await must throw promptly.
     func testSend_cancelledAfterDispatch_stopsTheRequestAndThrows() async {
-        let fixture = URLSessionNetworkClientFixture(tokenExpiresIn: 3600)
+        let fixture = URLSessionNetworkClientFixture(tokenURL: tokenURL, tokenExpiresIn: 3600)
         ScriptedURLProtocol.route(apiURL, .hold)
         let started = expectation(description: "request reached the server")
         let stopped = expectation(description: "URLSession stopped the request")
@@ -63,7 +66,7 @@ final class URLSessionNetworkClientCancellationTests: XCTestCase {
     /// connection, and must throw `CancellationError` as it did before the
     /// client was routed through `execute`.
     func testSend_whenAlreadyCancelled_throwsCancellationErrorWithoutRequesting() async {
-        let fixture = URLSessionNetworkClientFixture(tokenExpiresIn: 3600)
+        let fixture = URLSessionNetworkClientFixture(tokenURL: tokenURL, tokenExpiresIn: 3600)
         ScriptedURLProtocol.route(apiURL, .respond(status: 200, headers: nil, body: Data("ok".utf8)))
         let client = fixture.client
         let url = apiURL
@@ -79,14 +82,14 @@ final class URLSessionNetworkClientCancellationTests: XCTestCase {
         } catch {
             XCTAssertTrue(error is CancellationError, "expected CancellationError, got \(error)")
         }
-        XCTAssertEqual(ScriptedURLProtocol.started.count, 0,
+        XCTAssertEqual(ScriptedURLProtocol.started(inRun: runID).count, 0,
                        "no request may reach the server for a Task cancelled before send")
     }
 
     /// Same, with a near-expiry token: the cancelled send must not start a token
     /// refresh either, since nothing is waiting on its result.
     func testSend_whenAlreadyCancelledWithNearExpiryToken_startsNoRefresh() async {
-        let fixture = URLSessionNetworkClientFixture(tokenExpiresIn: 60)
+        let fixture = URLSessionNetworkClientFixture(tokenURL: tokenURL, tokenExpiresIn: 60)
         ScriptedURLProtocol.route(tokenURL, .respond(status: 200, headers: nil,
                                                   body: URLSessionNetworkClientFixture.tokenJSON("refreshed")))
         ScriptedURLProtocol.route(apiURL, .respond(status: 200, headers: nil, body: Data("ok".utf8)))
@@ -106,7 +109,7 @@ final class URLSessionNetworkClientCancellationTests: XCTestCase {
         }
         let refreshing = await fixture.executor.isTokenRefreshingForTesting
         XCTAssertFalse(refreshing, "a cancelled send must not claim the refresh slot")
-        XCTAssertEqual(ScriptedURLProtocol.started.count, 0,
+        XCTAssertEqual(ScriptedURLProtocol.started(inRun: runID).count, 0,
                        "neither the token endpoint nor the API may be contacted")
     }
 
@@ -118,7 +121,7 @@ final class URLSessionNetworkClientCancellationTests: XCTestCase {
     /// request both finished. The await must end at the cancel, and the request
     /// must not be sent once the refresh completes.
     func testSend_cancelledDuringTokenRefresh_throwsPromptlyAndNeverSendsTheRequest() async {
-        let fixture = URLSessionNetworkClientFixture(tokenExpiresIn: 60)
+        let fixture = URLSessionNetworkClientFixture(tokenURL: tokenURL, tokenExpiresIn: 60)
         ScriptedURLProtocol.route(tokenURL, .hold)
         ScriptedURLProtocol.route(apiURL, .respond(status: 200, headers: nil, body: Data("ok".utf8)))
         let refreshStarted = expectation(description: "token refresh reached the server")
@@ -152,7 +155,7 @@ final class URLSessionNetworkClientCancellationTests: XCTestCase {
     /// token gets the cancelled result without starting a refresh that
     /// nobody would wait for.
     func testExecute_whenAlreadyCancelledWithNearExpiryToken_returnsCancelledWithoutRefreshing() async {
-        let fixture = URLSessionNetworkClientFixture(tokenExpiresIn: 60)
+        let fixture = URLSessionNetworkClientFixture(tokenURL: tokenURL, tokenExpiresIn: 60)
         ScriptedURLProtocol.route(tokenURL, .respond(status: 200, headers: nil,
                                                      body: URLSessionNetworkClientFixture.tokenJSON("refreshed")))
         ScriptedURLProtocol.route(apiURL, .respond(status: 200, headers: nil, body: Data("ok".utf8)))
@@ -170,14 +173,14 @@ final class URLSessionNetworkClientCancellationTests: XCTestCase {
         let refreshing = await fixture.executor.isTokenRefreshingForTesting
         XCTAssertFalse(refreshing, "a cancelled request must not claim the refresh slot")
         XCTAssertEqual(fixture.executor.registeredTaskCount, 0, "no API task may be created")
-        XCTAssertEqual(ScriptedURLProtocol.started.count, 0,
+        XCTAssertEqual(ScriptedURLProtocol.started(inRun: runID).count, 0,
                        "neither the token endpoint nor the API may be contacted")
     }
 
     /// The plain path: a Task already cancelled gets the cancelled result and
     /// no request reaches the server.
     func testExecute_whenAlreadyCancelled_returnsCancelledWithoutRequesting() async {
-        let fixture = URLSessionNetworkClientFixture(tokenExpiresIn: 3600)
+        let fixture = URLSessionNetworkClientFixture(tokenURL: tokenURL, tokenExpiresIn: 3600)
         ScriptedURLProtocol.route(apiURL, .respond(status: 200, headers: nil, body: Data("ok".utf8)))
 
         let code = await executeCancelled(fixture.executor)
@@ -186,7 +189,7 @@ final class URLSessionNetworkClientCancellationTests: XCTestCase {
         // Counted at creation: a task resumed and cancelled at once may never
         // reach the URLProtocol, so `started` alone cannot show it was sent.
         XCTAssertEqual(fixture.executor.registeredTaskCount, 0, "no task may be created")
-        XCTAssertEqual(ScriptedURLProtocol.started.count, 0, "no request may reach the server")
+        XCTAssertEqual(ScriptedURLProtocol.started(inRun: runID).count, 0, "no request may reach the server")
     }
 
     // MARK: - Helpers

@@ -40,4 +40,7 @@
 #   with it.
 # 158 -> 154: the LCP PDF open watchdog in ReaderService reads
 #   LCPPDFOpenProgress.shared once into a local instead of once per sampled field.
-154
+# 154 -> 151: LCPPDFDiskExtract.extract takes the progress reporter as an
+#   argument (production default `.shared`, uncounted as above) instead of
+#   reading LCPPDFOpenProgress.shared at three call sites.
+151

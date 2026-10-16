@@ -850,13 +850,13 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
 
     // MARK: - Sync Throttling
 
-    /// Shared throttle key - same as TPPAppDelegate.syncIfUserHasHolds
-    /// Ensures notification sync and foreground sync don't duplicate each other
-    private static let lastSyncTimestampKey = "lastForegroundSyncTimestamp"
+    /// Shared with the scene foreground sync (`ForegroundShelfSync`), so a push
+    /// and a foreground within the same window do not both sync.
+    private static let lastSyncTimestampKey = UserDefaultsShelfSyncTimestampStore.key
     private static let syncThrottleSeconds: TimeInterval = 30
 
     /// Syncs the book registry with throttling to prevent redundant network calls.
-    /// Uses the same throttle as applicationDidBecomeActive to coordinate syncs.
+    /// Uses the same throttle as the scene foreground sync to coordinate syncs.
     private func syncWithThrottle(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)? = nil) {
         // Skip if user isn't authenticated
         guard AppContainer.production().accountsManager.currentUserAccount.hasCredentials() else {
@@ -990,7 +990,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     /// Compares cached book availability with new data to detect when a hold becomes ready.
     /// Creates a local notification if a book transitions from "reserved" to "ready".
     ///
-    /// Called by `TPPBookRegistry.updateBook()` during sync. If local notifications appear
+    /// Called by the registry sync's merge (`BookRegistrySync.sync`). If local notifications appear
     /// before the book is actually borrowable, it indicates the server OPDS feed returned
     /// "ready" status before the book was available (server-side timing issue).
     ///

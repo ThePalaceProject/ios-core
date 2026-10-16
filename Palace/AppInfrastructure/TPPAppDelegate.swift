@@ -409,44 +409,6 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
             _ = AppContainer.production().featureFlags.isCarPlayEnabled
         }
 
-        // Sync held books when app becomes active to ensure UI reflects current availability
-        syncIfUserHasHolds()
-    }
-
-    /// Syncs the book registry if the user has holds to ensure fresh availability data.
-    /// Throttled to prevent excessive network calls on frequent app activation.
-    private func syncIfUserHasHolds() {
-        guard AppContainer.production().accountsManager.currentUserAccount.hasCredentials() else {
-            return
-        }
-
-        let heldBooks = AppContainer.production().bookRegistry.heldBooks
-        guard !heldBooks.isEmpty else {
-            return
-        }
-
-        // Shared throttle key with NotificationService to coordinate syncs
-        let lastSyncKey = "lastForegroundSyncTimestamp"
-        let lastSync = UserDefaults.standard.double(forKey: lastSyncKey)
-        let now = Date().timeIntervalSince1970
-
-        guard (now - lastSync) > 30 else {
-            Log.debug(#file, "[Foreground Sync] Skipped - synced recently")
-            return
-        }
-
-        UserDefaults.standard.set(now, forKey: lastSyncKey)
-
-        Log.info(#file, "[Foreground Sync] Starting - user has \(heldBooks.count) holds")
-
-        AppContainer.production().bookRegistry.sync { errorDocument, newBooks in
-            if let errorDocument = errorDocument {
-                Log.error(#file, "[Foreground Sync] Failed: \(errorDocument)")
-            } else {
-                Log.info(#file, "[Foreground Sync] Completed. New books: \(newBooks)")
-                NotificationService.updateAppIconBadge(heldBooks: AppContainer.production().bookRegistry.heldBooks)
-            }
-        }
     }
 
     func applicationDidEnterBackground(_ application: UIApplication) {

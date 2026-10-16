@@ -40,11 +40,30 @@ final class AuthFlowSecurityTests: XCTestCase {
 
     // MARK: - Token replay / single-flight refresh
 
-    func testToken_reauthenticatorCallCount_observableForRawCallAssertion() {
+    func testToken_reauthenticatorCallCount_observableForRawCallAssertion() async {
         // SEAM-VERIFIED: TPPReauthenticator now exposes `authenticateCallCount`.
         // This is the RAW call count (no dedupe) — every invocation increments.
         // For true single-flight verification, see
         // testToken_networkExecutorRefreshCount_singleFlightSemantics below.
+        //
+        // Each call presents the sign-in modal from a Task that runs after
+        // `authenticateIfNeeded` returns, so the spy presenter is installed
+        // and both presentation tasks are joined before the override is cleared.
+        // Without that the real modal lands on the host window after the test
+        // ends and blocks presentations in later tests.
+        var presentations = 0
+        let spy = SignInModalSheetPresenter(
+            appContainer: AppContainer.production(), // MIGRATED-DEFERRED: withSignInModalSheetPresenter() derives from the production container, as in SignInModalLifecycleTests.
+            currentAccountIDProvider: { "auth-flow-security" },
+            needsAuthProvider: { _ in true },
+            driver: { _, _, completion in
+                presentations += 1
+                completion()
+            }
+        )
+        TPPReauthenticator._testContainerOverride = AppContainer.production().withSignInModalSheetPresenter(spy) // MIGRATED-DEFERRED: see above.
+        defer { TPPReauthenticator._testContainerOverride = nil }
+
         let reauth = TPPReauthenticator()
         XCTAssertEqual(reauth.authenticateCallCount, 0)
         // Account identity does not matter to the raw call counter — use the
@@ -59,6 +78,8 @@ final class AuthFlowSecurityTests: XCTestCase {
                                     authenticationCompletion: nil)
         XCTAssertEqual(reauth.authenticateCallCount, 2,
                        "Raw counter increments per call — single-flight is enforced upstream")
+        await reauth._awaitPendingAuthenticationsForTesting()
+        XCTAssertEqual(presentations, 2)
     }
 
     func testToken_networkExecutorRefreshCount_singleFlightSemantics() async {

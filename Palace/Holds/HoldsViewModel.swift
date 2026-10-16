@@ -5,6 +5,7 @@ import PalaceLogging
 import PalaceCatalog
 import PalaceBookModel
 import PalaceBookRegistry
+import PalaceUtilities
 
 @MainActor
 final class HoldsBookViewModel: ObservableObject, Identifiable {
@@ -123,9 +124,13 @@ final class HoldsViewModel: ObservableObject {
             // list is tiny. Hopping to `DispatchQueue.global` here made the filter
             // starve (and `sendAwait(.searchQueryChanged)` hang) whenever the
             // global pool was saturated.
-            books.filter {
-                $0.title.localizedCaseInsensitiveContains(query) ||
-                    ($0.authors?.localizedCaseInsensitiveContains(query) ?? false)
+            // PP-5021: fold both sides — see FoldedSearchQuery. The query arrives
+            // with whatever punctuation the input system substituted, the title
+            // carries whatever the catalogue used, and comparing them raw hid
+            // held titles with an apostrophe in them.
+            let folded = FoldedSearchQuery(query)
+            return books.filter {
+                folded.matches($0.title) || folded.matches($0.authors)
             }
         })
         self.store = Store(
