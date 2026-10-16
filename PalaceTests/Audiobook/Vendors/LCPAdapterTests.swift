@@ -124,10 +124,6 @@ final class LCPAdapterTests: XCTestCase {
 
     // MARK: - canHandle
 
-    /// PP-4407 fixture: top-level type is `application/opds-publication+json`
-    /// (the Marketplace /groups/ JSON feed shape), LCP MIME nested inside
-    /// `indirectAcquisitions`. `LCPAdapter.canHandle` must return TRUE so
-    /// the loader routes this through the LCP chain.
     /// The smallest whole ZIP: an end-of-central-directory record and nothing
     /// else. The adapter now distinguishes a finished download from one still
     /// arriving, and that record is what a partial file lacks, so a test that
@@ -138,6 +134,10 @@ final class LCPAdapterTests: XCTestCase {
         try? eocd.write(to: url)
     }
 
+    /// PP-4407 fixture: top-level type is `application/opds-publication+json`
+    /// (the Marketplace /groups/ JSON feed shape), LCP MIME nested inside
+    /// `indirectAcquisitions`. `LCPAdapter.canHandle` must return TRUE so
+    /// the loader routes this through the LCP chain.
     func testCanHandle_marketplaceJSONFeedFixture_returnsTrue() {
         let adapter = LCPAdapter(
             downloadCenter: SpyDownloadCenter(),
@@ -222,9 +222,50 @@ final class LCPAdapterTests: XCTestCase {
                        "Network MUST NOT be touched when local file exists")
     }
 
-    /// No local `.lcpa`, but a `.lcpl` license sibling file exists. The
-    /// adapter must reach for that license file as the LCP source. We force
-    /// the factory to nil for the same reason as the previous test.
+    /// A whole archive whose end-of-central-directory record carries a long
+    /// comment is still the book. The record sits 22 bytes plus up to 65535 of
+    /// comment from the end of the file, so a search window shorter than that
+    /// would read a finished download as a partial one and stream a book the
+    /// patron already holds.
+    func testResolveManifest_wholeLCPAWithALongTrailingComment_usesLocalFile() {
+        let book = makeBook(
+            acquisitionType: lcpLicenseMIME,
+            indirect: [indirect(audiobookLCPMIME)]
+        )
+        let localURL = tempBookFileURL(identifier: book.identifier)
+        var archive = Data([0x50, 0x4B, 0x05, 0x06])
+        archive.append(Data(repeating: 0, count: 18))
+        // The comment length lives in the record; the bytes that follow push the
+        // signature this far back from the end of the file.
+        archive.append(Data(repeating: 0x20, count: 64 * 1024))
+        try? archive.write(to: localURL)
+        defer { try? FileManager.default.removeItem(at: localURL.deletingLastPathComponent()) }
+
+        let downloadCenter = SpyDownloadCenter()
+        downloadCenter.fileUrlByIdentifier[book.identifier] = localURL
+        let network = SpyNetworkExecutor()
+        var capturedFactoryURL: URL?
+        let adapter = LCPAdapter(
+            downloadCenter: downloadCenter,
+            networkExecutor: network,
+            lcpAudiobooksFactory: { url in
+                capturedFactoryURL = url
+                return nil
+            }
+        )
+
+        let expectation = expectation(description: "resolveManifest completes")
+        adapter.resolveManifest(for: book) { _ in expectation.fulfill() }
+        wait(for: [expectation], timeout: 1.0)
+
+        XCTAssertEqual(
+            capturedFactoryURL,
+            localURL,
+            "a complete archive must be read from disk however far back its record sits"
+        )
+        XCTAssertEqual(network.getCallCount, 0, "a book on disk must not be fetched")
+    }
+
     /// A download still in progress must not be read as the book.
     ///
     /// The source tiers tested only that a local file EXISTS, and a partial
@@ -271,6 +312,9 @@ final class LCPAdapterTests: XCTestCase {
         )
     }
 
+    /// No local `.lcpa`, but a `.lcpl` license sibling file exists. The
+    /// adapter must reach for that license file as the LCP source. We force
+    /// the factory to nil for the same reason as the previous test.
     func testResolveManifest_licenseFileExists_usesLicenseFile() {
         let book = makeBook(
             acquisitionType: lcpLicenseMIME,
