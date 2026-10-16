@@ -33,6 +33,10 @@
 #     interrupted below).
 #   * One retry of a pass that xcodebuild itself crashed with no test failure
 #     recorded (see run_pass below).
+#   * One wall-clock deadline for all of the above, from SHARD_STEP_SECONDS
+#     (the step's timeout-minutes). A recovery phase that would not finish
+#     before it is skipped, so the shard reaches its report (see phase_fits).
+#   * The simulator template is booted before xcodebuild clones it.
 #
 # prior-art-checked: xcode-test-optimized.sh builds and tests in one
 # `xcodebuild test`; it cannot run against prebuilt products or a class subset.
@@ -43,6 +47,10 @@ XCTESTRUN="$1"
 PLAN="$2"
 SHARD="$3"
 OUT="$4"
+
+# The step's clock, read before anything that can take minutes (the simulator
+# warm-up below is the first); see SHARD_DEADLINE.
+SHARD_START=$(date +%s)
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SHARDS_PY="$HERE/ci-test-shards.py"
@@ -64,6 +72,32 @@ if [ -z "$SIMULATOR_ID" ]; then
 fi
 WORKERS="${CI_TEST_WORKERS:-2}"
 echo "Shard $SHARD on simulator $SIMULATOR_ID, $WORKERS parallel worker(s)"
+
+bounded() {  # $1 = seconds, rest = command. `timeout` is coreutils; macOS has
+             # it as gtimeout from brew, and the runner image may have neither.
+    local secs="$1"; shift
+    if command -v timeout >/dev/null 2>&1; then timeout "$secs" "$@"
+    elif command -v gtimeout >/dev/null 2>&1; then gtimeout "$secs" "$@"
+    else perl -e 'alarm shift; exec @ARGV' "$secs" "$@"
+    fi
+}
+
+# Warm the template before xcodebuild clones it. Each parallel clone is a whole
+# simulated device, and xcodebuild cold-boots it with a 60 s allowance the
+# 3-CPU runner has missed: "Failed to prepare device 'Clone 2 of iPhone 16 Pro'
+# for impending launch. (Underlying Error: Timed out trying to boot simulator
+# after waiting 60.00s.)", and three runs where a runner "hung before
+# establishing connection". A clone of a booted template inherits a warm
+# runtime and an already-running simulator service, so the boot the clone has
+# to do itself is the short one. Best effort: a template that will not boot
+# still runs the shard, because xcodebuild boots its own clones either way.
+SIM_WARM_SECONDS="${SIM_WARM_SECONDS:-180}"
+echo "Shard $SHARD: warming simulator $SIMULATOR_ID (up to ${SIM_WARM_SECONDS}s)"
+if bounded "$SIM_WARM_SECONDS" xcrun simctl bootstatus "$SIMULATOR_ID" -b; then
+    echo "Shard $SHARD: simulator $SIMULATOR_ID is booted"
+else
+    echo "::warning title=Simulator warm-up did not finish::shard $SHARD: 'simctl bootstatus -b' on $SIMULATOR_ID did not report a booted device within ${SIM_WARM_SECONDS}s. Continuing, because xcodebuild boots its own clones; a clone boot timeout later in this log is the thing this was meant to avoid."
+fi
 
 export SIMCTL_CHILD_GITHUB_ACTIONS="${GITHUB_ACTIONS:-true}"
 export SIMCTL_CHILD_CI="${CI:-true}"
@@ -101,6 +135,35 @@ SAMPLER=$!
 # so a wedged run still uploads its spindumps and the tests that did finish.
 SHARD_BUDGET_SECONDS="${SHARD_BUDGET_SECONDS:-1800}"
 BUDGET_MARK="$OUT/budget-exceeded"  # written before the interrupt; see interrupted below
+
+# One wall-clock deadline for the whole script, derived from the step's
+# timeout-minutes. The budget above bounds a single xcodebuild pass; the
+# recovery phases after it (a lost-class relaunch, a second chance, a crash
+# retry) each add minutes, and together they have outlasted the step. GitHub
+# then kills the step, which takes shard-report.json with it, and the upload
+# step fails for a file that was never written (run 38582762222). Before each
+# phase the script asks whether it still fits; a phase that does not is skipped
+# with a warning, and the shard reports what it has. SHARD_STEP_SECONDS is the
+# step's timeout-minutes in seconds, and the reserve is what the report, the
+# memory summary and the uploads after the step need. SHARD_START is read at
+# the top of the script, so the simulator warm-up spends this budget too.
+SHARD_STEP_SECONDS="${SHARD_STEP_SECONDS:-2400}"
+SHARD_REPORT_RESERVE_SECONDS="${SHARD_REPORT_RESERVE_SECONDS:-180}"
+SHARD_DEADLINE=$(( SHARD_START + SHARD_STEP_SECONDS - SHARD_REPORT_RESERVE_SECONDS ))
+# Observed phase costs, from the runs each recovery path came from: a relaunch
+# of the lost classes took about 6 minutes, a second chance runs a handful of
+# tests serially, and a crash retry re-runs a whole pass.
+RELAUNCH_NEED_SECONDS="${RELAUNCH_NEED_SECONDS:-420}"
+SECOND_CHANCE_NEED_SECONDS="${SECOND_CHANCE_NEED_SECONDS:-300}"
+CRASH_RETRY_NEED_SECONDS="${CRASH_RETRY_NEED_SECONDS:-600}"
+phase_fits() {  # $1 = seconds the phase needs, $2 = what it is -> 0 when it fits
+    local needed="$1" what="$2" remaining status=0
+    remaining=$(python3 "$SHARDS_PY" phase-fits --deadline "$SHARD_DEADLINE" --needed "$needed") \
+        || status=$?
+    [ "$status" -eq 0 ] && return 0
+    echo "::warning title=Recovery phase skipped at the step deadline::shard $SHARD: $what needs about ${needed}s and ${remaining}s of the ${SHARD_STEP_SECONDS}s step budget remain. Skipping it so the shard writes its report instead of being killed mid-flight; re-run the shard."
+    return 1
+}
 ( trap 'kill "$sleeper" 2>/dev/null; exit 0' TERM
   sleep "$SHARD_BUDGET_SECONDS" & sleeper=$!
   wait "$sleeper"
@@ -141,6 +204,18 @@ cleanup() {
             [ "$b" = "$OUT/TestResults.xcresult" ] || keep_partial "$b"
         done
         keep_partial "$OUT"/*.log
+    fi
+    # Every path that ends the script early still owes the gate a report. Without
+    # one the upload step fails for a missing file (if-no-files-found: error),
+    # which hides the shard's own failure behind a second red, and the gate
+    # cannot tell a shard that lost classes from one that was never asked for
+    # them. Written from whatever results exist: with no tests.json the report
+    # lists every assigned class as missing, which is what happened.
+    if [ ! -f "$OUT/shard-report.json" ]; then
+        [ -f "$OUT/tests.json" ] || echo '{"testNodes": []}' > "$OUT/tests.json"
+        python3 "$SHARDS_PY" verify-shard --plan "$PLAN" --shard "$SHARD" \
+            --tests-json "$OUT/tests.json" --out "$OUT/shard-report.json" || true
+        echo "Shard $SHARD: wrote shard-report.json from the results it had when it stopped"
     fi
     python3 "$DIAG_PY" sample "$OUT/memory-samples.txt" --once >/dev/null 2>&1 || true
     python3 "$DIAG_PY" memory-summary "$OUT/memory-samples.txt" | sed "s/^/Shard $SHARD /" || true
@@ -234,6 +309,10 @@ run_pass() {
     local discounted=""
     if [ -n "$in_flight" ]; then
         discounted=" Discounted the failure of $in_flight, logged after the crash marker: it was the test in flight when xcodebuild crashed, and it must pass on the retry."
+    fi
+    if ! phase_fits "$CRASH_RETRY_NEED_SECONDS" "the retry of the $name pass after xcodebuild crashed"; then
+        echo "::error title=xcodebuild crashed with no time to retry::shard $SHARD, $name pass: xcodebuild exited $PASS_EXIT with no test failure recorded, and the retry does not fit before the step deadline. Failing the shard; its report records the classes this pass did not run."
+        exit 1
     fi
     echo "::warning title=xcodebuild crashed; retrying the pass once::shard $SHARD, $name pass: xcodebuild exited $PASS_EXIT with no test failure recorded before the crash (exit 134 or '** INTERNAL ERROR: Uncaught exception **', an XCTHarness crash). Its result bundle is unreadable, so the same classes run once more into a fresh bundle.$discounted"
     local fresh="$OUT/$name-crash-retry.xcresult"
@@ -365,7 +444,12 @@ LOST_SERIAL=()
 while IFS= read -r a; do LOST_SERIAL+=("$a"); done < <(read_lost serial)
 LOST_COUNT=$(( ${#LOST_PARALLEL[@]} + ${#LOST_SERIAL[@]} ))
 RUNNER_RECOVERED=0
-if [ "$LOST_COUNT" -gt 0 ]; then
+RELAUNCH_SKIPPED=0
+if [ "$LOST_COUNT" -gt 0 ] && ! phase_fits "$RELAUNCH_NEED_SECONDS" "the relaunch of the $LOST_COUNT class(es) the runner lost"; then
+    RELAUNCH_SKIPPED=1
+    echo "::error title=Runner failure not recovered::shard $SHARD: $LOST_COUNT class(es) never ran, and the relaunch does not fit before the step deadline. The shard report records them as missing, so the gate sees the loss rather than a coverage drop."
+fi
+if [ "$LOST_COUNT" -gt 0 ] && [ "$RELAUNCH_SKIPPED" -eq 0 ]; then
     REASON="${RUNNER_FAILURES:-no runner failure is recorded in the result bundle}"
     echo "::warning title=Runner failure: relaunching classes that never ran::shard $SHARD: $LOST_COUNT class(es) never ran, which is a runner failure, not a test failure. Recorded: ${REASON//$'\n'/ | }. Relaunching them once."
     echo "Relaunching:" ${LOST_PARALLEL[@]+"${LOST_PARALLEL[@]}"} ${LOST_SERIAL[@]+"${LOST_SERIAL[@]}"}
@@ -424,51 +508,55 @@ if [ "$TEST_EXIT" -ne 0 ]; then
         0)
             IDS=()
             for a in "${KILL_ARGS[@]}"; do IDS+=("${a#-only-testing:}"); done
-            echo "::warning title=Second chance for allowance kills::shard $SHARD: ${#IDS[@]} test(s) were killed at the execution-time allowance, which -retry-tests-on-failure does not retry. Re-running only those, once, in a fresh test process: ${IDS[*]}"
-            run_pass "$OUT/rerun.xcresult" once -parallel-testing-enabled NO "${KILL_ARGS[@]}"
-            RERUN_EXIT=$PASS_EXIT
-            RERUN_LOG="$PASS_LOG"
-            RERUN_INTERRUPTED=$PASS_INTERRUPTED
-            echo "Second-chance pass exit code: $RERUN_EXIT"
-            # The verdict is what the re-run tests did, read from the bundle and
-            # the log, not xcodebuild's exit code: after every test passed and
-            # "** TEST EXECUTE SUCCEEDED **", xcodebuild can still exit 73 because it
-            # could not finish saving the bundle ("Could not write the 1_Test
-            # action log because the log hasn't finished recording", run
-            # 38292451781), while the bundle still holds the results. A bundle
-            # that cannot be read stops the script, which fails the shard.
-            if [ -d "$OUT/rerun.xcresult" ]; then
-                xcrun xcresulttool get test-results tests --path "$OUT/rerun.xcresult" > "$OUT/rerun-tests.json"
-                if python3 "$SHARDS_PY" check-rerun --tests-json "$OUT/rerun-tests.json" "${IDS[@]}" \
-                        && ! grep -qE "$XCB_TEST_FAILED" "$RERUN_LOG"; then
-                    TEST_EXIT=0
-                    if [ "$RERUN_EXIT" -ne 0 ]; then
-                        echo "::warning title=Second chance exited $RERUN_EXIT after its tests passed::shard $SHARD: xcodebuild exited $RERUN_EXIT, but the bundle records every re-run test as passed and the log has no failed test. Judged by the test results."
-                    fi
-                    echo "::warning title=Allowance kills passed on the second chance::shard $SHARD: ${IDS[*]} — each was killed once at the allowance and passed when re-run alone. Read the spindump summary below before treating this as the test's defect or as noise."
-                elif [ "$RERUN_INTERRUPTED" -eq 1 ] && [ -z "$(failures_before_interrupt "$RERUN_LOG")" ]; then
-                    # The budget stopped the re-run before any test in it failed
-                    # (run 38504268058: it fired one second before testing
-                    # started). A test Xcode logs as failed after the marker is
-                    # the one it cut off, so none of these has a verdict.
-                    echo "::error title=Second chance cut off by the shard budget::shard $SHARD: the ${SHARD_BUDGET_SECONDS}s shard budget interrupted the second-chance pass, so it reached no verdict. In flight or not re-run: ${IDS[*]}. None of them failed again; the shard fails because it ran out of time. Re-run the shard."
-                else
-                    echo "::error title=Allowance kill repeated::shard $SHARD: the second chance did not pass for ${IDS[*]}"
-                fi
-                # A bundle that failed to save has its results but no coverage
-                # report (run 38292451781), and merging it would leave the
-                # shard's coverage unreadable. It is kept in partial/ instead;
-                # TestResults keeps the killed run, and the verdict above stands.
-                # A bundle that saved normally carries coverage (run 37978496787).
-                if xcrun xccov view --report --only-targets "$OUT/rerun.xcresult" >/dev/null 2>&1; then
-                    merge_into_results "$OUT/TestResults.xcresult" "$OUT/rerun.xcresult"
-                    xcrun xcresulttool get test-results tests --path "$OUT/TestResults.xcresult" > "$OUT/tests.json"
-                else
-                    echo "::warning title=Second-chance bundle has no coverage report::shard $SHARD: it is kept in partial/ rather than merged, so the shard results show the killed run of ${IDS[*]}; the second chance's own results are in partial/rerun.xcresult and the log above."
-                    keep_partial "$OUT/rerun.xcresult" "$RERUN_LOG"
-                fi
+            if ! phase_fits "$SECOND_CHANCE_NEED_SECONDS" "the second chance for ${#IDS[@]} allowance kill(s)"; then
+                echo "::error title=Second chance skipped::shard $SHARD: ${#IDS[@]} test(s) were killed at the execution-time allowance and the second chance does not fit before the step deadline. The shard fails on the kills: ${IDS[*]}"
             else
-                echo "::error::the second-chance pass wrote no result bundle"
+                echo "::warning title=Second chance for allowance kills::shard $SHARD: ${#IDS[@]} test(s) were killed at the execution-time allowance, which -retry-tests-on-failure does not retry. Re-running only those, once, in a fresh test process: ${IDS[*]}"
+                run_pass "$OUT/rerun.xcresult" once -parallel-testing-enabled NO "${KILL_ARGS[@]}"
+                RERUN_EXIT=$PASS_EXIT
+                RERUN_LOG="$PASS_LOG"
+                RERUN_INTERRUPTED=$PASS_INTERRUPTED
+                echo "Second-chance pass exit code: $RERUN_EXIT"
+                # The verdict is what the re-run tests did, read from the bundle and
+                # the log, not xcodebuild's exit code: after every test passed and
+                # "** TEST EXECUTE SUCCEEDED **", xcodebuild can still exit 73 because it
+                # could not finish saving the bundle ("Could not write the 1_Test
+                # action log because the log hasn't finished recording", run
+                # 38292451781), while the bundle still holds the results. A bundle
+                # that cannot be read stops the script, which fails the shard.
+                if [ -d "$OUT/rerun.xcresult" ]; then
+                    xcrun xcresulttool get test-results tests --path "$OUT/rerun.xcresult" > "$OUT/rerun-tests.json"
+                    if python3 "$SHARDS_PY" check-rerun --tests-json "$OUT/rerun-tests.json" "${IDS[@]}" \
+                            && ! grep -qE "$XCB_TEST_FAILED" "$RERUN_LOG"; then
+                        TEST_EXIT=0
+                        if [ "$RERUN_EXIT" -ne 0 ]; then
+                            echo "::warning title=Second chance exited $RERUN_EXIT after its tests passed::shard $SHARD: xcodebuild exited $RERUN_EXIT, but the bundle records every re-run test as passed and the log has no failed test. Judged by the test results."
+                        fi
+                        echo "::warning title=Allowance kills passed on the second chance::shard $SHARD: ${IDS[*]} — each was killed once at the allowance and passed when re-run alone. Read the spindump summary below before treating this as the test's defect or as noise."
+                    elif [ "$RERUN_INTERRUPTED" -eq 1 ] && [ -z "$(failures_before_interrupt "$RERUN_LOG")" ]; then
+                        # The budget stopped the re-run before any test in it failed
+                        # (run 38504268058: it fired one second before testing
+                        # started). A test Xcode logs as failed after the marker is
+                        # the one it cut off, so none of these has a verdict.
+                        echo "::error title=Second chance cut off by the shard budget::shard $SHARD: the ${SHARD_BUDGET_SECONDS}s shard budget interrupted the second-chance pass, so it reached no verdict. In flight or not re-run: ${IDS[*]}. None of them failed again; the shard fails because it ran out of time. Re-run the shard."
+                    else
+                        echo "::error title=Allowance kill repeated::shard $SHARD: the second chance did not pass for ${IDS[*]}"
+                    fi
+                    # A bundle that failed to save has its results but no coverage
+                    # report (run 38292451781), and merging it would leave the
+                    # shard's coverage unreadable. It is kept in partial/ instead;
+                    # TestResults keeps the killed run, and the verdict above stands.
+                    # A bundle that saved normally carries coverage (run 37978496787).
+                    if xcrun xccov view --report --only-targets "$OUT/rerun.xcresult" >/dev/null 2>&1; then
+                        merge_into_results "$OUT/TestResults.xcresult" "$OUT/rerun.xcresult"
+                        xcrun xcresulttool get test-results tests --path "$OUT/TestResults.xcresult" > "$OUT/tests.json"
+                    else
+                        echo "::warning title=Second-chance bundle has no coverage report::shard $SHARD: it is kept in partial/ rather than merged, so the shard results show the killed run of ${IDS[*]}; the second chance's own results are in partial/rerun.xcresult and the log above."
+                        keep_partial "$OUT/rerun.xcresult" "$RERUN_LOG"
+                    fi
+                else
+                    echo "::error::the second-chance pass wrote no result bundle"
+                fi
             fi
             ;;
         3) echo "Not every failure in shard $SHARD was an allowance kill; no second chance." ;;

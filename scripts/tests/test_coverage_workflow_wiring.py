@@ -121,7 +121,7 @@ def test_archive_and_publish_still_run_when_the_floors_fail():
 def _evaluate(tmp_path, **results):
     step = next(s for s in _jobs()["build-and-test"]["steps"] if s.get("id") == "eval")
     env_map = {"CHANGES": "changes", "RUN": "run", "BUILD": "build", "TEST": "test",
-               "REPORT": "report", "FLOORS": "floors"}
+               "REPORT": "report", "FLOORS": "floors", "FLOORS_STATUS": "floors_status"}
     assert set(step["env"]) == set(env_map)
     out = tmp_path / "out"
     out.write_text("")
@@ -132,13 +132,16 @@ def _evaluate(tmp_path, **results):
 
 
 GREEN = dict(changes="success", run="true", build="success", test="success",
-             report="success", floors="success")
+             report="success", floors="success", floors_status="evaluated")
 
 
 def test_gate_env_reads_the_report_job():
     env = next(s for s in _jobs()["build-and-test"]["steps"] if s.get("id") == "eval")["env"]
     assert env["REPORT"] == "${{ needs.report.result }}"
     assert env["FLOORS"] == "${{ needs.report.outputs.coverage_floors }}"
+    assert env["FLOORS_STATUS"] == "${{ needs.report.outputs.coverage_floors_status }}"
+    assert _jobs()["report"]["outputs"]["coverage_floors_status"] == \
+        "${{ steps.coverage_gate.outputs.floors_status }}"
     assert "report" in _jobs()["build-and-test"]["needs"]
 
 
@@ -173,26 +176,70 @@ def test_gate_rejects_a_skip_where_report_still_ran(tmp_path):
 
 
 def _run_floor_step(tmp_path, complete, enforcer_rc):
-    """Runs the floor step's script with python3 stubbed to exit `enforcer_rc`."""
+    """Runs the floor step's script with python3 stubbed to exit `enforcer_rc`.
+
+    -> (exit status, step outputs, the enforcer's argv)."""
     step = _step("report", "Enforce Coverage Floors")
     stub = tmp_path / "bin"
     stub.mkdir()
-    (stub / "python3").write_text(f"#!/bin/sh\nexit {enforcer_rc}\n")
+    argv = tmp_path / "argv"
+    (stub / "python3").write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > "{argv}"\nexit {enforcer_rc}\n')
     (stub / "python3").chmod(0o755)
-    env = {"PATH": f"{stub}:/usr/bin:/bin", "COMPLETE": complete, "REASON": "shard 2 lost classes"}
-    return subprocess.run(["bash", "-e", "-c", step["run"]], env=env,
-                          capture_output=True, text=True).returncode
+    out = tmp_path / "step-output"
+    out.write_text("")
+    env = {"PATH": f"{stub}:/usr/bin:/bin", "COMPLETE": complete,
+           "REASON": "shard 2 lost classes", "GITHUB_OUTPUT": str(out)}
+    rc = subprocess.run(["bash", "-e", "-c", step["run"]], env=env,
+                        capture_output=True, text=True).returncode
+    return rc, out.read_text(), argv.read_text().splitlines() if argv.exists() else []
 
 
-@pytest.mark.parametrize("complete,enforcer_rc,expected", [
-    ("true", 0, 0),
-    ("true", 1, 1),    # floor violation
-    ("true", 3, 3),    # incomplete coverage data
-    ("false", 0, 1),   # a run that lost classes is never compared, and never passes
-    ("", 0, 1),
+@pytest.mark.parametrize("complete,enforcer_rc,expected,status", [
+    ("true", 0, 0, "evaluated"),
+    ("true", 1, 1, "evaluated"),    # floor violation
+    ("true", 3, 3, "evaluated"),    # the enforcer refused to compare without the flag
+    ("true", 2, 2, "evaluated"),    # input error
+    ("true", 4, 0, "abstained"),    # incomplete coverage: the floors abstain
+    ("false", 4, 0, "abstained"),
+    ("", 4, 0, "abstained"),
 ])
-def test_floor_step_exit_status(tmp_path, complete, enforcer_rc, expected):
-    assert _run_floor_step(tmp_path, complete, enforcer_rc) == expected
+def test_floor_step_exit_status(tmp_path, complete, enforcer_rc, expected, status):
+    rc, outputs, _ = _run_floor_step(tmp_path, complete, enforcer_rc)
+    assert rc == expected
+    assert f"floors_status={status}" in outputs
+
+
+@pytest.mark.parametrize("complete", ["false", ""])
+def test_floor_step_hands_the_enforcer_the_completeness_reason(tmp_path, complete):
+    """The floors abstain on the shard verdict as well as on the coverage data's
+    own status, so the reason the gate reports has to reach the enforcer."""
+    _, _, argv = _run_floor_step(tmp_path, complete, 4)
+    assert "--abstain-on-incomplete" in argv
+    assert "--incomplete-reason" in argv
+    assert any("shard 2 lost classes" in a for a in argv)
+
+
+def test_floor_step_does_not_claim_incompleteness_on_a_complete_run(tmp_path):
+    """A --incomplete-reason on a complete run would abstain over nothing."""
+    _, _, argv = _run_floor_step(tmp_path, "true", 0)
+    assert "--incomplete-reason" not in argv
+
+
+def test_gate_fails_an_abstain_the_shards_do_not_explain(tmp_path):
+    """Abstaining is not a pass: with every shard green and no coverage to
+    compare, nothing else in the run has failed, so the gate must."""
+    rc, out, _ = _evaluate(tmp_path, **{**GREEN, "floors_status": "abstained"})
+    assert rc == 1 and "verify=true" not in out
+
+
+def test_gate_fails_a_dead_shard_once_without_the_floors_also_failing(tmp_path):
+    """The point of the abstain: one infrastructure fault, one explanation. The
+    gate names the shard, and the floors' own outcome stays green."""
+    rc, out, log = _evaluate(tmp_path, **{**GREEN, "test": "failure",
+                                          "floors_status": "abstained"})
+    assert rc == 1 and "verify=true" not in out
+    assert "one or more test shards: failure" in log
+    assert "floors" not in log.split("::error::")[-1]
 
 
 def test_gate_fails_when_report_was_cancelled_after_the_floors_passed(tmp_path):
