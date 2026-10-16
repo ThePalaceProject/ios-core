@@ -32,8 +32,33 @@ concurrency:
   group: tsan-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# The lane checks out three private repositories (the submodules, the
+# certificates, the Adobe RMSDK) with CI_GITHUB_ACCESS_TOKEN. GitHub withholds
+# repository secrets from runs it does not trust: a Dependabot-triggered run
+# gets Dependabot secrets only, and a pull request from a fork gets none. The
+# token then expands to the empty string and actions/checkout stops at "Input
+# required and not supplied: token", so the lane cannot produce a verdict on
+# those runs however the rest of the diff looks.
+#
+# `secrets` is not one of the contexts available to a job-level `if:`, so the
+# condition names the two untrusted run shapes instead. The skip is its own
+# job, with its own name, rather than an `if:` on the lane alone: a job a
+# condition turns off reports a check in state SKIPPED, which does not fail a
+# required check and says nothing about why the lane did not run. A job that
+# runs, carries a name that is not the lane's, and annotates the reason is the
+# difference between a visible gap and a green-looking one. Same shape as
+# audiobook-toolkit-tests.yml, whose AudioEngine fetch has the same fork
+# restriction.
+#
+# The two conditions are each other's negation, so exactly one of these jobs
+# runs on any event; scripts/tests/test_tsan_lane.py asserts that over the run
+# shapes GitHub can deliver.
 jobs:
   tsan:
+    if: >-
+      github.actor != 'dependabot[bot]'
+      && (github.event_name != 'pull_request'
+          || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: macos-26
     # A TSan build does not share products with the plain Debug build, so this
     # is a full build plus a 5-15x slower test run.
@@ -194,3 +219,14 @@ jobs:
             ${{ runner.temp }}/tsan.log
             ${{ runner.temp }}/TestResults-tsan.xcresult
           retention-days: 7
+
+  tsan-skipped:
+    name: tsan skipped (no secrets)
+    if: >-
+      github.actor == 'dependabot[bot]'
+      || (github.event_name == 'pull_request'
+          && github.event.pull_request.head.repo.full_name != github.repository)
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "::notice::ThreadSanitizer lane skipped — this run cannot read CI_GITHUB_ACCESS_TOKEN, so the private submodules, the certificates and the Adobe RMSDK cannot be checked out. The lane has not reported on these changes. Run it from a branch in this repository, or with workflow_dispatch, for a verdict."
