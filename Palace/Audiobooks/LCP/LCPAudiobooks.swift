@@ -302,6 +302,20 @@ extension LCPAudiobooks: LCPStreamingProvider {
         return true
     }
 
+    /// Whether this instance was opened from the package on disk rather than
+    /// from a licence that streams it.
+    ///
+    /// `licenseUrl` is the discriminator, derived in `init` from the source's
+    /// extension: a `.lcpl` sets it, a `.lcpa` leaves it nil. The URL's scheme
+    /// cannot answer this. Every source the adapter hands over is a `file:`
+    /// URL — the package, the cached licence sibling, and the licence it
+    /// re-downloads and writes to disk — so `audiobookUrl.fileURL != nil` is
+    /// true of the streaming case too, and asking it that way turned the
+    /// loader's per-track buffer off everywhere.
+    nonisolated public func archiveIsLocalFile() -> Bool {
+        return licenseUrl == nil
+    }
+
     /// Nonisolated on purpose — see the note on the extension. This is a
     /// nonisolated witness of a `@MainActor` protocol requirement, which Swift
     /// allows because it is the permissive direction.

@@ -571,3 +571,48 @@ final class LCPAudiobookURLSchemeTests: XCTestCase {
         XCTAssertEqual(lcpURL?.query, "token=abc&format=mp3")
     }
 }
+// MARK: - Which archive the loader is reading
+
+/// The loader gives each chapter its own read-ahead buffer, and that buffer
+/// only earns anything against a remote origin. It asks this type which kind
+/// of source it was opened from, so a wrong answer here turns the buffer off
+/// for every streamed book and the egress fix does nothing (PP-5367).
+extension LCPAudiobooksTests {
+    func testArchiveIsLocalFile_whenOpenedFromALicense_isFalse() throws {
+        #if !LCP
+        throw XCTSkip("LCP is not enabled in this configuration")
+        #else
+        let licenseURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("book-\(UUID().uuidString).lcpl")
+        guard let audiobook = LCPAudiobooks(for: licenseURL) else {
+            return XCTFail("LCPAudiobooks must open from a licence URL")
+        }
+
+        XCTAssertFalse(
+            audiobook.archiveIsLocalFile(),
+            """
+            a licence streams the package from the origin, so the per-track \
+            buffer has to stay on; every source handed to this type is a \
+            file: URL, so the scheme cannot be what decides
+            """
+        )
+        #endif
+    }
+
+    func testArchiveIsLocalFile_whenOpenedFromThePackage_isTrue() throws {
+        #if !LCP
+        throw XCTSkip("LCP is not enabled in this configuration")
+        #else
+        let packageURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("book-\(UUID().uuidString).lcpa")
+        guard let audiobook = LCPAudiobooks(for: packageURL) else {
+            return XCTFail("LCPAudiobooks must open from a package URL")
+        }
+
+        XCTAssertTrue(
+            audiobook.archiveIsLocalFile(),
+            "a package on disk has no origin to save a request against"
+        )
+        #endif
+    }
+}
