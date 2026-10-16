@@ -146,7 +146,13 @@ final class AudiobookCrossVendorSmokeTests: XCTestCase {
         try FileManager.default.createDirectory(at: localFileDir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: localFileDir) }
         let localURL = localFileDir.appendingPathComponent("\(book.identifier).lcpa")
-        try Data([0x50, 0x4B, 0x03, 0x04]).write(to: localURL) // ZIP magic — placeholder bytes
+        // A whole archive, not just ZIP magic: the adapter reads a local package
+        // only when it carries an end-of-central-directory record, because a
+        // download in progress exists from its first byte (PP-5368). These are
+        // that record's fixed fields with an empty comment.
+        var wholeArchive = Data([0x50, 0x4B, 0x05, 0x06])
+        wholeArchive.append(Data(repeating: 0, count: 18))
+        try wholeArchive.write(to: localURL)
         downloadCenter.fileURLByIdentifier[book.identifier] = localURL
 
         let networkExecutor = StubLCPNetworkExecutor()

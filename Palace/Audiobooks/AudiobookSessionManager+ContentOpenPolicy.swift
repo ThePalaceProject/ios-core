@@ -38,11 +38,18 @@ extension AudiobookSessionManager {
         !hasEverStartedPlayback && hasCurrentBook && !alreadyAttempted
     }
 
-    /// True once the LCP audiobook's full content package is on disk. The `.lcpa`
-    /// is moved into place atomically on download completion
-    /// (BackgroundDownloadHandler.replaceBook), so file existence == content
-    /// complete — the same signal `LCPAdapter.prepareLCPSource` uses to prefer
-    /// the reliable local path over streaming.
+    /// True once the LCP audiobook's content package is on disk. Both writers
+    /// move the `.lcpa` into place with a rename
+    /// (`BackgroundDownloadHandler.replaceBook`, `LocalBookContentService`), so
+    /// a file at this path is a whole file and existence is the right question
+    /// to ask here.
+    ///
+    /// `LCPAdapter.prepareLCPSource` asks a stricter one: it also reads the
+    /// archive's end record. Not because it distrusts these writers, but
+    /// because being wrong costs more there. This answers "may the patron open
+    /// it", where a false negative only delays a prompt; the adapter chooses
+    /// between reading on disk and streaming, and a file that is present but
+    /// not whole stalls a chapter with no error rather than falling back.
     static func audiobookContentIsLocal(_ bookId: String) -> Bool {
         guard let url = AppContainer.production().downloadCenter.fileUrl(for: bookId) else { return false }
         return FileManager.default.fileExists(atPath: url.path)

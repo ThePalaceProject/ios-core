@@ -112,14 +112,50 @@ final class LCPAdapterTests: XCTestCase {
         )!
     }
 
-    private func tempBookFileURL(identifier: String) -> URL {
+    /// Fails the test if the directory cannot be made. With `try?` here a lost
+    /// fixture surfaced as the adapter reaching for the network, which reads as
+    /// a defect in the code under test rather than in the setup.
+    private func tempBookFileURL(identifier: String, file: StaticString = #filePath, line: UInt = #line) -> URL {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("LCPAdapterTests-\(UUID().uuidString)", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        } catch {
+            XCTFail("Fixture directory could not be created: \(error)", file: file, line: line)
+        }
         return dir.appendingPathComponent("\(identifier).lcpa")
     }
 
     // MARK: - canHandle
+
+    /// The smallest whole ZIP: an end-of-central-directory record and nothing
+    /// else. The adapter now distinguishes a finished download from one still
+    /// arriving, and that record is what a partial file lacks, so a test that
+    /// means "the book is on disk" has to write one.
+    /// Setup bytes a test's assertions depend on. A silent `try?` here turns a
+    /// missing fixture into a failure that names the code under test instead.
+    private func writeFixture(
+        _ data: Data,
+        to url: URL,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        do {
+            try data.write(to: url)
+        } catch {
+            XCTFail("Fixture could not be written to \(url.lastPathComponent): \(error)", file: file, line: line)
+        }
+    }
+
+    private func writeWholeArchive(to url: URL, file: StaticString = #filePath, line: UInt = #line) {
+        var eocd = Data([0x50, 0x4B, 0x05, 0x06])
+        eocd.append(Data(repeating: 0, count: 18))
+        do {
+            try eocd.write(to: url)
+        } catch {
+            XCTFail("Fixture archive could not be written: \(error)", file: file, line: line)
+        }
+    }
 
     /// PP-4407 fixture: top-level type is `application/opds-publication+json`
     /// (the Marketplace /groups/ JSON feed shape), LCP MIME nested inside
@@ -183,7 +219,7 @@ final class LCPAdapterTests: XCTestCase {
         )
         let localURL = tempBookFileURL(identifier: book.identifier)
         // Write a placeholder file so `fileManager.fileExists(atPath:)` is true
-        try? Data([0x01]).write(to: localURL)
+        writeWholeArchive(to: localURL)
         defer { try? FileManager.default.removeItem(at: localURL.deletingLastPathComponent()) }
 
         let downloadCenter = SpyDownloadCenter()
@@ -205,6 +241,175 @@ final class LCPAdapterTests: XCTestCase {
                        "Local file path must be passed to LCPAudiobooks factory")
         XCTAssertEqual(network.getCallCount, 0,
                        "Network MUST NOT be touched when local file exists")
+    }
+
+    /// A whole archive whose end-of-central-directory record carries a long
+    /// comment is still the book. The record sits 22 bytes plus up to 65535 of
+    /// comment from the end of the file, so a search window shorter than that
+    /// would read a finished download as a partial one and stream a book the
+    /// patron already holds.
+    func testResolveManifest_wholeLCPAWithALongTrailingComment_usesLocalFile() async {
+        let book = makeBook(
+            acquisitionType: lcpLicenseMIME,
+            indirect: [indirect(audiobookLCPMIME)]
+        )
+        let localURL = tempBookFileURL(identifier: book.identifier)
+        var archive = Data([0x50, 0x4B, 0x05, 0x06])
+        archive.append(Data(repeating: 0, count: 18))
+        // The comment length lives in the record; the bytes that follow push the
+        // signature this far back from the end of the file.
+        archive.append(Data(repeating: 0x20, count: 64 * 1024))
+        writeFixture(archive, to: localURL)
+        defer { try? FileManager.default.removeItem(at: localURL.deletingLastPathComponent()) }
+
+        let downloadCenter = SpyDownloadCenter()
+        downloadCenter.fileUrlByIdentifier[book.identifier] = localURL
+        let network = SpyNetworkExecutor()
+        var capturedFactoryURL: URL?
+        let adapter = LCPAdapter(
+            downloadCenter: downloadCenter,
+            networkExecutor: network,
+            lcpAudiobooksFactory: { url in
+                capturedFactoryURL = url
+                return nil
+            }
+        )
+
+        _ = await adapter.resolveManifest(for: book)
+
+        XCTAssertEqual(
+            capturedFactoryURL,
+            localURL,
+            "a complete archive must be read from disk however far back its record sits"
+        )
+        XCTAssertEqual(network.getCallCount, 0, "a book on disk must not be fetched")
+    }
+
+    /// A file too short to hold the record at all is a download that has barely
+    /// started, not a book. Pins the length guard from below; the whole-archive
+    /// fixture is exactly the minimum, so it pins it from above.
+    func testResolveManifest_lcpaShorterThanTheRecord_usesLicenseFileInstead() async {
+        let book = makeBook(
+            acquisitionType: lcpLicenseMIME,
+            indirect: [indirect(audiobookLCPMIME)]
+        )
+        let localURL = tempBookFileURL(identifier: book.identifier)
+        // One byte short of the smallest end-of-central-directory record.
+        var truncated = Data([0x50, 0x4B, 0x05, 0x06])
+        truncated.append(Data(repeating: 0, count: 17))
+        writeFixture(truncated, to: localURL)
+        let licenseURL = localURL.deletingPathExtension().appendingPathExtension("lcpl")
+        writeFixture(Data([0x7B, 0x7D]), to: licenseURL)
+        defer { try? FileManager.default.removeItem(at: localURL.deletingLastPathComponent()) }
+
+        let downloadCenter = SpyDownloadCenter()
+        downloadCenter.fileUrlByIdentifier[book.identifier] = localURL
+        var capturedFactoryURL: URL?
+        let adapter = LCPAdapter(
+            downloadCenter: downloadCenter,
+            networkExecutor: SpyNetworkExecutor(),
+            lcpAudiobooksFactory: { url in
+                capturedFactoryURL = url
+                return nil
+            }
+        )
+
+        _ = await adapter.resolveManifest(for: book)
+
+        XCTAssertEqual(
+            capturedFactoryURL,
+            licenseURL,
+            "a file too short to hold the record must be streamed from the origin"
+        )
+    }
+
+    /// A directory at the content path answers `fileExists` and refuses a file
+    /// handle, so the adapter must stream rather than assume the archive is
+    /// whole. Scoped deliberately to that case: a readable file that only
+    /// momentarily refuses a handle is a different question, and the check
+    /// cannot currently tell the two apart (PP-5368).
+    func testResolveManifest_lcpaPathThatCannotBeOpened_usesLicenseFileInstead() async {
+        let book = makeBook(
+            acquisitionType: lcpLicenseMIME,
+            indirect: [indirect(audiobookLCPMIME)]
+        )
+        let localURL = tempBookFileURL(identifier: book.identifier)
+        do {
+            try FileManager.default.createDirectory(at: localURL, withIntermediateDirectories: true)
+        } catch {
+            XCTFail("Fixture directory could not be created: \(error)")
+        }
+        let licenseURL = localURL.deletingPathExtension().appendingPathExtension("lcpl")
+        writeFixture(Data([0x7B, 0x7D]), to: licenseURL)
+        defer { try? FileManager.default.removeItem(at: localURL.deletingLastPathComponent()) }
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: localURL.path),
+            "Precondition: the path must answer fileExists, or the test proves nothing"
+        )
+
+        let downloadCenter = SpyDownloadCenter()
+        downloadCenter.fileUrlByIdentifier[book.identifier] = localURL
+        var capturedFactoryURL: URL?
+        let adapter = LCPAdapter(
+            downloadCenter: downloadCenter,
+            networkExecutor: SpyNetworkExecutor(),
+            lcpAudiobooksFactory: { url in
+                capturedFactoryURL = url
+                return nil
+            }
+        )
+
+        _ = await adapter.resolveManifest(for: book)
+
+        XCTAssertEqual(
+            capturedFactoryURL,
+            licenseURL,
+            "a path that cannot be read must not be taken for a finished download"
+        )
+    }
+
+    /// A download still in progress must not be read as the book.
+    ///
+    /// The source tiers tested only that a local file EXISTS, and a partial
+    /// download exists from its first byte. Opening it reads the archive from
+    /// disk, and the file fills from the start, so a chapter early in the
+    /// package plays at once while a chapter further in cannot be read until
+    /// the download reaches it. A patron sees playback start on chapter 1 and
+    /// stall on a resumed chapter until the download passes that point. The
+    /// licence URL streams from the origin and has no such gap (PP-5368).
+    func testResolveManifest_partiallyDownloadedLCPA_usesLicenseFileInstead() async {
+        let book = makeBook(
+            acquisitionType: lcpLicenseMIME,
+            indirect: [indirect(audiobookLCPMIME)]
+        )
+        let localURL = tempBookFileURL(identifier: book.identifier)
+        // A download in progress: real bytes, but no end-of-central-directory
+        // record, because that is written last.
+        writeFixture(Data(repeating: 0x41, count: 4096), to: localURL)
+        let licenseURL = localURL.deletingPathExtension().appendingPathExtension("lcpl")
+        writeFixture(Data([0x7B, 0x7D]), to: licenseURL)
+        defer { try? FileManager.default.removeItem(at: localURL.deletingLastPathComponent()) }
+
+        let downloadCenter = SpyDownloadCenter()
+        downloadCenter.fileUrlByIdentifier[book.identifier] = localURL
+        let network = SpyNetworkExecutor()
+        var capturedFactoryURL: URL?
+        let adapter = LCPAdapter(
+            downloadCenter: downloadCenter,
+            networkExecutor: network,
+            lcpAudiobooksFactory: { url in
+                capturedFactoryURL = url
+                return nil
+            }
+        )
+
+        _ = await adapter.resolveManifest(for: book)
+
+        XCTAssertEqual(
+            capturedFactoryURL,
+            licenseURL,
+            "an incomplete archive must be streamed from the origin, not read from disk"
+        )
     }
 
     /// No local `.lcpa`, but a `.lcpl` license sibling file exists. The
@@ -327,7 +532,7 @@ final class LCPAdapterTests: XCTestCase {
             indirect: [indirect(audiobookLCPMIME)]
         )
         let localURL = tempBookFileURL(identifier: book.identifier)
-        try? Data([0x03]).write(to: localURL)
+        writeWholeArchive(to: localURL)
         defer { try? FileManager.default.removeItem(at: localURL.deletingLastPathComponent()) }
 
         let downloadCenter = SpyDownloadCenter()
