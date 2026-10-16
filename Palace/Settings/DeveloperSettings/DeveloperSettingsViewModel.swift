@@ -165,6 +165,11 @@ final class DeveloperSettingsViewModel: ObservableObject {
         didSet { debugSettings.isAudiobookPositionTraceEnabled = audiobookPositionTraceEnabled }
     }
 
+    /// PP-5285 — format and DRM labels on catalog covers.
+    @Published var coverFormatAndDRMLabelsEnabled: Bool {
+        didSet { debugSettings.showsCoverFormatAndDRMLabels = coverFormatAndDRMLabelsEnabled }
+    }
+
     @Published var testHoldsConfiguration: DebugSettings.TestHoldsConfiguration {
         didSet { debugSettings.testHoldsConfiguration = testHoldsConfiguration }
     }
@@ -237,6 +242,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
 
         self.badgeLoggingEnabled = debugSettings.isBadgeLoggingEnabled
         self.audiobookPositionTraceEnabled = debugSettings.isAudiobookPositionTraceEnabled
+        self.coverFormatAndDRMLabelsEnabled = debugSettings.showsCoverFormatAndDRMLabels
         self.testHoldsConfiguration = debugSettings.testHoldsConfiguration
         self.simulatedBorrowError = debugSettings.simulatedBorrowError
         self.simulatedSyncFailure = debugSettings.simulatedSyncFailure

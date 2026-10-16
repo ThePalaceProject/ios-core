@@ -62,6 +62,13 @@ final class ScriptedURLProtocol: URLProtocol {
 
     static var started: [Seen] { state.value.started }
 
+    /// The started requests whose path carries `runID`, the per-test path
+    /// segment. A request a previous test left in flight can start after
+    /// `reset()`; filtering on the run keeps it out of this test's assertions.
+    static func started(inRun runID: String) -> [Seen] {
+        state.value.started.filter { $0.url.path.contains("/\(runID)/") }
+    }
+
     static func startCount(of url: URL) -> Int {
         state.value.started.filter { $0.url == url }.count
     }
@@ -136,8 +143,6 @@ final class ScriptedURLProtocol: URLProtocol {
 /// test rather than read from whatever account an earlier test left behind.
 @MainActor
 struct URLSessionNetworkClientFixture {
-    static let tokenURL = URL(string: "https://token.example.com/oauth/token")!
-
     let executor: TPPNetworkExecutor
     let client: URLSessionNetworkClient
     let accounts: TPPLibraryAccountMock
@@ -148,10 +153,14 @@ struct URLSessionNetworkClientFixture {
     ///   before dispatching a refresh-enabled request.
     /// - Parameter requestCachePolicy: the session default, which
     ///   `executor.request(for:)` copies onto every request it builds.
-    init(tokenExpiresIn: TimeInterval,
+    /// - Parameter tokenURL: the current account's token endpoint. Callers pass
+    ///   a per-test URL: `ScriptedURLProtocol` is process-wide, so a shared one
+    ///   lets a request left by another test class be counted here.
+    init(tokenURL: URL,
+         tokenExpiresIn: TimeInterval,
          token: String = "current-token",
          requestCachePolicy: URLRequest.CachePolicy = .useProtocolCachePolicy) {
-        let user = Self.tokenUser(token: token, expiresIn: tokenExpiresIn)
+        let user = Self.tokenUser(token: token, expiresIn: tokenExpiresIn, tokenURL: tokenURL)
         let accounts = TPPLibraryAccountMock()
         let resolved: TPPUserAccountMock = user
         accounts.userAccountResolver = { _ in resolved }
@@ -173,7 +182,7 @@ struct URLSessionNetworkClientFixture {
     }
 
     static func tokenUser(token: String, expiresIn: TimeInterval,
-                          tokenURL: URL = tokenURL) -> TPPUserAccountMock {
+                          tokenURL: URL) -> TPPUserAccountMock {
         let user = TPPUserAccountMock()
         user._authDefinition = tokenAuth(tokenURL: tokenURL)
         user._credentials = .token(authToken: token, barcode: "user-001", pin: "1234",

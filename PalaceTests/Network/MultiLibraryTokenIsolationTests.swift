@@ -857,4 +857,236 @@ final class MultiLibraryTokenIsolationTests: XCTestCase {
                        "the request is sent once, with A's refreshed bearer")
         XCTAssertEqual(libraryProvider.accountB.authToken, "bearerB", "B's token is untouched")
     }
+
+    // MARK: - A 401 or 2xx is attributed to the library the request was sent for
+
+    /// A 401 for A that arrives after the patron switched to B refreshes A's
+    /// token and leaves B alone; resolving B here marked B stale and retried with A's old token.
+    func test_401ForA_ArrivingAfterSwitchToB_RefreshesA_AndLeavesBUntouched() async throws {
+        libraryProvider.switchToA()
+        await executor.resetRefreshAttemptCount()
+        let firstRequestArrived = DispatchSemaphore(value: 0)
+        let releaseFirstResponse = DispatchSemaphore(value: 0)
+        let apiHits = LockIsolated(0)
+        let retryAuth = LockIsolated<String?>(nil)
+        let tokenHitsA = LockIsolated(0)
+        let tokenHitsB = LockIsolated(0)
+        HTTPStubURLProtocol.register { @Sendable [tokenURL_A, tokenURL_B, apiURL_A] request in
+            if request.url == tokenURL_A {
+                tokenHitsA.withValue { $0 += 1 }
+                return .init(statusCode: 200, headers: nil, body: Self.tokenResponseJSON(accessToken: "freshA"))
+            }
+            if request.url == tokenURL_B {
+                tokenHitsB.withValue { $0 += 1 }
+                return .init(statusCode: 200, headers: nil, body: Self.tokenResponseJSON(accessToken: "freshB"))
+            }
+            guard request.url == apiURL_A else { return nil }
+            let hit = apiHits.withValue { $0 += 1; return $0 }
+            if hit == 1 {
+                firstRequestArrived.signal()
+                _ = releaseFirstResponse.wait(timeout: .now() + 10.0)
+                return .init(statusCode: 401, headers: nil, body: nil)
+            }
+            retryAuth.value = request.value(forHTTPHeaderField: "Authorization")
+            return .init(statusCode: 200, headers: nil, body: Data("ok".utf8))
+        }
+        let request = executor.request(for: apiURL_A)
+        let executor: TPPNetworkExecutor = self.executor
+
+        async let sent = executor.execute(request, enableTokenRefresh: false, accountId: nil)
+        let arrived = await signalled(firstRequestArrived)
+        libraryProvider.switchToB()
+        releaseFirstResponse.signal()
+        let result = await sent
+
+        XCTAssertEqual(arrived, .success, "the request for A never reached the server")
+        guard case .success = result else {
+            return XCTFail("the retry for A should succeed with A's refreshed token; got \(result)")
+        }
+        XCTAssertEqual(tokenHitsB.value, 0, "B's token endpoint must not be requested for A's 401")
+        XCTAssertEqual(tokenHitsA.value, 1, "A's token is the one refreshed")
+        XCTAssertEqual(retryAuth.value, "Bearer freshA", "the retry carries A's refreshed bearer")
+        XCTAssertEqual(libraryProvider.accountB.authState, .loggedIn, "B must not be marked stale by A's 401")
+        XCTAssertEqual(libraryProvider.accountB.authToken, "bearerB", "B's token is untouched")
+    }
+
+    /// Settings sign-in for a second library with a wrong PIN: the 401 belongs
+    /// to that library, which has no stored credentials, so the selected library is neither marked stale nor refreshed.
+    func test_SignInForNonCurrentLibrary_WrongPIN401_LeavesCurrentLibrarySignedIn() async throws {
+        libraryProvider.switchToB()
+        libraryProvider.accountA._credentials = nil
+        let tokenHitsB = LockIsolated(0)
+        HTTPStubURLProtocol.register { @Sendable [tokenURL_B, apiURL_A] request in
+            if request.url == tokenURL_B {
+                tokenHitsB.withValue { $0 += 1 }
+                return .init(statusCode: 200, headers: nil, body: Self.tokenResponseJSON(accessToken: "freshB"))
+            }
+            guard request.url == apiURL_A else { return nil }
+            return .init(statusCode: 401, headers: nil, body: nil)
+        }
+        var request = URLRequest(url: apiURL_A)
+        request.setValue("Basic d3Jvbmc6cGlu", forHTTPHeaderField: "Authorization")
+
+        let result = await executor.execute(request, enableTokenRefresh: false, accountId: libraryProvider.uuidA)
+
+        guard case .failure(_, let response) = result else {
+            return XCTFail("a wrong PIN must fail sign-in; got \(result)")
+        }
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 401, "the caller sees the server's 401")
+        XCTAssertEqual(libraryProvider.accountB.authState, .loggedIn,
+                       "a wrong PIN for another library must not mark the selected library stale")
+        XCTAssertEqual(tokenHitsB.value, 0, "the selected library's token must not be refreshed")
+    }
+
+    /// A 2xx for A while both libraries are stale heals A, not the selected B.
+    func test_2xxForNonCurrentLibrary_HealsThatLibrary_NotTheSelectedOne() async throws {
+        libraryProvider.switchToB()
+        libraryProvider.accountA.markCredentialsStale()
+        libraryProvider.accountB.markCredentialsStale()
+        HTTPStubURLProtocol.register { @Sendable [apiURL_A] request in
+            guard request.url == apiURL_A else { return nil }
+            return .init(statusCode: 200, headers: nil, body: Data("ok".utf8))
+        }
+
+        let result = await executor.execute(executor.request(for: apiURL_A, accountId: libraryProvider.uuidA),
+                                            enableTokenRefresh: false,
+                                            accountId: libraryProvider.uuidA)
+
+        guard case .success = result else { return XCTFail("expected success; got \(result)") }
+        XCTAssertEqual(libraryProvider.accountA.authState, .loggedIn,
+                       "the server accepted A's credentials, so A is reconciled")
+        XCTAssertEqual(libraryProvider.accountB.authState, .credentialsStale,
+                       "B's credentials were not exercised and stay stale")
+    }
+
+    /// When the executor that sent a request is released before its 401
+    /// arrives, the caller receives that 401 and no token is refreshed.
+    func test_401AfterOwningExecutorReleased_CompletesWith401_WithoutRefreshing() async throws {
+        libraryProvider.switchToA()
+        let requestArrived = DispatchSemaphore(value: 0)
+        let releaseResponse = DispatchSemaphore(value: 0)
+        let tokenHits = LockIsolated(0)
+        HTTPStubURLProtocol.register { @Sendable [tokenURL_A, tokenURL_B, apiURL_A] request in
+            if request.url == tokenURL_A || request.url == tokenURL_B {
+                tokenHits.withValue { $0 += 1 }
+                return .init(statusCode: 200, headers: nil, body: Self.tokenResponseJSON(accessToken: "fresh"))
+            }
+            guard request.url == apiURL_A else { return nil }
+            requestArrived.signal()
+            _ = releaseResponse.wait(timeout: .now() + 10.0)
+            return .init(statusCode: 401, headers: nil, body: nil)
+        }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [HTTPStubURLProtocol.self]
+        var shortLived: TPPNetworkExecutor? = TPPNetworkExecutor(credentialsProvider: nil,
+                                                                 cachingStrategy: .ephemeral,
+                                                                 sessionConfiguration: config,
+                                                                 accountsManager: libraryProvider,
+                                                                 delegateQueue: nil)
+        weak var released = shortLived
+        let status = LockIsolated<Int?>(nil)
+        let errorCode = LockIsolated<Int?>(nil)
+        let done = expectation(description: "caller completion")
+        // No local strong reference: the executor must be releasable below.
+        _ = shortLived?.executeRequest(URLRequest(url: apiURL_A), enableTokenRefresh: false) { @Sendable result in
+            if case .failure(let error, let response) = result {
+                status.value = (response as? HTTPURLResponse)?.statusCode
+                errorCode.value = (error as NSError).code
+            }
+            done.fulfill()
+        }
+
+        let arrived = await signalled(requestArrived)
+        shortLived = nil
+        XCTAssertNil(released, "precondition: the executor must be released while its request is in flight")
+        releaseResponse.signal()
+        await fulfillment(of: [done], timeout: 10.0)   // STARVE-001-OK: the stub answers as soon as it is released
+
+        XCTAssertEqual(arrived, .success, "the request never reached the server")
+        XCTAssertEqual(status.value, 401, "the caller receives the server's 401")
+        XCTAssertNotEqual(errorCode.value, NSURLErrorCancelled, "the caller must not see a cancel in place of its 401")
+        XCTAssertEqual(tokenHits.value, 0, "no token refresh runs once the sending executor is gone")
+    }
+
+    // MARK: - Browser re-authentication is for the selected library only
+
+    private nonisolated static func makeSamlAuth() -> AccountDetails.Authentication {
+        let json = """
+        {
+          "type": "http://librarysimplified.org/authtype/SAML-2.0",
+          "links": [{"rel": "authenticate", "href": "https://idp.example.com/sso"}]
+        }
+        """
+        let docAuth = try! JSONDecoder().decode(
+            OPDS2AuthenticationDocument.Authentication.self, from: Data(json.utf8))
+        return AccountDetails.Authentication(auth: docAuth)
+    }
+
+    private nonisolated static let samlExpiredProblem = Data(#"{"type":"http://librarysimplified.org/terms/problem/credentials-invalid","title":"SAML session expired","status":401}"#.utf8)
+
+    /// A SAML library's 401 that lands after the patron switched to a token
+    /// library must not start re-authentication, which acts on the selected library.
+    func test_SamlLibrary401_ArrivingAfterSwitchToTokenLibrary_DoesNotDispatchReauth() async {
+        libraryProvider.accountA._authDefinition = Self.makeSamlAuth()
+        libraryProvider.switchToA()
+        let dispatched = LockIsolated<[String]>([])
+        executor.responder.dispatchBrowserReauth = { reason in
+            dispatched.withValue { $0.append(String(describing: reason)) }
+        }
+        let requestArrived = DispatchSemaphore(value: 0)
+        let releaseResponse = DispatchSemaphore(value: 0)
+        let tokenHitsB = LockIsolated(0)
+        HTTPStubURLProtocol.register { @Sendable [tokenURL_B, apiURL_A] request in
+            if request.url == tokenURL_B {
+                tokenHitsB.withValue { $0 += 1 }
+                return .init(statusCode: 200, headers: nil, body: Self.tokenResponseJSON(accessToken: "freshB"))
+            }
+            guard request.url == apiURL_A else { return nil }
+            requestArrived.signal()
+            _ = releaseResponse.wait(timeout: .now() + 10.0)
+            return .init(statusCode: 401, headers: ["Content-Type": "application/problem+json"],
+                         body: Self.samlExpiredProblem)
+        }
+        let request = executor.request(for: apiURL_A)
+        let executor: TPPNetworkExecutor = self.executor
+
+        async let sent = executor.execute(request, enableTokenRefresh: false, accountId: nil)
+        let arrived = await signalled(requestArrived)
+        libraryProvider.switchToB()
+        releaseResponse.signal()
+        let result = await sent
+
+        XCTAssertEqual(arrived, .success, "the request for A never reached the server")
+        guard case .failure(_, let response) = result else {
+            return XCTFail("the caller should receive the 401; got \(result)")
+        }
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 401, "the caller sees the server's 401")
+        XCTAssertEqual(dispatched.value, [], "re-authentication must not start for a library that is no longer selected")
+        XCTAssertEqual(libraryProvider.accountB.authState, .loggedIn, "B is not marked stale by A's 401")
+        XCTAssertEqual(tokenHitsB.value, 0, "B's token is not refreshed by A's 401")
+    }
+
+    /// The selected SAML library's own 401 still starts re-authentication.
+    func test_SamlLibrary401_ForSelectedLibrary_DispatchesSamlReauth() async {
+        libraryProvider.accountA._authDefinition = Self.makeSamlAuth()
+        libraryProvider.switchToA()
+        let dispatched = LockIsolated<[String]>([])
+        executor.responder.dispatchBrowserReauth = { reason in
+            dispatched.withValue { $0.append(String(describing: reason)) }
+        }
+        HTTPStubURLProtocol.register { @Sendable [apiURL_A] request in
+            guard request.url == apiURL_A else { return nil }
+            return .init(statusCode: 401, headers: ["Content-Type": "application/problem+json"],
+                         body: Self.samlExpiredProblem)
+        }
+
+        let result = await executor.execute(executor.request(for: apiURL_A), enableTokenRefresh: false, accountId: nil)
+
+        guard case .failure(_, let response) = result else {
+            return XCTFail("the caller should receive the 401; got \(result)")
+        }
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 401)
+        XCTAssertEqual(dispatched.value, [String(describing: ReauthReason.samlSessionExpired)],
+                       "the selected library's SAML 401 starts SAML re-authentication once")
+    }
 }
