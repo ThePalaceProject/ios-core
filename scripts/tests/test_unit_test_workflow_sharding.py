@@ -171,11 +171,15 @@ def test_the_report_job_checks_that_every_planned_class_ran():
 
 
 def test_coverage_floors_are_not_evaluated_on_an_incomplete_run_and_say_why():
+    """An incomplete run abstains and names the reason; the required check, not
+    this step, is what then fails the run (test_coverage_workflow_wiring.py)."""
     step = _step("report", "Enforce Coverage Floors")
     run = step["run"]
     assert "steps.completeness.outputs.complete" in run
-    assert "Coverage floors not evaluated" in run and "exit 1" in run, \
-        "an incomplete run must report the reason, not skip the floor silently"
+    assert "--incomplete-reason" in run and "${REASON:-unknown}" in run, \
+        "an incomplete run must carry the reason into the enforcer, not drop it"
+    assert "Coverage floors not evaluated" in run and "floors_status=abstained" in run, \
+        "an incomplete run must report that the floors were not evaluated"
     assert "scripts/enforce_coverage_floors.py" in run
 
 
