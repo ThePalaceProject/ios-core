@@ -14,6 +14,9 @@ struct BookImageView: View {
     var coverShadowRadius: CGFloat? = nil
 
     @State private var showSkeleton: Bool = true
+    /// PP-5285 Testing menu toggle; `@AppStorage` so flipping it redraws covers
+    /// already on screen.
+    @AppStorage(DebugSettings.coverFormatAndDRMLabelsKey) private var showsFormatAndDRMLabels = false
 
     private var hasPreloadedCover: Bool {
         book.coverImage != nil || book.thumbnailImage != nil
@@ -54,6 +57,11 @@ struct BookImageView: View {
                     .clipShape(Circle())
                     .padding([.trailing, .bottom], 10)
                     .accessibilityHidden(true)
+            }
+        }
+        .overlay(alignment: .topLeading) {
+            if let labels = CoverDebugLabels.overlay(for: book.acquisitions, enabled: showsFormatAndDRMLabels) {
+                CoverDebugLabelsOverlay(labels: labels)
             }
         }
         .accessibilityElement(children: .ignore)

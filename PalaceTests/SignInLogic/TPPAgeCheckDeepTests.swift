@@ -41,7 +41,7 @@ final class TPPAgeCheckIsValidTests: XCTestCase {
     override func setUp() {
         super.setUp()
         storage = TPPAgeCheckChoiceStorageMock()
-        ageCheck = TPPAgeCheck(ageCheckChoiceStorage: storage)
+        ageCheck = TPPAgeCheck(ageCheckChoiceStorage: storage, presentAgeVerification: { _ in })
     }
 
     override func tearDown() {
@@ -119,7 +119,7 @@ final class TPPAgeCheckCompletionTests: XCTestCase {
     override func setUp() {
         super.setUp()
         storage = TPPAgeCheckChoiceStorageMock()
-        ageCheck = TPPAgeCheck(ageCheckChoiceStorage: storage)
+        ageCheck = TPPAgeCheck(ageCheckChoiceStorage: storage, presentAgeVerification: { _ in })
     }
 
     override func tearDown() {
@@ -274,7 +274,7 @@ final class TPPAgeCheckVerifyDecisionTests: XCTestCase {
     override func setUp() {
         super.setUp()
         storage = TPPAgeCheckChoiceStorageMock()
-        ageCheck = TPPAgeCheck(ageCheckChoiceStorage: storage)
+        ageCheck = TPPAgeCheck(ageCheckChoiceStorage: storage, presentAgeVerification: { _ in })
     }
 
     override func tearDown() {

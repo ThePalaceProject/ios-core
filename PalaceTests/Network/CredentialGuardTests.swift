@@ -24,7 +24,9 @@ import PalaceNetwork
 @MainActor
 final class TokenRequestCredentialGuardTests: XCTestCase {
 
-    private let tokenURL = URL(string: "https://example.com/patrons/me/token/")!
+    /// Per-test path segment: the stub handlers are process-wide, so a stub
+    /// matching any URL would see a request left over from another test class.
+    private let tokenURL = URL(string: "https://example.com/\(UUID().uuidString)/patrons/me/token/")!
 
     override func setUp() {
         super.setUp()
@@ -41,7 +43,8 @@ final class TokenRequestCredentialGuardTests: XCTestCase {
     func testExecute_EmptyUsername_ReturnsFailureWithoutNetworkCall() async {
         let request = TokenRequest(url: tokenURL, username: "", password: "validpin")
 
-        HTTPStubURLProtocol.register { _ in
+        HTTPStubURLProtocol.register { [tokenURL] request in
+            guard request.url == tokenURL else { return nil }
             XCTFail("Network request should not be made with empty username")
             return nil
         }
@@ -65,7 +68,8 @@ final class TokenRequestCredentialGuardTests: XCTestCase {
         let request = TokenRequest(url: tokenURL, username: "23160026460829", password: "")
 
         var networkCallMade = false
-        HTTPStubURLProtocol.register { req in
+        HTTPStubURLProtocol.register { [tokenURL] req in
+            guard req.url == tokenURL else { return nil }
             networkCallMade = true
             // Verify Basic Auth header is present with barcode and empty password
             let authHeader = req.value(forHTTPHeaderField: "Authorization") ?? ""
@@ -98,7 +102,8 @@ final class TokenRequestCredentialGuardTests: XCTestCase {
     func testExecute_BothEmpty_ReturnsFailureWithoutNetworkCall() async {
         let request = TokenRequest(url: tokenURL, username: "", password: "")
 
-        HTTPStubURLProtocol.register { _ in
+        HTTPStubURLProtocol.register { [tokenURL] request in
+            guard request.url == tokenURL else { return nil }
             XCTFail("Network request should not be made with both credentials empty")
             return nil
         }
@@ -138,7 +143,8 @@ final class TokenRequestCredentialGuardTests: XCTestCase {
         let request = TokenRequest(url: tokenURL, username: "12345", password: "1234")
         var requestMade = false
 
-        HTTPStubURLProtocol.register { _ in
+        HTTPStubURLProtocol.register { [tokenURL] request in
+            guard request.url == tokenURL else { return nil }
             requestMade = true
             let json = """
             {"access_token":"test","token_type":"Bearer","expires_in":3600}
@@ -171,7 +177,8 @@ final class TokenRequestCredentialGuardTests: XCTestCase {
         let request = TokenRequest(url: tokenURL, username: "mybarcode", password: "mypin")
         var capturedAuthHeader: String?
 
-        HTTPStubURLProtocol.register { urlRequest in
+        HTTPStubURLProtocol.register { [tokenURL] urlRequest in
+            guard urlRequest.url == tokenURL else { return nil }
             capturedAuthHeader = urlRequest.value(forHTTPHeaderField: "Authorization")
             let json = """
             {"access_token":"t","token_type":"Bearer","expires_in":3600}
@@ -194,7 +201,8 @@ final class TokenRequestCredentialGuardTests: XCTestCase {
         let request = TokenRequest(url: tokenURL, username: "user@lib.org", password: "p@ss:word!")
         var capturedAuthHeader: String?
 
-        HTTPStubURLProtocol.register { urlRequest in
+        HTTPStubURLProtocol.register { [tokenURL] urlRequest in
+            guard urlRequest.url == tokenURL else { return nil }
             capturedAuthHeader = urlRequest.value(forHTTPHeaderField: "Authorization")
             let json = """
             {"access_token":"t","token_type":"Bearer","expires_in":3600}
@@ -218,7 +226,8 @@ final class TokenRequestCredentialGuardTests: XCTestCase {
         let request = TokenRequest(url: tokenURL, username: "user", password: "pass:with:colons")
         var capturedAuthHeader: String?
 
-        HTTPStubURLProtocol.register { urlRequest in
+        HTTPStubURLProtocol.register { [tokenURL] urlRequest in
+            guard urlRequest.url == tokenURL else { return nil }
             capturedAuthHeader = urlRequest.value(forHTTPHeaderField: "Authorization")
             let json = """
             {"access_token":"t","token_type":"Bearer","expires_in":3600}
@@ -242,7 +251,8 @@ final class TokenRequestCredentialGuardTests: XCTestCase {
         let request = TokenRequest(url: tokenURL, username: "user", password: "pass")
         var capturedMethod: String?
 
-        HTTPStubURLProtocol.register { urlRequest in
+        HTTPStubURLProtocol.register { [tokenURL] urlRequest in
+            guard urlRequest.url == tokenURL else { return nil }
             capturedMethod = urlRequest.httpMethod
             let json = """
             {"access_token":"t","token_type":"Bearer","expires_in":3600}
@@ -457,8 +467,10 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
 
     func testExecuteTokenRefresh_EmptyUsername_FailsViaTokenRequestGuard() async {
         let executor = makeExecutor()
+        let tokenURL = URL(string: "https://example.com/\(UUID().uuidString)/token")!
 
-        HTTPStubURLProtocol.register { _ in
+        HTTPStubURLProtocol.register { urlRequest in
+            guard urlRequest.url == tokenURL else { return nil }
             XCTFail("Should not reach the network with empty username")
             return nil
         }
@@ -466,7 +478,6 @@ final class NetworkExecutorCredentialGuardTests: XCTestCase {
         // Deterministic join: await executeTokenRefresh's actual completion.
         // The empty-credential guard fires the completion directly, so the
         // continuation resumes the instant the guard rejects — no clock.
-        let tokenURL = URL(string: "https://example.com/token")!
         let result = await withCheckedContinuation { (cont: CheckedContinuation<Result<TokenResponse, Error>, Never>) in
             executor.executeTokenRefresh(
                 username: "",
@@ -939,8 +950,12 @@ final class TokenRefreshIntegrationTests: XCTestCase {
         // and any NotificationCenter observer tries to dispatch back to main.
         let executor = makeExecutor()
         var capturedAuthHeader: String?
+        // Per-test URL, matched exactly, so another test's request cannot
+        // overwrite the captured header.
+        let tokenURL = URL(string: "https://example.com/\(UUID().uuidString)/token")!
 
         HTTPStubURLProtocol.register { request in
+            guard request.url == tokenURL else { return nil }
             capturedAuthHeader = request.value(forHTTPHeaderField: "Authorization")
             let json = """
             {"access_token":"t","token_type":"Bearer","expires_in":3600}
@@ -952,7 +967,6 @@ final class TokenRefreshIntegrationTests: XCTestCase {
             )
         }
 
-        let tokenURL = URL(string: "https://example.com/token")!
         await withCheckedContinuation { continuation in
             executor.executeTokenRefresh(
                 username: "testbarcode",
@@ -971,8 +985,12 @@ final class TokenRefreshIntegrationTests: XCTestCase {
     func testExecuteTokenRefresh_EmptyUsername_NeverHitsNetwork() async {
         let executor = makeExecutor()
         var networkCallMade = false
+        // Per-test URL, matched exactly: the stub handlers are process-wide, so a
+        // catch-all would count a request left over from another test class.
+        let tokenURL = URL(string: "https://example.com/\(UUID().uuidString)/token")!
 
-        HTTPStubURLProtocol.register { _ in
+        HTTPStubURLProtocol.register { request in
+            guard request.url == tokenURL else { return nil }
             networkCallMade = true
             return HTTPStubURLProtocol.StubbedResponse(statusCode: 200, headers: nil, body: Data())
         }
@@ -982,7 +1000,6 @@ final class TokenRefreshIntegrationTests: XCTestCase {
         // instant the guard rejects — no wall-clock deadline to starve. By the
         // time the continuation returns, the guard has run, so networkCallMade
         // reflects the final decision.
-        let tokenURL = URL(string: "https://example.com/token")!
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             executor.executeTokenRefresh(
                 username: "",

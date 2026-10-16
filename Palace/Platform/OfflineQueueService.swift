@@ -12,8 +12,8 @@ import Foundation
 import Network
 import PalaceLogging
 
-/// A closure that executes an offline action. Returns true on success, false on failure.
-typealias OfflineActionExecutor = @Sendable (OfflineAction) async -> Bool
+/// A closure that executes an offline action and reports what it established.
+typealias OfflineActionExecutor = @Sendable (OfflineAction) async -> OfflineActionOutcome
 
 /// Actor-based offline queue service for user-initiated actions.
 actor OfflineQueueService: OfflineQueueServiceProtocol {
@@ -86,7 +86,7 @@ actor OfflineQueueService: OfflineQueueServiceProtocol {
 
         // Load persisted queue
         if let data = userDefaults.data(forKey: storageKey),
-           let decoded = try? JSONDecoder().decode([OfflineAction].self, from: data) {
+           let decoded = Self.decodeEachAction(from: data) {
             // Actions saved before `libraryID` existed cannot be attributed to
             // a library, and running one under the wrong library confirms a
             // return that never happened. The loan they name is still held on
@@ -116,11 +116,33 @@ actor OfflineQueueService: OfflineQueueServiceProtocol {
         }
     }
 
+    /// Decodes the stored queue one action at a time, so an action this build
+    /// cannot read (e.g. a type added by a newer build before a downgrade)
+    /// costs only itself. Nil when the data is not an array at all.
+    private static func decodeEachAction(from data: Data) -> [OfflineAction]? {
+        guard let elements = try? JSONDecoder().decode([LossyAction].self, from: data) else {
+            return nil
+        }
+        let decoded = elements.compactMap(\.action)
+        if decoded.count != elements.count {
+            Log.error(#file, "Dropped \(elements.count - decoded.count) queued offline action(s) this build cannot decode")
+        }
+        return decoded
+    }
+
+    /// An array element that decodes to nil instead of failing the whole array.
+    private struct LossyAction: Decodable {
+        let action: OfflineAction?
+        init(from decoder: Decoder) throws {
+            action = try? OfflineAction(from: decoder)
+        }
+    }
+
     // MARK: - Configuration
 
-    /// Set the executor that will process offline actions.
-    func setExecutor(_ executor: @escaping OfflineActionExecutor) {
-        self.executor = executor
+    /// Set an executor that reports only confirmed (true) or failed (false).
+    func setExecutor(_ executor: @escaping @Sendable (OfflineAction) async -> Bool) {
+        self.executor = { await executor($0) ? .confirmed : .failed }
     }
 
     /// Set the executor together with the current-library reader that scopes
@@ -136,6 +158,18 @@ actor OfflineQueueService: OfflineQueueServiceProtocol {
     // MARK: - Queue Operations
 
     func enqueue(_ action: OfflineAction) async {
+        // One queued copy of an action is enough. A second can arrive while the
+        // first is running, e.g. a return that finds the server unreachable.
+        let alreadyQueued = queue.contains { queued in
+            (queued.state == .pending || queued.state == .processing)
+                && queued.libraryID == action.libraryID
+                && queued.type == action.type
+                && queued.bookID == action.bookID
+        }
+        guard !alreadyQueued else {
+            Log.info(#file, "Offline \(action.type.rawValue) for a book already queued — not adding a copy")
+            return
+        }
         queue.append(action)
         persist()
         publishStatus()
@@ -206,24 +240,35 @@ actor OfflineQueueService: OfflineQueueServiceProtocol {
         publishStatus()
 
         // Process the current library's pending actions in FIFO order
-        while let index = nextRunnableIndex() {
+        drain: while let index = nextRunnableIndex() {
             queue[index].state = .processing
             queue[index].lastAttemptAt = Date()
             persist()
             actionSubject.send(queue[index])
 
             let action = queue[index]
-            let success = await executor(action)
+            let outcome = await executor(action)
 
             // Re-find the index in case the queue was modified
             guard let currentIndex = queue.firstIndex(where: { $0.id == action.id }) else { continue }
 
-            if success {
+            switch outcome {
+            case .confirmed:
                 queue[currentIndex].state = .completed
                 actionSubject.send(queue[currentIndex])
                 // Remove completed actions
                 queue.remove(at: currentIndex)
-            } else {
+            case .deferred:
+                // An unreachable server says nothing about the action, so it
+                // keeps its retries. Later actions would hit the same server,
+                // so the drain ends; the next network or library trigger
+                // starts another.
+                queue[currentIndex].state = .pending
+                actionSubject.send(queue[currentIndex])
+                persist()
+                publishStatus()
+                break drain
+            case .failed:
                 queue[currentIndex].retryCount += 1
                 if queue[currentIndex].retryCount >= queue[currentIndex].maxRetries {
                     queue[currentIndex].state = .failed

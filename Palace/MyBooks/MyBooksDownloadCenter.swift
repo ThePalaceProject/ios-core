@@ -133,7 +133,8 @@ private final class RedirectCompletionBox: @unchecked Sendable {
     /// with a hand-injected reporter, so without this the line could be deleted
     /// with every unit test still passing.
     let localContentService: LocalBookContentService
-    private let returnService: BookReturnService
+    /// Internal so the offline queue's entry point (OfflineQueueCoordinator.swift) can reach it.
+    let returnService: BookReturnService
     private let alertPresenter: DownloadAlertPresenter
     private let authRetryHandler: DownloadAuthRetryHandler
     private let throttlingService: DownloadThrottlingService

@@ -539,6 +539,11 @@ final class BookRegistrySync: @unchecked Sendable {
         self?.syncUrl = loansUrl
       }
 
+      // States as they were when the fetch began. A record changed locally
+      // while the feed was in flight (a borrow, say) keeps its newer state
+      // instead of taking one from a feed that predates it (PP-5360).
+      let statesAtFetchStart = self.store.readRegistry { $0.mapValues(\.state) }
+
       let feed: TPPOPDSFeed
       do {
         feed = try await opdsFeedService.fetchFeed(from: loansUrl, resetCache: true)
@@ -564,6 +569,10 @@ final class BookRegistrySync: @unchecked Sendable {
         // re-enters the registry via bookRegistry.book(forIdentifier:) and trips
         // Swift's exclusivity trap — same class of bug as the save() note below.
         var booksToDeleteLocally: [TPPBook] = []
+        // Per-book observers (cells, the shared cell-model cache, detail views)
+        // listen to bookStateSubject, not the registry-wide change, so every
+        // state the merge changes is sent there after the barrier releases.
+        var stateChanges: [(identifier: String, state: TPPBookState)] = []
         self.store.mutateRegistrySync { registry in
           var recordsToDelete = Set<String>(registry.keys)
           // Side-loaded books never appear in the loans feed. Exempt them so
@@ -577,13 +586,14 @@ final class BookRegistrySync: @unchecked Sendable {
             recordsToDelete.remove(book.identifier)
 
             if let record = registry[book.identifier] {
-              var nextState = record.state
-              if record.state == .unregistered {
-                book.defaultAcquisition?.availability.match(unavailable:
-                  nil, limited: nil, unlimited: nil,
-                  reserved: { _ in nextState = .holding },
-                  ready: { _ in nextState = .holding }
-                )
+              // Follow the server between Holds and My Books: a hold borrowed on
+              // another device otherwise stayed a hold until sign-out (PP-5360).
+              let unchangedSinceFetch = statesAtFetchStart[book.identifier] == record.state
+              let nextState = unchangedSinceFetch
+                ? TPPBookRegistryRecord.stateAfterServerUpdate(current: record.state, book: book)
+                : record.state
+              if nextState != record.state {
+                stateChanges.append((book.identifier, nextState))
               }
               dependencies.onAvailabilityChange(record, book)
               // Preserve metadata already in the registry if the loans feed's
@@ -668,6 +678,10 @@ final class BookRegistrySync: @unchecked Sendable {
           // against the loans feed (guarded by shouldSkipBulkDeletion), so it is
           // allowed to persist an empty shelf and it clears needsRebuildFromServer.
           self.save(for: accountUUID, serverAuthoritative: true)
+        }
+
+        for change in stateChanges {
+          self.store.bookStateSubject.send((change.identifier, change.state))
         }
 
         callbacks.setState(.synced)

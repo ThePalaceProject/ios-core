@@ -43,7 +43,8 @@ XCODEBUILD = textwrap.dedent("""\
     # 26.6 fails the test in flight when it gives up on it (run 36952741418);
     # "nomarker" exits without the marker; any other value logs it before the
     # marker. STUB_CRASH_EXIT overrides 134.
-    # STUB_INTERRUPT=parallel|serial: the first pass of that kind is stopped at
+    # STUB_INTERRUPT=parallel|serial|relaunch|rerun: the first pass of that kind
+    # (relaunch: a relaunch of lost classes; rerun: the second chance) is stopped at
     # the shard budget (runs 37947147417, 37962677753): the INTERRUPTED marker,
     # exit 73, and a bundle marked "nocoverage" that holds the runner failure
     # only, or with STUB_INTERRUPT_RAN its classes as passed (one Failed with
@@ -89,8 +90,9 @@ XCODEBUILD = textwrap.dedent("""\
       exit "${STUB_CRASH_EXIT:-134}"
     fi
     kind=serial; case "$*" in *"-parallel-testing-enabled YES"*) kind=parallel;; esac
+    stage=""; case "$(basename "$bundle")" in relaunch-*) stage=relaunch;; rerun*) stage=rerun;; esac
     interrupted="$STUB_LOG.interrupted"
-    if [ "${STUB_INTERRUPT:-}" = "$kind" ] && [ ! -e "$interrupted" ]; then
+    if { [ "${STUB_INTERRUPT:-}" = "$kind" ] || { [ -n "$stage" ] && [ "${STUB_INTERRUPT:-}" = "$stage" ]; }; } && [ ! -e "$interrupted" ]; then
       touch "$interrupted"
       [ -n "${STUB_INTERRUPT_NO_MARK:-}" ] || touch "$(dirname "$bundle")/budget-exceeded"
       mkdir -p "$bundle"; touch "$bundle/nocoverage"
@@ -948,3 +950,52 @@ def test_a_template_that_will_not_warm_does_not_fail_the_shard(env, mode):
     assert r.returncode == 0, r.stdout + r.stderr
     assert "Simulator warm-up did not finish" in r.stdout
     assert _warm_calls(tmp_path), "it still tried"
+
+
+# --------------------------------------------------------------------------
+# The shard budget cutting off a relaunch or the second chance
+# --------------------------------------------------------------------------
+
+def test_a_second_chance_cut_off_by_the_budget_names_the_budget_not_the_test(env):
+    """Run 38504268058: the budget fired as the second chance started, so the killed
+    test never ran again; the error must not report it as having failed again."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_KILL="PalaceTests/A", STUB_INTERRUPT="rerun")
+    assert r.returncode == 1, "the shard still fails: it ran out of time"
+    assert "Allowance kill repeated" not in r.stdout
+    assert "::error title=Second chance cut off by the shard budget::" in r.stdout
+    assert "120s shard budget" in r.stdout
+    assert "not re-run: PalaceTests/A/t" in r.stdout
+
+
+def test_the_test_in_flight_when_the_budget_cut_off_the_second_chance_is_not_called_failed(env):
+    """Xcode logs the test it cuts off as failed in 0.000 s after the INTERRUPTED line."""
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_KILL="PalaceTests/A", STUB_INTERRUPT="rerun", STUB_INTERRUPT_IN_FLIGHT="log")
+    assert r.returncode == 1
+    assert "Allowance kill repeated" not in r.stdout
+    assert "::error title=Second chance cut off by the shard budget::" in r.stdout
+
+
+def test_a_second_chance_failure_before_the_budget_fired_is_still_a_repeated_kill(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_KILL="PalaceTests/A", STUB_INTERRUPT="rerun",
+             STUB_INTERRUPT_RAN="1", STUB_INTERRUPT_FAILED="1")
+    assert r.returncode == 1
+    assert "Allowance kill repeated" in r.stdout
+    assert "cut off by the shard budget" not in r.stdout
+
+
+def test_a_relaunch_cut_off_by_the_budget_says_so(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_HANG="PalaceTests/A", STUB_INTERRUPT="relaunch")
+    assert r.returncode == 1
+    assert "::error title=Runner failure not recovered::" in r.stdout
+    assert "120s shard budget interrupted the relaunch" in r.stdout
+
+
+def test_a_relaunch_that_was_not_interrupted_does_not_blame_the_budget(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_HANG="PalaceTests/A", STUB_HANG_AGAIN="1")
+    assert "::error title=Runner failure not recovered::" in r.stdout
+    assert "shard budget" not in r.stdout

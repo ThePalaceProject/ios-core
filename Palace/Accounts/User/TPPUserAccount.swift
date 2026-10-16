@@ -535,7 +535,25 @@ private enum StorageKey: String {
         setAuthState(.credentialsStale)
     }
 
+    /// Records a successful authentication, unless the credential now stored
+    /// is a token that has already expired.
+    ///
+    /// The guard matches the one in `setAuthToken` (PP-5318). Both production
+    /// writers call this immediately after writing the token —
+    /// `TPPNetworkExecutor.executeTokenRefresh` and
+    /// `TPPSignInBusinessLogic.updateUserAccount` — so an unconditional flip
+    /// here re-marked the account signed in one line after `setAuthToken` had
+    /// declined to, and a refresh answering a 401 with a dead token cleared
+    /// the `.credentialsStale` flag that prompts re-authentication.
+    ///
+    /// `isTokenExpired` is false for barcode/PIN credentials and for a token
+    /// carrying no expiration date, so the basic-auth sign-in path and the
+    /// two nil-expiry re-auth callers reach `.loggedIn` as before.
     func markLoggedIn() {
+        guard !UserAccountAuthHelper.isTokenExpired(credentials: credentials) else {
+            Log.debug(#file, "Not marking logged in - the stored token is already expired")
+            return
+        }
         setAuthState(.loggedIn)
     }
 

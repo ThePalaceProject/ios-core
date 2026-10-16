@@ -282,6 +282,10 @@ failures_before_crash() {  # $1 = log; failed-test lines before the first marker
     awk -v m="$XCB_INTERNAL_ERROR_TEXT" 'index($0, m) { exit } { print }' "$1" \
         | grep -E "$XCB_TEST_FAILED" || true
 }
+failures_before_interrupt() {  # $1 = log; failed-test lines before the INTERRUPTED marker
+    awk -v m="$XCB_INTERRUPTED" 'index($0, m) { exit } { print }' "$1" \
+        | grep -E "$XCB_TEST_FAILED" || true
+}
 tests_in_flight_at_crash() {  # $1 = log; names of tests failed after the first marker
     awk -v m="$XCB_INTERNAL_ERROR_TEXT" 'seen { print } index($0, m) { seen = 1 }' "$1" \
         | grep -oE "$XCB_TEST_FAILED" | sed -E "s/^Test [Cc]ase '([^']+)' failed$/\1/" \
@@ -450,6 +454,7 @@ if [ "$LOST_COUNT" -gt 0 ] && [ "$RELAUNCH_SKIPPED" -eq 0 ]; then
     echo "::warning title=Runner failure: relaunching classes that never ran::shard $SHARD: $LOST_COUNT class(es) never ran, which is a runner failure, not a test failure. Recorded: ${REASON//$'\n'/ | }. Relaunching them once."
     echo "Relaunching:" ${LOST_PARALLEL[@]+"${LOST_PARALLEL[@]}"} ${LOST_SERIAL[@]+"${LOST_SERIAL[@]}"}
     RELAUNCH_EXIT=0
+    RELAUNCH_INTERRUPTED=0
     RELAUNCH_BUNDLES=()
     if [ ${#LOST_PARALLEL[@]} -gt 0 ]; then
         run_pass "$OUT/relaunch-parallel.xcresult" retry \
@@ -458,12 +463,14 @@ if [ "$LOST_COUNT" -gt 0 ] && [ "$RELAUNCH_SKIPPED" -eq 0 ]; then
             "${LOST_PARALLEL[@]}"
         e=$PASS_EXIT
         if [ "$e" -ne 0 ]; then RELAUNCH_EXIT=$e; fi
+        if [ "$PASS_INTERRUPTED" -eq 1 ]; then RELAUNCH_INTERRUPTED=1; fi
         if [ -d "$OUT/relaunch-parallel.xcresult" ]; then RELAUNCH_BUNDLES+=("$OUT/relaunch-parallel.xcresult"); fi
     fi
     if [ ${#LOST_SERIAL[@]} -gt 0 ]; then
         run_pass "$OUT/relaunch-serial.xcresult" retry -parallel-testing-enabled NO "${LOST_SERIAL[@]}"
         e=$PASS_EXIT
         if [ "$e" -ne 0 ]; then RELAUNCH_EXIT=$e; fi
+        if [ "$PASS_INTERRUPTED" -eq 1 ]; then RELAUNCH_INTERRUPTED=1; fi
         if [ -d "$OUT/relaunch-serial.xcresult" ]; then RELAUNCH_BUNDLES+=("$OUT/relaunch-serial.xcresult"); fi
     fi
     echo "Relaunch exit code: $RELAUNCH_EXIT"
@@ -476,7 +483,11 @@ if [ "$LOST_COUNT" -gt 0 ] && [ "$RELAUNCH_SKIPPED" -eq 0 ]; then
         RUNNER_RECOVERED=1
         echo "::warning title=Runner failure recovered::shard $SHARD: the $LOST_COUNT class(es) the runner lost ran on relaunch and passed."
     else
-        echo "::error title=Runner failure not recovered::shard $SHARD: after one relaunch, $STILL_LOST class(es) still did not run (relaunch exit $RELAUNCH_EXIT)."
+        CUT_SHORT=""
+        if [ "$RELAUNCH_INTERRUPTED" -eq 1 ]; then
+            CUT_SHORT=" The ${SHARD_BUDGET_SECONDS}s shard budget interrupted the relaunch, so the classes it had not reached are not test failures; re-run the shard."
+        fi
+        echo "::error title=Runner failure not recovered::shard $SHARD: after one relaunch, $STILL_LOST class(es) still did not run (relaunch exit $RELAUNCH_EXIT).$CUT_SHORT"
     fi
 fi
 
@@ -504,6 +515,7 @@ if [ "$TEST_EXIT" -ne 0 ]; then
                 run_pass "$OUT/rerun.xcresult" once -parallel-testing-enabled NO "${KILL_ARGS[@]}"
                 RERUN_EXIT=$PASS_EXIT
                 RERUN_LOG="$PASS_LOG"
+                RERUN_INTERRUPTED=$PASS_INTERRUPTED
                 echo "Second-chance pass exit code: $RERUN_EXIT"
                 # The verdict is what the re-run tests did, read from the bundle and
                 # the log, not xcodebuild's exit code: after every test passed and
@@ -521,6 +533,12 @@ if [ "$TEST_EXIT" -ne 0 ]; then
                             echo "::warning title=Second chance exited $RERUN_EXIT after its tests passed::shard $SHARD: xcodebuild exited $RERUN_EXIT, but the bundle records every re-run test as passed and the log has no failed test. Judged by the test results."
                         fi
                         echo "::warning title=Allowance kills passed on the second chance::shard $SHARD: ${IDS[*]} — each was killed once at the allowance and passed when re-run alone. Read the spindump summary below before treating this as the test's defect or as noise."
+                    elif [ "$RERUN_INTERRUPTED" -eq 1 ] && [ -z "$(failures_before_interrupt "$RERUN_LOG")" ]; then
+                        # The budget stopped the re-run before any test in it failed
+                        # (run 38504268058: it fired one second before testing
+                        # started). A test Xcode logs as failed after the marker is
+                        # the one it cut off, so none of these has a verdict.
+                        echo "::error title=Second chance cut off by the shard budget::shard $SHARD: the ${SHARD_BUDGET_SECONDS}s shard budget interrupted the second-chance pass, so it reached no verdict. In flight or not re-run: ${IDS[*]}. None of them failed again; the shard fails because it ran out of time. Re-run the shard."
                     else
                         echo "::error title=Allowance kill repeated::shard $SHARD: the second chance did not pass for ${IDS[*]}"
                     fi

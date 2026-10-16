@@ -480,3 +480,53 @@ def test_build_interrupted_without_a_timeout_exit_code_is_treated_as_a_timeout(t
 
 def _selected_args(tmp_path: Path) -> list[str]:
     return (tmp_path / "xcodebuild-args").read_text().split("\n")
+
+
+# --- Where a linked worktree's DerivedData goes ---------------------------------
+#
+# A linked worktree gets its own DerivedData (a shared one carries another
+# checkout's SPM paths). It used to live in $TMPDIR/prepush-dd-<hash>, which
+# nothing deleted when the worktree was removed: 46 of them held 221 GB. Inside
+# the worktree, removing the worktree removes the build with it.
+
+def _arg_after(tmp_path: Path, flag: str):
+    args = _selected_args(tmp_path)
+    return args[args.index(flag) + 1] if flag in args else None
+
+
+def test_a_linked_worktree_builds_inside_the_worktree(tmp_path):
+    repo = _gate_repo(tmp_path, test_classes=("WidgetTests",))
+    wt = tmp_path / "linked"
+    _git(repo, "worktree", "add", "-q", "-b", "linked", str(wt))
+    tmpdir = tmp_path / "user-tmp"
+    tmpdir.mkdir()
+
+    result = _run_gate(wt, tmp_path, "two-classes-passed.log",
+                       extra_env={"TMPDIR": f"{tmpdir}/"})
+
+    real_wt = wt.resolve()
+    assert _arg_after(tmp_path, "-derivedDataPath") == f"{real_wt}/.dd-prepush", result.stderr
+    assert (_arg_after(tmp_path, "-clonedSourcePackagesDirPath")
+            == f"{real_wt}/.dd-prepush/SourcePackages")
+    assert str(tmpdir) not in "\n".join(_selected_args(tmp_path))
+
+
+def test_the_main_checkout_keeps_the_default_derived_data(tmp_path):
+    repo = _gate_repo(tmp_path, test_classes=("WidgetTests",))
+
+    result = _run_gate(repo, tmp_path, "two-classes-passed.log")
+
+    assert result.returncode == 0, result.stderr
+    assert "-derivedDataPath" not in _selected_args(tmp_path)
+
+
+def test_the_worktree_derived_data_folder_is_gitignored():
+    """Otherwise `git add -A` stages gigabytes and `git worktree remove` refuses
+    the worktree as unclean."""
+    root = SCRIPTS.parent
+    # A neutral name inside the folder, and no global excludes file, so only the
+    # repo's own rules can match.
+    probe = subprocess.run(["git", "-c", "core.excludesFile=/dev/null",
+                            "check-ignore", "-q", ".dd-prepush/probe"],
+                           cwd=root, capture_output=True)
+    assert probe.returncode == 0
