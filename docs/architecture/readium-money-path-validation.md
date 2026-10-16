@@ -155,3 +155,43 @@ Known follow-up (PP-5091): the shared-code exposure above is in neither PP-5091'
 scope nor its out-of-scope list. Someone has to open an LCP EPUB, an Adobe EPUB
 and an LCP PDF against a build carrying this pin before 3.3.0 ships, and record
 the outcome here. Until then the four `not validated` rows are the honest state.
+
+---
+
+## 3.11.0-palace.2 — ThePalaceProject/swift-toolkit @ 45fe8966382192486df226b24b6c1706684c1e2d
+
+- Validated against: not yet exercised in-app
+- Validated by: not yet exercised in-app
+- Date: —
+- Pin: `3.11.0-palace.1` plus the PP-5353 series. A streamed HTTP read that ends
+  before its declared `Content-Length` is asked once for the missing bytes and
+  then fails with `HTTPTruncatedResponseError`; `ResourceDataSource` refuses a
+  short ZIP read that did not reach the end of the file; `LCPDecryptor` returns
+  `truncatedCipherText` rather than slicing past the end of a partial block.
+
+Three reads move from "deliver what arrived" to "fail with a named error", so a
+request that was being served short data now surfaces an error at the caller.
+That is the point of the change — an LCP audiobook track that ends early, or a
+player that closes mid-download, came from short data being passed on — and it
+is also what makes the pin worth exercising: any caller that tolerated a short
+read now sees a failure instead.
+
+What this change did exercise: the `swift-toolkit` pin is the only pin that
+moved in `Package.resolved`, and the app's LCP and audiobook test classes pass
+against it. Those classes drive Palace's own types with test doubles; none of
+them reads a real HTTP body, ZIP entry or LCP block, so they do not reach the
+stricter code.
+
+| Path | Result | Notes |
+|---|---|---|
+| Audiobook, LCP (streaming) | not validated | The path the pin is for. Needs a borrow and a listen with `lcp_audiobook_streaming_enabled` ON, including an interrupted download, which is the case the new errors are built for. |
+| Audiobook, LCP (local / download-first) | not validated | Reads the `.lcpa` through the ZIP data source that now refuses a short read. Needs a full download and a listen. |
+| EPUB, LCP | not validated | Every LCP EPUB read traverses `LCPDecryptor` and the ZIP data source. Not exercised against this pin. |
+| EPUB, Adobe DRM | not validated | Adobe EPUBs are ZIP containers read through the same data source. Not exercised against this pin. |
+| PDF, LCP | not validated | Traverses both the ZIP data source and `LCPDecryptor`. Not exercised against this pin. |
+| Audiobook, OverDrive / Findaway | not validated | Non-LCP fulfillment, and neither reads through `HTTPResource`. Not exercised against this pin. |
+| Open-access EPUB | not validated | Not exercised against this pin. |
+
+The `3.11.0-palace.1` rows carry forward: the four paths left `not validated`
+there are still unexercised, and this pin does not change that. The open item is
+the same one, now with a second reason to close it.
