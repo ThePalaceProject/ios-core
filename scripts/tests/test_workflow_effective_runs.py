@@ -370,16 +370,19 @@ def test_the_gates_own_workflow_yields_its_exact_run_count():
     to 224 when coverage collection gained the package steps, and from 224 to
     219 when the planner took over running the test enumeration, and from 219
     to 234 when the coverage floor step stopped being continue-on-error (its
-    11 lines became effective) and the gate gained the 4 lines that read it. That is the
-    cost of the arm, and it
+    11 lines became effective) and the gate gained the 4 lines that read it, and
+    from 234 to 243 when the floor step began abstaining on incomplete coverage
+    (6 more lines in it: the enforcer's argument list and the abstain branch)
+    and the gate gained 3 lines that refuse an abstain the shards do not
+    explain. That is the cost of the arm, and it
     is the point: a silent change to what the gate can see is exactly what the
     other two forms failed to catch.
     """
     from pathlib import Path
     wf = Path(__file__).resolve().parent.parent.parent / ".github" / "workflows" / "unit-testing.yml"
     runs = effective_runs(wf.read_text())
-    assert len(runs) == 234, (
-        f"unit-testing.yml now yields {len(runs)} effective run lines, expected 234. "
+    assert len(runs) == 243, (
+        f"unit-testing.yml now yields {len(runs)} effective run lines, expected 243. "
         "If a step was added or removed this is correct — update the number. "
         "If nothing changed in the workflow, the extractor's view of it did."
     )

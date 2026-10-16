@@ -8,8 +8,9 @@
 # `verify-pr.sh`.
 #
 # Algorithm:
-#   1. Compute changed Swift files: `git diff --name-only @{u}..HEAD`
-#      filtered to `Palace/**/*.swift`. If any changed, run
+#   1. Compute changed Swift files: `git diff --name-only <merge-base>..HEAD`,
+#      the merge-base with the integration branch (origin/develop or
+#      origin/main), filtered to `Palace/**/*.swift`. If any changed, run
 #      `scripts/check-file-size-ceiling.sh`; a non-zero exit blocks the push.
 #   2. For each changed file, derive its test classes: Foo.swift ->
 #      Foo*Tests.swift, then every class in each candidate file that
@@ -81,26 +82,34 @@ GATE_LOG="${PRE_PUSH_TESTS_LOG:-/tmp/pre-push-test-gate.log}"
 # ---------------------------------------------------------------------------
 # 1. Compute changed Swift files in the push range
 # ---------------------------------------------------------------------------
-# Prefer `@{u}..HEAD` (commits ahead of upstream). Fall back to the last
-# commit on detached HEADs / first push of a branch.
+# Diff from the merge-base with the integration branch, whether or not the
+# branch has an upstream. `@{u}..HEAD` is wrong after a rebase and force-push:
+# @{u} is still the pre-rebase tip, so the branch's own changes sit on both
+# sides and cancel out, and the range holds only the commits it was rebased
+# onto (another branch's files are tested, its own are not).
+#
+# The integration branch is the upstream when that is origin/develop or
+# origin/main (pushing develop or main itself), otherwise origin/develop, then
+# origin/main. Campaign/tooling branches are cut from `develop`; diffing a
+# develop-cut branch against origin/main would surface develop's whole delta
+# from main. With neither ref, fall back to the upstream, then the last commit.
+UPSTREAM="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
+INTEGRATION_REFS=()
+case "$UPSTREAM" in
+  origin/develop|origin/main) INTEGRATION_REFS+=("$UPSTREAM") ;;
+esac
+INTEGRATION_REFS+=(origin/develop origin/main)
 RANGE=""
-if git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
-  RANGE='@{u}..HEAD'
-else
-  # No upstream tracking yet (first push of a branch). Diff against the
-  # merge-base with the integration branch the branch was actually cut from.
-  # Campaign/tooling branches are cut from `develop`, not `main`; diffing a
-  # fresh develop-cut branch against origin/main surfaces develop's ENTIRE
-  # delta-from-main (hundreds of Palace/*.swift it never touched) — a false
-  # "changed Swift" set that drags an unrelated scripts-only push into a full
-  # xcodebuild test run. Prefer origin/develop, then origin/main, using the
-  # merge-base so only commits unique to this branch count.
-  if git rev-parse --verify origin/develop >/dev/null 2>&1; then
-    _BASE="$(git merge-base origin/develop HEAD 2>/dev/null || echo origin/develop)"
+for _ref in "${INTEGRATION_REFS[@]}"; do
+  if git rev-parse --verify -q "$_ref" >/dev/null 2>&1 \
+     && _BASE="$(git merge-base "$_ref" HEAD 2>/dev/null)"; then
     RANGE="${_BASE}..HEAD"
-  elif git rev-parse --verify origin/main >/dev/null 2>&1; then
-    _BASE="$(git merge-base origin/main HEAD 2>/dev/null || echo origin/main)"
-    RANGE="${_BASE}..HEAD"
+    break
+  fi
+done
+if [[ -z "$RANGE" ]]; then
+  if [[ -n "$UPSTREAM" ]]; then
+    RANGE='@{u}..HEAD'
   else
     RANGE='HEAD~1..HEAD'
   fi

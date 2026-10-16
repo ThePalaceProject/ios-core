@@ -11,11 +11,19 @@ each has a test here:
     the result bundle.
   * The workflow could stop calling any of the above. The wiring tests parse
     the workflow as YAML and assert each check is invoked.
+  * The lane needs CI_GITHUB_ACCESS_TOKEN, which a Dependabot or fork run does
+    not get, so it can only skip there. A job a condition turns off reports a
+    check in state SKIPPED, which does not fail a required check and gives no
+    reason, so the skip is a job of its own that runs and says why. The
+    condition tests assert the two jobs' conditions are each other's negation
+    over every run shape.
 """
 
 from __future__ import annotations
 
+import itertools
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -374,3 +382,118 @@ def test_workflow_failingXcodebuild_underActionsErrexit_stillRunsTheChecks(tmp_p
     assert "python3 scripts/tsan-lane.py check-log" in proc.calls
     assert "python3 scripts/tsan-lane.py check-ran" in proc.calls
     assert "::error::xcodebuild exited 65" in proc.stdout
+
+
+# --- the lane skips visibly when it cannot read its token -------------------
+
+_REAL_JOB = "tsan"
+_SKIP_JOB = "tsan-skipped"
+_REPO_NAME = "ThePalaceProject/ios-core"
+_DEPENDABOT = "dependabot[bot]"
+_TOKEN = "secrets.CI_GITHUB_ACCESS_TOKEN"
+
+
+def _jobs() -> dict:
+    jobs = _workflow()["jobs"]
+    # A third job would be ungoverned by the pair of conditions below: it would
+    # run on a Dependabot or fork PR and fail on the missing token.
+    assert set(jobs) == {_REAL_JOB, _SKIP_JOB}, f"unexpected jobs: {sorted(jobs)}"
+    return jobs
+
+
+def _evaluate(condition: str, actor: str, event: str, head_repo: str | None) -> bool:
+    """Evaluate a job `if:` for one run shape, over the contexts it may use."""
+    expr = " ".join(condition.split())
+    if expr.startswith("${{") and expr.endswith("}}"):
+        expr = expr[3:-2]
+    contexts = {
+        "github.event.pull_request.head.repo.full_name": repr(head_repo),
+        "github.event_name": repr(event),
+        "github.repository": repr(_REPO_NAME),
+        "github.actor": repr(actor),
+    }
+    for name, value in contexts.items():
+        expr = expr.replace(name, value)
+    expr = expr.replace("||", " or ").replace("&&", " and ")
+    leftover = re.sub(r"'[^']*'|None|==|!=|\bor\b|\band\b|[()\s]", "", expr)
+    assert not leftover, f"condition uses something this test cannot evaluate: {leftover!r}"
+    return bool(eval(expr, {"__builtins__": {}}))  # noqa: S307 - vetted above
+
+
+# (actor, event, head repo of the PR or None, can this run read the secrets)
+_RUNS = [
+    # A same-repo pull request from a person: secrets are available.
+    ("some-maintainer", "pull_request", _REPO_NAME, True),
+    ("some-maintainer", "workflow_dispatch", None, True),
+    # Dependabot's branch lives in this repository, so the fork test alone does
+    # not cover it. Its runs get Dependabot secrets only, and the lane's token
+    # is a repository secret: PR #1694's run died on "Input required and not
+    # supplied: token" with head_repository == repository.
+    (_DEPENDABOT, "pull_request", _REPO_NAME, False),
+    # A pull request from a fork gets no secrets at all.
+    ("some-contributor", "pull_request", "someone/ios-core", False),
+    # Both at once, to show the two conditions still pick exactly one job.
+    (_DEPENDABOT, "pull_request", "someone/ios-core", False),
+]
+
+
+@pytest.mark.parametrize("actor,event,head_repo,has_secrets", _RUNS)
+def test_workflow_heavyLaneRunsOnlyWhereItsTokenIsReadable(actor, event, head_repo, has_secrets):
+    condition = str(_jobs()[_REAL_JOB].get("if", ""))
+    assert condition, (
+        "the tsan job has no `if:`; a Dependabot or fork run fails on the "
+        "missing checkout token instead of skipping"
+    )
+    assert _evaluate(condition, actor, event, head_repo) is has_secrets
+
+
+@pytest.mark.parametrize("actor,event,head_repo,has_secrets", _RUNS)
+def test_workflow_runWithoutSecretsGetsAJobThatSaysSo(actor, event, head_repo, has_secrets):
+    job = _jobs()[_SKIP_JOB]
+    assert _evaluate(str(job.get("if", "")), actor, event, head_repo) is (not has_secrets)
+    runs = "\n".join(str(s.get("run", "")) for s in job["steps"])
+    # The notice is the whole point: a job that runs silently is as easy to
+    # read as a pass as an absent check is.
+    assert "::notice::" in runs
+    assert "skipped" in runs
+    assert "xcodebuild" not in runs, "the skip job must not try to run the lane"
+    assert _TOKEN not in str(job), "the skip job must not reference the token it cannot read"
+
+
+def test_workflow_theTwoConditionsAreEachOthersNegation():
+    """Exactly one of the two jobs runs, for every combination of the contexts
+    the conditions read. Neither a run whose only trace is a SKIPPED check nor
+    a run claiming both a verdict and a skip is reachable."""
+    real = str(_jobs()[_REAL_JOB]["if"])
+    skip = str(_jobs()[_SKIP_JOB]["if"])
+    actors = [_DEPENDABOT, "some-maintainer"]
+    events = ["pull_request", "workflow_dispatch"]
+    head_repos = [_REPO_NAME, "someone/ios-core", None]
+    for actor, event, head_repo in itertools.product(actors, events, head_repos):
+        shape = (actor, event, head_repo)
+        ran = _evaluate(real, *shape)
+        skipped = _evaluate(skip, *shape)
+        assert ran != skipped, f"{shape} satisfies {'both' if ran else 'neither'} condition"
+
+
+def test_workflow_skipJobCannotBeMistakenForTheLane():
+    jobs = _jobs()
+    real_name = str(jobs[_REAL_JOB].get("name") or _REAL_JOB)
+    skip_name = str(jobs[_SKIP_JOB].get("name") or _SKIP_JOB)
+    assert skip_name != real_name, (
+        "the skip job's check would carry the lane's name, so a skipped run "
+        "would be indistinguishable from a run that found no race"
+    )
+    assert "skip" in skip_name.lower(), f"{skip_name!r} does not say the lane was skipped"
+
+
+def test_workflow_theLaneStillNeedsThePrivateCheckoutToken():
+    """The condition above exists because the lane reads a repository secret.
+    If the lane stopped needing one, the condition would be turning the lane
+    off on runs that could have produced a verdict."""
+    steps = _jobs()[_REAL_JOB]["steps"]
+    using_token = [s for s in steps if _TOKEN in str(s.get("with", ""))]
+    assert using_token, (
+        f"no step reads {_TOKEN}; the skip condition is no longer justified"
+    )
+
