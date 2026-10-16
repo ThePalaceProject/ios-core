@@ -578,7 +578,10 @@ final class LCPAudiobookURLSchemeTests: XCTestCase {
 /// of source it was opened from, so a wrong answer here turns the buffer off
 /// for every streamed book and the egress fix does nothing (PP-5367).
 extension LCPAudiobooksTests {
-    func testArchiveIsLocalFile_whenOpenedFromALicense_isFalse() {
+    func testArchiveIsLocalFile_whenOpenedFromALicense_isFalse() throws {
+        #if !LCP
+        throw XCTSkip("LCP is not enabled in this configuration")
+        #else
         let licenseURL = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("book-\(UUID().uuidString).lcpl")
         guard let audiobook = LCPAudiobooks(for: licenseURL) else {
@@ -593,9 +596,13 @@ extension LCPAudiobooksTests {
             file: URL, so the scheme cannot be what decides
             """
         )
+        #endif
     }
 
-    func testArchiveIsLocalFile_whenOpenedFromThePackage_isTrue() {
+    func testArchiveIsLocalFile_whenOpenedFromThePackage_isTrue() throws {
+        #if !LCP
+        throw XCTSkip("LCP is not enabled in this configuration")
+        #else
         let packageURL = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("book-\(UUID().uuidString).lcpa")
         guard let audiobook = LCPAudiobooks(for: packageURL) else {
@@ -606,5 +613,6 @@ extension LCPAudiobooksTests {
             audiobook.archiveIsLocalFile(),
             "a package on disk has no origin to save a request against"
         )
+        #endif
     }
 }

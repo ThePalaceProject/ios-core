@@ -266,6 +266,88 @@ final class LCPAdapterTests: XCTestCase {
         XCTAssertEqual(network.getCallCount, 0, "a book on disk must not be fetched")
     }
 
+    /// A file too short to hold the record at all is a download that has barely
+    /// started, not a book. Pins the length guard from below; the whole-archive
+    /// fixture is exactly the minimum, so it pins it from above.
+    func testResolveManifest_lcpaShorterThanTheRecord_usesLicenseFileInstead() {
+        let book = makeBook(
+            acquisitionType: lcpLicenseMIME,
+            indirect: [indirect(audiobookLCPMIME)]
+        )
+        let localURL = tempBookFileURL(identifier: book.identifier)
+        // One byte short of the smallest end-of-central-directory record.
+        var truncated = Data([0x50, 0x4B, 0x05, 0x06])
+        truncated.append(Data(repeating: 0, count: 17))
+        try? truncated.write(to: localURL)
+        let licenseURL = localURL.deletingPathExtension().appendingPathExtension("lcpl")
+        try? Data([0x7B, 0x7D]).write(to: licenseURL)
+        defer { try? FileManager.default.removeItem(at: localURL.deletingLastPathComponent()) }
+
+        let downloadCenter = SpyDownloadCenter()
+        downloadCenter.fileUrlByIdentifier[book.identifier] = localURL
+        var capturedFactoryURL: URL?
+        let adapter = LCPAdapter(
+            downloadCenter: downloadCenter,
+            networkExecutor: SpyNetworkExecutor(),
+            lcpAudiobooksFactory: { url in
+                capturedFactoryURL = url
+                return nil
+            }
+        )
+
+        let expectation = expectation(description: "resolveManifest completes")
+        adapter.resolveManifest(for: book) { _ in expectation.fulfill() }
+        wait(for: [expectation], timeout: 1.0)
+
+        XCTAssertEqual(
+            capturedFactoryURL,
+            licenseURL,
+            "a file too short to hold the record must be streamed from the origin"
+        )
+    }
+
+    /// A path that exists but cannot be opened for reading is not a readable
+    /// book, so the adapter must stream rather than assume the archive is whole.
+    /// A directory at the content path is the reachable form: it answers
+    /// `fileExists` and refuses a file handle.
+    func testResolveManifest_lcpaPathThatCannotBeOpened_usesLicenseFileInstead() {
+        let book = makeBook(
+            acquisitionType: lcpLicenseMIME,
+            indirect: [indirect(audiobookLCPMIME)]
+        )
+        let localURL = tempBookFileURL(identifier: book.identifier)
+        try? FileManager.default.createDirectory(at: localURL, withIntermediateDirectories: true)
+        let licenseURL = localURL.deletingPathExtension().appendingPathExtension("lcpl")
+        try? Data([0x7B, 0x7D]).write(to: licenseURL)
+        defer { try? FileManager.default.removeItem(at: localURL.deletingLastPathComponent()) }
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: localURL.path),
+            "Precondition: the path must answer fileExists, or the test proves nothing"
+        )
+
+        let downloadCenter = SpyDownloadCenter()
+        downloadCenter.fileUrlByIdentifier[book.identifier] = localURL
+        var capturedFactoryURL: URL?
+        let adapter = LCPAdapter(
+            downloadCenter: downloadCenter,
+            networkExecutor: SpyNetworkExecutor(),
+            lcpAudiobooksFactory: { url in
+                capturedFactoryURL = url
+                return nil
+            }
+        )
+
+        let expectation = expectation(description: "resolveManifest completes")
+        adapter.resolveManifest(for: book) { _ in expectation.fulfill() }
+        wait(for: [expectation], timeout: 1.0)
+
+        XCTAssertEqual(
+            capturedFactoryURL,
+            licenseURL,
+            "a path that cannot be read must not be taken for a finished download"
+        )
+    }
+
     /// A download still in progress must not be read as the book.
     ///
     /// The source tiers tested only that a local file EXISTS, and a partial

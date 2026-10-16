@@ -207,7 +207,7 @@ final class LCPAdapter: AudiobookVendorAdapter {
     static func archiveIsComplete(at url: URL) -> Bool {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
         defer { try? handle.close() }
-        guard let size = try? handle.seekToEnd(), size >= UInt64(eocdSignature.count) else {
+        guard let size = try? handle.seekToEnd(), size >= UInt64(minimumEOCDLength) else {
             return false
         }
         let tailLength = min(size, UInt64(maximumEOCDTailLength))
@@ -221,6 +221,11 @@ final class LCPAdapter: AudiobookVendorAdapter {
 
     /// `PK\u{05}\u{06}`, the end-of-central-directory signature.
     private static let eocdSignature = Data([0x50, 0x4B, 0x05, 0x06])
+
+    /// The record's fixed fields, with an empty comment. A file shorter than
+    /// this cannot hold one, so matching the signature alone would accept four
+    /// bytes of a download that had barely started.
+    private static let minimumEOCDLength = 22
 
     /// The record is 22 bytes plus a comment of at most 65535, and ZIP64 adds
     /// its own locator, so the last 64 KiB plus a margin always contains it.
