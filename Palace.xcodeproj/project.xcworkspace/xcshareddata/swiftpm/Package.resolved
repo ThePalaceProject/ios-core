@@ -1,5 +1,5 @@
 {
-  "originHash" : "079988df7dc3e0f8d72b814231b93747572524b2b92601442c9aa4c1bb65c2a6",
+  "originHash" : "010cbfc2a1922563c8a0e5ba3445415ef795e08abb07de9918260dd5b697a3dd",
   "pins" : [
     {
       "identity" : "abseil-cpp-binary",
@@ -222,8 +222,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/ThePalaceProject/swift-toolkit.git",
       "state" : {
-        "revision" : "58413f8680a310ed6d98278687ab711e6be639c8",
-        "version" : "3.11.0-palace.1"
+        "revision" : "45fe8966382192486df226b24b6c1706684c1e2d",
+        "version" : "3.11.0-palace.2"
       }
     },
     {
