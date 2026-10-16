@@ -305,3 +305,76 @@ def test_write_baseline_from_a_local_report_keeps_the_package_floors(tmp_path):
     assert written["packages"] == FLOORS["packages"]
     assert written["host_packages"] == FLOORS["host_packages"]
     assert written["package_modules"] == {"TPPBookRegistry": 0.5}
+
+
+# --------------------------------------------------------------------------
+# Abstaining on incomplete coverage (--abstain-on-incomplete)
+#
+# A dead shard used to print three reds for one fault, the loudest of them the
+# coverage floors — the one thing in the run that had not failed at anything.
+# With the flag the floors say they were not evaluated and exit 4, and the
+# caller fails the run on the fault itself. The floors keep their teeth: a real
+# violation over COMPLETE coverage must still fail, flag or no flag.
+# --------------------------------------------------------------------------
+
+def _run_flagged(tmp_path, coverage, floors, *extra):
+    cov, flo = tmp_path / "coverage.json", tmp_path / "floors.json"
+    cov.write_text(json.dumps(coverage))
+    flo.write_text(json.dumps(floors))
+    return subprocess.run([sys.executable, str(SCRIPT), str(cov), "--floors", str(flo),
+                           "--abstain-on-incomplete", *extra],
+                          capture_output=True, text=True)
+
+
+def test_abstain_reports_the_data_s_own_reason_and_exits_four(tmp_path):
+    p = _run_flagged(tmp_path, _coverage(status="incomplete",
+                                         reasons=["shard 1 lost 3 classes"], **GOOD), FLOORS)
+    assert p.returncode == 4
+    assert "floors NOT evaluated: shard 1 lost 3 classes" in p.stdout
+    assert "Coverage gate: PASS" not in p.stdout and "Coverage gate: FAIL" not in p.stdout
+
+
+def test_abstain_reports_a_reason_the_caller_supplies(tmp_path):
+    """The shard verdict lives outside the coverage data: unit-testing.yml knows
+    a shard lost classes from the shard plan, and the data can still read
+    complete."""
+    p = _run_flagged(tmp_path, _coverage(**GOOD), FLOORS,
+                     "--incomplete-reason", "not every planned test class ran: shard 2")
+    assert p.returncode == 4
+    assert "floors NOT evaluated: not every planned test class ran: shard 2" in p.stdout
+
+
+def test_a_violation_over_complete_coverage_still_fails_with_the_flag(tmp_path):
+    """The abstain must not become a way past the floors."""
+    p = _run_flagged(tmp_path, _coverage(**dict(GOOD, files=[("TPPBook.swift", 20, 100)])), FLOORS)
+    assert p.returncode == 1
+    assert "Coverage gate: FAIL" in p.stdout
+
+
+def test_complete_coverage_meeting_every_floor_still_passes_with_the_flag(tmp_path):
+    p = _run_flagged(tmp_path, _coverage(**GOOD), FLOORS)
+    assert p.returncode == 0, p.stdout + p.stderr
+
+
+def test_without_the_flag_a_caller_reason_still_refuses_to_compare(tmp_path):
+    """The reason is what stops the comparison; the flag only changes the exit
+    code, so a caller that forgets it gets the old refusal, not a pass."""
+    cov, flo = tmp_path / "c.json", tmp_path / "f.json"
+    cov.write_text(json.dumps(_coverage(**GOOD)))
+    flo.write_text(json.dumps(FLOORS))
+    p = subprocess.run([sys.executable, str(SCRIPT), str(cov), "--floors", str(flo),
+                        "--incomplete-reason", "shard 2 never ran"],
+                       capture_output=True, text=True)
+    assert p.returncode == 3
+    assert "shard 2 never ran" in p.stdout
+
+
+def test_abstain_does_not_let_write_baseline_record_partial_coverage(tmp_path):
+    cov, flo = tmp_path / "c.json", tmp_path / "f.json"
+    cov.write_text(json.dumps(_coverage(status="incomplete", **GOOD)))
+    flo.write_text(json.dumps(FLOORS))
+    p = subprocess.run([sys.executable, str(SCRIPT), str(cov), "--floors", str(flo),
+                        "--abstain-on-incomplete", "--write-baseline"],
+                       capture_output=True, text=True)
+    assert p.returncode == 4
+    assert json.loads(flo.read_text()) == FLOORS

@@ -482,6 +482,63 @@ def _selected_args(tmp_path: Path) -> list[str]:
     return (tmp_path / "xcodebuild-args").read_text().split("\n")
 
 
+# --- The changed-file set after a rebase --------------------------------------
+
+def _rebased_branch_repo(tmp_path: Path) -> Path:
+    """A `feature` branch that changed Widget.swift and was pushed, then rebased
+    onto a new main commit that changed Gadget.swift (another branch's work).
+    Its upstream still points at the pre-rebase tip."""
+    repo = _gate_repo(tmp_path, test_classes=("WidgetTests", "WidgetExtraTests", "GadgetTests"))
+    _git(repo, "reset", "-q", "--hard", "origin/main")
+    pbxproj = (PBXPROJ
+               .replace("children = (F2, F3, F4, F5)", "children = (F2, F3, F4, F5, F6)")
+               .replace("\t\tB1 = {", "\t\tF6 = {isa = PBXFileReference; path = GadgetTests.swift; "
+                        "sourceTree = \"<group>\";};\n\t\tB6 = {isa = PBXBuildFile; fileRef = F6;};\n\t\tB1 = {")
+               .replace("files = (B2, B3);", "files = (B2, B3, B6);"))
+    (repo / "Palace.xcodeproj" / "project.pbxproj").write_text(pbxproj)
+    (repo / "Palace" / "Gadget.swift").write_text("struct Gadget {}\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "gadget")
+    _git(repo, "push", "-q", "origin", "main")
+
+    _git(repo, "checkout", "-q", "-b", "feature")
+    _commit(repo, "Palace/Widget.swift", "struct Widget { let id = 1 }\n")
+    _git(repo, "push", "-q", "-u", "origin", "feature")
+
+    _git(repo, "checkout", "-q", "main")
+    _commit(repo, "Palace/Gadget.swift", "struct Gadget { let id = 2 }\n")
+    _git(repo, "push", "-q", "origin", "main")
+
+    _git(repo, "checkout", "-q", "feature")
+    _git(repo, "rebase", "-q", "main")
+    return repo
+
+
+def test_after_a_rebase_the_branch_s_own_files_are_selected_not_the_rebased_onto_ones(tmp_path):
+    """`@{u}..HEAD` after a rebase holds only the commits rebased onto: the
+    branch's own change is on both sides and cancels out."""
+    repo = _rebased_branch_repo(tmp_path)
+    assert _git(repo, "rev-parse", "@{u}") != _git(repo, "rev-parse", "HEAD"), \
+        "precondition: the upstream is the pre-rebase tip"
+
+    result = _run_gate(repo, tmp_path, "two-classes-passed.log")
+
+    assert (tmp_path / "xcodebuild-args").exists(), result.stderr
+    assert _selected(tmp_path) == ["WidgetExtraTests", "WidgetTests"]
+
+
+def test_a_branch_with_no_commits_ahead_of_its_base_runs_no_ios_tests(tmp_path):
+    repo = _gate_repo(tmp_path)
+    _git(repo, "reset", "-q", "--hard", "origin/main")
+    _git(repo, "checkout", "-q", "-b", "empty")
+    _git(repo, "push", "-q", "-u", "origin", "empty")
+
+    result = _run_gate(repo, tmp_path, "two-classes-passed.log")
+
+    assert result.returncode == 0, result.stderr
+    assert not (tmp_path / "xcodebuild-args").exists()
+
+
 # --- Where a linked worktree's DerivedData goes ---------------------------------
 #
 # A linked worktree gets its own DerivedData (a shared one carries another

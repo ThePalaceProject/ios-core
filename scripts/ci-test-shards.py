@@ -35,6 +35,7 @@ Subcommands:
   lost           print the -only-testing arguments for this shard's classes
                  that are absent from its result bundle (a runner failure)
   runner-failures  print the runner failures the result bundle records
+  phase-fits     whether a recovery phase still fits before the step's deadline
 
 Assignment is longest-processing-time-first over the historical per-class
 seconds, which is deterministic: ties break on the class name and then the
@@ -52,6 +53,7 @@ import re
 import statistics
 import subprocess
 import sys
+import time
 from collections import defaultdict
 from pathlib import Path
 
@@ -686,6 +688,27 @@ def timings_doc(per_run: list[dict[str, float]], used: list[int], previous: dict
 
 
 # --------------------------------------------------------------------------
+# The shard's wall-clock deadline
+# --------------------------------------------------------------------------
+
+def phase_fits(now: float, deadline: float, needed: float) -> tuple[bool, int]:
+    """-> (whether a phase needing `needed` seconds finishes by `deadline`, seconds left).
+
+    The shard's recovery phases run after the budget interrupt, and together
+    they can outlast the step's timeout-minutes. GitHub then kills the step
+    outright, so shard-report.json is never written and the upload step fails
+    for a missing file (run 38582762222). A phase that does not fit in the time
+    left is skipped instead, and the shard reports what it has.
+
+    `needed` is an estimate, so this is a floor, not a promise: a phase that
+    fits may still overrun. The reserve the caller subtracts from the step
+    timeout is what covers that.
+    """
+    remaining = int(deadline - now)
+    return remaining >= needed, remaining
+
+
+# --------------------------------------------------------------------------
 # CLI
 # --------------------------------------------------------------------------
 
@@ -753,6 +776,12 @@ def main(argv: list[str]) -> int:
 
     rf = sub.add_parser("runner-failures", help="print each runner failure the bundle records")
     rf.add_argument("--tests-json", required=True)
+
+    pf = sub.add_parser("phase-fits", help="print the seconds left before the deadline; "
+                        "exit 0 when a phase needing --needed of them fits")
+    pf.add_argument("--deadline", type=float, required=True, help="epoch seconds")
+    pf.add_argument("--needed", type=float, required=True, help="seconds the phase needs")
+    pf.add_argument("--now", type=float, help="epoch seconds (default: now)")
 
     t = sub.add_parser("timings")
     t.add_argument("--repo", default="ThePalaceProject/ios-core")
@@ -831,6 +860,11 @@ def main(argv: list[str]) -> int:
         elif args.cmd == "runner-failures":
             for f in system_failures(_load(args.tests_json)):
                 print(f"{f['bundle']}: {f['name']}: {f['message']}")
+        elif args.cmd == "phase-fits":
+            now = args.now if args.now is not None else time.time()
+            fits, remaining = phase_fits(now, args.deadline, args.needed)
+            print(remaining)
+            return 0 if fits else 1
         elif args.cmd == "timings":
             previous = _load(args.out) if os.path.exists(args.out) else {}
             doc = regenerate_timings(args.repo, args.workflow, args.limit, previous)

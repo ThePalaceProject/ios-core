@@ -333,6 +333,11 @@ jobs:
         env:
           BUILD_CONTEXT: ci
           CI_TEST_WORKERS: ${{ github.event.inputs.workers || '2' }}
+          # timeout-minutes above, in seconds. The script keeps its recovery
+          # phases inside this so it always reaches its report instead of being
+          # killed with shard-report.json unwritten (run 38582762222); the two
+          # must agree, and test_ci_run_test_shard.py pins them together.
+          SHARD_STEP_SECONDS: '2400'
         run: |
           set -o pipefail
           scripts/ci-run-test-shard.sh \
@@ -665,8 +670,9 @@ jobs:
           TEST: ${{ needs.test.result }}
           REPORT: ${{ needs.report.result }}
           FLOORS: ${{ needs.report.outputs.coverage_floors }}
+          FLOORS_STATUS: ${{ needs.report.outputs.coverage_floors_status }}
         run: |
-          echo "changes=$CHANGES run=$RUN build=$BUILD test=$TEST report=$REPORT floors=$FLOORS"
+          echo "changes=$CHANGES run=$RUN build=$BUILD test=$TEST report=$REPORT floors=$FLOORS/$FLOORS_STATUS"
           if [ "$CHANGES" != "success" ]; then
             echo "::error::could not decide whether the tests must run (changes job: $CHANGES)"; exit 1
           fi
@@ -680,10 +686,18 @@ jobs:
           fi
           if [ "$BUILD" != "success" ]; then echo "::error::build: $BUILD"; exit 1; fi
           if [ "$TEST" != "success" ]; then echo "::error::one or more test shards: $TEST"; exit 1; fi
-          # A floor violation and incomplete coverage both fail the floor step;
-          # an empty value means the report job ended before reaching it.
+          # A floor violation fails the floor step; an empty value means the
+          # report job ended before reaching it.
           if [ "$FLOORS" != "success" ]; then
             echo "::error::coverage floors: ${FLOORS:-not evaluated}; the report job's Enforce Coverage Floors step names the rows"; exit 1
+          fi
+          # Incomplete coverage makes the floor step abstain rather than fail,
+          # so one dead shard is one red. The shard check above has already
+          # failed such a run; an abstain reaching here means every shard
+          # passed and the floors still had nothing to compare, which is not a
+          # pass — the coverage must come from a run that ran every class.
+          if [ "$FLOORS_STATUS" = "abstained" ]; then
+            echo "::error::the coverage floors were not evaluated although every shard passed; the report job's Enforce Coverage Floors step names the reason"; exit 1
           fi
           if [ "$REPORT" != "success" ]; then echo "::error::report job: $REPORT"; exit 1; fi
           echo "verify=true" >> "$GITHUB_OUTPUT"
@@ -728,6 +742,10 @@ jobs:
     timeout-minutes: 30
     outputs:
       coverage_floors: ${{ steps.coverage_gate.outcome }}
+      # `evaluated` or `abstained`: the step succeeds either way, so the outcome
+      # alone cannot tell a run that met its floors from one that had no
+      # coverage to compare them against.
+      coverage_floors_status: ${{ steps.coverage_gate.outputs.floors_status }}
     permissions:
       contents: read
       pull-requests: write
@@ -963,10 +981,16 @@ jobs:
           fi
 
       # Coverage floor gate. An app floor (overall, modules) more than the
-      # enforcer's tolerance below its floor exits 1, and incomplete data exits
-      # 3; either fails this job, and `build-and-test` reads the outcome. Package
-      # rows are advisory. The uploads below run on always() so a failure here
-      # keeps them.
+      # enforcer's tolerance below its floor exits 1, which fails this job, and
+      # `build-and-test` reads the outcome. Package rows are advisory. The
+      # uploads below run on always() so a failure here keeps them.
+      #
+      # Incomplete coverage ABSTAINS (floors_status=abstained, exit 0): a dead
+      # shard used to print three reds — the shard, this step, and the required
+      # check — for one fault, and the floors were the loudest of them while
+      # being the only one that had not failed at anything. The gate keeps its
+      # teeth: `build-and-test` fails a run whose floors abstained but whose
+      # shards all passed, so coverage completeness is never simply unenforced.
       - name: Enforce Coverage Floors
         if: always()
         id: coverage_gate
@@ -977,13 +1001,19 @@ jobs:
           # steps.completeness.outputs.complete: coverage from a run that lost
           # classes is lower for that reason alone, so the floors are not
           # compared; the reason is reported in their place.
+          ARGS=(coverage-data.json --floors scripts/coverage-floors.json --abstain-on-incomplete)
           if [ "$COMPLETE" != "true" ]; then
-            echo "::error title=Coverage floors not evaluated::not every planned test class ran: ${REASON:-unknown}"
-            exit 1
+            ARGS+=(--incomplete-reason "not every planned test class ran: ${REASON:-unknown}")
           fi
           set +e
-          python3 scripts/enforce_coverage_floors.py coverage-data.json --floors scripts/coverage-floors.json
+          python3 scripts/enforce_coverage_floors.py "${ARGS[@]}"
           RC=$?
+          if [ "$RC" -eq 4 ]; then
+            echo "floors_status=abstained" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Coverage floors not evaluated::the coverage this run produced is incomplete; the step above names what is missing. The required check fails this run unless the shard that lost it has already failed."
+            exit 0
+          fi
+          echo "floors_status=evaluated" >> "$GITHUB_OUTPUT"
           if [ "$RC" -eq 3 ]; then
             echo "::error title=Coverage incomplete::floors not compared; the Parse Code Coverage step names what is missing"
           fi
