@@ -62,6 +62,18 @@ jobs:
       - name: bash -n verify-pr.sh (explicit)
         run: bash -n scripts/verify-pr.sh
 
+      # pbxproj_add_swift.rb is Ruby, and its pytest drives the real script
+      # against throwaway fixture projects. Without the gem the script exits 1
+      # before parsing an argument, so the test asserts the gem is present
+      # rather than skipping — a skipped test here reads exactly like a pass.
+      # --user-install needs no sudo and lands on the default require path.
+      - name: Install the xcodeproj gem (pbxproj_add_swift.rb and its test)
+        run: |
+          set -euo pipefail
+          gem install --no-document xcodeproj \
+            || gem install --no-document --user-install xcodeproj
+          ruby -e "require 'xcodeproj'; puts \"xcodeproj #{Xcodeproj::VERSION}\""
+
       # 2. Detector logic suite. These are the Phase 3.5 class-detectable
       #    detectors + the M1 checks that have pytest coverage.
       - name: pytest detector suite
