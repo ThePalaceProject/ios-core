@@ -316,6 +316,23 @@ extension LCPAudiobooks: LCPStreamingProvider {
         return licenseUrl == nil
     }
 
+    /// The link-yielding pair is bound, and deliberately does nothing yet.
+    ///
+    /// The toolkit announces the start and end of a load the patron is waiting
+    /// on so a provider can hold its background package fetch and let that
+    /// chapter have the link (PP-5367). Holding the fetch needs a suspension
+    /// budget on the download side, which this app does not have yet, so there
+    /// is nothing here to hold and neither hook keeps state. The load timeout
+    /// that fixes the closing player is decided from bytes served and elapsed
+    /// time inside the player, so it does not depend on either of these.
+    ///
+    /// Written out rather than defaulted: the protocol gives this pair no
+    /// default, so a conformer that stops binding them fails to compile rather
+    /// than losing the behaviour with no diagnostic once it is wired up.
+    nonisolated public func streamingLoadDidBegin() {}
+
+    nonisolated public func streamingLoadDidEnd() {}
+
     /// Nonisolated on purpose — see the note on the extension. This is a
     /// nonisolated witness of a `@MainActor` protocol requirement, which Swift
     /// allows because it is the permissive direction.
