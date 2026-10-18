@@ -358,6 +358,15 @@ class LocalBookContentService {
         AudiobookCacheSweep(bookRegistry: bookRegistry, fileManager: fileManager)
             .purge(force: false, excluding: book.identifier)
 
+        #if LCP
+        if isLcpAudiobook {
+            // The streamed archive's retained byte ranges are a second copy of the
+            // audio, so deleting the content has to clear them too or a returned
+            // book leaves DRM audio on disk.
+            LCPAudiobooks.removeAllArchiveStores()
+        }
+        #endif
+
         if !isLcpAudiobook {
             let manifestData = try Data(contentsOf: bookURL)
             let manifest = try Manifest.customDecoder().decode(Manifest.self, from: manifestData)

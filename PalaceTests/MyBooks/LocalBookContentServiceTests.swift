@@ -237,6 +237,45 @@ final class LocalBookContentServiceTests: XCTestCase {
         return book
     }
 
+    // MARK: - Retained streaming ranges are content too
+
+    /// Deleting an LCP audiobook's content must clear the archive's retained byte
+    /// ranges.
+    ///
+    /// The streaming read path keeps the archive's byte ranges in Application
+    /// Support so Readium's 6 MB window fills are not refetched. Those bytes are a
+    /// second copy of the audio, so a delete that leaves them behind leaves DRM
+    /// audio on disk for a loan the patron gave back — the same shape as the 1.55 GB
+    /// found on device at build 505, by a different route.
+    func testDeleteForBook_lcpAudiobook_clearsTheRetainedArchiveRanges() throws {
+        #if LCP
+        let book = makeLCPAudiobook()
+        seedBook(book)
+        let contentURL = bookFileManager.fakeURLFor(book)
+        try writeFile(at: contentURL, bytes: 128)
+
+        // A retained store for some archive, in the real root the production code
+        // reads, so this exercises `partialArchivesRoot` and not a stand-in.
+        let root = try LCPAudiobooks.partialArchivesRoot()
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let retained = root.appendingPathComponent("retained-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: retained, withIntermediateDirectories: true)
+        try writeFile(at: retained.appendingPathComponent("archive.lcpa"), bytes: 4096)
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: retained.path),
+            "precondition: there must be retained ranges for the delete to clear"
+        )
+
+        service.deleteLocalContent(forBook: book)
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: retained.path),
+            "the retained archive ranges are audio for a returned loan and must not survive the delete"
+        )
+        #endif
+    }
+
+
     // MARK: - Post-return content leak (the write guard)
     //
     // CONFIRMED ON DEVICE, not theorised. Moes Max, build 505: two returned

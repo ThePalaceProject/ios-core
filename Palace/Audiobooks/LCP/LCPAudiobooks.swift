@@ -414,13 +414,31 @@ extension LCPAudiobooks {
         }
     }
 
-    /// Removes the retained ranges for one archive. Called when a loan ends, so
-    /// a returned book does not leave DRM audio on disk — the defect that left
-    /// 1.55 GB behind for two returned loans at build 505.
-    @objc static func removeArchiveStore(forContentURL url: URL) {
-        guard let httpUrl = HTTPURL(url: url) else { return }
-        guard let dir = try? archiveStoreDirectory(for: httpUrl) else { return }
-        try? FileManager.default.removeItem(at: dir)
+    /// Removes every retained archive range store.
+    ///
+    /// Not keyed per book on purpose: the store directory is named from the remote
+    /// archive URL, and no delete path holds one — `init(for:licenseUrl:)` is
+    /// handed URLs and never a `TPPBook` — so a directory cannot be matched back
+    /// to a loan. `evictArchiveStoresOtherThan` already bounds this to one archive
+    /// at a time, so clearing the root removes that archive's ranges and nothing a
+    /// second loan still needs.
+    ///
+    /// Called when an LCP audiobook's local content is deleted, so a returned book
+    /// does not leave DRM audio on disk.
+    @objc static func removeAllArchiveStores() {
+        guard let root = try? partialArchivesRoot() else { return }
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else {
+            return
+        }
+        for entry in entries {
+            do {
+                try fm.removeItem(at: entry)
+                ATLog(.info, "Removed a retained LCP archive range store on content deletion")
+            } catch {
+                ATLog(.warn, "Could not remove a retained LCP archive range store: \(error.localizedDescription)")
+            }
+        }
     }
 }
 
