@@ -212,19 +212,19 @@ import PalaceBookModel
                         retrievedAt.timeIntervalSince(openStartedAt),
                         openedAt.timeIntervalSince(retrievedAt)
                     ))
-                    // The discriminator. A handful of requests means the time
-                    // went to licence validation; many requests for a few
-                    // megabytes served means the archive reads are refetching
-                    // the same windows, which is a buffer problem and not a
-                    // network one.
-                    Log.error(#file, String(
-                        format: "LCP open archive reads: %d origin request(s) for %d bytes, %d store serve(s) for %d bytes",
-                        readCost.originRequests,
-                        readCost.originBytes,
-                        readCost.storeServes,
-                        readCost.storeBytes
-                    ))
                 }
+                // Outside the slow-open branch deliberately. Gating this on a
+                // slow open missed the case the patron actually reported: a
+                // fast open followed by a slow chapter change. One line per
+                // open is affordable and the cheap case is itself the finding.
+                Log.error(#file, String(
+                    format: "LCP open archive reads: %d origin request(s) for %d bytes, %d store serve(s) for %d bytes, open %.1fs",
+                    readCost.originRequests,
+                    readCost.originBytes,
+                    readCost.storeServes,
+                    readCost.storeBytes,
+                    openDuration
+                ))
 
                 switch result {
                 case .success(let publication):
@@ -662,6 +662,13 @@ extension LCPAudiobooks: LCPStreamingProvider {
     /// re-downloads and writes to disk — so `audiobookUrl.fileURL != nil` is
     /// true of the streaming case too, and asking it that way turned the
     /// loader's per-track buffer off everywhere.
+    /// The archive client's origin cost, for the loader's slow-chapter line.
+    /// Read off the same counting client this type opens the publication with.
+    nonisolated public func archiveOriginActivity() -> (requests: Int, bytes: Int) {
+        let activity = archiveReadClient.upstreamActivity
+        return (requests: activity.originRequests, bytes: activity.originBytes)
+    }
+
     nonisolated public func archiveIsLocalFile() -> Bool {
         return licenseUrl == nil
     }
