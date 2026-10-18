@@ -566,6 +566,86 @@ final class LocalBookContentServiceTests: XCTestCase {
         )
     }
 
+    // MARK: - Queue order: the book being listened to goes first
+
+    func testNextPendingDownload_prefersTheBookBeingPlayed() {
+        XCTAssertEqual(
+            LocalBookContentService.indexOfNextPendingDownload(
+                queuedIdentifiers: ["a", "b", "c"],
+                playingIdentifier: "c"
+            ),
+            2,
+            "the streamed book refetches every chapter from the origin until its archive lands, so it goes before books prefetching for later"
+        )
+    }
+
+    func testNextPendingDownload_withNothingPlaying_takesTheLongestWaiting() {
+        XCTAssertEqual(
+            LocalBookContentService.indexOfNextPendingDownload(
+                queuedIdentifiers: ["a", "b", "c"],
+                playingIdentifier: nil
+            ),
+            0,
+            "with no book being listened to the queue stays first-in-first-out"
+        )
+    }
+
+    func testNextPendingDownload_whenThePlayedBookIsNotQueued_takesTheLongestWaiting() {
+        XCTAssertEqual(
+            LocalBookContentService.indexOfNextPendingDownload(
+                queuedIdentifiers: ["a", "b"],
+                playingIdentifier: "z"
+            ),
+            0,
+            "a book already holding the link, or with its archive on disk, is not in the queue and must not stall it"
+        )
+    }
+
+    func testNextPendingDownload_onAnEmptyQueue_isNil() {
+        XCTAssertNil(
+            LocalBookContentService.indexOfNextPendingDownload(
+                queuedIdentifiers: [],
+                playingIdentifier: "a"
+            ),
+            "an empty queue has nothing to start, whatever is playing"
+        )
+    }
+
+    /// End to end through the real queue: two books are deferred behind a
+    /// running transfer, and the one being listened to starts when the link
+    /// frees — not the one that was queued first.
+    func testTheBookBeingPlayed_startsAheadOfOneQueuedEarlier() throws {
+        let running = try seedLicenseOnlyLCPAudiobook()
+        let queuedFirst = try seedLicenseOnlyLCPAudiobook()
+        let playing = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(
+            fulfiller: fulfiller,
+            playingBookIdentifierProvider: { playing.identifier }
+        )
+
+        service.redownloadLCPContentFile(for: running)
+        service.redownloadLCPContentFile(for: queuedFirst)
+        service.redownloadLCPContentFile(for: playing)
+        XCTAssertEqual(fulfiller.callCount, 1, "precondition: the cap defers both of the others")
+
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("order-\(UUID().uuidString).lcpa")
+        try Data("archive bytes".utf8).write(to: tempURL)
+        fulfiller.finishWithSuccess(localURL: tempURL)
+
+        XCTAssertEqual(fulfiller.callCount, 2, "precondition: the freed link started a queued archive")
+        // Derived the same way the service derives it, so the assertion cannot
+        // pass or fail on a guess about the file naming.
+        let playingLicenseURL = bookFileManager.fakeURLFor(playing)
+            .deletingPathExtension().appendingPathExtension("lcpl")
+        XCTAssertEqual(
+            fulfiller.lastLicenseURL,
+            playingLicenseURL,
+            "the archive the patron is waiting on must take the freed link before one queued earlier"
+        )
+    }
+
     /// A transfer that never reports back must not reserve the link forever.
     ///
     /// This is what makes a lost completion recoverable. A later
@@ -656,7 +736,8 @@ final class LocalBookContentServiceTests: XCTestCase {
         reporter: SpyProgressReporter? = nil,
         idleTimeout: TimeInterval = LocalBookContentService.inflightContentDownloadIdleTimeout,
         clock: FakeClock? = nil,
-        currentAccountIdProvider: (() -> String?)? = nil
+        currentAccountIdProvider: (() -> String?)? = nil,
+        playingBookIdentifierProvider: (() -> String?)? = nil
     ) -> LocalBookContentService {
         let service = LocalBookContentService(
             bookRegistry: registry,
@@ -665,7 +746,8 @@ final class LocalBookContentServiceTests: XCTestCase {
             lcpContentFulfiller: fulfiller.fulfill,
             inflightIdleTimeout: idleTimeout,
             monotonicClock: clock.map { c in { c.now } },
-            currentAccountIdProvider: currentAccountIdProvider
+            currentAccountIdProvider: currentAccountIdProvider,
+            playingBookIdentifierProvider: playingBookIdentifierProvider
         )
         service.contentDownloadReporter = reporter
         return service

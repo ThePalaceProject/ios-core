@@ -62,6 +62,12 @@ class LocalBookContentService {
     /// `currentAccountId` to the standard `UserDefaults`.
     private let currentAccountIdProvider: () -> String?
 
+    /// Which book is loaded for playback, or nil. Read off-main when the queue
+    /// drains, so it comes from the session manager's lock-guarded mirror
+    /// rather than its `@MainActor` property. Injected so the ordering can be
+    /// driven without a player.
+    private let playingBookIdentifierProvider: () -> String?
+
     /// Progress/activity sink for the LCP content re-download. Assigned by
     /// `MyBooksDownloadCenter` after `init`, because the reporter is created
     /// later in that initializer. `weak` because the download center owns it.
@@ -119,6 +125,29 @@ class LocalBookContentService {
     ///
     /// Pure so the bound is testable: a flipped comparison here would restore
     /// the fan-out with nothing to catch it.
+    /// Which queued archive to start next: the book the patron is listening to
+    /// if it is waiting, otherwise the one that has waited longest.
+    ///
+    /// The queue is otherwise FIFO, and FIFO is the wrong order here. Every
+    /// book in it is waiting for an archive it will use offline later; one of
+    /// them is also being streamed right now, and until its archive lands each
+    /// chapter change refetches from the origin. Deciding at drain time rather
+    /// than ordering at enqueue time is deliberate — a book is usually queued
+    /// before the patron opens it, so the enqueue order cannot know this.
+    ///
+    /// Returns nil for an empty queue.
+    static func indexOfNextPendingDownload(
+        queuedIdentifiers: [String],
+        playingIdentifier: String?
+    ) -> Int? {
+        guard !queuedIdentifiers.isEmpty else { return nil }
+        if let playingIdentifier,
+           let playing = queuedIdentifiers.firstIndex(of: playingIdentifier) {
+            return playing
+        }
+        return 0
+    }
+
     static func admitsAnotherContentDownload(
         liveCount: Int,
         cap: Int = maxConcurrentContentDownloads
@@ -205,12 +234,16 @@ class LocalBookContentService {
         inflightIdleTimeout: TimeInterval = LocalBookContentService.inflightContentDownloadIdleTimeout,
         downloadCenterHasTransfer: ((String) -> Bool)? = nil,
         monotonicClock: (() -> UInt64)? = nil,
-        currentAccountIdProvider: (() -> String?)? = nil
+        currentAccountIdProvider: (() -> String?)? = nil,
+        playingBookIdentifierProvider: (() -> String?)? = nil
     ) {
         self.inflightIdleTimeout = inflightIdleTimeout
         self.monotonicClock = monotonicClock ?? LocalBookContentService.monotonicNow
         self.currentAccountIdProvider = currentAccountIdProvider ?? { [weak accountsManager] in
             accountsManager?.currentAccountId
+        }
+        self.playingBookIdentifierProvider = playingBookIdentifierProvider ?? {
+            AudiobookSessionManager.currentBookIdentifierSnapshot
         }
         self.downloadCenterHasTransfer = downloadCenterHasTransfer
         self.bookRegistry = bookRegistry
@@ -305,8 +338,13 @@ class LocalBookContentService {
     /// the restart happens outside it, because the restart re-enters
     /// `redownloadLCPContentFile`, which claims the lock again.
     private func startNextPendingContentDownload() {
+        let playing = playingBookIdentifierProvider()
         inflightLock.lock()
-        let next = pendingContentDownloads.isEmpty ? nil : pendingContentDownloads.removeFirst()
+        let index = Self.indexOfNextPendingDownload(
+            queuedIdentifiers: pendingContentDownloads.map(\.identifier),
+            playingIdentifier: playing
+        )
+        let next = index.map { pendingContentDownloads.remove(at: $0) }
         inflightLock.unlock()
         guard let next else { return }
         Log.info(#file, "📥 [LCP RE-DOWNLOAD] the link is free — starting the queued archive for '\(next.title)'")
