@@ -35,6 +35,15 @@ import ReadiumLCP
     private let lcpClient = TPPLCPClient()
     private var _lcpService: LCPService?
     private var _contentProtection: ContentProtection?
+
+    /// The one client every read of a streamed LCP archive goes through.
+    ///
+    /// Shared, not merely configured alike in two places: the range store holds
+    /// an exclusive advisory lock on its directory, so a second client for the
+    /// same archive is refused and reads through for the rest of the session,
+    /// and which of the two loses is a race. The retriever handed to LCPService
+    /// and the parser inside LCPAudiobooks therefore use this instance.
+    private var _archiveReadClient: PartialArchiveCachingHTTPClient?
     private let serviceQueue = DispatchQueue(label: "com.palace.LCPLibraryService.serviceQueue", qos: .userInitiated)
     private let serviceLock = NSLock()
 
@@ -50,6 +59,27 @@ import ReadiumLCP
             }
             return _contentProtection
         }
+    }
+
+    /// - Parameter locked: `true` when the caller already holds `serviceQueue`,
+    ///   matching `lcpService(locked:)` so neither re-enters `serviceQueue.sync`.
+    private func archiveReadClient(locked: Bool) -> PartialArchiveCachingHTTPClient {
+        let build: () -> PartialArchiveCachingHTTPClient = {
+            if self._archiveReadClient == nil {
+                self._archiveReadClient = PartialArchiveCachingHTTPClient(
+                    upstream: LCPCredentialStrippingHTTPClient(),
+                    storeFactory: LCPAudiobooks.makeArchiveRangeStore
+                )
+            }
+            // Assigned immediately above when nil, so this cannot be nil here.
+            return self._archiveReadClient!
+        }
+        return locked ? build() : serviceQueue.sync(execute: build)
+    }
+
+    /// Shared with `LCPAudiobooks` — see the note on `_archiveReadClient`.
+    var archiveReadClient: PartialArchiveCachingHTTPClient {
+        archiveReadClient(locked: false)
     }
 
     private var lcpService: LCPService? {
@@ -85,15 +115,11 @@ import ReadiumLCP
                 // byte, which is why retaining ranges there changed nothing on device.
                 // Requests without a Range header pass straight through, so LCP EPUB and
                 // PDF fulfilment are unaffected (PP-5367).
-                let archiveReadClient = PartialArchiveCachingHTTPClient(
-                    upstream: LCPCredentialStrippingHTTPClient(),
-                    storeFactory: LCPAudiobooks.makeArchiveRangeStore
-                )
                 self._lcpService = LCPService(
                     client: TPPLCPClient(),
                     licenseRepository: licenseRepo,
                     passphraseRepository: passphraseRepo,
-                    assetRetriever: AssetRetriever(httpClient: archiveReadClient),
+                    assetRetriever: AssetRetriever(httpClient: self.archiveReadClient(locked: true)),
                     httpClient: LCPCredentialStrippingHTTPClient()
                 )
             }

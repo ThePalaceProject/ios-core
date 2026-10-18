@@ -43,9 +43,6 @@ import PalaceBookModel
     private let assetRetriever: AssetRetriever
     private let publicationOpener: PublicationOpener
     private let httpClient: HTTPClient
-    /// Kept so the credential-stripping behaviour stays reachable for anything
-    /// that needs the undecorated client; the decorator forwards to it.
-    private let strippingClient: LCPCredentialStrippingHTTPClient
 
     private var cachedPublication: Publication?
     private let publicationCacheQueue = DispatchQueue(label: "org.thepalaceproject.lcpaudiobooks.publicationcache")
@@ -76,24 +73,13 @@ import PalaceBookModel
 
         self.licenseUrl = licenseUrl ?? (audiobookUrl.pathExtension.lowercased() == "lcpl" ? audiobookUrl : nil)
 
-        let strippingClient = LCPCredentialStrippingHTTPClient()
-        self.strippingClient = strippingClient
-        // Readium buffers a remote archive at 6 MB, so every read that misses its
-        // window costs a whole 6 MB range request and the bytes are then dropped.
-        // Measured on device against build 516: 159 range reads, 930 MB fetched,
-        // 6.0 MB median per read, no audio played. Retaining what we fetch is the
-        // only lever that reduces the total, because the reads share one
-        // connection and saturate it (PP-5367).
-        //
-        // Wrapped here and NOT in LCPLibraryService: this is the client behind
-        // AssetRetriever and the publication parser for the streamed package, so
-        // it issues the ranged GETs. The fulfilment clients there carry no Range
-        // header and also serve LCP EPUB and PDF, so wrapping them would add a
-        // closure hop per chunk on a whole-object download and change nothing.
-        let httpClient = PartialArchiveCachingHTTPClient(
-            upstream: strippingClient,
-            storeFactory: LCPAudiobooks.makeArchiveRangeStore
-        )
+        // One client, owned by the LCP service, because the range store holds an
+        // exclusive advisory lock on its directory: a second client for the same
+        // archive is refused and reads through for the rest of the session. The
+        // service's ContentProtection retrieves the streamed publication through
+        // this same client, and the container it returns is what every archive read
+        // for playback goes through (PP-5367).
+        let httpClient = lcpService.archiveReadClient
         self.httpClient = httpClient
         self.assetRetriever = AssetRetriever(httpClient: httpClient)
 
@@ -177,7 +163,24 @@ import PalaceBookModel
                 }
             }
 
+            let openStartedAt = Date()
+            // A hung open records nothing from the timing below, because that runs
+            // after an await which never returns — and a Readium deadlock on
+            // publicationOpener.open is on record for this path (the "opening third
+            // audiobook hangs" defect this type's one-shot guard exists for). A
+            // stalled open and a slow one need opposite fixes, so the stall has to
+            // announce itself from somewhere that is still running.
+            let openWatchdog = Task { [threshold = Self.slowPublicationOpenThreshold] in
+                try? await Task.sleep(nanoseconds: UInt64(threshold * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+                Log.error(#file, String(
+                    format: "LCP publication open has not returned after %.0fs; the chapter fails at 30s having served no bytes",
+                    threshold
+                ))
+            }
+            defer { openWatchdog.cancel() }
             let result = await assetRetriever.retrieve(url: urlToOpen)
+            let retrievedAt = Date()
 
             switch result {
             case .success(let asset):
@@ -189,6 +192,19 @@ import PalaceBookModel
                 }
 
                 let result = await publicationOpener.open(asset: asset, allowUserInteraction: true, credentials: credentials, sender: nil)
+                let openedAt = Date()
+                let openDuration = openedAt.timeIntervalSince(openStartedAt)
+                if Self.shouldReportSlowPublicationOpen(duration: openDuration) {
+                    // At `.error` deliberately: only error and fault reach the
+                    // on-device log the patron can export, and an open this slow is
+                    // what they report as a book that never starts.
+                    Log.error(#file, String(
+                        format: "LCP publication open took %.1fs (asset retrieve %.1fs, open %.1fs); the streaming player fails the chapter at 30s",
+                        openDuration,
+                        retrievedAt.timeIntervalSince(openStartedAt),
+                        openedAt.timeIntervalSince(retrievedAt)
+                    ))
+                }
 
                 switch result {
                 case .success(let publication):
@@ -314,6 +330,26 @@ import PalaceBookModel
 // MARK: - Partial archive store
 
 extension LCPAudiobooks {
+
+    /// Whether an LCP publication open was slow enough to record.
+    ///
+    /// The streaming player fails a chapter after 30 s with "Timed out waiting
+    /// for LCP publication to load" and the resource loader gives up at 25 s, so
+    /// an open approaching either is what a patron experiences as a book that
+    /// never starts. Nothing recorded how long the open took, which left the
+    /// device logs saying only that the deadline passed.
+    ///
+    /// Pure so the threshold is testable and a flipped comparison is caught.
+    static func shouldReportSlowPublicationOpen(
+        duration: TimeInterval,
+        threshold: TimeInterval = LCPAudiobooks.slowPublicationOpenThreshold
+    ) -> Bool {
+        duration >= threshold
+    }
+
+    /// Well below the 25 s loader deadline, so an open heading for a failure is
+    /// recorded before the failure and not only after it.
+    static let slowPublicationOpenThreshold: TimeInterval = 10
 
     /// Where a streamed archive's retained byte ranges live.
     ///

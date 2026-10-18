@@ -705,6 +705,15 @@ final class LCPArchiveRangeStoreFactoryTests: XCTestCase {
 /// archive whose reads simply never repeat.
 final class LCPArchiveReadPathWiringTests: XCTestCase {
 
+    private func source(at relativePath: String) throws -> String {
+        var dir = URL(fileURLWithPath: #filePath)
+        while dir.pathComponents.count > 1, dir.lastPathComponent != "PalaceTests" {
+            dir.deleteLastPathComponent()
+        }
+        let root = dir.deletingLastPathComponent()
+        return try String(contentsOf: root.appendingPathComponent(relativePath), encoding: .utf8)
+    }
+
     private func lcpLibraryServiceSource() throws -> String {
         // This test target's bundle sits inside the build products directory;
         // walk up to the repository root rather than hard-coding a path.
@@ -716,6 +725,49 @@ final class LCPArchiveReadPathWiringTests: XCTestCase {
         let source = root
             .appendingPathComponent("Palace/Reader2/ReaderStackConfiguration/LCP/LCPLibraryService.swift")
         return try String(contentsOf: source, encoding: .utf8)
+    }
+
+    /// Exactly one caching client may exist for an archive.
+    ///
+    /// `PartialArchiveStore` holds an exclusive advisory lock on its directory,
+    /// so a second client for the same archive is refused and reads through for
+    /// the rest of the session — and which of the two loses is a race, so the
+    /// cache would work intermittently rather than fail outright.
+    /// The shared client is memoised, so every reader gets the same instance.
+    ///
+    /// This is the invariant the sharing exists for: a fresh client per call
+    /// would be refused the store's exclusive lock and read through, which is
+    /// the defect the sharing replaced.
+    func testArchiveReadClient_isTheSameInstanceEveryTime() {
+        #if LCP
+        let first = lcpService.archiveReadClient
+        let second = lcpService.archiveReadClient
+        XCTAssertTrue(
+            first === second,
+            "a second client for the same archive is refused the store lock and reads through"
+        )
+        #endif
+    }
+
+    func testOnlyTheLCPService_constructsTheCachingClient() throws {
+        let service = try lcpLibraryServiceSource()
+        let audiobooks = try source(at: "Palace/Audiobooks/LCP/LCPAudiobooks.swift")
+
+        XCTAssertEqual(
+            service.components(separatedBy: "PartialArchiveCachingHTTPClient(").count - 1,
+            1,
+            "the LCP service builds the one shared client"
+        )
+        XCTAssertFalse(
+            audiobooks.contains("PartialArchiveCachingHTTPClient("),
+            """
+            LCPAudiobooks must share the service's client rather than build a             second one: two clients contend for one store lock and the loser             reads through for the whole session
+            """
+        )
+        XCTAssertTrue(
+            audiobooks.contains("lcpService.archiveReadClient"),
+            "LCPAudiobooks must take the shared client from the service"
+        )
     }
 
     func testLCPServiceAssetRetriever_isBuiltOverTheCachingClient() throws {
@@ -743,5 +795,55 @@ final class LCPArchiveReadPathWiringTests: XCTestCase {
             source.contains("PartialArchiveCachingHTTPClient("),
             "the archive read client must be the caching one, or retained ranges are never read back"
         )
+    }
+}
+
+// MARK: - Recording a slow publication open
+
+/// An open that is heading for the streaming player's 30 s failure must be
+/// recorded while it is still only slow.
+///
+/// The device logs for builds 516 through 521 said the deadline passed and
+/// nothing about how long the open took or which phase spent it, so three
+/// builds were judged against a number nobody had.
+final class LCPSlowPublicationOpenTests: XCTestCase {
+
+    func testOpenAtTheThreshold_isRecorded() {
+        #if LCP
+        XCTAssertTrue(
+            LCPAudiobooks.shouldReportSlowPublicationOpen(duration: 10, threshold: 10),
+            "the boundary is inclusive, so an open exactly at the threshold is recorded"
+        )
+        #endif
+    }
+
+    func testOpenBelowTheThreshold_isNotRecorded() {
+        #if LCP
+        XCTAssertFalse(
+            LCPAudiobooks.shouldReportSlowPublicationOpen(duration: 9.9, threshold: 10),
+            "a normal open must not write to the patron-exportable log on every book"
+        )
+        #endif
+    }
+
+    func testOpenPastTheLoaderDeadline_isRecorded() {
+        #if LCP
+        XCTAssertTrue(
+            LCPAudiobooks.shouldReportSlowPublicationOpen(duration: 31, threshold: 10),
+            "the case that actually failed on device must appear in the log"
+        )
+        #endif
+    }
+
+    /// The shipped threshold has to sit below the deadline it warns about, or it
+    /// only ever fires after the chapter has already been failed.
+    func testTheShippedThreshold_isBelowTheLoaderDeadline() {
+        #if LCP
+        XCTAssertLessThan(
+            LCPAudiobooks.slowPublicationOpenThreshold,
+            25,
+            "the resource loader gives up at 25 s; a later threshold reports nothing useful"
+        )
+        #endif
     }
 }
