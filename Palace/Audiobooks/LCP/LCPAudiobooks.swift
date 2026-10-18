@@ -48,6 +48,8 @@ import PalaceBookModel
     private var cachedPublication: Publication?
     private let publicationCacheQueue = DispatchQueue(label: "org.thepalaceproject.lcpaudiobooks.publicationcache")
     private var currentPrefetchTask: Task<Void, Never>?
+    /// The background resolution of this archive's track lengths.
+    private var trackLengthTask: Task<Void, Never>?
 
     /// Once set, the instance is a dead one-shot: no new Publication may be opened
     /// through contentDictionary, decrypt, or startPrefetch. A previously opened
@@ -233,6 +235,7 @@ import PalaceBookModel
                     self.publicationCacheQueue.async {
                         self.cachedPublication = publication
                     }
+                    self.startResolvingTrackLengths(for: publication)
 
                     if let jsonManifestString = publication.jsonManifest, let jsonData = jsonManifestString.data(using: .utf8),
                        let jsonObject = try? JSONSerialization.jsonObject(with: jsonData, options: []) as? NSDictionary {
@@ -690,6 +693,106 @@ extension LCPAudiobooks: LCPStreamingProvider {
         UserDefaults.standard.set(NSNumber(value: length), forKey: prefix + href)
     }
 
+    /// Learns and remembers the plaintext length of every named track that has
+    /// none yet, reading the archive directly instead of through Readium's
+    /// buffered probe.
+    ///
+    /// The archive reads are injected so a test drives this without a network.
+    /// `LCPArchiveTrackLengthResolver` decides which bytes to read.
+    nonisolated func resolveTrackLengths(
+        hrefs: [String],
+        archiveLength: UInt64,
+        readRange: @escaping LCPArchiveTrackLengthResolver.ReadRange,
+        decipher: @escaping LCPArchiveTrackLengthResolver.Decipher
+    ) async {
+        let missing = hrefs.filter { cachedPlaintextLength(forHref: $0) == nil }
+        guard !missing.isEmpty else { return }
+
+        await LCPArchiveTrackLengthResolver(
+            archiveLength: archiveLength,
+            readRange: readRange,
+            decipher: decipher
+        )
+        .resolveLengths(forHrefs: missing) { href, length in
+            self.cachePlaintextLength(length, forHref: href)
+        }
+    }
+
+    /// Starts learning this archive's track lengths in the background.
+    ///
+    /// Streaming only: a local package is read from disk, where the probe costs
+    /// a file read rather than a 6 MB window. The work runs off the open so the
+    /// first chapter starts while the rest of the book's lengths fill in, and
+    /// it is cancelled with the instance.
+    private func startResolvingTrackLengths(for publication: Publication) {
+        guard let licenseUrl,
+              let archiveURL = Self.publicationURL(inLicenseAt: licenseUrl),
+              let license = publication.lcpLicense
+        else { return }
+
+        // Read before the task: the hrefs the player will ask the cache with
+        // are the reading-order hrefs, minus any fragment, exactly as
+        // `LCPResourceLoaderDelegate` keys them.
+        //
+        // Asked here as well as inside `resolveTrackLengths` so that a book
+        // whose lengths are all known from an earlier session costs not even
+        // the HEAD that locates the archive's tail.
+        let hrefs = publication.readingOrder
+            .map { link in link.href.components(separatedBy: "#").first ?? link.href }
+            .filter { cachedPlaintextLength(forHref: $0) == nil }
+        guard !hrefs.isEmpty else { return }
+
+        let client = archiveReadClient
+        let task = Task { [weak self] in
+            guard let self, !self.isReleasedSnapshot() else { return }
+            guard let archiveLength = await Self.archiveLength(of: archiveURL, using: client) else {
+                ATLog(.warn, "LCP archive did not report a length; leaving its track lengths to the probe")
+                return
+            }
+            await self.resolveTrackLengths(
+                hrefs: hrefs,
+                archiveLength: archiveLength,
+                readRange: { await Self.readArchiveRange($0, of: archiveURL, using: client) },
+                decipher: { try? license.decipher($0) }
+            )
+        }
+        publicationCacheQueue.async {
+            self.trackLengthTask?.cancel()
+            self.trackLengthTask = task
+        }
+    }
+
+    /// The archive's length, from a HEAD. One request per open, and the only
+    /// way to know where the tail that holds the central directory begins.
+    ///
+    /// Internal rather than private: what the server has to say for a length to
+    /// be believed is pinned by a test.
+    static func archiveLength(of url: HTTPURL, using client: HTTPClient) async -> UInt64? {
+        let response = try? await client.fetch(HTTPRequest(url: url, method: .head)).get()
+        // `contentLength` is signed, and a server may answer with no length at
+        // all; neither shape names a tail to read.
+        guard let length = response?.contentLength, length > 0 else { return nil }
+        return UInt64(length)
+    }
+
+    /// One bounded range of the archive. Bounded on purpose: an open-ended
+    /// `bytes=start-` resolves to the whole 715 MB object.
+    ///
+    /// Internal rather than private: a `Range` is half-open and the header is
+    /// inclusive, and that conversion is pinned by a test — asking one byte
+    /// short of the entry's end deciphers the wrong block.
+    static func readArchiveRange(
+        _ range: Range<UInt64>, of url: HTTPURL, using client: HTTPClient
+    ) async -> Data? {
+        guard !range.isEmpty else { return nil }
+        let request = HTTPRequest(
+            url: url,
+            method: .get,
+            headers: ["Range": "bytes=\(range.lowerBound)-\(range.upperBound - 1)"]
+        )
+        return try? await client.fetch(request).get().body
+    }
+
     /// The archive client's origin cost, for the loader's slow-chapter line.
     /// Read off the same counting client this type opens the publication with.
     nonisolated public func archiveOriginActivity() -> (requests: Int, bytes: Int) {
@@ -884,6 +987,8 @@ extension LCPAudiobooks {
             isReleased = true
             currentPrefetchTask?.cancel()
             currentPrefetchTask = nil
+            trackLengthTask?.cancel()
+            trackLengthTask = nil
             cachedPublication = nil
         }
     }

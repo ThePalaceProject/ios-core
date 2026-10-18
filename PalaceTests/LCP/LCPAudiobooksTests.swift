@@ -60,6 +60,143 @@ final class LCPAudiobooksTests: XCTestCase {
         )
     }
 
+    // MARK: - Asking the archive for bytes
+
+    /// A `Range` is half-open and an HTTP range header is inclusive. One byte
+    /// out here reads the wrong block and deciphers the wrong padding, so the
+    /// track's length comes back wrong rather than missing.
+    func testArchiveRangeRead_asksForAnInclusiveByteRange() async {
+        let client = StubHTTPClient(body: Data(repeating: 0xAB, count: 32))
+        let url = HTTPURL(string: "https://storage.googleapis.com/bucket/book.lcpa")!
+
+        let data = await LCPAudiobooks.readArchiveRange(100 ..< 132, of: url, using: client)
+
+        XCTAssertEqual(client.rangeHeaders, ["bytes=100-131"], "the last byte asked for is inclusive")
+        XCTAssertEqual(data?.count, 32, "the body the server sent is what the arithmetic reads")
+    }
+
+    /// Without a length there is no tail to read, and a wrong one would send
+    /// every later read to an offset in the middle of the audio.
+    func testArchiveLength_whenTheServerReportsNoLength_isNil() async {
+        let client = StubHTTPClient(body: Data(), headers: [:])
+        let url = HTTPURL(string: "https://storage.googleapis.com/bucket/book.lcpa")!
+
+        let length = await LCPAudiobooks.archiveLength(of: url, using: client)
+
+        XCTAssertNil(length, "a response with no Content-Length names no tail")
+    }
+
+    /// An archive of no length is not an archive. Believing a zero would send
+    /// the tail read to an empty range and cost a request that cannot answer.
+    func testArchiveLength_whenTheServerReportsZero_isNil() async {
+        let client = StubHTTPClient(body: Data(), headers: ["Content-Length": "0"])
+        let url = HTTPURL(string: "https://storage.googleapis.com/bucket/book.lcpa")!
+
+        let length = await LCPAudiobooks.archiveLength(of: url, using: client)
+
+        XCTAssertNil(length, "zero bytes names no central directory to read")
+    }
+
+    func testArchiveLength_readsTheLengthTheServerReports() async {
+        let client = StubHTTPClient(body: Data(), headers: ["Content-Length": "749772033"])
+        let url = HTTPURL(string: "https://storage.googleapis.com/bucket/book.lcpa")!
+
+        let length = await LCPAudiobooks.archiveLength(of: url, using: client)
+
+        XCTAssertEqual(length, 749_772_033)
+    }
+
+    /// Answers one body and records the range asked for.
+    private final class StubHTTPClient: HTTPClient, @unchecked Sendable {
+        private let lock = NSLock()
+        private var asked: [String?] = []
+        private let body: Data
+        private let headers: [String: String]
+
+        init(body: Data, headers: [String: String]? = nil) {
+            self.body = body
+            self.headers = headers ?? ["Content-Length": "\(body.count)"]
+        }
+
+        var rangeHeaders: [String?] { lock.withLock { asked } }
+
+        func stream(
+            request: any HTTPRequestConvertible,
+            consume: @escaping (Data, Double?) -> HTTPResult<Void>
+        ) async -> HTTPResult<HTTPResponse> {
+            guard case let .success(httpRequest) = request.httpRequest() else {
+                return .failure(HTTPError.malformedResponse(nil))
+            }
+            lock.withLock { asked.append(httpRequest.headers["Range"]) }
+            if !body.isEmpty, case let .failure(error) = consume(body, nil) {
+                return .failure(error)
+            }
+            return .success(HTTPResponse(
+                request: httpRequest,
+                url: httpRequest.url,
+                status: .ok,
+                headers: headers,
+                mediaType: nil,
+                body: nil
+            ))
+        }
+    }
+
+    // MARK: - Learning the lengths from the archive
+
+    /// The point of the change: the lengths arrive from two small ranged reads
+    /// per track and are remembered, so a chapter change pays neither the
+    /// probe nor the archive reads again.
+    func testTrackLengths_learnedFromTheArchive_areRememberedForTheNextChapterChange() async throws {
+        let book = try makeAudiobook(
+            publicationHref: "https://storage.googleapis.com/bucket/r-\(UUID().uuidString)"
+        )
+        let archive = LCPSyntheticArchive.make()
+
+        await book.resolveTrackLengths(
+            hrefs: ["track-a.mp3", "track-b.mp3"],
+            archiveLength: archive.declaredLength,
+            readRange: { await archive.read($0) },
+            decipher: { $0 }
+        )
+
+        XCTAssertEqual(
+            book.cachedPlaintextLength(forHref: "track-a.mp3"),
+            LCPSyntheticArchive.trackA.plaintextLength,
+            "the length read from the archive is what the player must find cached"
+        )
+        XCTAssertEqual(
+            book.cachedPlaintextLength(forHref: "track-b.mp3"),
+            LCPSyntheticArchive.trackB.plaintextLength
+        )
+    }
+
+    /// A second open of a book already played must cost the origin nothing:
+    /// the lengths are already known, and the archive is 715 MB away.
+    func testTrackLengths_alreadyKnown_costNoArchiveRead() async throws {
+        let book = try makeAudiobook(
+            publicationHref: "https://storage.googleapis.com/bucket/k-\(UUID().uuidString)"
+        )
+        book.cachePlaintextLength(4_073, forHref: "track-a.mp3")
+        let archive = LCPSyntheticArchive.make()
+
+        await book.resolveTrackLengths(
+            hrefs: ["track-a.mp3"],
+            archiveLength: archive.declaredLength,
+            readRange: { await archive.read($0) },
+            decipher: { $0 }
+        )
+
+        XCTAssertEqual(
+            archive.reads, [],
+            "a track whose length is known must not be looked up again"
+        )
+        XCTAssertEqual(
+            book.cachedPlaintextLength(forHref: "track-a.mp3"), 4_073,
+            "and the length already learned is left as it is"
+        )
+    }
+
     /// Builds an instance whose licence names `publicationHref`, which is what
     /// the cache keys on.
     private func makeAudiobook(publicationHref: String) throws -> LCPAudiobooks {
