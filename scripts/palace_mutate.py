@@ -176,7 +176,12 @@ DEFAULT_CACHE_DIR = os.path.join(REPO_ROOT, ".build", "mutation-cache")
 # Per-mutant incremental cache lives in a subdir so it never collides with the
 # whole-file cache files (which sit directly in DEFAULT_CACHE_DIR).
 DEFAULT_MUTANT_CACHE_DIR = os.path.join(DEFAULT_CACHE_DIR, "mutants")
-CACHE_VERSION = 2  # bump when cache schema changes (v2: keys include test CONTENT)
+# Bump when the cache schema changes, which evicts entries the old scheme wrote.
+# v2: keys include test CONTENT.
+# v3: per-mutant keys include the MUTATED LINE, and the run's fingerprint now
+#     actually reaches them. Entries written under v2 can carry a verdict that
+#     another mutant on the same line earned, or one whose test no longer exists.
+CACHE_VERSION = 3
 
 # Coverage-gating support is OPTIONAL — palace_mutate must still run if Component
 # A's mutate_coverage.py is somehow absent (fresh checkout before that file lands,
@@ -440,10 +445,21 @@ def apply_mutation(file_path: str, mutation: Mutation) -> None:
     with open(file_path, "r") as f:
         lines = f.readlines()
     target = lines[mutation.line - 1]
-    # Recompute current matching to avoid clobbering on shifted lines
-    if mutation.original not in target:
-        raise RuntimeError(f"Could not find original `{mutation.original}` on line {mutation.line}")
-    lines[mutation.line - 1] = target.replace(mutation.original, mutation.mutated, 1)
+    # Apply at the column it was discovered at, not at the first match. A line
+    # like `guard a > 0, b > 0` yields two mutants of the same operator; a
+    # first-occurrence replace writes an identical file for both, so one mutant
+    # is compiled twice and the other is graded without ever being applied —
+    # which reports `survived` for a mutant a test kills, and can equally
+    # report `killed` for one still live.
+    start = mutation.col - 1
+    end = start + len(mutation.original)
+    if target[start:end] != mutation.original:
+        raise RuntimeError(
+            f"Could not find original `{mutation.original}` at line {mutation.line} "
+            f"column {mutation.col} (found `{target[start:end]}`) — the file moved "
+            f"under the run, so no verdict is available for this mutant"
+        )
+    lines[mutation.line - 1] = target[:start] + mutation.mutated + target[end:]
     with open(file_path, "w") as f:
         f.writelines(lines)
 
@@ -801,17 +817,24 @@ def cache_store(cache_dir: str, file_relpath: str, key: str, report: dict) -> st
 
 def compute_mutant_key(tests: list[str], context_before: str, line_text: str,
                        context_after: str, original: str, mutated: str,
-                       *, tests_fingerprint: str | None) -> str:
+                       *, tests_fingerprint: str | None,
+                       mutated_line: str = "") -> str:
     """Stable 16-hex key for one mutant.
 
     Hashed over (CACHE_VERSION, sorted(tests), tests_fingerprint, context_before
-    + '\\n' + line_text + '\\n' + context_after, original, mutated). Properties:
+    + '\\n' + line_text + '\\n' + context_after, original, mutated,
+    mutated_line). Properties:
       - STABILITY: identical inputs -> identical key (so a re-run on an
         unchanged file reuses the cached status).
       - LOCALITY: edits ELSEWHERE in the file don't change a mutant's key
         (context is only the immediate neighbours, not line numbers).
       - DISAMBIGUATION: two byte-identical lines in different surrounding
-        context get DIFFERENT keys, so their results never collide.
+        context get DIFFERENT keys, so their results never collide. So do two
+        mutants ON THE SAME LINE: `guard a > 0, b > 0` mutates `>` to `>=`
+        twice, and every other input is identical, so `mutated_line` is what
+        separates them. Without it the second inherited the first's verdict
+        without being run — which reported `survived` for a mutant an existing
+        test killed, and can equally report `killed` for one still live.
       - TEST-SENSITIVITY: a change to the TESTS changes every key, so a stored
         `killed` cannot outlive the assertion that produced it. This cache is
         the more dangerous of the two — it persists per-mutant verdicts across
@@ -839,6 +862,9 @@ def compute_mutant_key(tests: list[str], context_before: str, line_text: str,
     h.update(original.encode())
     h.update(b"\n")
     h.update(mutated.encode())
+    h.update(b"\n")
+    h.update(b"--mutated-line--\n")
+    h.update(mutated_line.encode())
     h.update(b"\n")
     return h.hexdigest()[:16]
 
@@ -1276,7 +1302,8 @@ def main() -> int:
         # PER-MUTANT CACHE: reuse a prior status for an unchanged-context mutant.
         mkey = compute_mutant_key(args.tests, m.context_before, m.line_text,
                                   m.context_after, m.original, m.mutated,
-                                  tests_fingerprint=fingerprint)
+                                   tests_fingerprint=fingerprint,
+                                   mutated_line=m.mutated_line)
         if not cache_disabled and mkey in mutant_cache:
             cached_entry = mutant_cache[mkey]
             cached_status = cached_entry.get("status")

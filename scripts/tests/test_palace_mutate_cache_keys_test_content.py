@@ -293,3 +293,23 @@ def test_the_only_caller_passes_the_fingerprint_through():
     call = src[calls[1]:calls[1] + 400]
     assert "tests_fingerprint=fingerprint" in call, (
         "the per-mutant cache key must carry the resolved fingerprint, not a default")
+
+def test_two_mutants_on_one_line_do_not_share_a_key():
+    """`guard a > 0, b > 0` yields two mutants with identical key inputs.
+
+    Context, line text and the operator pair are all the same for both, so
+    keyed without the mutation's own position they collide and the second
+    inherits the first's verdict without ever being run. Seen 2026-10-18: a
+    mutant a test demonstrably kills was reported `survived (cached)`.
+    """
+    line = "        guard byteCount > 0, bytesPerSecond > 0 else { return 0 }"
+    base = dict(tests=["T"], context_before="func f() -> Double {",
+                line_text=line, context_after="}", original=">", mutated=">=",
+                tests_fingerprint="fp")
+    first = pm.compute_mutant_key(
+        **base,
+        mutated_line="        guard byteCount >= 0, bytesPerSecond > 0 else { return 0 }")
+    second = pm.compute_mutant_key(
+        **base,
+        mutated_line="        guard byteCount > 0, bytesPerSecond >= 0 else { return 0 }")
+    assert first != second, "two mutants on one line must not share a cache key"
