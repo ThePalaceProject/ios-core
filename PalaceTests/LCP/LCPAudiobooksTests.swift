@@ -153,13 +153,17 @@ final class LCPAudiobooksTests: XCTestCase {
         )
         let archive = LCPSyntheticArchive.make()
 
-        await book.resolveTrackLengths(
+        let resolved = await book.resolveTrackLengths(
             hrefs: ["track-a.mp3", "track-b.mp3"],
             archiveLength: archive.declaredLength,
             readRange: { await archive.read($0) },
             decipher: { $0 }
         )
 
+        XCTAssertEqual(
+            resolved, 2,
+            "the count is what the log reports, so it must be the number actually stored"
+        )
         XCTAssertEqual(
             book.cachedPlaintextLength(forHref: "track-a.mp3"),
             LCPSyntheticArchive.trackA.plaintextLength,
@@ -180,13 +184,14 @@ final class LCPAudiobooksTests: XCTestCase {
         book.cachePlaintextLength(4_073, forHref: "track-a.mp3")
         let archive = LCPSyntheticArchive.make()
 
-        await book.resolveTrackLengths(
+        let resolved = await book.resolveTrackLengths(
             hrefs: ["track-a.mp3"],
             archiveLength: archive.declaredLength,
             readRange: { await archive.read($0) },
             decipher: { $0 }
         )
 
+        XCTAssertEqual(resolved, 0, "nothing was learned, and the log must not claim otherwise")
         XCTAssertEqual(
             archive.reads, [],
             "a track whose length is known must not be looked up again"

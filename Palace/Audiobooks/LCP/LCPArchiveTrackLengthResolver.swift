@@ -45,27 +45,32 @@ struct LCPArchiveTrackLengthResolver: Sendable {
     let readRange: ReadRange
     let decipher: Decipher
 
-    /// Resolves the length of each named track, reporting each one as it lands.
+    /// Resolves the length of each named track, reporting each one as it lands,
+    /// and returns how many were reported.
     ///
     /// Serial, and in the order given: the tracks are reported in reading order
     /// so the chapters the patron reaches first are known first, and the player
     /// keeps the link it is streaming audio over.
+    @discardableResult
     func resolveLengths(
         forHrefs hrefs: [String],
         report: @Sendable (_ href: String, _ length: UInt64) -> Void
-    ) async {
-        guard !hrefs.isEmpty, archiveLength > 0 else { return }
+    ) async -> Int {
+        guard !hrefs.isEmpty, archiveLength > 0 else { return 0 }
 
         let directory = await readEntries()
-        guard !directory.isEmpty else { return }
+        guard !directory.isEmpty else { return 0 }
 
+        var reported = 0
         for href in hrefs {
-            if Task.isCancelled { return }
+            if Task.isCancelled { return reported }
             guard let entry = Self.entry(forHref: href, in: directory),
                   let length = await plaintextLength(for: entry)
             else { continue }
             report(href, length)
+            reported += 1
         }
+        return reported
     }
 
     /// The archive's central directory, read from its tail.

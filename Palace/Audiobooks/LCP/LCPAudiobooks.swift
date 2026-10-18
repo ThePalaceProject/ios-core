@@ -699,16 +699,17 @@ extension LCPAudiobooks: LCPStreamingProvider {
     ///
     /// The archive reads are injected so a test drives this without a network.
     /// `LCPArchiveTrackLengthResolver` decides which bytes to read.
+    /// Returns how many lengths it stored, which is what the caller reports.
     nonisolated func resolveTrackLengths(
         hrefs: [String],
         archiveLength: UInt64,
         readRange: @escaping LCPArchiveTrackLengthResolver.ReadRange,
         decipher: @escaping LCPArchiveTrackLengthResolver.Decipher
-    ) async {
+    ) async -> Int {
         let missing = hrefs.filter { cachedPlaintextLength(forHref: $0) == nil }
-        guard !missing.isEmpty else { return }
+        guard !missing.isEmpty else { return 0 }
 
-        await LCPArchiveTrackLengthResolver(
+        return await LCPArchiveTrackLengthResolver(
             archiveLength: archiveLength,
             readRange: readRange,
             decipher: decipher
@@ -725,10 +726,23 @@ extension LCPAudiobooks: LCPStreamingProvider {
     /// first chapter starts while the rest of the book's lengths fill in, and
     /// it is cancelled with the instance.
     private func startResolvingTrackLengths(for publication: Publication) {
-        guard let licenseUrl,
-              let archiveURL = Self.publicationURL(inLicenseAt: licenseUrl),
-              let license = publication.lcpLicense
-        else { return }
+        guard let licenseUrl else {
+            // Silence here is indistinguishable in a device log from a
+            // resolution that ran and found nothing, so say which it was.
+            Log.error(#file, "LCP track lengths: opened from a local package, so no track length is read from the origin")
+            return
+        }
+        guard let archiveURL = Self.publicationURL(inLicenseAt: licenseUrl) else {
+            Log.error(#file, "LCP track lengths: the licence names no publication URL; every chapter keeps the probe")
+            return
+        }
+        // At `.error` like the open's own line: only error and fault reach the
+        // log a patron can export, and a resolution that never starts is
+        // indistinguishable in that log from one that found nothing to do.
+        guard let license = publication.lcpLicense else {
+            Log.error(#file, "LCP track lengths: no open licence on the publication; every chapter keeps the probe")
+            return
+        }
 
         // Read before the task: the hrefs the player will ask the cache with
         // are the reading-order hrefs, minus any fragment, exactly as
@@ -740,21 +754,35 @@ extension LCPAudiobooks: LCPStreamingProvider {
         let hrefs = publication.readingOrder
             .map { link in link.href.components(separatedBy: "#").first ?? link.href }
             .filter { cachedPlaintextLength(forHref: $0) == nil }
-        guard !hrefs.isEmpty else { return }
+        guard !hrefs.isEmpty else {
+            Log.error(#file, "LCP track lengths: all \(publication.readingOrder.count) track length(s) already known")
+            return
+        }
 
         let client = archiveReadClient
         let task = Task { [weak self] in
             guard let self, !self.isReleasedSnapshot() else { return }
+            let startedAt = Date()
+            let activityBefore = client.upstreamActivity
             guard let archiveLength = await Self.archiveLength(of: archiveURL, using: client) else {
-                ATLog(.warn, "LCP archive did not report a length; leaving its track lengths to the probe")
+                Log.error(#file, "LCP track lengths: the archive reported no length; every chapter keeps the probe")
                 return
             }
-            await self.resolveTrackLengths(
+            let resolved = await self.resolveTrackLengths(
                 hrefs: hrefs,
                 archiveLength: archiveLength,
                 readRange: { await Self.readArchiveRange($0, of: archiveURL, using: client) },
                 decipher: { try? license.decipher($0) }
             )
+            let cost = client.upstreamActivity.delta(since: activityBefore)
+            Log.error(#file, String(
+                format: "LCP track lengths: resolved %d of %d track(s) in %.1fs; archive origin cost %d request(s) for %d bytes",
+                resolved,
+                hrefs.count,
+                Date().timeIntervalSince(startedAt),
+                cost.originRequests,
+                cost.originBytes
+            ))
         }
         publicationCacheQueue.async {
             self.trackLengthTask?.cancel()

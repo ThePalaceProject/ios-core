@@ -57,6 +57,28 @@ final class LCPArchiveTrackLengthResolverTests: XCTestCase {
         )
     }
 
+    /// The count goes straight into the device log, so it must be what was
+    /// reported, not what was asked for.
+    func testResolveLengths_returnsTheNumberItReported() async {
+        let archive = Archive.make()
+        let reported = Reported()
+
+        let count = await LCPArchiveTrackLengthResolver(
+            archiveLength: archive.declaredLength,
+            readRange: { await archive.read($0) },
+            decipher: { $0 }
+        )
+        .resolveLengths(forHrefs: ["track-a.mp3", "manifest.json", "track-b.mp3"]) { href, length in
+            reported.record(href, length)
+        }
+
+        XCTAssertEqual(
+            count, 2,
+            "three tracks were asked for and the deflated one resolved to nothing"
+        )
+        XCTAssertEqual(count, reported.values.count, "the count must match what the caller was told")
+    }
+
     /// The archive is 715 MB in production; the tail read has to be bounded to
     /// its end, or this reads the whole file to find 4,647 bytes of directory.
     func testResolveLengths_readsOnlyTheTailOfALargeArchive() async {
@@ -229,7 +251,7 @@ final class LCPArchiveTrackLengthResolverTests: XCTestCase {
 
         let reported = Reported()
         let task = Task {
-            await LCPArchiveTrackLengthResolver(
+            _ = await LCPArchiveTrackLengthResolver(
                 archiveLength: archive.declaredLength,
                 readRange: { await archive.read($0) },
                 decipher: { $0 }
