@@ -646,6 +646,60 @@ final class LocalBookContentServiceTests: XCTestCase {
         )
     }
 
+    /// The motivating incident was transfers FAILING, not completing, so the
+    /// queue has to drain on the error path too.
+    func testADeferredBook_startsWhenTheRunningTransferFails() throws {
+        let first = try seedLicenseOnlyLCPAudiobook()
+        let second = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller)
+
+        service.redownloadLCPContentFile(for: first)
+        service.redownloadLCPContentFile(for: second)
+        XCTAssertEqual(fulfiller.callCount, 1, "precondition: the second is deferred")
+
+        fulfiller.finishWithError(
+            NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut),
+            callIndex: 0
+        )
+
+        XCTAssertEqual(
+            fulfiller.callCount, 2,
+            "a failed transfer frees the link, so the queued archive must still start"
+        )
+    }
+
+    /// A dequeued book that declines the slot must not leave the link idle with
+    /// the queue still full. The likeliest decliner is the book whose archive
+    /// landed while it waited — which the playing-book preference puts first.
+    func testAQueuedBookThatDeclines_doesNotStallTheOnesBehindIt() throws {
+        let running = try seedLicenseOnlyLCPAudiobook()
+        let decliner = try seedLicenseOnlyLCPAudiobook()
+        let wanted = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller)
+
+        service.redownloadLCPContentFile(for: running)
+        service.redownloadLCPContentFile(for: decliner)
+        service.redownloadLCPContentFile(for: wanted)
+        XCTAssertEqual(fulfiller.callCount, 1, "precondition: both others are deferred")
+
+        // The decliner's archive lands while it sits in the queue, so its own
+        // `fileExists` guard will turn it away.
+        try writeFile(at: bookFileManager.fakeURLFor(decliner), bytes: 32)
+
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("decline-\(UUID().uuidString).lcpa")
+        try Data("archive bytes".utf8).write(to: tempURL)
+        fulfiller.finishWithSuccess(localURL: tempURL)
+
+        XCTAssertEqual(
+            fulfiller.lastLicenseURL,
+            bookFileManager.fakeURLFor(wanted).deletingPathExtension().appendingPathExtension("lcpl"),
+            "the drain must pass over a book that declines and start the next one that wants the link"
+        )
+    }
+
     /// A transfer that never reports back must not reserve the link forever.
     ///
     /// This is what makes a lost completion recoverable. A later

@@ -338,17 +338,44 @@ class LocalBookContentService {
     /// the restart happens outside it, because the restart re-enters
     /// `redownloadLCPContentFile`, which claims the lock again.
     private func startNextPendingContentDownload() {
-        let playing = playingBookIdentifierProvider()
+        // Keep handing out the freed slot until a transfer takes it.
+        // `redownloadLCPContentFile` returns without starting anything for
+        // several reasons that are normal here — the archive already landed,
+        // the licence is gone, the download center has it — and a single
+        // attempt would leave the link idle with the queue still full until
+        // the next registry load. Bounded by the queue length measured at
+        // entry, so a book that re-queues itself cannot spin.
         inflightLock.lock()
-        let index = Self.indexOfNextPendingDownload(
-            queuedIdentifiers: pendingContentDownloads.map(\.identifier),
-            playingIdentifier: playing
-        )
-        let next = index.map { pendingContentDownloads.remove(at: $0) }
+        var attemptsLeft = pendingContentDownloads.count
         inflightLock.unlock()
-        guard let next else { return }
-        Log.info(#file, "📥 [LCP RE-DOWNLOAD] the link is free — starting the queued archive for '\(next.title)'")
-        redownloadLCPContentFile(for: next)
+
+        while attemptsLeft > 0 {
+            attemptsLeft -= 1
+            let playing = playingBookIdentifierProvider()
+            inflightLock.lock()
+            let index = Self.indexOfNextPendingDownload(
+                queuedIdentifiers: pendingContentDownloads.map(\.identifier),
+                playingIdentifier: playing
+            )
+            let next = index.map { pendingContentDownloads.remove(at: $0) }
+            inflightLock.unlock()
+            guard let next else { return }
+            Log.info(#file, "📥 [LCP RE-DOWNLOAD] the link is free — starting the queued archive for '\(next.title)'")
+            redownloadLCPContentFile(for: next)
+            if hasLiveContentDownload() { return }
+        }
+    }
+
+    /// Whether any transfer still shows signs of life, by the same rule the cap
+    /// uses. Read by the drain to tell "a transfer took the slot" from "that
+    /// book declined it", which is the difference between the queue being
+    /// served and the link sitting idle.
+    private func hasLiveContentDownload(now: UInt64? = nil) -> Bool {
+        let now = now ?? monotonicClock()
+        let idleLimit = UInt64(inflightIdleTimeout * 1_000_000_000)
+        inflightLock.lock()
+        defer { inflightLock.unlock() }
+        return inflightContentDownloads.values.contains { now &- $0.lastActivity < idleLimit }
     }
 
     /// Records a sign of life for a claim. Called from the progress callback so
@@ -484,7 +511,18 @@ class LocalBookContentService {
             // The streamed archive's retained byte ranges are a second copy of the
             // audio, so deleting the content has to clear them too or a returned
             // book leaves DRM audio on disk.
-            LCPAudiobooks.removeAllArchiveStores()
+            //
+            // Keyed to this book's licence. Only one range store is kept on disk,
+            // so it belongs to whichever book was opened last — clearing the root
+            // here discarded the windows of a DIFFERENT book that may be streaming
+            // and unlinked a directory its live store holds. The unkeyed clear
+            // stays as the fallback for a licence this build cannot read, where
+            // the archive URL that names the directory is unavailable.
+            if let licenseURL = lcpLicenseURL(forBookIdentifier: book.identifier) {
+                LCPAudiobooks.removeArchiveStore(forLicenseAt: licenseURL)
+            } else {
+                LCPAudiobooks.removeAllArchiveStores()
+            }
         }
         #endif
 

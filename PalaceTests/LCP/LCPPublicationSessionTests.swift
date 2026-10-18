@@ -366,7 +366,55 @@ final class LCPPublicationSessionTests: XCTestCase {
 /// Stands in for the background `URLSession`. A unit test must not register a
 /// real one: the system daemon outlives the test process and would hand the
 /// next run the previous run's transfer.
+
+// MARK: - Choosing which duplicate task survives
+
+/// A relaunch during a transfer leaves the system holding the previous
+/// process's task while this process starts its own. Both move the same
+/// gigabytes and either can complete, so one has to go — and it must be the one
+/// that has made least progress, or a nearly-finished archive restarts at zero.
+final class LCPDuplicateTaskChoiceTests: XCTestCase {
+
+    func testOneOutstandingTask_isNotDeduplicated() {
+        XCTAssertNil(
+            TPPLicensesService.indexOfTaskToKeep(bytesReceived: [1_000]),
+            "a lone task is the transfer; cancelling or re-recording it would stop the archive"
+        )
+    }
+
+    func testNoOutstandingTasks_isNotDeduplicated() {
+        XCTAssertNil(
+            TPPLicensesService.indexOfTaskToKeep(bytesReceived: []),
+            "nothing outstanding means nothing to choose between"
+        )
+    }
+
+    func testTheFurthestAlongTaskSurvives() {
+        XCTAssertEqual(
+            TPPLicensesService.indexOfTaskToKeep(bytesReceived: [0, 734_003_200, 4_096]),
+            1,
+            "keeping a fresh task over one most of the way through a gigabyte restarts the transfer from zero"
+        )
+    }
+
+    func testEqualProgress_keepsTheFirst() {
+        XCTAssertEqual(
+            TPPLicensesService.indexOfTaskToKeep(bytesReceived: [2_048, 2_048]),
+            0,
+            "with nothing to choose between them the answer must still be one task, not none"
+        )
+    }
+}
+
 private final class FakeSessionHandle: LCPPublicationSessionHandle {
+    /// What `getAllTasks` reports. Empty by default, so a test that does not
+    /// care about duplicates behaves as a session with nothing outstanding.
+    var outstandingTasks: [URLSessionTask] = []
+
+    func getAllTasks(completionHandler: @escaping @Sendable ([URLSessionTask]) -> Void) {
+        completionHandler(outstandingTasks)
+    }
+
     let identifier: String
     private(set) var requests: [URLRequest] = []
     private(set) var resumptions: [Data] = []

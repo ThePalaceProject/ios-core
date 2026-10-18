@@ -33,6 +33,11 @@ protocol LCPPublicationSessionHandle: AnyObject {
     func downloadTask(with request: URLRequest) -> URLSessionDownloadTask
     func downloadTask(withResumeData resumeData: Data) -> URLSessionDownloadTask
     func finishTasksAndInvalidate()
+    /// The tasks the system still holds for this session, including any a
+    /// previous process left outstanding and the daemon restored. The only way
+    /// to see those, and asynchronous, which is why `dropDuplicateTasks`
+    /// resolves a duplicate rather than preventing one.
+    func getAllTasks(completionHandler: @escaping @Sendable ([URLSessionTask]) -> Void)
 }
 
 extension URLSession: LCPPublicationSessionHandle {}
@@ -350,6 +355,50 @@ class TPPLicensesService: NSObject, @unchecked Sendable {
     /// the second session Apple leaves undefined. Clearing the identifier makes
     /// a second call a no-op, which matters because a finished download reports
     /// both `didFinishDownloadingTo` and `didCompleteWithError`.
+    /// Cancels every outstanding task for `url` on this session but the one
+    /// that has moved the most bytes.
+    ///
+    /// Two tasks for one archive cost the patron the transfer twice, and
+    /// `didFinishDownloadingTo` does not check which task finished, so the
+    /// second completion moves onto a destination the first already wrote.
+    ///
+    /// The furthest along wins rather than the one just created: a task the
+    /// system restored may be most of the way through a gigabyte, and
+    /// cancelling that to keep a fresh one would restart from zero — the
+    /// behavior this is here to prevent.
+    private func dropDuplicateTasks(
+        on session: LCPPublicationSessionHandle,
+        for url: URL,
+        identifier: String
+    ) {
+        session.getAllTasks { [weak self] tasks in
+            let outstanding = tasks
+                .compactMap { $0 as? URLSessionDownloadTask }
+                .filter { $0.originalRequest?.url == url && $0.state != .completed }
+            guard let keepIndex = Self.indexOfTaskToKeep(
+                bytesReceived: outstanding.map(\.countOfBytesReceived)
+            ) else { return }
+            let keep = outstanding[keepIndex]
+            for (index, duplicate) in outstanding.enumerated() where index != keepIndex {
+                duplicate.cancel()
+            }
+            Log.info(#file, "  Dropped \(outstanding.count - 1) duplicate task(s) for this archive; kept the one \(keep.countOfBytesReceived) bytes in")
+            self?.sessions.setTask(keep, for: identifier)
+        }
+    }
+
+    /// Which of several outstanding tasks for one archive keeps the transfer:
+    /// the one that has moved the most bytes. Nil when there is nothing to
+    /// de-duplicate, so a single task is never cancelled and never re-recorded.
+    static func indexOfTaskToKeep(bytesReceived: [Int64]) -> Int? {
+        guard bytesReceived.count > 1 else { return nil }
+        var best = 0
+        for index in bytesReceived.indices where bytesReceived[index] > bytesReceived[best] {
+            best = index
+        }
+        return best
+    }
+
     private func finishTransfer() {
         callerLock.lock()
         let identifier = waiting.identifier
@@ -400,14 +449,19 @@ class TPPLicensesService: NSObject, @unchecked Sendable {
             return sessions.task(for: backgroundIdentifier)
         }
 
-        // The first call of this process for this archive. A task a previous
-        // process left with the system is restored to this session, but only
-        // `getAllTasks` reports it and only asynchronously, so it is not
-        // adopted here and the archive is requested again.
+        // The first call of this PROCESS for this archive — which is not the
+        // same as the first call for the archive. The registry is in-memory and
+        // empty at launch, while the system restores a previous process's
+        // outstanding task to this recreated session, so a relaunch during a
+        // transfer lands here with the daemon already moving the same
+        // gigabytes. Only `getAllTasks` reports that task, and only
+        // asynchronously — after this function has had to return a handle — so
+        // the duplicate is resolved immediately afterwards rather than avoided.
         self.resumeAttempts = 0
         let task = transfer.session.downloadTask(with: request)
         sessions.setTask(task, for: backgroundIdentifier)
         task.resume()
+        dropDuplicateTasks(on: transfer.session, for: url, identifier: backgroundIdentifier)
         return task
     }
 

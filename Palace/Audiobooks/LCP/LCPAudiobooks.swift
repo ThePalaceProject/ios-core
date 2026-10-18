@@ -571,17 +571,19 @@ extension LCPAudiobooks {
         }
     }
 
-    /// Removes every retained archive range store.
+    /// Removes every retained archive range store whose directory no open store
+    /// holds.
     ///
-    /// Not keyed per book on purpose: the store directory is named from the remote
-    /// archive URL, and no delete path holds one — `init(for:licenseUrl:)` is
-    /// handed URLs and never a `TPPBook` — so a directory cannot be matched back
-    /// to a loan. `evictArchiveStoresOtherThan` already bounds this to one archive
-    /// at a time, so clearing the root removes that archive's ranges and nothing a
-    /// second loan still needs.
+    /// The fallback for a content delete whose licence cannot be read, so the
+    /// archive URL that keys the store is unavailable — see
+    /// `removeArchiveStore(forLicenseAt:)` for the keyed path this defers to.
     ///
-    /// Called when an LCP audiobook's local content is deleted, so a returned book
-    /// does not leave DRM audio on disk.
+    /// A held directory is left alone, and that is not a weaker guarantee than
+    /// unlinking it: `removeItem` does not reclaim an inode an open descriptor
+    /// still references, so unlinking a held store leaves the same bytes on disk
+    /// AND leaves its reader writing into a path nothing can reach.
+    /// `evictArchiveStoresOtherThan` reclaims it at the next open, once the
+    /// holder has gone.
     @objc static func removeAllArchiveStores() {
         guard let root = try? partialArchivesRoot() else { return }
         let fm = FileManager.default
@@ -589,6 +591,10 @@ extension LCPAudiobooks {
             return
         }
         for entry in entries {
+            guard !archiveStoreIsHeld(at: entry) else {
+                ATLog(.info, "An open store holds this LCP archive range store; leaving it for eviction once the holder closes")
+                continue
+            }
             do {
                 try fm.removeItem(at: entry)
                 ATLog(.info, "Removed a retained LCP archive range store on content deletion")
