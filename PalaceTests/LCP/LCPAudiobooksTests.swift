@@ -161,7 +161,7 @@ final class LCPAudiobooksTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            resolved, 2,
+            resolved.resolved, 2,
             "the count is what the log reports, so it must be the number actually stored"
         )
         XCTAssertEqual(
@@ -191,7 +191,10 @@ final class LCPAudiobooksTests: XCTestCase {
             decipher: { $0 }
         )
 
-        XCTAssertEqual(resolved, 0, "nothing was learned, and the log must not claim otherwise")
+        XCTAssertEqual(
+            resolved, .init(),
+            "nothing was learned and nothing was read, and the log must not claim otherwise"
+        )
         XCTAssertEqual(
             archive.reads, [],
             "a track whose length is known must not be looked up again"

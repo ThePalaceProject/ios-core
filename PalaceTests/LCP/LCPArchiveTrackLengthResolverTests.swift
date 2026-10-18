@@ -63,7 +63,7 @@ final class LCPArchiveTrackLengthResolverTests: XCTestCase {
         let archive = Archive.make()
         let reported = Reported()
 
-        let count = await LCPArchiveTrackLengthResolver(
+        let summary = await LCPArchiveTrackLengthResolver(
             archiveLength: archive.declaredLength,
             readRange: { await archive.read($0) },
             decipher: { $0 }
@@ -73,10 +73,44 @@ final class LCPArchiveTrackLengthResolverTests: XCTestCase {
         }
 
         XCTAssertEqual(
-            count, 2,
+            summary.resolved, 2,
             "three tracks were asked for and the deflated one resolved to nothing"
         )
-        XCTAssertEqual(count, reported.values.count, "the count must match what the caller was told")
+        XCTAssertEqual(
+            summary.resolved, reported.values.count,
+            "the count must match what the caller was told"
+        )
+    }
+
+    /// The reported cost is the resolution's own. Measured on device against
+    /// the shared archive client, the figure was 41 MB, nearly all of it
+    /// playback's read-ahead running at the same time.
+    func testResolveLengths_countsOnlyItsOwnReads() async {
+        let archive = Archive.make()
+        let reported = Reported()
+
+        let summary = await LCPArchiveTrackLengthResolver(
+            archiveLength: archive.declaredLength,
+            readRange: { await archive.read($0) },
+            decipher: { $0 }
+        )
+        .resolveLengths(forHrefs: ["track-a.mp3", "track-b.mp3"]) { href, length in
+            reported.record(href, length)
+        }
+
+        XCTAssertEqual(
+            summary.requests, archive.reads.count,
+            "every read the resolution issued must be counted, and no other"
+        )
+        XCTAssertEqual(
+            summary.requests, 5,
+            "the tail, then a header and a ciphertext tail for each of the two tracks"
+        )
+        XCTAssertEqual(
+            summary.bytes,
+            Int(Archive.length) + 2 * Int(LCPArchiveTrackLengthResolver.localHeaderReadLength) + 64,
+            "the bytes are what came back: the whole short archive as its tail, two headers, two 32-byte tails"
+        )
     }
 
     /// The archive is 715 MB in production; the tail read has to be bounded to

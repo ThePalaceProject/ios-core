@@ -699,15 +699,15 @@ extension LCPAudiobooks: LCPStreamingProvider {
     ///
     /// The archive reads are injected so a test drives this without a network.
     /// `LCPArchiveTrackLengthResolver` decides which bytes to read.
-    /// Returns how many lengths it stored, which is what the caller reports.
+    /// Returns what the resolution did, which is what the caller reports.
     nonisolated func resolveTrackLengths(
         hrefs: [String],
         archiveLength: UInt64,
         readRange: @escaping LCPArchiveTrackLengthResolver.ReadRange,
         decipher: @escaping LCPArchiveTrackLengthResolver.Decipher
-    ) async -> Int {
+    ) async -> LCPArchiveTrackLengthResolver.Summary {
         let missing = hrefs.filter { cachedPlaintextLength(forHref: $0) == nil }
-        guard !missing.isEmpty else { return 0 }
+        guard !missing.isEmpty else { return .init() }
 
         return await LCPArchiveTrackLengthResolver(
             archiveLength: archiveLength,
@@ -763,25 +763,26 @@ extension LCPAudiobooks: LCPStreamingProvider {
         let task = Task { [weak self] in
             guard let self, !self.isReleasedSnapshot() else { return }
             let startedAt = Date()
-            let activityBefore = client.upstreamActivity
             guard let archiveLength = await Self.archiveLength(of: archiveURL, using: client) else {
                 Log.error(#file, "LCP track lengths: the archive reported no length; every chapter keeps the probe")
                 return
             }
-            let resolved = await self.resolveTrackLengths(
+            let summary = await self.resolveTrackLengths(
                 hrefs: hrefs,
                 archiveLength: archiveLength,
                 readRange: { await Self.readArchiveRange($0, of: archiveURL, using: client) },
                 decipher: { try? license.decipher($0) }
             )
-            let cost = client.upstreamActivity.delta(since: activityBefore)
+            // The resolution's own reads, counted inside it. The archive
+            // client's counter is shared with playback and would attribute the
+            // loader's 6 MB windows to this work.
             Log.error(#file, String(
-                format: "LCP track lengths: resolved %d of %d track(s) in %.1fs; archive origin cost %d request(s) for %d bytes",
-                resolved,
+                format: "LCP track lengths: resolved %d of %d track(s) in %.1fs; this resolution read %d range(s) for %d bytes",
+                summary.resolved,
                 hrefs.count,
                 Date().timeIntervalSince(startedAt),
-                cost.originRequests,
-                cost.originBytes
+                summary.requests,
+                summary.bytes
             ))
         }
         publicationCacheQueue.async {

@@ -41,6 +41,17 @@ struct LCPArchiveTrackLengthResolver: Sendable {
     /// answers a shorter range than asked for.
     static let localHeaderReadLength: UInt64 = 128
 
+    /// What one resolution did, for the caller's report.
+    ///
+    /// Counted here rather than off the archive client: that client is shared
+    /// with playback, so its counter attributes the loader's 6 MB windows to
+    /// whatever happens to be running at the same time.
+    struct Summary: Equatable {
+        var resolved = 0
+        var requests = 0
+        var bytes = 0
+    }
+
     let archiveLength: UInt64
     let readRange: ReadRange
     let decipher: Decipher
@@ -55,28 +66,37 @@ struct LCPArchiveTrackLengthResolver: Sendable {
     func resolveLengths(
         forHrefs hrefs: [String],
         report: @Sendable (_ href: String, _ length: UInt64) -> Void
-    ) async -> Int {
-        guard !hrefs.isEmpty, archiveLength > 0 else { return 0 }
+    ) async -> Summary {
+        var summary = Summary()
+        guard !hrefs.isEmpty, archiveLength > 0 else { return summary }
 
-        let directory = await readEntries()
-        guard !directory.isEmpty else { return 0 }
+        let directory = await readEntries(into: &summary)
+        guard !directory.isEmpty else { return summary }
 
-        var reported = 0
         for href in hrefs {
-            if Task.isCancelled { return reported }
+            if Task.isCancelled { return summary }
             guard let entry = Self.entry(forHref: href, in: directory),
-                  let length = await plaintextLength(for: entry)
+                  let length = await plaintextLength(for: entry, into: &summary)
             else { continue }
             report(href, length)
-            reported += 1
+            summary.resolved += 1
         }
-        return reported
+        return summary
+    }
+
+    /// Every archive read goes through here, so the summary counts all of them
+    /// and no caller can add one that the report misses.
+    private func read(_ range: Range<UInt64>, into summary: inout Summary) async -> Data? {
+        summary.requests += 1
+        let data = await readRange(range)
+        summary.bytes += data?.count ?? 0
+        return data
     }
 
     /// The archive's central directory, read from its tail.
-    private func readEntries() async -> [LCPArchiveTrackLengths.Entry] {
+    private func readEntries(into summary: inout Summary) async -> [LCPArchiveTrackLengths.Entry] {
         let start = archiveLength > Self.tailReadLength ? archiveLength - Self.tailReadLength : 0
-        guard let tail = await readRange(start ..< archiveLength) else { return [] }
+        guard let tail = await read(start ..< archiveLength, into: &summary) else { return [] }
         return LCPArchiveTrackLengths.entries(inArchiveTail: tail, tailStartsAt: start)
     }
 
@@ -87,14 +107,16 @@ struct LCPArchiveTrackLengthResolver: Sendable {
     /// naming more bytes than the archive holds is a corrupt or foreign
     /// directory, and reading on that basis is how one archive's bytes are
     /// interpreted at another's offsets.
-    private func plaintextLength(for entry: LCPArchiveTrackLengths.Entry) async -> UInt64? {
+    private func plaintextLength(
+        for entry: LCPArchiveTrackLengths.Entry, into summary: inout Summary
+    ) async -> UInt64? {
         guard !entry.isCompressed,
               LCPArchiveTrackLengths.isValidCiphertextLength(entry.storedLength),
               entry.localHeaderOffset < archiveLength
         else { return nil }
 
         let headerEnd = min(entry.localHeaderOffset + Self.localHeaderReadLength, archiveLength)
-        guard let header = await readRange(entry.localHeaderOffset ..< headerEnd),
+        guard let header = await read(entry.localHeaderOffset ..< headerEnd, into: &summary),
               let dataOffset = LCPArchiveTrackLengths.dataOffset(
                   forLocalHeader: header, at: entry.localHeaderOffset
               ),
@@ -102,7 +124,7 @@ struct LCPArchiveTrackLengthResolver: Sendable {
                   dataOffset: dataOffset, storedLength: entry.storedLength
               ),
               tailRange.upperBound <= archiveLength,
-              let ciphertext = await readRange(tailRange),
+              let ciphertext = await read(tailRange, into: &summary),
               ciphertext.count == Int(2 * LCPArchiveTrackLengths.aesBlockSize),
               let plaintext = decipher(ciphertext)
         else { return nil }
