@@ -408,3 +408,65 @@ final class LCPPublicationTransferStateTests: XCTestCase {
         XCTAssertFalse(LCPPublicationTransfer.isHolding)
     }
 }
+
+// MARK: - Which session carries the archive
+
+/// The archive transfer must survive the app being closed.
+///
+/// A 1.9 GB archive needs about 441 s of transfer at the 4.3 MB/s measured on
+/// a patron's device. The googleapis.com branch used an ephemeral session,
+/// which is in-memory only and dies with the process, and nothing persisted
+/// resume data — so every app restart began the transfer again at byte zero
+/// and it never completed. The sibling branch already used a background
+/// session with a stable identifier "across app launches" for exactly this.
+final class LicensesServiceSessionPolicyTests: XCTestCase {
+
+    func testGoogleStorageHost_requiresCredentialIsolation() {
+        XCTAssertTrue(
+            TPPLicensesService.requiresCredentialIsolation(host: "storage.googleapis.com"),
+            "no credentials may be sent to googleapis.com"
+        )
+    }
+
+    func testOtherHosts_doNotRequireCredentialIsolation() {
+        XCTAssertFalse(
+            TPPLicensesService.requiresCredentialIsolation(host: "contentserver.stage.dtsbytebooks.com")
+        )
+    }
+
+    func testMissingHost_isTreatedAsRequiringIsolation() {
+        XCTAssertTrue(
+            TPPLicensesService.requiresCredentialIsolation(host: nil),
+            "an unknown host is the cautious case: send nothing"
+        )
+    }
+
+    /// Case must not decide whether credentials are withheld.
+    func testHostMatchingIsCaseInsensitive() {
+        XCTAssertTrue(
+            TPPLicensesService.requiresCredentialIsolation(host: "Storage.GoogleAPIs.COM")
+        )
+    }
+
+    /// A background configuration that carries no cookie or credential storage
+    /// gives the isolation the ephemeral session was chosen for, while still
+    /// surviving app termination.
+    func testArchiveSessionConfiguration_isBackgroundAndCarriesNoCredentials() {
+        let config = TPPLicensesService.publicationSessionConfiguration(
+            identifier: "test.identifier", isolateCredentials: true
+        )
+        XCTAssertNotNil(config.identifier, "an ephemeral session cannot survive the app closing")
+        XCTAssertNil(config.httpCookieStorage, "no cookies may reach the storage host")
+        XCTAssertNil(config.urlCredentialStorage, "no credentials may reach the storage host")
+        XCTAssertEqual(config.timeoutIntervalForResource, TPPLicensesService.publicationResourceTimeout)
+        XCTAssertEqual(config.timeoutIntervalForRequest, TPPLicensesService.publicationRequestTimeout)
+    }
+
+    func testArchiveSessionConfiguration_withoutIsolation_keepsStorage() {
+        let config = TPPLicensesService.publicationSessionConfiguration(
+            identifier: "test.identifier2", isolateCredentials: false
+        )
+        XCTAssertNotNil(config.identifier)
+        XCTAssertNotNil(config.httpCookieStorage)
+    }
+}

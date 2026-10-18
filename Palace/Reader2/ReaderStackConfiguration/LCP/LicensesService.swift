@@ -144,6 +144,42 @@ class TPPLicensesService: NSObject, @unchecked Sendable {
     /// slow transfer, not for a dead one.
     static let publicationRequestTimeout: TimeInterval = 60
 
+    /// Whether a transfer to this host must carry no cookies or credentials.
+    ///
+    /// Unknown hosts are treated as requiring isolation: sending nothing is the
+    /// cautious direction.
+    static func requiresCredentialIsolation(host: String?) -> Bool {
+        guard let host = host?.lowercased() else { return true }
+        return host.contains("googleapis.com")
+    }
+
+    /// The configuration the publication transfer runs on.
+    ///
+    /// Always a background configuration. The ephemeral session this replaced
+    /// was chosen only to keep credentials off googleapis.com, but ephemeral
+    /// sessions are in-memory and die with the process: a 1.9 GB archive that
+    /// needs ~441 s on a patron's link restarted at byte zero on every app
+    /// launch and never finished. A background session with no cookie or
+    /// credential storage isolates just as well and survives.
+    static func publicationSessionConfiguration(
+        identifier: String,
+        isolateCredentials: Bool
+    ) -> URLSessionConfiguration {
+        let config = URLSessionConfiguration.background(withIdentifier: identifier)
+        config.timeoutIntervalForRequest = publicationRequestTimeout
+        config.timeoutIntervalForResource = publicationResourceTimeout
+        // The patron is waiting on this content; it must not be deferred to a
+        // system-chosen moment.
+        config.isDiscretionary = false
+        config.sessionSendsLaunchEvents = true
+        if isolateCredentials {
+            config.httpCookieStorage = nil
+            config.urlCredentialStorage = nil
+            config.httpShouldSetCookies = false
+        }
+        return config
+    }
+
     /// How many times a failed transfer may be resumed from its partial data.
     ///
     /// Bounded because a link that never recovers would otherwise be retried for
@@ -210,23 +246,21 @@ class TPPLicensesService: NSObject, @unchecked Sendable {
         let request = URLRequest(url: url, applyingCustomUserAgent: true)
         let session: URLSession
 
-        if url.host?.lowercased().contains("googleapis.com") == true {
-            // No credentials may be sent to googleapis.com use ephemeral session
-            Log.info(#file, "  Session type: ephemeral (no credentials for googleapis.com)")
-            let config = URLSessionConfiguration.ephemeral
-            config.timeoutIntervalForRequest = Self.publicationRequestTimeout
-            config.timeoutIntervalForResource = Self.publicationResourceTimeout
-            session = URLSession(configuration: config, delegate: self, delegateQueue: .main)
-        } else {
-            // Use sha256 for a stable session identifier across app launches (PP-3704).
-            // Swift's URL.hashValue is randomized per process (SE-0206), so using it caused
-            // background download sessions to be orphaned on every app restart.
-            let stableHash = lcpl.absoluteString.sha256()
-            let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "").appending(".lcpBackgroundIdentifier.\(stableHash)")
-            let sessionConfiguration = URLSessionConfiguration.background(withIdentifier: backgroundIdentifier)
-            Log.info(#file, "  Background session ID: \(backgroundIdentifier)")
-            session = URLSession(configuration: sessionConfiguration, delegate: self, delegateQueue: .main)
-        }
+        // Use sha256 for a stable session identifier across app launches (PP-3704).
+        // Swift's URL.hashValue is randomized per process (SE-0206), so using it caused
+        // background download sessions to be orphaned on every app restart.
+        let stableHash = lcpl.absoluteString.sha256()
+        let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "").appending(".lcpBackgroundIdentifier.\(stableHash)")
+        let isolate = Self.requiresCredentialIsolation(host: url.host)
+        Log.info(#file, "  Background session ID: \(backgroundIdentifier) (credential-isolated: \(isolate))")
+        session = URLSession(
+            configuration: Self.publicationSessionConfiguration(
+                identifier: backgroundIdentifier,
+                isolateCredentials: isolate
+            ),
+            delegate: self,
+            delegateQueue: .main
+        )
         self.activeSession = session
         self.resumeAttempts = 0
         let task = session.downloadTask(with: request)
