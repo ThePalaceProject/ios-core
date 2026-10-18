@@ -7,6 +7,7 @@
 
 import XCTest
 import PalaceAudiobookToolkit
+import ReadiumShared
 @testable import Palace
 
 @MainActor
@@ -613,6 +614,75 @@ extension LCPAudiobooksTests {
             audiobook.archiveIsLocalFile(),
             "a package on disk has no origin to save a request against"
         )
+        #endif
+    }
+}
+
+// MARK: - The archive range store factory
+
+/// The factory the streaming read path hands to the caching client.
+///
+/// Its two halves are different questions: with a length it opens or repairs a
+/// store, and without one it must answer only for an archive whose ranges are
+/// already on disk. The second half is what lets a book opened again be served
+/// from disk instead of fetching a 6 MB window to discover how long the
+/// archive is.
+@MainActor
+final class LCPArchiveRangeStoreFactoryTests: XCTestCase {
+
+    private let contentURL = HTTPURL(string: "https://storage.example/bucket/factory-test.lcpa")!
+    private let archiveLength: UInt64 = 1_630_000_000
+
+    override func tearDownWithError() throws {
+        #if LCP
+        LCPAudiobooks.removeAllArchiveStores()
+        #endif
+        try super.tearDownWithError()
+    }
+
+    /// Nothing on disk and no length yet: there is nothing to answer with, and
+    /// that is not an error.
+    func testFactory_withNoLengthAndNothingOnDisk_declines() throws {
+        #if LCP
+        let store = try LCPAudiobooks.makeArchiveRangeStore(url: contentURL, totalSize: nil)
+        XCTAssertNil(store, "an archive never read before cannot be served from disk")
+        #endif
+    }
+
+    /// A length turns the first read of a new archive into an open store, which
+    /// is what gives the client somewhere to keep the window it is about to
+    /// fetch.
+    func testFactory_withALength_opensAStoreOfThatLength() throws {
+        #if LCP
+        let store = try LCPAudiobooks.makeArchiveRangeStore(url: contentURL, totalSize: archiveLength)
+        let opened: ArchiveRangeStore = try XCTUnwrap(
+            store, "a length is all that is needed to open a store"
+        )
+        XCTAssertEqual(opened.totalSize, archiveLength)
+        (opened as? PartialArchiveStore)?.close()
+        #endif
+    }
+
+    /// Once an archive has ranges on disk, the factory answers for it with no
+    /// length at all, reading the length back from the store itself.
+    func testFactory_withNoLengthButRangesOnDisk_opensTheExistingStore() throws {
+        #if LCP
+        let created = try LCPAudiobooks.makeArchiveRangeStore(url: contentURL, totalSize: archiveLength)
+        let first: ArchiveRangeStore = try XCTUnwrap(created)
+        try first.write(Data(repeating: 0x5A, count: 4096), at: 96_460_800)
+        (first as? PartialArchiveStore)?.close()
+
+        let reopened = try LCPAudiobooks.makeArchiveRangeStore(url: contentURL, totalSize: nil)
+        let store: ArchiveRangeStore = try XCTUnwrap(
+            reopened,
+            "an archive with ranges on disk must be served without a round trip to learn its length"
+        )
+        XCTAssertEqual(store.totalSize, archiveLength, "the length came from the store, not the server")
+        XCTAssertTrue(
+            store.missingRanges(in: 96_460_800 ..< 96_464_896).isEmpty,
+            "the bytes written before are still held, so they are not fetched again"
+        )
+        (store as? PartialArchiveStore)?.close()
         #endif
     }
 }
