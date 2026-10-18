@@ -24,105 +24,131 @@ enum TPPLicensesServiceError: Error {
     }
 }
 
-// Swift 6 `complete`: `@unchecked Sendable`. The instance is passed as
-// `delegate:` to `URLSession(configuration:delegate:delegateQueue:)`, which
-// requires a `Sendable` delegate under strict concurrency.
-// INVARIANT — no concurrent access to the mutable state:
-//   • `progressHandler`, `completionHandler`, `lcpl`, `link` are written exactly
-//     once, synchronously inside `acquirePublication(...)`, BEFORE `task.resume()`.
-//   • They are read only from the `URLSessionDownloadDelegate` callbacks, which
-//     this class always registers with `delegateQueue: .main`.
-//   • `task.resume()` establishes the happens-before edge, so the single writer
-//     precedes every reader and no read races a write.
-// This is the honest ceiling for a callback-style delegate; a `@MainActor`
-// isolation would instead ripple onto every (test) caller of the synchronous
-// `acquirePublication` entry point.
-/// The whole-archive transfer in flight, so a chapter load can borrow the link.
+/// The parts of `URLSession` a publication transfer uses.
 ///
-/// A patron waiting on a chapter and the background fetch of the same 1-2 GB
-/// archive compete for one connection. Measured on a patron's device at
-/// ~4.3 MB/s: a cold chapter needs 12,705,792 bytes before the first audio
-/// sample, about 3 s with the link to itself and roughly 17 s on a quarter
-/// share, against a 30 s deadline in the player.
+/// A seam, so a test can drive a transfer without registering a background
+/// session with the system: a background session a test leaves behind outlives
+/// the test process, and the daemon would hand the next run its tasks.
+protocol LCPPublicationSessionHandle: AnyObject {
+    func downloadTask(with request: URLRequest) -> URLSessionDownloadTask
+    func downloadTask(withResumeData resumeData: Data) -> URLSessionDownloadTask
+    func finishTasksAndInvalidate()
+}
+
+extension URLSession: LCPPublicationSessionHandle {}
+
+/// The publication transfers in flight, at most one per background identifier.
 ///
-/// Suspension, not cancellation: a suspended task keeps its progress, so
-/// nothing already fetched is discarded.
-enum LCPPublicationTransfer {
+/// Apple permits exactly one `URLSession` per background identifier and leaves
+/// the behaviour of a second one undefined; Foundation logs "A background
+/// URLSession with identifier ... already exists!" and stops delivering
+/// callbacks reliably to the newer session's delegate, which the patron sees as
+/// progress frozen at 0% while bytes may still be moving. A second task on one
+/// identifier instead fetches the same 0.7-1.2 GB archive twice.
+///
+/// `acquirePublication` is reachable more than once for one book — a reclaimed
+/// content claim, the registry self-heal plus the patron opening the book — so
+/// the uniqueness is enforced here rather than assumed. Process-wide, because
+/// the identifier names a system-wide resource: the background transfer daemon,
+/// not this object, decides what one identifier means.
+final class LCPPublicationSessionRegistry: @unchecked Sendable {
 
-    /// Longest a hold may last before the transfer resumes anyway.
-    ///
-    /// A load that never reports its end must not suspend the patron's
-    /// download for the life of the process. Below
-    /// `LocalBookContentService.inflightContentDownloadIdleTimeout`, so a held
-    /// transfer cannot outlive the claim that tracks it.
-    static let maxHold: TimeInterval = 60
+    static let shared = LCPPublicationSessionRegistry()
 
-    /// Whether a hold taken at `heldSince` is still in force.
-    ///
-    /// Pure so the expiry is testable and a flipped comparison is caught; the
-    /// expensive mistake is a hold that never lifts.
-    static func holdIsInForce(heldSince: Date?, now: Date, maxHold: TimeInterval = maxHold) -> Bool {
-        guard let heldSince else { return false }
-        return now.timeIntervalSince(heldSince) < maxHold
+    /// One archive transfer.
+    final class Transfer {
+        let identifier: String
+        let session: LCPPublicationSessionHandle
+        /// The instance the session was created with. `URLSession` fixes its
+        /// delegate when it is constructed, so this object receives every
+        /// callback for this identifier whoever asked for the transfer.
+        let delegate: TPPLicensesService
+        /// The task carrying the archive, so a repeat request can be handed the
+        /// transfer already running instead of starting a second one.
+        fileprivate(set) var task: URLSessionDownloadTask?
+
+        fileprivate init(identifier: String,
+                         session: LCPPublicationSessionHandle,
+                         delegate: TPPLicensesService) {
+            self.identifier = identifier
+            self.session = session
+            self.delegate = delegate
+        }
     }
 
-    // Swift 6 `complete`: `nonisolated(unsafe)` with an explicit lock, matching
-    // the lock-backed `@unchecked Sendable` precedent in this file.
-    // INVARIANT — every read and write of `task` and `heldSince` happens inside
-    // `lock`, and no reference escapes the critical section except the local
-    // `inFlight` copy in `releaseIfExpired`, which is resumed outside the lock
-    // precisely so a `URLSession` callback cannot re-enter it.
-    private static let lock = NSLock()
-    nonisolated(unsafe) private static var task: URLSessionDownloadTask?
-    nonisolated(unsafe) private static var heldSince: Date?
+    // INVARIANT — every read and write of `transfers`, and of any
+    // `Transfer.task`, happens inside `lock`. `acquirePublication` runs on
+    // whichever queue the download centre is on, while the callbacks that end a
+    // transfer run on the main queue.
+    private let lock = NSLock()
+    private var transfers: [String: Transfer] = [:]
 
-    /// Called by the transfer as it starts, and with nil once it is finished.
-    static func register(_ transfer: URLSessionDownloadTask?) {
+    /// The transfer for `identifier`, started with `startSession` only if there
+    /// is none already.
+    /// - Returns: the transfer, and whether this call is the one that started it.
+    func transfer(
+        for identifier: String,
+        delegate: TPPLicensesService,
+        startingWith startSession: (String) -> LCPPublicationSessionHandle
+    ) -> (transfer: Transfer, isNew: Bool) {
         lock.lock(); defer { lock.unlock() }
-        task = transfer
-        heldSince = nil
+        if let running = transfers[identifier] {
+            return (running, false)
+        }
+        // Inside the lock: two callers arriving together must not both open a
+        // session on the one identifier, which is the case being fixed.
+        let started = Transfer(identifier: identifier,
+                               session: startSession(identifier),
+                               delegate: delegate)
+        transfers[identifier] = started
+        return (started, true)
     }
 
-    /// A chapter the patron is waiting on has started loading.
-    static func holdForStreamingLoad(now: Date = Date()) {
+    /// The session carrying `identifier`, if a transfer is in flight.
+    func session(for identifier: String) -> LCPPublicationSessionHandle? {
         lock.lock(); defer { lock.unlock() }
-        guard heldSince == nil else { return }
-        heldSince = now
-        task?.suspend()
+        return transfers[identifier]?.session
     }
 
-    /// The load is over, however it ended.
-    static func releaseStreamingLoad() {
+    /// The task carrying `identifier`, if a transfer is in flight.
+    func task(for identifier: String) -> URLSessionDownloadTask? {
         lock.lock(); defer { lock.unlock() }
-        guard heldSince != nil else { return }
-        heldSince = nil
-        task?.resume()
+        return transfers[identifier]?.task
     }
 
-    /// Lifts a hold whose load never reported an end.
-    static func releaseIfExpired(now: Date = Date()) {
+    func setTask(_ task: URLSessionDownloadTask?, for identifier: String) {
+        lock.lock(); defer { lock.unlock() }
+        transfers[identifier]?.task = task
+    }
+
+    /// Ends the transfer: the session is invalidated so it and its delegate are
+    /// released, and the identifier is free for a later attempt at the book.
+    func finish(_ identifier: String) {
         lock.lock()
-        let expired = heldSince != nil && !holdIsInForce(heldSince: heldSince, now: now)
-        if expired { heldSince = nil }
-        let inFlight = task
+        let finished = transfers.removeValue(forKey: identifier)
         lock.unlock()
-        if expired { inFlight?.resume() }
-    }
-
-    /// Whether a chapter load currently holds the link.
-    static var isHolding: Bool {
-        lock.lock(); defer { lock.unlock() }
-        return heldSince != nil
-    }
-
-    /// Test seam: forget any registered transfer and hold.
-    static func resetForTesting() {
-        lock.lock(); defer { lock.unlock() }
-        task = nil
-        heldSince = nil
+        // Outside the lock: invalidation is a `URLSession` call, and nothing it
+        // does should be able to re-enter the registry while the lock is held.
+        finished?.session.finishTasksAndInvalidate()
     }
 }
 
+// Swift 6 `complete`: `@unchecked Sendable`. The instance is passed as
+// `delegate:` to `URLSession(configuration:delegate:delegateQueue:)`, which
+// requires a `Sendable` delegate under strict concurrency.
+// INVARIANT — the mutable state is reached only under a lock:
+//   • `progressHandler`, `completionHandler`, `lcpl`, `link` and the transfer's
+//     identifier are one record, guarded by `callerLock`. They are written when
+//     a caller asks for the archive — which happens again, on this same
+//     instance, when a later caller joins a transfer already running — and read
+//     from the `URLSessionDownloadDelegate` callbacks, which this class always
+//     registers with `delegateQueue: .main`. Each read copies the value out and
+//     uses it after the lock is released.
+//   • `resumeAttempts` is written from those main-queue callbacks, and in
+//     `acquirePublication` only on the call that starts the transfer, before
+//     there is a task to call back.
+// A `@MainActor` isolation would instead ripple onto every (test) caller of the
+// synchronous `acquirePublication` entry point.
 class TPPLicensesService: NSObject, @unchecked Sendable {
 
     // MARK: - Transfer policy
@@ -210,17 +236,128 @@ class TPPLicensesService: NSObject, @unchecked Sendable {
         return .resume(data)
     }
 
-    /// Resume attempts spent on the transfer in flight. Written only from the
-    /// delegate callbacks, which this class always registers on the main queue.
+    // MARK: - Where the transfer runs
+
+    /// How the transfer's session is built.
+    typealias SessionFactory = (
+        _ identifier: String,
+        _ isolateCredentials: Bool,
+        _ delegate: URLSessionDelegate
+    ) -> LCPPublicationSessionHandle
+
+    /// The production factory: a background session the system keeps running
+    /// while the app is away.
+    static func backgroundSession(
+        identifier: String,
+        isolateCredentials: Bool,
+        delegate: URLSessionDelegate
+    ) -> LCPPublicationSessionHandle {
+        URLSession(
+            configuration: publicationSessionConfiguration(
+                identifier: identifier,
+                isolateCredentials: isolateCredentials
+            ),
+            delegate: delegate,
+            delegateQueue: .main
+        )
+    }
+
+    private let makeSession: SessionFactory
+    private let sessions: LCPPublicationSessionRegistry
+
+    init(sessions: LCPPublicationSessionRegistry = .shared,
+         makeSession: @escaping SessionFactory = TPPLicensesService.backgroundSession) {
+        self.sessions = sessions
+        self.makeSession = makeSession
+        super.init()
+    }
+
+    /// Resume attempts spent on the transfer in flight.
     private var resumeAttempts = 0
-    /// The session in flight, kept so a resumed task is created on the same one.
-    private var activeSession: URLSession?
 
+    // MARK: - The caller waiting on the transfer
 
-    var progressHandler: ((_ progress: Double) -> Void)?
-    var completionHandler: ((_ localUrl: URL?, _ error: Error?) -> Void)?
-    var lcpl: URL?
-    var link: TPPLCPLicenseLink?
+    /// What the caller waiting on the transfer asked to be told, and which
+    /// transfer it is waiting on.
+    private struct WaitingCaller {
+        var progress: ((Double) -> Void)?
+        var completion: ((URL?, Error?) -> Void)?
+        var lcpl: URL?
+        var link: TPPLCPLicenseLink?
+        var identifier: String?
+    }
+
+    private let callerLock = NSLock()
+    private var waiting = WaitingCaller()
+
+    var progressHandler: ((_ progress: Double) -> Void)? {
+        get { callerLock.lock(); defer { callerLock.unlock() }; return waiting.progress }
+        set { callerLock.lock(); defer { callerLock.unlock() }; waiting.progress = newValue }
+    }
+
+    var completionHandler: ((_ localUrl: URL?, _ error: Error?) -> Void)? {
+        get { callerLock.lock(); defer { callerLock.unlock() }; return waiting.completion }
+        set { callerLock.lock(); defer { callerLock.unlock() }; waiting.completion = newValue }
+    }
+
+    var lcpl: URL? {
+        get { callerLock.lock(); defer { callerLock.unlock() }; return waiting.lcpl }
+        set { callerLock.lock(); defer { callerLock.unlock() }; waiting.lcpl = newValue }
+    }
+
+    var link: TPPLCPLicenseLink? {
+        get { callerLock.lock(); defer { callerLock.unlock() }; return waiting.link }
+        set { callerLock.lock(); defer { callerLock.unlock() }; waiting.link = newValue }
+    }
+
+    /// Points this instance — the session's delegate — at the caller that is
+    /// waiting now.
+    ///
+    /// A repeat request for the same book arrives on a freshly constructed
+    /// `TPPLicensesService` carrying its own handlers (`LCPLibraryService`
+    /// builds one per call), and a session's delegate cannot be changed after
+    /// construction. So the handlers move to the delegate rather than the
+    /// delegate to the handlers: keeping the first caller's handlers would
+    /// leave the patron who is actually waiting with no progress at all, which
+    /// is the symptom being fixed.
+    ///
+    /// `lcpl` and `link` describe the same archive either way — the identifier
+    /// is derived from the licence URL, so an equal identifier means an equal
+    /// licence.
+    private func serve(
+        progress: @escaping (_ progress: Double) -> Void,
+        completion: @escaping (_ localUrl: URL?, _ error: Error?) -> Void,
+        lcpl: URL,
+        link: TPPLCPLicenseLink,
+        identifier: String
+    ) {
+        callerLock.lock(); defer { callerLock.unlock() }
+        waiting = WaitingCaller(progress: progress, completion: completion,
+                                lcpl: lcpl, link: link, identifier: identifier)
+    }
+
+    /// The transfer this instance's session is carrying, while it is in flight.
+    private var transferIdentifier: String? {
+        callerLock.lock(); defer { callerLock.unlock() }
+        return waiting.identifier
+    }
+
+    /// Ends the transfer this instance's session is carrying, however it ended.
+    ///
+    /// Without this the session stays live for the life of the process: it
+    /// holds its delegate, and it holds the one background identifier this
+    /// archive can use, so a later attempt at the same book would have to open
+    /// the second session Apple leaves undefined. Clearing the identifier makes
+    /// a second call a no-op, which matters because a finished download reports
+    /// both `didFinishDownloadingTo` and `didCompleteWithError`.
+    private func finishTransfer() {
+        callerLock.lock()
+        let identifier = waiting.identifier
+        waiting.identifier = nil
+        callerLock.unlock()
+        guard let identifier else { return }
+        sessions.finish(identifier)
+    }
 
     func acquirePublication(from lcpl: URL, progress: @escaping (_ progress: Double) -> Void, completion: @escaping (_ localUrl: URL?, _ error: Error?) -> Void) -> URLSessionDownloadTask? {
         // Parse LCP license file
@@ -234,17 +371,11 @@ class TPPLicensesService: NSObject, @unchecked Sendable {
             return nil
         }
 
-        self.progressHandler = progress
-        self.completionHandler = completion
-        self.lcpl = lcpl
-        self.link = link
-
         Log.info(#file, "📥 [LCP DOWNLOAD] Starting publication download")
         Log.info(#file, "  Host: \(url.host ?? "unknown")")
         Log.info(#file, "  Full URL: \(url.absoluteString)")
 
         let request = URLRequest(url: url, applyingCustomUserAgent: true)
-        let session: URLSession
 
         // Use sha256 for a stable session identifier across app launches (PP-3704).
         // Swift's URL.hashValue is randomized per process (SE-0206), so using it caused
@@ -253,18 +384,29 @@ class TPPLicensesService: NSObject, @unchecked Sendable {
         let backgroundIdentifier = (Bundle.main.bundleIdentifier ?? "").appending(".lcpBackgroundIdentifier.\(stableHash)")
         let isolate = Self.requiresCredentialIsolation(host: url.host)
         Log.info(#file, "  Background session ID: \(backgroundIdentifier) (credential-isolated: \(isolate))")
-        session = URLSession(
-            configuration: Self.publicationSessionConfiguration(
-                identifier: backgroundIdentifier,
-                isolateCredentials: isolate
-            ),
-            delegate: self,
-            delegateQueue: .main
-        )
-        self.activeSession = session
+
+        let (transfer, isNew) = sessions.transfer(for: backgroundIdentifier, delegate: self) { identifier in
+            makeSession(identifier, isolate, self)
+        }
+        // The handlers that fire must be this caller's, not those of whoever
+        // opened the session: this caller is the one waiting on the archive.
+        transfer.delegate.serve(progress: progress, completion: completion,
+                                lcpl: lcpl, link: link, identifier: backgroundIdentifier)
+
+        guard isNew else {
+            // The archive is already on its way. A second task on this
+            // identifier would fetch the same gigabytes again.
+            Log.info(#file, "  Joining the transfer already running for this archive")
+            return sessions.task(for: backgroundIdentifier)
+        }
+
+        // The first call of this process for this archive. A task a previous
+        // process left with the system is restored to this session, but only
+        // `getAllTasks` reports it and only asynchronously, so it is not
+        // adopted here and the archive is requested again.
         self.resumeAttempts = 0
-        let task = session.downloadTask(with: request)
-        LCPPublicationTransfer.register(task)
+        let task = transfer.session.downloadTask(with: request)
+        sessions.setTask(task, for: backgroundIdentifier)
         task.resume()
         return task
     }
@@ -319,7 +461,11 @@ class TPPLicensesService: NSObject, @unchecked Sendable {
 
 extension TPPLicensesService: URLSessionDownloadDelegate {
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-        LCPPublicationTransfer.register(nil)
+        // The archive is on disk, so the session has no work left. Deferred to
+        // the end of the callback because `location` is only valid for its
+        // duration, and the copy below has to happen first.
+        defer { finishTransfer() }
+
         guard let lcpl = self.lcpl, let link = self.link else {
             completionHandler?(nil, TPPLicensesServiceError.licenseError(message: "Missing license or link"))
             return
@@ -366,10 +512,18 @@ extension TPPLicensesService: URLSessionDownloadDelegate {
                 (error as NSError).localizedDescription,
                 resumeAttempts, Self.maxResumeAttempts, data.count
             ))
-            let session = activeSession ?? session
-            session.downloadTask(withResumeData: data).resume()
+            let identifier = transferIdentifier
+            let handle: LCPPublicationSessionHandle = identifier.flatMap { sessions.session(for: $0) } ?? session
+            let resumed = handle.downloadTask(withResumeData: data)
+            // Recorded so the resumed transfer is the one a repeat request is
+            // handed: a task nothing records is a transfer nothing afterwards
+            // can observe or manage.
+            if let identifier {
+                sessions.setTask(resumed, for: identifier)
+            }
+            resumed.resume()
         case .giveUp:
-            LCPPublicationTransfer.register(nil)
+            finishTransfer()
             // A deliberate cancellation is not a failure to report.
             if (error as NSError).code != NSURLErrorCancelled {
                 completionHandler?(nil, error)

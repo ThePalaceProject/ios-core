@@ -430,17 +430,71 @@ extension LCPAudiobooks {
         }
     }
 
-    /// Keeps at most one archive's ranges on disk.
+    /// The lock file a `PartialArchiveStore` holds open for its whole lifetime.
+    ///
+    /// Spelled out here because the toolkit's own `lockFileName` is internal to
+    /// that module. It must stay in step with
+    /// `PalaceAudiobookToolkit.PartialArchiveStore.lockFileName`.
+    static let archiveStoreLockFileName = "archive.lock"
+
+    /// Whether an open `PartialArchiveStore` still holds `directory`.
+    ///
+    /// The store takes `flock(LOCK_EX)` on its lock file and keeps it until it
+    /// closes, so a non-blocking exclusive attempt answers the question: it is
+    /// refused only while a holder exists. `flock` belongs to the open file
+    /// description rather than the process, so a store open in this same
+    /// process is detected too — which is the case that matters here, since the
+    /// store being stepped on belongs to the previous book in this session.
+    ///
+    /// The lock file outlives the store that wrote it, so presence alone cannot
+    /// stand in for a holder, and the probe opens without `O_CREAT` so a
+    /// directory with no lock file reports free rather than gaining one on the
+    /// way out.
+    static func archiveStoreIsHeld(at directory: URL) -> Bool {
+        let lockPath = directory.appendingPathComponent(archiveStoreLockFileName).path
+        let descriptor = Darwin.open(lockPath, O_RDONLY)
+        guard descriptor != -1 else { return false }
+        defer { Darwin.close(descriptor) }
+        guard flock(descriptor, LOCK_EX | LOCK_NB) == 0 else {
+            // `EWOULDBLOCK` is the one errno a live holder produces. Anything
+            // else means the question could not be asked, and reporting that as
+            // held would strand 1-2 GB per archive on disk for the life of the
+            // install, so the bound on disk wins and the entry stays evictable.
+            guard errno == EWOULDBLOCK else {
+                ATLog(.warn, "Could not probe an LCP archive range store's lock (errno \(errno)); treating it as free")
+                return false
+            }
+            return true
+        }
+        // Released rather than left to the `close`, which would drop it anyway:
+        // holding it any longer makes the probe itself the next caller's blocker.
+        flock(descriptor, LOCK_UN)
+        return false
+    }
+
+    /// Keeps one archive's ranges on disk, plus any an open store still holds.
     ///
     /// Called before opening, so the store being opened is never the one
-    /// removed. A directory in use by another open store is left alone: the
-    /// store takes an `flock`, so removing its directory underneath it is the
-    /// unlinked-inode failure this layer exists to avoid.
+    /// removed. A directory whose store is still open is skipped: `removeItem`
+    /// ignores the `flock` the store holds, so unlinking it leaves that store
+    /// writing and fsyncing into an inode no path reaches. Its reads keep
+    /// answering from the same inode, so nothing surfaces as an error — every
+    /// window it caches is simply discarded when the session ends and refetched
+    /// from the origin, which on a slow link is the chapter wait this store
+    /// exists to remove.
+    ///
+    /// Skipping is bounded by the holder, not by the directory: a store that has
+    /// closed, or one left behind by a previous launch, holds nothing and is
+    /// evicted, so the disk stays bounded to the archives actually in use.
     static func evictArchiveStoresOtherThan(_ keep: URL) {
         guard let root = try? partialArchivesRoot() else { return }
         let fm = FileManager.default
         guard let entries = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else { return }
         for entry in entries where entry.lastPathComponent != keep.lastPathComponent {
+            guard !archiveStoreIsHeld(at: entry) else {
+                ATLog(.info, "Left a retained LCP archive range store in place: a store still holds it")
+                continue
+            }
             do {
                 try fm.removeItem(at: entry)
                 ATLog(.info, "Evicted a retained LCP archive range store to keep one on disk")
@@ -508,27 +562,29 @@ extension LCPAudiobooks: LCPStreamingProvider {
     ///
     /// The toolkit announces the start and end of a load the patron is waiting
     /// on so a provider can hold its background package fetch and let that
-    /// chapter have the link (PP-5367). Holding the fetch needs a suspension
-    /// budget on the download side, which this app does not have yet, so there
-    /// is nothing here to hold and neither hook keeps state. The load timeout
-    /// that fixes the closing player is decided from bytes served and elapsed
-    /// time inside the player, so it does not depend on either of these.
+    /// chapter have the link (PP-5367). This hotfix does not hold the fetch.
+    ///
+    /// Suspending the transfer here was implemented and withdrawn. A hold needs
+    /// somewhere to record the task it suspended, and one process-wide slot is
+    /// not enough: registering a second transfer, finishing one, or resuming
+    /// one from partial data all replaced that slot, leaving the suspended task
+    /// with nothing holding a reference that could resume it. The patron saw a
+    /// download stop at the byte it had reached. A correct hold keys the
+    /// suspension per transfer and expires on a timer rather than on a
+    /// callback that may never arrive.
+    ///
+    /// The competitor worth removing is larger than this one anyway: the
+    /// playback model prefetched whole tracks over the same link, three at a
+    /// time, and now defers that until the archive is local. The load timeout
+    /// is decided from bytes served and elapsed time inside the player, so it
+    /// does not depend on either hook.
     ///
     /// Written out rather than defaulted: the protocol gives this pair no
     /// default, so a conformer that stops binding them fails to compile rather
     /// than losing the behaviour with no diagnostic once it is wired up.
-    nonisolated public func streamingLoadDidBegin() {
-        // Give the chapter the patron is waiting on the whole link: the
-        // background fetch of this same 1-2 GB archive is suspended, not
-        // cancelled, so its progress is kept. At the 4.3 MB/s measured on a
-        // patron's device this is roughly 3 s to first audio instead of 17 s
-        // on a shared link, against the player's 30 s deadline.
-        LCPPublicationTransfer.holdForStreamingLoad()
-    }
+    nonisolated public func streamingLoadDidBegin() {}
 
-    nonisolated public func streamingLoadDidEnd() {
-        LCPPublicationTransfer.releaseStreamingLoad()
-    }
+    nonisolated public func streamingLoadDidEnd() {}
 
     /// Nonisolated on purpose — see the note on the extension. This is a
     /// nonisolated witness of a `@MainActor` protocol requirement, which Swift

@@ -445,6 +445,10 @@ final class LCPAudiobooksTests: XCTestCase {
         private(set) var setProviderCallCount = 0
         private(set) var publicationDidLoadCallCount = 0
 
+        /// This spy is never asked to serve bytes, so the archive it would read
+        /// from is irrelevant to what it records.
+        var isServingRemoteArchive = false
+
         func setStreamingProvider(_ provider: StreamingResourceProvider) {
             setProviderCallCount += 1
             _ = provider

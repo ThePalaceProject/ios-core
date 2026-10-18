@@ -229,89 +229,12 @@ final class LicensesServiceTransferPolicyTests: XCTestCase {
     }
 }
 
-// MARK: - Holding the archive fetch while a chapter loads
-
-/// The patron's chapter and the background fetch of the same archive compete
-/// for one link, so a load borrows the link for its duration.
-///
-/// The hold must also be impossible to leak: a load that never reports its end
-/// would otherwise suspend the patron's download for the life of the process.
-final class LCPPublicationTransferHoldTests: XCTestCase {
-
-    override func setUp() {
-        super.setUp()
-        LCPPublicationTransfer.resetForTesting()
-    }
-
-    override func tearDown() {
-        LCPPublicationTransfer.resetForTesting()
-        super.tearDown()
-    }
-
-    func testNoHoldTaken_isNotInForce() {
-        XCTAssertFalse(
-            LCPPublicationTransfer.holdIsInForce(heldSince: nil, now: Date()),
-            "with no load in flight the fetch must run at full speed"
-        )
-    }
-
-    func testFreshHold_isInForce() {
-        let t0 = Date()
-        XCTAssertTrue(
-            LCPPublicationTransfer.holdIsInForce(heldSince: t0, now: t0.addingTimeInterval(1))
-        )
-    }
-
-    /// The case that matters: a load that never reports its end.
-    func testHoldPastItsLimit_isNoLongerInForce() {
-        let t0 = Date()
-        XCTAssertFalse(
-            LCPPublicationTransfer.holdIsInForce(
-                heldSince: t0,
-                now: t0.addingTimeInterval(LCPPublicationTransfer.maxHold + 1)
-            ),
-            "a load that never ended must not suspend the download indefinitely"
-        )
-    }
-
-    /// Exactly at the limit the hold lifts, so the bound is not off by one.
-    func testHoldExactlyAtItsLimit_isNoLongerInForce() {
-        let t0 = Date()
-        XCTAssertFalse(
-            LCPPublicationTransfer.holdIsInForce(
-                heldSince: t0,
-                now: t0.addingTimeInterval(LCPPublicationTransfer.maxHold)
-            )
-        )
-    }
-
-    /// The limit has to sit below the claim that tracks the transfer, or a held
-    /// fetch outlives the bookkeeping that would have aged it out.
-    func testHoldLimit_isBelowTheInflightClaimTimeout() {
-        XCTAssertLessThan(
-            LCPPublicationTransfer.maxHold,
-            LocalBookContentService.inflightContentDownloadIdleTimeout,
-            "a hold must not outlive the in-flight claim for the same transfer"
-        )
-    }
-}
-
 // MARK: - The delegate's failure path
 
 /// Drives `didCompleteWithError` directly, because the resume decision only
 /// matters through the callback that acts on it — and mutation reported both
 /// of those lines uncovered when only the pure policy was tested.
 final class LicensesServiceCompletionTests: XCTestCase {
-
-    override func setUp() {
-        super.setUp()
-        LCPPublicationTransfer.resetForTesting()
-    }
-
-    override func tearDown() {
-        LCPPublicationTransfer.resetForTesting()
-        super.tearDown()
-    }
 
     /// A failure with nothing to resume from is reported to the caller.
     func testCompletionWithUnresumableError_reportsFailure() {
@@ -348,64 +271,6 @@ final class LicensesServiceCompletionTests: XCTestCase {
         service.urlSession(URLSession.shared, task: URLSession.shared.dataTask(with: URL(string: "https://example.invalid")!), didCompleteWithError: nil)
 
         XCTAssertEqual(calls, 0)
-    }
-}
-
-// MARK: - The hold state machine
-
-/// Covers the stateful half of the hold. The pure predicate was tested
-/// separately; mutation showed these guards executed by nothing.
-final class LCPPublicationTransferStateTests: XCTestCase {
-
-    override func setUp() {
-        super.setUp()
-        LCPPublicationTransfer.resetForTesting()
-    }
-
-    override func tearDown() {
-        LCPPublicationTransfer.resetForTesting()
-        super.tearDown()
-    }
-
-    func testHoldThenRelease_returnsTheLink() {
-        XCTAssertFalse(LCPPublicationTransfer.isHolding)
-        LCPPublicationTransfer.holdForStreamingLoad()
-        XCTAssertTrue(LCPPublicationTransfer.isHolding, "a load in flight holds the link")
-        LCPPublicationTransfer.releaseStreamingLoad()
-        XCTAssertFalse(LCPPublicationTransfer.isHolding, "the load ended, so the fetch resumes")
-    }
-
-    /// Begin/end are announced per load and can arrive twice; a second hold
-    /// must not move the clock, or a stream of loads would defer expiry forever.
-    func testSecondHold_doesNotRestartTheClock() {
-        let t0 = Date()
-        LCPPublicationTransfer.holdForStreamingLoad(now: t0)
-        LCPPublicationTransfer.holdForStreamingLoad(now: t0.addingTimeInterval(30))
-        LCPPublicationTransfer.releaseIfExpired(now: t0.addingTimeInterval(LCPPublicationTransfer.maxHold + 1))
-        XCTAssertFalse(
-            LCPPublicationTransfer.isHolding,
-            "expiry is measured from the first hold, not the most recent one"
-        )
-    }
-
-    func testReleaseWithoutHold_isHarmless() {
-        LCPPublicationTransfer.releaseStreamingLoad()
-        XCTAssertFalse(LCPPublicationTransfer.isHolding)
-    }
-
-    func testExpiryBeforeTheLimit_keepsHolding() {
-        let t0 = Date()
-        LCPPublicationTransfer.holdForStreamingLoad(now: t0)
-        LCPPublicationTransfer.releaseIfExpired(now: t0.addingTimeInterval(1))
-        XCTAssertTrue(LCPPublicationTransfer.isHolding, "a load still in progress keeps the link")
-    }
-
-    /// Registering a new transfer clears any stale hold from a previous one.
-    func testRegisteringANewTransfer_clearsAStaleHold() {
-        LCPPublicationTransfer.holdForStreamingLoad()
-        XCTAssertTrue(LCPPublicationTransfer.isHolding)
-        LCPPublicationTransfer.register(nil)
-        XCTAssertFalse(LCPPublicationTransfer.isHolding)
     }
 }
 
@@ -470,3 +335,7 @@ final class LicensesServiceSessionPolicyTests: XCTestCase {
         XCTAssertNotNil(config.httpCookieStorage)
     }
 }
+
+#if DEBUG
+// MARK: - The simulator throttle
+#endif
