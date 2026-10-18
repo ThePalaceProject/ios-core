@@ -686,3 +686,62 @@ final class LCPArchiveRangeStoreFactoryTests: XCTestCase {
         #endif
     }
 }
+
+// MARK: - The archive read path goes through the cache
+
+/// The byte-range cache must sit on the client that actually reads the archive.
+///
+/// `LCPService`'s injected retriever is the one its `ContentProtection` uses to
+/// fetch the publication a streaming licence names, and the container that
+/// returns is what every archive read for playback goes through
+/// (`LCPContentProtection.openLicense` -> `assetRetriever.retrieve(link:)`).
+/// Wrapping only the client inside `LCPAudiobooks` reaches the local `.lcpl`
+/// licence read and not one archive byte, so three device builds retained
+/// ranges that nothing ever read back.
+///
+/// Asserted against the source because the wiring is inside a private lazy
+/// builder over a third-party type, and the defect is silent: everything
+/// compiles, the cache reports no hits, and that is indistinguishable from an
+/// archive whose reads simply never repeat.
+final class LCPArchiveReadPathWiringTests: XCTestCase {
+
+    private func lcpLibraryServiceSource() throws -> String {
+        // This test target's bundle sits inside the build products directory;
+        // walk up to the repository root rather than hard-coding a path.
+        var dir = URL(fileURLWithPath: #filePath)
+        while dir.pathComponents.count > 1, dir.lastPathComponent != "PalaceTests" {
+            dir.deleteLastPathComponent()
+        }
+        let root = dir.deletingLastPathComponent()
+        let source = root
+            .appendingPathComponent("Palace/Reader2/ReaderStackConfiguration/LCP/LCPLibraryService.swift")
+        return try String(contentsOf: source, encoding: .utf8)
+    }
+
+    func testLCPServiceAssetRetriever_isBuiltOverTheCachingClient() throws {
+        let source = try lcpLibraryServiceSource()
+
+        // The construction this pins, found rather than assumed: the argument
+        // must name a client that caches, not a bare stripping client.
+        let retrieverLines = source
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { $0.contains("assetRetriever:") && $0.contains("AssetRetriever(") }
+        XCTAssertFalse(
+            retrieverLines.isEmpty,
+            "the LCPService construction this guard is about was not found — the guard, not the code, is out of date"
+        )
+        for line in retrieverLines {
+            XCTAssertFalse(
+                line.contains("LCPCredentialStrippingHTTPClient()"),
+                """
+                LCPService's retriever is built over a bare client, so the archive \
+                reads bypass the byte-range cache: \(line.trimmingCharacters(in: .whitespaces))
+                """
+            )
+        }
+        XCTAssertTrue(
+            source.contains("PartialArchiveCachingHTTPClient("),
+            "the archive read client must be the caching one, or retained ranges are never read back"
+        )
+    }
+}

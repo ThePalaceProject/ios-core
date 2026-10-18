@@ -74,11 +74,26 @@ import ReadiumLCP
                 let licenseRepo = LCPKeychainLicenseRepository()
                 let passphraseRepo = LCPKeychainPassphraseRepository()
 
+                // The retriever handed to LCPService is the one its ContentProtection uses
+                // to fetch the publication a streaming licence names, and the container it
+                // returns is what every archive read for playback goes through:
+                // LCPService.contentProtection -> LCPContentProtection.openLicense ->
+                // assetRetriever.retrieve(link: licenseDocument.publicationLink).
+                //
+                // So the byte-range cache belongs here. Wrapping only the client inside
+                // LCPAudiobooks reaches the local .lcpl licence read and not one archive
+                // byte, which is why retaining ranges there changed nothing on device.
+                // Requests without a Range header pass straight through, so LCP EPUB and
+                // PDF fulfilment are unaffected (PP-5367).
+                let archiveReadClient = PartialArchiveCachingHTTPClient(
+                    upstream: LCPCredentialStrippingHTTPClient(),
+                    storeFactory: LCPAudiobooks.makeArchiveRangeStore
+                )
                 self._lcpService = LCPService(
                     client: TPPLCPClient(),
                     licenseRepository: licenseRepo,
                     passphraseRepository: passphraseRepo,
-                    assetRetriever: AssetRetriever(httpClient: LCPCredentialStrippingHTTPClient()),
+                    assetRetriever: AssetRetriever(httpClient: archiveReadClient),
                     httpClient: LCPCredentialStrippingHTTPClient()
                 )
             }
