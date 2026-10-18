@@ -517,9 +517,18 @@ extension LCPAudiobooks: LCPStreamingProvider {
     /// Written out rather than defaulted: the protocol gives this pair no
     /// default, so a conformer that stops binding them fails to compile rather
     /// than losing the behaviour with no diagnostic once it is wired up.
-    nonisolated public func streamingLoadDidBegin() {}
+    nonisolated public func streamingLoadDidBegin() {
+        // Give the chapter the patron is waiting on the whole link: the
+        // background fetch of this same 1-2 GB archive is suspended, not
+        // cancelled, so its progress is kept. At the 4.3 MB/s measured on a
+        // patron's device this is roughly 3 s to first audio instead of 17 s
+        // on a shared link, against the player's 30 s deadline.
+        LCPPublicationTransfer.holdForStreamingLoad()
+    }
 
-    nonisolated public func streamingLoadDidEnd() {}
+    nonisolated public func streamingLoadDidEnd() {
+        LCPPublicationTransfer.releaseStreamingLoad()
+    }
 
     /// Nonisolated on purpose — see the note on the extension. This is a
     /// nonisolated witness of a `@MainActor` protocol requirement, which Swift
