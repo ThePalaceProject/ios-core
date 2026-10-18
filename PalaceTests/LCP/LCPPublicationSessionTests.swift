@@ -367,6 +367,86 @@ final class LCPPublicationSessionTests: XCTestCase {
 /// real one: the system daemon outlives the test process and would hand the
 /// next run the previous run's transfer.
 
+// MARK: - De-duplicating the tasks the system restored
+
+/// Cancelling a duplicate is only safe if its completion can be told apart from
+/// the transfer ending: `didCompleteWithError` does not look at which task
+/// completed, a cancellation maps to `.giveUp`, and `.giveUp` invalidates the
+/// session the surviving task is still downloading in.
+final class LCPDuplicateTaskDropTests: XCTestCase {
+
+    private let archiveURL = URL(string: "https://storage.googleapis.com/bucket/book.lcpa")!
+
+    func testTheLaggingDuplicate_isCancelledAndTheLeaderIsNot() {
+        let service = TPPLicensesService()
+        let leader = FakeDownloadTask(identifier: 11, url: archiveURL, bytesReceived: 734_003_200)
+        let lagging = FakeDownloadTask(identifier: 12, url: archiveURL, bytesReceived: 4_096)
+        service.dropDuplicates(among: [leader, lagging], for: archiveURL)
+
+        XCTAssertTrue(lagging.wasCancelled, "the duplicate that has moved least must be the one dropped")
+        XCTAssertFalse(leader.wasCancelled, "cancelling the task most of the way through restarts the archive from zero")
+    }
+
+    func testTheCancelledDuplicatesCompletion_isSuppressed() {
+        let service = TPPLicensesService()
+        let leader = FakeDownloadTask(identifier: 21, url: archiveURL, bytesReceived: 900_000)
+        let lagging = FakeDownloadTask(identifier: 22, url: archiveURL, bytesReceived: 1_024)
+        service.dropDuplicates(among: [leader, lagging], for: archiveURL)
+
+        XCTAssertTrue(
+            service.consumeDroppedTask(22),
+            "without this the cancellation ends the whole transfer and the patron sits at N% with no error"
+        )
+        XCTAssertFalse(
+            service.consumeDroppedTask(21),
+            "the surviving task's completion is the real one and must not be swallowed"
+        )
+    }
+
+    func testASingleOutstandingTask_isNeverCancelled() {
+        let service = TPPLicensesService()
+        let only = FakeDownloadTask(identifier: 31, url: archiveURL, bytesReceived: 512)
+
+        service.dropDuplicates(among: [only], for: archiveURL)
+
+        XCTAssertFalse(only.wasCancelled, "a lone task is the transfer; cancelling it stops the archive")
+        XCTAssertFalse(service.consumeDroppedTask(31), "nothing was dropped, so nothing may be suppressed")
+    }
+
+    func testATaskForADifferentArchive_isLeftAlone() {
+        let service = TPPLicensesService()
+        let mine = FakeDownloadTask(identifier: 41, url: archiveURL, bytesReceived: 10)
+        let other = FakeDownloadTask(
+            identifier: 42,
+            url: URL(string: "https://storage.googleapis.com/bucket/other.lcpa")!,
+            bytesReceived: 999_999
+        )
+        service.dropDuplicates(among: [mine, other], for: archiveURL)
+
+        XCTAssertFalse(other.wasCancelled, "another book's transfer shares the session only by accident")
+        XCTAssertFalse(mine.wasCancelled, "with one task for this archive there is no duplicate to drop")
+    }
+}
+
+/// A task whose progress and URL are fixed. Conforms to the seam rather than
+/// subclassing `URLSessionDownloadTask`, which has no accessible initializer.
+private final class FakeDownloadTask: OutstandingArchiveTask, @unchecked Sendable {
+    let taskIdentifier: Int
+    let archiveURL: URL?
+    let bytesTransferred: Int64
+    let isFinished: Bool
+    private(set) var wasCancelled = false
+
+    init(identifier: Int, url: URL, bytesReceived: Int64, isFinished: Bool = false) {
+        taskIdentifier = identifier
+        archiveURL = url
+        bytesTransferred = bytesReceived
+        self.isFinished = isFinished
+    }
+
+    func cancelTransfer() { wasCancelled = true }
+}
+
 // MARK: - Choosing which duplicate task survives
 
 /// A relaunch during a transfer leaves the system holding the previous

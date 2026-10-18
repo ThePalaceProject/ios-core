@@ -91,6 +91,29 @@ final class LCPArchiveStoreEvictionTests: XCTestCase {
         )
     }
 
+    /// The unkeyed clear is the fallback for a licence that cannot be read. It
+    /// must still not unlink a directory an open store holds: that frees no
+    /// bytes while the reader lives and leaves its writes going to a path
+    /// nothing can reach.
+    func testRemoveAllArchiveStores_whenAnOpenStoreHoldsTheDirectory_leavesItInPlace() throws {
+        let held = try makeStoreDirectory()
+        let stale = try makeStoreDirectory()
+
+        let store = try PartialArchiveStore.open(directory: held, totalSize: 4096)
+        defer { store.close() }
+
+        LCPAudiobooks.removeAllArchiveStores()
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: stale.path),
+            "a store nothing holds is what this clear exists to remove"
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: held.path),
+            "unlinking a held directory frees nothing and breaks the reader still writing to it"
+        )
+    }
+
     // MARK: - Scoped removal when one archive lands whole
 
     /// Writes a licence whose `publication` link is `href`, in the shape the

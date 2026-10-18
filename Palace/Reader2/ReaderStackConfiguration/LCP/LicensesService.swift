@@ -41,6 +41,26 @@ protocol LCPPublicationSessionHandle: AnyObject {
 }
 
 extension URLSession: LCPPublicationSessionHandle {}
+/// What de-duplication needs to know about one outstanding task.
+///
+/// A seam: `URLSessionDownloadTask` has no accessible initializer, so a test
+/// cannot build one, and the half of de-duplication worth testing is the half
+/// that decides which task to cancel.
+protocol OutstandingArchiveTask: AnyObject {
+    var taskIdentifier: Int { get }
+    var archiveURL: URL? { get }
+    var isFinished: Bool { get }
+    var bytesTransferred: Int64 { get }
+    func cancelTransfer()
+}
+
+extension URLSessionDownloadTask: OutstandingArchiveTask {
+    var archiveURL: URL? { originalRequest?.url }
+    var isFinished: Bool { state == .completed }
+    var bytesTransferred: Int64 { countOfBytesReceived }
+    func cancelTransfer() { cancel() }
+}
+
 
 /// The publication transfers in flight, at most one per background identifier.
 ///
@@ -355,6 +375,40 @@ class TPPLicensesService: NSObject, @unchecked Sendable {
     /// the second session Apple leaves undefined. Clearing the identifier makes
     /// a second call a no-op, which matters because a finished download reports
     /// both `didFinishDownloadingTo` and `didCompleteWithError`.
+    /// Task identifiers this service cancelled on purpose, so their completions
+    /// can be told apart from the transfer ending.
+    ///
+    /// Without this, de-duplicating is worse than the duplicate it removes:
+    /// `didCompleteWithError` does not look at which task completed, a
+    /// cancellation maps to `.giveUp`, and `.giveUp` runs `finishTransfer()` —
+    /// which removes the registry entry and invalidates the session the
+    /// SURVIVING task is still downloading in. `NSURLErrorCancelled` also
+    /// suppresses the completion callback, so the patron would be left at N%
+    /// with no error and nothing to retry.
+    ///
+    /// Guarded by its own lock rather than `callerLock`, whose invariant covers
+    /// the waiting caller's record and nothing else.
+    private let droppedTaskLock = NSLock()
+    private var droppedTaskIdentifiers: Set<Int> = []
+
+    /// Marks a task as deliberately cancelled. Internal so a test can drive the
+    /// suppression without constructing a `URLSessionTask`.
+    func recordDroppedTask(_ taskIdentifier: Int) {
+        droppedTaskLock.lock()
+        droppedTaskIdentifiers.insert(taskIdentifier)
+        droppedTaskLock.unlock()
+    }
+
+    /// Whether this completion belongs to a task we cancelled, consuming the
+    /// record. Consuming, not peeking: a task reports completion once, and a
+    /// identifier left behind would suppress a real failure of a later task
+    /// that the system happened to give the same number.
+    func consumeDroppedTask(_ taskIdentifier: Int) -> Bool {
+        droppedTaskLock.lock()
+        defer { droppedTaskLock.unlock() }
+        return droppedTaskIdentifiers.remove(taskIdentifier) != nil
+    }
+
     /// Cancels every outstanding task for `url` on this session but the one
     /// that has moved the most bytes.
     ///
@@ -366,25 +420,46 @@ class TPPLicensesService: NSObject, @unchecked Sendable {
     /// system restored may be most of the way through a gigabyte, and
     /// cancelling that to keep a fresh one would restart from zero — the
     /// behavior this is here to prevent.
-    private func dropDuplicateTasks(
+    /// Internal, not private, so a test can drive the de-duplication itself
+    /// rather than only the arithmetic it delegates to.
+    func dropDuplicateTasks(
         on session: LCPPublicationSessionHandle,
         for url: URL,
         identifier: String
     ) {
         session.getAllTasks { [weak self] tasks in
-            let outstanding = tasks
-                .compactMap { $0 as? URLSessionDownloadTask }
-                .filter { $0.originalRequest?.url == url && $0.state != .completed }
-            guard let keepIndex = Self.indexOfTaskToKeep(
-                bytesReceived: outstanding.map(\.countOfBytesReceived)
-            ) else { return }
-            let keep = outstanding[keepIndex]
-            for (index, duplicate) in outstanding.enumerated() where index != keepIndex {
-                duplicate.cancel()
+            guard let self else { return }
+            let keep = self.dropDuplicates(
+                among: tasks.compactMap { $0 as? URLSessionDownloadTask },
+                for: url
+            )
+            if let keep = keep as? URLSessionDownloadTask {
+                self.sessions.setTask(keep, for: identifier)
             }
-            Log.info(#file, "  Dropped \(outstanding.count - 1) duplicate task(s) for this archive; kept the one \(keep.countOfBytesReceived) bytes in")
-            self?.sessions.setTask(keep, for: identifier)
         }
+    }
+
+    /// Cancels every outstanding task for `url` but the one furthest along, and
+    /// returns the one kept, or nil when there was no duplicate.
+    ///
+    /// Every cancelled identifier is recorded first, because a cancellation's
+    /// completion is otherwise indistinguishable from the transfer ending and
+    /// would tear down the session the kept task is still using.
+    @discardableResult
+    func dropDuplicates(among tasks: [OutstandingArchiveTask], for url: URL) -> OutstandingArchiveTask? {
+        let outstanding = tasks.filter { $0.archiveURL == url && !$0.isFinished }
+        guard let keepIndex = Self.indexOfTaskToKeep(
+            bytesReceived: outstanding.map(\.bytesTransferred)
+        ) else { return nil }
+        let keep = outstanding[keepIndex]
+        for (index, duplicate) in outstanding.enumerated() where index != keepIndex {
+            // Recorded BEFORE the cancel: the completion can arrive before
+            // `cancelTransfer()` returns.
+            recordDroppedTask(duplicate.taskIdentifier)
+            duplicate.cancelTransfer()
+        }
+        Log.info(#file, "  Dropped \(outstanding.count - 1) duplicate task(s) for this archive; kept the one \(keep.bytesTransferred) bytes in")
+        return keep
     }
 
     /// Which of several outstanding tasks for one archive keeps the transfer:
@@ -554,7 +629,20 @@ extension TPPLicensesService: URLSessionDownloadDelegate {
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        // Consumed BEFORE the error guard. A cancelled task normally reports
+        // `NSURLErrorCancelled`, but one that finishes in the instant it is
+        // cancelled reports no error at all — and leaving its identifier behind
+        // would suppress the next completion the system gives that number,
+        // which is a real failure swallowed.
+        let wasDropped = consumeDroppedTask(task.taskIdentifier)
         guard let error else { return }
+        // A task this service cancelled to de-duplicate is not the transfer
+        // ending. Checked before `resumeAction`, which cannot tell the two
+        // apart: both arrive as `NSURLErrorCancelled`.
+        guard !wasDropped else {
+            Log.info(#file, "  Ignoring the completion of a duplicate task this transfer dropped")
+            return
+        }
         switch Self.resumeAction(for: error, attemptsSoFar: resumeAttempts) {
         case let .resume(data):
             // Continue from the bytes already on disk. Restarting a 1.9 GB

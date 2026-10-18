@@ -558,7 +558,16 @@ extension LCPAudiobooks {
         guard let directory = try? archiveStoreDirectory(for: publicationURL) else { return }
 
         let fm = FileManager.default
-        guard fm.fileExists(atPath: directory.path) else { return }
+        guard fm.fileExists(atPath: directory.path) else {
+            // Not an error on the transfer path, where there may simply be no
+            // retained ranges. On the delete path it means the licence's
+            // publication href does not key the directory the streaming client
+            // created — `archiveStoreDirectory` warns that a query-bearing URL
+            // may not be stable across fulfilments — and the ranges are then
+            // left behind, so it is worth being able to see it.
+            ATLog(.info, "No retained range store is keyed by this licence's archive URL")
+            return
+        }
         guard !archiveStoreIsHeld(at: directory) else {
             ATLog(.info, "An open store still holds this archive's range store; leaving it in place")
             return
@@ -578,12 +587,18 @@ extension LCPAudiobooks {
     /// archive URL that keys the store is unavailable — see
     /// `removeArchiveStore(forLicenseAt:)` for the keyed path this defers to.
     ///
-    /// A held directory is left alone, and that is not a weaker guarantee than
-    /// unlinking it: `removeItem` does not reclaim an inode an open descriptor
-    /// still references, so unlinking a held store leaves the same bytes on disk
-    /// AND leaves its reader writing into a path nothing can reach.
-    /// `evictArchiveStoresOtherThan` reclaims it at the next open, once the
-    /// holder has gone.
+    /// A held directory is left alone. `PartialArchiveStore` keeps its archive
+    /// descriptor open for its whole lifetime, so unlinking the directory frees
+    /// no bytes while that reader lives and leaves its writes landing in a path
+    /// nothing can reach — and on this path the holder is usually a DIFFERENT
+    /// book, streaming right now.
+    ///
+    /// The residual, stated plainly: the bytes stay until the holder closes and
+    /// something evicts the directory. Unlinking would have freed them when the
+    /// descriptor closed, without needing that later trigger, so skipping is
+    /// weaker on reclaim and stronger on not breaking a live reader.
+    /// `evictArchiveStoresOtherThan` is what reclaims it, at the next open of
+    /// another archive.
     @objc static func removeAllArchiveStores() {
         guard let root = try? partialArchivesRoot() else { return }
         let fm = FileManager.default

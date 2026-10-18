@@ -13,6 +13,9 @@ import Combine
 import PalaceCatalog
 import PalacePreferences
 import PalaceNetwork
+#if LCP
+import ReadiumShared
+#endif
 @testable import Palace
 import PalaceBookModel
 import PalaceBookRegistry
@@ -275,6 +278,49 @@ final class LocalBookContentServiceTests: XCTestCase {
         #endif
     }
 
+
+    /// The arm production actually takes. A content delete leaves the `.lcpl`
+    /// on disk by design (PP-3704), so the licence is readable and the removal
+    /// is keyed to the archive it names — which must not take another book's
+    /// retained ranges with it.
+    func testDeleteForBook_lcpAudiobook_withItsLicenceOnDisk_clearsOnlyItsOwnRanges() throws {
+        #if LCP
+        let book = makeLCPAudiobook()
+        seedBook(book)
+        let contentURL = bookFileManager.fakeURLFor(book)
+        try writeFile(at: contentURL, bytes: 128)
+
+        // The licence, in the shape the server sends, naming this book's archive.
+        let archiveHref = "https://storage.googleapis.com/bucket/deleted-\(UUID().uuidString)"
+        let license: [String: Any] = [
+            "id": UUID().uuidString,
+            "links": [["rel": "publication", "type": "application/audiobook+lcp", "href": archiveHref]]
+        ]
+        let licenseURL = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
+        try JSONSerialization.data(withJSONObject: license).write(to: licenseURL)
+
+        let mine = try LCPAudiobooks.archiveStoreDirectory(for: XCTUnwrap(HTTPURL(string: archiveHref)))
+        let theirs = try LCPAudiobooks.archiveStoreDirectory(
+            for: XCTUnwrap(HTTPURL(string: "https://storage.googleapis.com/bucket/streaming-\(UUID().uuidString)"))
+        )
+        for directory in [mine, theirs] {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try writeFile(at: directory.appendingPathComponent("archive.lcpa"), bytes: 4096)
+        }
+        defer { for d in [mine, theirs] { try? FileManager.default.removeItem(at: d) } }
+
+        service.deleteLocalContent(forBook: book)
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: mine.path),
+            "the returned loan's own retained ranges are DRM audio and must not survive the delete"
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: theirs.path),
+            "returning one book must not discard the windows another book is streaming from"
+        )
+        #endif
+    }
 
     // MARK: - Post-return content leak (the write guard)
     //
