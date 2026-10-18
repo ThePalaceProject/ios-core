@@ -13,6 +13,67 @@ import ReadiumShared
 @MainActor
 final class LCPAudiobooksTests: XCTestCase {
 
+    // MARK: - Plaintext length cache
+
+    /// Learning a track's plaintext length costs a read of the entry's CBC
+    /// tail, measured on device at 17.8-28.8 MB of origin traffic to serve no
+    /// audio. The archive is immutable, so the answer must survive the session
+    /// that learned it — and it must be keyed per archive, or one book would
+    /// answer with another's track length.
+    func testPlaintextLength_isRememberedPerArchive_andNotSharedBetweenBooks() throws {
+        let archiveA = "https://storage.googleapis.com/bucket/a-\(UUID().uuidString)"
+        let archiveB = "https://storage.googleapis.com/bucket/b-\(UUID().uuidString)"
+        let bookA = try makeAudiobook(publicationHref: archiveA)
+        let bookB = try makeAudiobook(publicationHref: archiveB)
+
+        XCTAssertNil(
+            bookA.cachedPlaintextLength(forHref: "track1.mp3"),
+            "precondition: nothing is known before the first probe"
+        )
+
+        bookA.cachePlaintextLength(14_680_064, forHref: "track1.mp3")
+
+        XCTAssertEqual(
+            bookA.cachedPlaintextLength(forHref: "track1.mp3"), 14_680_064,
+            "a length learned once must skip the probe for every later chapter change"
+        )
+        XCTAssertNil(
+            bookA.cachedPlaintextLength(forHref: "track2.mp3"),
+            "only the track that was measured is known"
+        )
+        XCTAssertNil(
+            bookB.cachedPlaintextLength(forHref: "track1.mp3"),
+            "a different archive must not answer with this one's length — that would decrypt to the wrong end"
+        )
+    }
+
+    /// A zero length would mean "cached but unknown", and the loader treats the
+    /// length as load-bearing, so it must not be storable.
+    func testPlaintextLength_zeroIsNotStored() throws {
+        let book = try makeAudiobook(
+            publicationHref: "https://storage.googleapis.com/bucket/z-\(UUID().uuidString)"
+        )
+        book.cachePlaintextLength(0, forHref: "track1.mp3")
+        XCTAssertNil(
+            book.cachedPlaintextLength(forHref: "track1.mp3"),
+            "zero is not a length; storing it would skip the probe and then fail the read"
+        )
+    }
+
+    /// Builds an instance whose licence names `publicationHref`, which is what
+    /// the cache keys on.
+    private func makeAudiobook(publicationHref: String) throws -> LCPAudiobooks {
+        let license: [String: Any] = [
+            "id": UUID().uuidString,
+            "links": [["rel": "publication", "type": "application/audiobook+lcp", "href": publicationHref]]
+        ]
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("len-\(UUID().uuidString).lcpl")
+        try JSONSerialization.data(withJSONObject: license).write(to: url)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        return try XCTUnwrap(LCPAudiobooks(for: url), "the licence must be openable as an audiobook source")
+    }
+
     // MARK: - Initialization Tests
 
     func testInit_withValidFileURL_createsInstance() {

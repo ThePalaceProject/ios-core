@@ -662,6 +662,34 @@ extension LCPAudiobooks: LCPStreamingProvider {
     /// re-downloads and writes to disk — so `audiobookUrl.fileURL != nil` is
     /// true of the streaming case too, and asking it that way turned the
     /// loader's per-track buffer off everywhere.
+    /// Namespace for the plaintext-length cache: the archive's own store key,
+    /// so two books cannot collide and a re-fulfilment of the same archive
+    /// reuses what was already learned.
+    private var plaintextLengthKeyPrefix: String? {
+        guard let licenseUrl, licenseUrl.isFileURL,
+              let publication = Self.publicationURL(inLicenseAt: licenseUrl),
+              let directory = try? Self.archiveStoreDirectory(for: publication)
+        else { return nil }
+        return "LCPTrackLength.\(directory.lastPathComponent)."
+    }
+
+    /// Stored in `UserDefaults` rather than beside the archive: the value is one
+    /// integer per track, it must survive the range store being evicted (the
+    /// length does not change when the bytes are reclaimed), and a read happens
+    /// on the chapter-change path where opening a file would be the thing being
+    /// avoided.
+    nonisolated public func cachedPlaintextLength(forHref href: String) -> UInt64? {
+        guard let prefix = plaintextLengthKeyPrefix else { return nil }
+        let stored = UserDefaults.standard.object(forKey: prefix + href) as? NSNumber
+        guard let value = stored?.uint64Value, value > 0 else { return nil }
+        return value
+    }
+
+    nonisolated public func cachePlaintextLength(_ length: UInt64, forHref href: String) {
+        guard length > 0, let prefix = plaintextLengthKeyPrefix else { return }
+        UserDefaults.standard.set(NSNumber(value: length), forKey: prefix + href)
+    }
+
     /// The archive client's origin cost, for the loader's slow-chapter line.
     /// Read off the same counting client this type opens the publication with.
     nonisolated public func archiveOriginActivity() -> (requests: Int, bytes: Int) {
