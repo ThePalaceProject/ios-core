@@ -661,7 +661,13 @@ class LocalBookContentService {
                 // again — and nothing reads them, because the next open picks
                 // the `.lcpa`. Drop them here rather than waiting for the book
                 // to be deleted.
-                LCPAudiobooks.removeAllArchiveStores()
+                //
+                // Keyed to THIS licence. Only one range store is kept on disk,
+                // and while a re-download runs that store belongs to whichever
+                // book is being streamed, so clearing the root here reclaimed
+                // the streamed book's windows and its next chapter refetched
+                // them from the origin.
+                LCPAudiobooks.removeArchiveStore(forLicenseAt: licenseURL)
 
                 // Promote the record. Reconciliation moved this book to
                 // `.downloadNeeded` when it found a license with no content, and

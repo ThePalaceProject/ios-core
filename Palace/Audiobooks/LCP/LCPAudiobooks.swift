@@ -504,6 +504,73 @@ extension LCPAudiobooks {
         }
     }
 
+    /// The remote archive URL a licence file points at.
+    ///
+    /// The range store is keyed on the publication URL, and the whole-archive
+    /// re-download is handed the licence on disk rather than that URL, so the
+    /// key is derived here — beside `archiveStoreDirectory`, which consumes it.
+    static func publicationURL(inLicenseAt licenseURL: URL) -> HTTPURL? {
+        guard
+            let data = try? Data(contentsOf: licenseURL),
+            let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+            let links = root["links"] as? [[String: Any]]
+        else { return nil }
+
+        for link in links {
+            // Every licence observed spells `rel` as a single string; the LCP
+            // schema also admits an array. Both are read, so a conforming
+            // licence cannot answer "no publication" and strand its store.
+            let rels: [String]
+            switch link["rel"] {
+            case let single as String: rels = [single]
+            case let many as [String]: rels = many
+            default: continue
+            }
+            guard
+                rels.contains("publication"),
+                let href = link["href"] as? String,
+                let url = HTTPURL(string: href)
+            else { continue }
+            return url
+        }
+        return nil
+    }
+
+    /// Removes the retained range store of one archive: the publication the
+    /// licence at `licenseURL` names.
+    ///
+    /// `removeAllArchiveStores` is not usable on the transfer-completed path.
+    /// `evictArchiveStoresOtherThan` keeps a single store on disk, and on that
+    /// path the surviving store belongs to whichever book is being streamed —
+    /// not to the book whose whole-archive transfer just finished. Clearing the
+    /// root there discarded the windows the streamed book's next chapter would
+    /// have been served from, so each chapter change refetched from the origin.
+    ///
+    /// A directory an open store still holds is left in place, for the reason
+    /// `evictArchiveStoresOtherThan` leaves one: `removeItem` ignores the
+    /// `flock`, so unlinking it leaves that reader writing into an inode no
+    /// path reaches.
+    static func removeArchiveStore(forLicenseAt licenseURL: URL) {
+        guard let publicationURL = publicationURL(inLicenseAt: licenseURL) else {
+            ATLog(.warn, "No archive URL in this licence; leaving its retained range store in place")
+            return
+        }
+        guard let directory = try? archiveStoreDirectory(for: publicationURL) else { return }
+
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: directory.path) else { return }
+        guard !archiveStoreIsHeld(at: directory) else {
+            ATLog(.info, "An open store still holds this archive's range store; leaving it in place")
+            return
+        }
+        do {
+            try fm.removeItem(at: directory)
+            ATLog(.info, "Removed the retained range store of an archive now stored whole")
+        } catch {
+            ATLog(.warn, "Could not remove a retained LCP archive range store: \(error.localizedDescription)")
+        }
+    }
+
     /// Removes every retained archive range store.
     ///
     /// Not keyed per book on purpose: the store directory is named from the remote
