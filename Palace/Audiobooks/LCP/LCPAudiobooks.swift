@@ -40,6 +40,7 @@ import PalaceBookModel
 
     private let audiobookUrl: AbsoluteURL
     private let licenseUrl: URL?
+    private let archiveReadClient: PartialArchiveCachingHTTPClient
     private let assetRetriever: AssetRetriever
     private let publicationOpener: PublicationOpener
     private let httpClient: HTTPClient
@@ -80,6 +81,11 @@ import PalaceBookModel
         // this same client, and the container it returns is what every archive read
         // for playback goes through (PP-5367).
         let httpClient = lcpService.archiveReadClient
+        // Retained so the open can report how many ranged requests it cost.
+        // `PublicationOpener.open` is a single await, so the only way to tell
+        // licence-validation time from archive-read time is to count the reads
+        // across it.
+        self.archiveReadClient = httpClient
         self.httpClient = httpClient
         self.assetRetriever = AssetRetriever(httpClient: httpClient)
 
@@ -191,9 +197,11 @@ import PalaceBookModel
                     credentials = try? String(contentsOf: licenseUrl)
                 }
 
+                let activityBefore = archiveReadClient.upstreamActivity
                 let result = await publicationOpener.open(asset: asset, allowUserInteraction: true, credentials: credentials, sender: nil)
                 let openedAt = Date()
                 let openDuration = openedAt.timeIntervalSince(openStartedAt)
+                let readCost = archiveReadClient.upstreamActivity.delta(since: activityBefore)
                 if Self.shouldReportSlowPublicationOpen(duration: openDuration) {
                     // At `.error` deliberately: only error and fault reach the
                     // on-device log the patron can export, and an open this slow is
@@ -203,6 +211,18 @@ import PalaceBookModel
                         openDuration,
                         retrievedAt.timeIntervalSince(openStartedAt),
                         openedAt.timeIntervalSince(retrievedAt)
+                    ))
+                    // The discriminator. A handful of requests means the time
+                    // went to licence validation; many requests for a few
+                    // megabytes served means the archive reads are refetching
+                    // the same windows, which is a buffer problem and not a
+                    // network one.
+                    Log.error(#file, String(
+                        format: "LCP open archive reads: %d origin request(s) for %d bytes, %d store serve(s) for %d bytes",
+                        readCost.originRequests,
+                        readCost.originBytes,
+                        readCost.storeServes,
+                        readCost.storeBytes
                     ))
                 }
 

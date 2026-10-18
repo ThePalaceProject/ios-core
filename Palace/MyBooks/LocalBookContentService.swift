@@ -717,7 +717,10 @@ class LocalBookContentService {
                 accountUnchanged: accountUnchanged
             ) else {
                 try? fileManager.removeItem(at: localUrl)
-                Log.info(#file, "📥 [LCP RE-DOWNLOAD] '\(book.title)' is no longer held (state: \(currentState)) — discarding the fetched .lcpa instead of writing it to disk")
+                // At `.error` for the same reason as the move failure below: a
+                // fetched archive thrown away is indistinguishable, from the
+                // exported log, from one that never started.
+                Log.error(#file, "📥 [LCP RE-DOWNLOAD] '\(book.title)' is no longer held (state: \(currentState)) — discarding the fetched .lcpa instead of writing it to disk")
                 return
             }
 
@@ -760,7 +763,11 @@ class LocalBookContentService {
                     self?.bookRegistry.setState(.downloadSuccessful, for: identifier)
                 }
             } catch {
-                Log.warn(#file, "📥 [LCP RE-DOWNLOAD] ⚠️ File move failed for '\(book.title)': \(error.localizedDescription)")
+                // At `.error`, not `.warn`: only error and fault reach the log the
+                // patron can export, and this is a gigabyte-class transfer that
+                // completed and then failed to be placed — the one outcome that
+                // leaves the book unplayable with the work already paid for.
+                Log.error(#file, "📥 [LCP RE-DOWNLOAD] ❌ File move failed for '\(book.title)': \(error.localizedDescription)")
             }
         }
         #endif
