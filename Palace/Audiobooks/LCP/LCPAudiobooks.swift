@@ -9,6 +9,7 @@
 #if LCP
 
 import Foundation
+import CryptoKit
 import PalaceLogging
 import PalaceCatalog
 @preconcurrency import ReadiumShared
@@ -41,7 +42,10 @@ import PalaceBookModel
     private let licenseUrl: URL?
     private let assetRetriever: AssetRetriever
     private let publicationOpener: PublicationOpener
-    private let httpClient: LCPCredentialStrippingHTTPClient
+    private let httpClient: HTTPClient
+    /// Kept so the credential-stripping behaviour stays reachable for anything
+    /// that needs the undecorated client; the decorator forwards to it.
+    private let strippingClient: LCPCredentialStrippingHTTPClient
 
     private var cachedPublication: Publication?
     private let publicationCacheQueue = DispatchQueue(label: "org.thepalaceproject.lcpaudiobooks.publicationcache")
@@ -72,7 +76,24 @@ import PalaceBookModel
 
         self.licenseUrl = licenseUrl ?? (audiobookUrl.pathExtension.lowercased() == "lcpl" ? audiobookUrl : nil)
 
-        let httpClient = LCPCredentialStrippingHTTPClient()
+        let strippingClient = LCPCredentialStrippingHTTPClient()
+        self.strippingClient = strippingClient
+        // Readium buffers a remote archive at 6 MB, so every read that misses its
+        // window costs a whole 6 MB range request and the bytes are then dropped.
+        // Measured on device against build 516: 159 range reads, 930 MB fetched,
+        // 6.0 MB median per read, no audio played. Retaining what we fetch is the
+        // only lever that reduces the total, because the reads share one
+        // connection and saturate it (PP-5367).
+        //
+        // Wrapped here and NOT in LCPLibraryService: this is the client behind
+        // AssetRetriever and the publication parser for the streamed package, so
+        // it issues the ranged GETs. The fulfilment clients there carry no Range
+        // header and also serve LCP EPUB and PDF, so wrapping them would add a
+        // closure hop per chunk on a whole-object download and change nothing.
+        let httpClient = PartialArchiveCachingHTTPClient(
+            upstream: strippingClient,
+            storeFactory: LCPAudiobooks.makeArchiveRangeStore
+        )
         self.httpClient = httpClient
         self.assetRetriever = AssetRetriever(httpClient: httpClient)
 
@@ -290,6 +311,119 @@ import PalaceBookModel
 /// What works: a nonisolated witness satisfies the `@MainActor` requirement
 /// (the permissive direction), and the one statement touching main-actor state
 /// hops explicitly. See `setupStreamingFor` below.
+// MARK: - Partial archive store
+
+extension LCPAudiobooks {
+
+    /// Where a streamed archive's retained byte ranges live.
+    ///
+    /// Deliberately NOT under the download destination's parent. The background
+    /// package fetch finishes with `moveItem(at:to:)` over that path, and a
+    /// rename across a file this store holds descriptors on would leave it
+    /// writing to an unlinked inode: reads and writes keep succeeding, the
+    /// journal keeps recording, and every served byte comes from a file nothing
+    /// can reach. Undetectable downstream, because the AES-CBC payload is
+    /// unauthenticated and an unwritten extent reads as zeros of exactly the
+    /// requested length.
+    static func partialArchivesRoot() throws -> URL {
+        let support = try FileManager.default.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        return support.appendingPathComponent("PartialArchives", isDirectory: true)
+    }
+
+    /// The directory for one archive, keyed on its content URL.
+    ///
+    /// The URL is the only identifier available here — `init(for:licenseUrl:)` is
+    /// handed URLs and never a `TPPBook` — and it is stable and unique per
+    /// publication: the observed shape carries no query string, signature or
+    /// expiry. A signed URL would break the key silently into "no hits, one
+    /// directory per fetch", so that case is logged rather than guessed at.
+    static func archiveStoreDirectory(for url: HTTPURL) throws -> URL {
+        if url.url.query?.isEmpty == false {
+            ATLog(.warn, "LCP archive URL carries a query string; the range store key may not be stable across fulfilments")
+        }
+        let digest = SHA256.hash(data: Data(url.string.utf8))
+        let name = digest.map { String(format: "%02x", $0) }.joined()
+        return try partialArchivesRoot().appendingPathComponent(name, isDirectory: true)
+    }
+
+    /// Opens the store for an archive whose true length has just been learned
+    /// from a `Content-Range`.
+    ///
+    /// A recorded length that disagrees with the server is resolved by deleting
+    /// and starting over: the alternative is writing bytes from one archive at
+    /// offsets interpreted against another's length, which is the one direction
+    /// the store's design forbids. A refetch costs egress; accepting costs the
+    /// patron silence from a file that looks healthy.
+    static func makeArchiveRangeStore(url: HTTPURL, totalSize: UInt64?) throws -> ArchiveRangeStore? {
+        let dir = try archiveStoreDirectory(for: url)
+
+        // With no length yet, answer only for an archive whose ranges are already
+        // on disk. Otherwise the first read of a book read before would fetch a
+        // whole 6 MB window just to learn how long the archive is, which is the
+        // cost this store exists to avoid. Returning nil is not an error: the
+        // client asks again once a response has reported a length.
+        guard let totalSize else {
+            guard let recorded = PartialArchiveStore.recordedTotalSize(in: dir) else { return nil }
+            evictArchiveStoresOtherThan(dir)
+            // `try?`, not `try`: a throw here marks the archive refused for the
+            // life of the client, which would switch caching off for the whole
+            // session over a transient failure to take the lock.
+            return try? PartialArchiveStore.open(directory: dir, totalSize: recorded)
+        }
+        // Bound the disk to one archive. An LCP archive is 1-2 GB, so an
+        // unbounded set of these is a new defect rather than a fix, and the
+        // eviction that return would otherwise drive is not available here:
+        // `init(for:licenseUrl:)` is handed URLs and never a `TPPBook`, so this
+        // layer cannot know which loan a directory belongs to. One store at a
+        // time is bounded without needing that identity. A patron who alternates
+        // between two streamed books refetches on each switch, which costs
+        // egress rather than correctness; widening this needs the book
+        // identifier plumbed in and an LRU, and is deliberately not done here.
+        evictArchiveStoresOtherThan(dir)
+        do {
+            return try PartialArchiveStore.open(directory: dir, totalSize: totalSize)
+        } catch PartialArchiveStoreError.totalSizeMismatch(let recorded, let requested) {
+            ATLog(.warn, "LCP range store length changed (recorded \(recorded), server \(requested)); discarding and starting over")
+            try? FileManager.default.removeItem(at: dir)
+            return try PartialArchiveStore.open(directory: dir, totalSize: totalSize)
+        }
+    }
+
+    /// Keeps at most one archive's ranges on disk.
+    ///
+    /// Called before opening, so the store being opened is never the one
+    /// removed. A directory in use by another open store is left alone: the
+    /// store takes an `flock`, so removing its directory underneath it is the
+    /// unlinked-inode failure this layer exists to avoid.
+    static func evictArchiveStoresOtherThan(_ keep: URL) {
+        guard let root = try? partialArchivesRoot() else { return }
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else { return }
+        for entry in entries where entry.lastPathComponent != keep.lastPathComponent {
+            do {
+                try fm.removeItem(at: entry)
+                ATLog(.info, "Evicted a retained LCP archive range store to keep one on disk")
+            } catch {
+                ATLog(.warn, "Could not evict a retained LCP archive range store: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    /// Removes the retained ranges for one archive. Called when a loan ends, so
+    /// a returned book does not leave DRM audio on disk — the defect that left
+    /// 1.55 GB behind for two returned loans at build 505.
+    @objc static func removeArchiveStore(forContentURL url: URL) {
+        guard let httpUrl = HTTPURL(url: url) else { return }
+        guard let dir = try? archiveStoreDirectory(for: httpUrl) else { return }
+        try? FileManager.default.removeItem(at: dir)
+    }
+}
+
 extension LCPAudiobooks: LCPStreamingProvider {
 
     nonisolated public func getPublication() -> Publication? {
