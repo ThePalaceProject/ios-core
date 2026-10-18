@@ -103,6 +103,29 @@ class LocalBookContentService {
     /// there first.
     static let inflightContentDownloadIdleTimeout: TimeInterval = 180
 
+    /// How many whole-archive transfers may run at once.
+    ///
+    /// One. Each archive is 0.7-1.2 GB, and the registry-load self-heal starts
+    /// one per orphaned LCP audiobook with no bound of its own — the claim map
+    /// below is keyed by identifier, so it dedupes a book against itself and
+    /// cannot see the fan-out. On a patron's device a shelf of nine titles
+    /// started nine transfers together on a 4.3 MB/s link: several failed in the
+    /// same second with "network connection was lost" or "request timed out",
+    /// none finished, and the chapter the patron was waiting on shared what was
+    /// left. Run sequentially they complete, and the reader keeps the link.
+    static let maxConcurrentContentDownloads = 1
+
+    /// Whether another whole-archive transfer may start now.
+    ///
+    /// Pure so the bound is testable: a flipped comparison here would restore
+    /// the fan-out with nothing to catch it.
+    static func admitsAnotherContentDownload(
+        liveCount: Int,
+        cap: Int = maxConcurrentContentDownloads
+    ) -> Bool {
+        liveCount < cap
+    }
+
     /// PP-5135: whether a BACKGROUND `.lcpa` fetch may start right now, given
     /// connectivity and the patron's download preference.
     ///
@@ -215,19 +238,79 @@ class LocalBookContentService {
     private func claimContentDownloadSlot(
         _ identifier: String,
         now: UInt64? = nil
-    ) -> UUID? {
+    ) -> ContentDownloadAdmission {
         let now = now ?? monotonicClock()
         inflightLock.lock()
         defer { inflightLock.unlock() }
         let idleLimit = UInt64(inflightIdleTimeout * 1_000_000_000)
         if let existing = inflightContentDownloads[identifier],
            now &- existing.lastActivity < idleLimit {
-            return nil
+            return .alreadyInFlight
+        }
+
+        // Count only transfers for OTHER books, and only ones still showing
+        // signs of life: this book's own stale claim is about to be replaced by
+        // the reclaim below, and an aged-out holder's completion is never
+        // coming, so neither should keep the link reserved.
+        let liveElsewhere = inflightContentDownloads.reduce(into: 0) { count, entry in
+            guard entry.key != identifier else { return }
+            if now &- entry.value.lastActivity < idleLimit { count += 1 }
+        }
+        guard Self.admitsAnotherContentDownload(liveCount: liveElsewhere) else {
+            return .deferredForCapacity
         }
         // Unclaimed, or the holder has been silent past the idle window: reclaim.
         let token = UUID()
         inflightContentDownloads[identifier] = ContentDownloadClaim(token: token, lastActivity: now)
-        return token
+        return .admitted(token)
+    }
+
+    /// Why a whole-archive transfer was or was not started.
+    ///
+    /// Distinguished because the two refusals need opposite handling: another
+    /// transfer of the SAME book is a duplicate to drop, while a refusal for
+    /// capacity is this book's turn not having come yet, and dropping it would
+    /// leave the archive missing until some later sync happened to retry it.
+    private enum ContentDownloadAdmission {
+        case admitted(UUID)
+        case alreadyInFlight
+        case deferredForCapacity
+    }
+
+    /// Books whose archive transfer is waiting for the link. Guarded by
+    /// `inflightLock`, like the claim map it is paired with.
+    private var pendingContentDownloads: [TPPBook] = []
+
+    /// Queues a book whose turn has not come, preserving arrival order and
+    /// never queueing the same book twice.
+    ///
+    /// The queue is the fast path only. A transfer's completion drains it, and
+    /// that completion can be lost — a later `acquirePublication` for the same
+    /// licence takes over the earlier caller's handlers, so this self-heal is
+    /// never told how its transfer ended. What makes that recoverable is the
+    /// cap itself: `claimContentDownloadSlot` counts only claims still showing
+    /// signs of life, so a silent transfer stops reserving the link once it
+    /// ages past `inflightIdleTimeout`, and the next registry load's self-heal
+    /// is admitted. The queue shortens that wait; it is not what guarantees it.
+    private func enqueuePendingContentDownload(_ book: TPPBook) {
+        inflightLock.lock()
+        defer { inflightLock.unlock() }
+        guard !pendingContentDownloads.contains(where: { $0.identifier == book.identifier }) else { return }
+        pendingContentDownloads.append(book)
+    }
+
+    /// Starts the next queued archive transfer, if any.
+    ///
+    /// Called from a transfer's completion. The queue is read under the lock and
+    /// the restart happens outside it, because the restart re-enters
+    /// `redownloadLCPContentFile`, which claims the lock again.
+    private func startNextPendingContentDownload() {
+        inflightLock.lock()
+        let next = pendingContentDownloads.isEmpty ? nil : pendingContentDownloads.removeFirst()
+        inflightLock.unlock()
+        guard let next else { return }
+        Log.info(#file, "📥 [LCP RE-DOWNLOAD] the link is free — starting the queued archive for '\(next.title)'")
+        redownloadLCPContentFile(for: next)
     }
 
     /// Records a sign of life for a claim. Called from the progress callback so
@@ -489,8 +572,16 @@ class LocalBookContentService {
         // Skip if a transfer for this book is already running. Claimed BEFORE
         // the fulfiller is invoked so a synchronous re-entrant call cannot slip
         // between the check and the start.
-        guard let claimToken = claimContentDownloadSlot(identifier) else {
+        let claimToken: UUID
+        switch claimContentDownloadSlot(identifier) {
+        case let .admitted(token):
+            claimToken = token
+        case .alreadyInFlight:
             Log.info(#file, "📥 [LCP RE-DOWNLOAD] a download is already in flight for '\(book.title)' — skipping duplicate")
+            return
+        case .deferredForCapacity:
+            Log.info(#file, "📥 [LCP RE-DOWNLOAD] another archive has the link — queueing '\(book.title)'")
+            enqueuePendingContentDownload(book)
             return
         }
 
@@ -517,6 +608,10 @@ class LocalBookContentService {
                 if isLive {
                     self?.contentDownloadReporter?.sendLCPContentDownloadActive(bookIdentifier: identifier, active: false)
                 }
+                // The link is free now, so whichever archive was queued behind
+                // this one may start. After the release, or the cap would still
+                // count this transfer and the queue would never drain.
+                self?.startNextPendingContentDownload()
             }
 
             if let error {
@@ -558,6 +653,15 @@ class LocalBookContentService {
                 parentDir.excludeFromBackup()
                 try fileManager.moveItem(at: localUrl, to: destURL)
                 Log.info(#file, "📥 [LCP RE-DOWNLOAD] ✅ .lcpa stored for '\(book.title)' — local playback now available")
+
+                // The streaming read path kept this archive's byte ranges in a
+                // sparse file so Readium's window fills were not refetched.
+                // Now that the whole archive is on disk those ranges are a
+                // second copy of the same audio — up to the archive's full size
+                // again — and nothing reads them, because the next open picks
+                // the `.lcpa`. Drop them here rather than waiting for the book
+                // to be deleted.
+                LCPAudiobooks.removeAllArchiveStores()
 
                 // Promote the record. Reconciliation moved this book to
                 // `.downloadNeeded` when it found a license with no content, and

@@ -498,6 +498,159 @@ final class LocalBookContentServiceTests: XCTestCase {
         )
     }
 
+    // MARK: - How many archives may transfer at once
+
+    // The registry self-heal starts one whole-archive transfer per orphaned LCP
+    // audiobook with no bound. Measured on a patron's device: nine titles of
+    // 0.7-1.2 GB each started together on a 4.3 MB/s link, two failing in the
+    // same second with "network connection was lost", and none completing. The
+    // per-identifier claim cannot see this — it dedupes one book against itself.
+
+    /// The cap admits a transfer when nothing else is running, and refuses while
+    /// one is.
+    func testAdmission_isBoundedByTheConcurrencyCap() {
+        XCTAssertTrue(LocalBookContentService.admitsAnotherContentDownload(liveCount: 0))
+        XCTAssertFalse(LocalBookContentService.admitsAnotherContentDownload(liveCount: 1))
+        XCTAssertFalse(
+            LocalBookContentService.admitsAnotherContentDownload(liveCount: 9),
+            "a shelf's worth of live transfers must not admit another"
+        )
+    }
+
+    /// The cap is one: these archives are gigabytes each, and parallelism on a
+    /// thin link makes every one of them fail rather than any one finish.
+    func testTheCap_isOne() {
+        XCTAssertEqual(LocalBookContentService.maxConcurrentContentDownloads, 1)
+    }
+
+    /// Two DIFFERENT books, so this exercises the global cap rather than the
+    /// per-identifier duplicate guard.
+    func testASecondBook_whileAnArchiveIsTransferring_doesNotStartConcurrently() throws {
+        let first = try seedLicenseOnlyLCPAudiobook()
+        let second = try seedLicenseOnlyLCPAudiobook()
+        XCTAssertNotEqual(first.identifier, second.identifier, "premise: two distinct books")
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller)
+
+        service.redownloadLCPContentFile(for: first)
+        XCTAssertEqual(fulfiller.callCount, 1, "precondition: the first transfer started")
+
+        service.redownloadLCPContentFile(for: second)
+
+        XCTAssertEqual(
+            fulfiller.callCount, 1,
+            "the second archive must wait: both at once starves both and the chapter being played"
+        )
+    }
+
+    /// Deferred, not dropped. Without this the other books would never transfer
+    /// until some later registry sync happened to retry them.
+    func testADeferredBook_startsOnceTheRunningTransferFinishes() throws {
+        let first = try seedLicenseOnlyLCPAudiobook()
+        let second = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller)
+
+        service.redownloadLCPContentFile(for: first)
+        service.redownloadLCPContentFile(for: second)
+        XCTAssertEqual(fulfiller.callCount, 1, "precondition: the second is deferred")
+
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cap-\(UUID().uuidString).lcpa")
+        try Data("archive bytes".utf8).write(to: tempURL)
+        fulfiller.finishWithSuccess(localURL: tempURL)
+
+        XCTAssertEqual(
+            fulfiller.callCount, 2,
+            "the queued archive must start when the link is free again"
+        )
+    }
+
+    /// A transfer that never reports back must not reserve the link forever.
+    ///
+    /// This is what makes a lost completion recoverable. A later
+    /// `acquirePublication` for the same licence takes over the earlier
+    /// caller's handlers, so this self-heal is never told how its transfer
+    /// ended and the block that drains the queue never runs. The cap must then
+    /// stop counting that silent transfer, so the next self-heal gets through.
+    func testASilentTransfer_stopsReservingTheLinkOnceItAgesOut() throws {
+        let first = try seedLicenseOnlyLCPAudiobook()
+        let second = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let clock = FakeClock()
+        let service = makeService(fulfiller: fulfiller, idleTimeout: 180, clock: clock)
+
+        service.redownloadLCPContentFile(for: first)
+        service.redownloadLCPContentFile(for: second)
+        XCTAssertEqual(fulfiller.callCount, 1, "precondition: the second is deferred")
+
+        // Still inside the idle window: the first transfer may be healthy and
+        // simply slow, so it keeps the link.
+        clock.advance(seconds: 179)
+        service.redownloadLCPContentFile(for: second)
+        XCTAssertEqual(
+            fulfiller.callCount, 1,
+            "a transfer that is merely slow must not be elbowed aside"
+        )
+
+        // Past it, with no progress and no completion, it is not coming back.
+        clock.advance(seconds: 2)
+        service.redownloadLCPContentFile(for: second)
+
+        XCTAssertEqual(
+            fulfiller.callCount, 2,
+            "a silent transfer must stop reserving the link, or one lost completion stalls the shelf"
+        )
+    }
+
+    /// Exactly at the idle limit the claim is already stale, so the bound is not
+    /// off by one. Mutation reported the `<` in the cap's liveness count
+    /// surviving: 179 s and 181 s both leave `<` and `<=` agreeing.
+    func testATransferSilentForExactlyTheIdleWindow_noLongerReservesTheLink() throws {
+        let first = try seedLicenseOnlyLCPAudiobook()
+        let second = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let clock = FakeClock()
+        let service = makeService(fulfiller: fulfiller, idleTimeout: 180, clock: clock)
+
+        service.redownloadLCPContentFile(for: first)
+        service.redownloadLCPContentFile(for: second)
+        XCTAssertEqual(fulfiller.callCount, 1, "precondition: the second is deferred")
+
+        clock.advance(seconds: 180)
+        service.redownloadLCPContentFile(for: second)
+
+        XCTAssertEqual(
+            fulfiller.callCount, 2,
+            "silence of exactly the idle window is already stale, so the link is free"
+        )
+    }
+
+    /// The same boundary on the per-book guard: a book whose own transfer has
+    /// been silent for exactly the idle window is reclaimed, not deduped
+    /// against a transfer that is never coming back.
+    func testABookWhoseOwnTransferIsSilentForExactlyTheIdleWindow_isReclaimed() throws {
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let clock = FakeClock()
+        let service = makeService(fulfiller: fulfiller, idleTimeout: 180, clock: clock)
+
+        service.redownloadLCPContentFile(for: book)
+        XCTAssertEqual(fulfiller.callCount, 1, "precondition: the transfer started")
+
+        clock.advance(seconds: 179)
+        service.redownloadLCPContentFile(for: book)
+        XCTAssertEqual(fulfiller.callCount, 1, "inside the window it is still its own transfer")
+
+        clock.advance(seconds: 1)
+        service.redownloadLCPContentFile(for: book)
+
+        XCTAssertEqual(
+            fulfiller.callCount, 2,
+            "at the limit the silent transfer is reclaimed, or the book is unrecoverable"
+        )
+    }
+
     private func makeService(
         fulfiller: SpyLCPContentFulfiller,
         reporter: SpyProgressReporter? = nil,
