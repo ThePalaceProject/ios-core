@@ -183,21 +183,21 @@ public final class AudiobookSessionManager: ObservableObject {
     /// Whether a book's package is on disk. Injected so the landed-archive
     /// re-open is drivable in a test and does not read the production
     /// container.
-    private let contentIsLocal: (String) -> Bool
+    let contentIsLocal: (String) -> Bool
 
     /// Rising/falling edges of the LCP package transfer, keyed by book
     /// identifier. The falling edge is what tells a streaming session its
     /// package has landed.
-    private let archiveTransferPublisher: AnyPublisher<(String, Bool), Never>?
+    let archiveTransferPublisher: AnyPublisher<(String, Bool), Never>?
 
     /// Whether the current session opened over the network rather than a local
     /// package. Fixed for the session's life; see `openAudiobook`.
-    private var sessionOpenedStreaming = false
+    var sessionOpenedStreaming = false
 
     /// Cancellables tied to the manager's lifetime (singleton) — NOT cleared
     /// on stopPlayback. Used for the phone-side error subscriber that presents
     /// alerts for user-actionable session errors.
-    private var lifecycleCancellables = Set<AnyCancellable>()
+    var lifecycleCancellables = Set<AnyCancellable>()
 
     // MARK: - Publishers for External Observers
 
@@ -443,44 +443,6 @@ public final class AudiobookSessionManager: ObservableObject {
     /// file deletion) until a new book is opened. Account-switch teardown is
     /// handled separately (`cleanupActiveContentBeforeAccountSwitch` nils
     /// `currentBook` first), so its mass `.unregistered` emissions no-op here.
-    /// Reopens the session when the package it is streaming lands on disk.
-    ///
-    /// Without this the patron waits on a stream whose bytes are already local,
-    /// because the transport cannot change after the open. Quitting and
-    /// relaunching fixes it by hand; this does the same thing for them.
-    ///
-    /// The falling edge alone is not enough: it can arrive for a cancelled or
-    /// failed transfer, and it can be stale. Both are settled by asking whether
-    /// the package is actually on disk.
-    private func subscribeToLandedArchive() {
-        archiveTransferPublisher?
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] identifier, isActive in
-                guard let self, !isActive else { return }
-                self.handleLandedArchive(for: identifier)
-            }
-            .store(in: &lifecycleCancellables)
-    }
-
-    /// Split from the subscription so a test can drive it without a publisher.
-    func handleLandedArchive(for identifier: String) {
-        guard let book = currentBook, book.identifier == identifier else { return }
-        guard Self.shouldReopenForLandedArchive(
-            sessionIsStreaming: sessionOpenedStreaming,
-            contentIsLocal: contentIsLocal(identifier),
-            isPlaying: isPlaying,
-            hasCurrentBook: true,
-            alreadyReopened: recoveryAttempts.hasAttemptedLandedArchiveReopen(for: identifier)
-        ) else { return }
-        recoveryAttempts.recordLandedArchiveReopen(for: identifier)
-        Log.info(#file, "LCP package landed while streaming — re-opening the session from the local file")
-        Task { [weak self] in
-            guard let self else { return }
-            guard self.currentBook?.identifier == identifier else { return }
-            _ = await self.openAudiobook(book, startPlaying: true, forceRefulfill: false)
-        }
-    }
-
     private func subscribeToBookReturn() {
         bookRegistry.bookStatePublisher
             .receive(on: DispatchQueue.main)
@@ -630,7 +592,7 @@ public final class AudiobookSessionManager: ObservableObject {
     /// (PP-4542). Each runs at most once per patron-initiated open, so a
     /// persistent failure reaches the patron-facing error instead of looping.
     /// Only a patron open re-arms them; see `AudiobookRecoveryAttempts`.
-    private(set) var recoveryAttempts = AudiobookRecoveryAttempts()
+    var recoveryAttempts = AudiobookRecoveryAttempts()
 
     /// Re-arms the recovery bounds when `isPatronOpen`, and returns whether it
     /// did. Every open reports here, so the re-arm rule has one call site.
@@ -1112,60 +1074,6 @@ public final class AudiobookSessionManager: ObservableObject {
     /// is not happening.
     var expectsSlowChapterStart: Bool {
         playbackModel?.expectsSlowChapterStart ?? false
-    }
-
-    public var isLoaded: Bool {
-        manager?.audiobook.player.isLoaded ?? false
-    }
-
-    /// Read off the same player as `isLoaded`, which on its own cannot tell a
-    /// player that is playing from one that says it is playing in silence.
-    var transportIsWaitingForData: Bool {
-        manager?.audiobook.player.isWaitingForData ?? false
-    }
-
-    /// Whether a sleep timer is currently counting down (drives the active-chip
-    /// display). Reads the toolkit's public `SleepTimer`.
-    public var sleepTimerIsActive: Bool {
-        (manager as? DefaultAudiobookManager)?.sleepTimer.isActive ?? false
-    }
-
-    /// Seconds left on the active sleep timer (0 when inactive).
-    public var sleepTimerRemaining: TimeInterval {
-        (manager as? DefaultAudiobookManager)?.sleepTimer.timeRemaining ?? 0
-    }
-
-    /// Overall download progress (0…1) for the current audiobook's tracks —
-    /// reads the toolkit playback model's published `overallDownloadProgress`.
-    /// Drives the download bar in the in-app custom player.
-    public var overallDownloadProgress: Float {
-        playbackModel?.overallDownloadProgress ?? 0
-    }
-
-    /// Whether tracks are still downloading / decrypting in the background
-    /// (progress < 1). Reads the toolkit playback model's `isDownloading`.
-    public var isDownloading: Bool {
-        playbackModel?.isDownloading ?? false
-    }
-
-    /// Chapter-relative playhead offset (seconds into the current chapter) —
-    /// the raw value behind the toolkit player's elapsed timecode.
-    public var chapterOffset: TimeInterval {
-        playbackModel?.chapterPlayheadOffset ?? 0
-    }
-
-    /// Seconds remaining in the current chapter — the raw value behind the
-    /// toolkit player's chapter time-left timecode.
-    public var chapterTimeLeft: TimeInterval {
-        playbackModel?.chapterTimeLeft ?? 0
-    }
-
-    /// Latest transient toast (bookmark-added / playback error), or `nil` when
-    /// the toolkit's message is empty. The toolkit uses an empty string as its
-    /// "no message" sentinel; we normalize that to `nil` for the Palace surface.
-    public var toastMessage: String? {
-        let message = playbackModel?.toastMessage
-        return (message?.isEmpty ?? true) ? nil : message
     }
 
     /// Adds a bookmark at the current playback position via the toolkit

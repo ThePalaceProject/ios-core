@@ -624,7 +624,7 @@ final class LCPAudiobooksTests: XCTestCase {
 
     // MARK: - Initialization Tests
 
-    func testInit_withValidFileURL_createsInstance() {
+    func testInit_withValidFileURL_createsInstance() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
         let audiobook = LCPAudiobooks(for: testURL)
@@ -639,11 +639,11 @@ final class LCPAudiobooksTests: XCTestCase {
         XCTAssertEqual(testURL.pathExtension, "lcpa", "Test URL should have lcpa extension")
         XCTAssertEqual(testURL.path, "/tmp/test.lcpa", "Test URL path should be preserved")
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
-    func testInit_withValidHTTPURL_createsInstance() {
+    func testInit_withValidHTTPURL_createsInstance() throws {
         #if LCP
         let testURL = URL(string: "https://example.com/audiobook.lcpa")!
         let audiobook = LCPAudiobooks(for: testURL)
@@ -658,11 +658,11 @@ final class LCPAudiobooksTests: XCTestCase {
             XCTAssertNotNil(audiobook)
         }
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
-    func testInit_withLcplLicenseURL_setsLicenseUrl() {
+    func testInit_withLcplLicenseURL_setsLicenseUrl() throws {
         #if LCP
         let licenseURL = URL(fileURLWithPath: "/tmp/license.lcpl")
         let audiobook = LCPAudiobooks(for: licenseURL)
@@ -675,11 +675,11 @@ final class LCPAudiobooksTests: XCTestCase {
             XCTAssertNotNil(audiobook)
         }
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
-    func testInit_withSeparateLicenseURL_acceptsBothURLs() {
+    func testInit_withSeparateLicenseURL_acceptsBothURLs() throws {
         #if LCP
         let audiobookURL = URL(fileURLWithPath: "/tmp/audiobook.lcpa")
         let licenseURL = URL(fileURLWithPath: "/tmp/license.lcpl")
@@ -694,11 +694,11 @@ final class LCPAudiobooksTests: XCTestCase {
             XCTAssertNotNil(audiobook)
         }
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
-    func testInit_withNilURL_returnsNil() {
+    func testInit_withNilURL_returnsNil() throws {
         #if LCP
         // Testing with an invalid file URL
         let invalidURL = URL(fileURLWithPath: "")
@@ -712,13 +712,13 @@ final class LCPAudiobooksTests: XCTestCase {
             XCTAssertNotNil(audiobook, "If created with empty URL, instance should be non-nil")
         }
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
     // MARK: - Can Open Book Tests
 
-    func testCanOpenBook_withLCPAudiobook_returnsTrue() {
+    func testCanOpenBook_withLCPAudiobook_returnsTrue() throws {
         #if LCP
         let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
         let canOpen = LCPAudiobooks.canOpenBook(book)
@@ -729,100 +729,96 @@ final class LCPAudiobooksTests: XCTestCase {
         // canOpen is a valid Bool
         XCTAssertTrue(canOpen == true || canOpen == false, "canOpen should be a valid Bool")
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
-    func testCanOpenBook_withNonLCPAudiobook_returnsFalse() {
+    func testCanOpenBook_withNonLCPAudiobook_returnsFalse() throws {
         #if LCP
         let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
         let canOpen = LCPAudiobooks.canOpenBook(book)
         XCTAssertFalse(canOpen)
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
-    func testCanOpenBook_withEpub_returnsFalse() {
+    func testCanOpenBook_withEpub_returnsFalse() throws {
         #if LCP
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         let canOpen = LCPAudiobooks.canOpenBook(book)
         XCTAssertFalse(canOpen)
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
-    func testCanOpenBook_withPDF_returnsFalse() {
+    func testCanOpenBook_withPDF_returnsFalse() throws {
         #if LCP
         let book = TPPBookMocker.mockBook(distributorType: .OpenAccessPDF)
         let canOpen = LCPAudiobooks.canOpenBook(book)
         XCTAssertFalse(canOpen)
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
     // MARK: - Streaming Provider Tests
 
-    func testSupportsStreaming_returnsTrue() {
+    func testSupportsStreaming_returnsTrue() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
 
         guard let audiobook = LCPAudiobooks(for: testURL) else {
-            XCTAssertTrue(true, "LCP not fully initialized")
-            return
+            throw XCTSkip("LCPAudiobooks could not be constructed from this fixture")
         }
 
         XCTAssertTrue(audiobook.supportsStreaming())
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
-    func testGetPublication_initiallyReturnsNil() {
+    func testGetPublication_initiallyReturnsNil() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
 
         guard let audiobook = LCPAudiobooks(for: testURL) else {
-            XCTAssertTrue(true, "LCP not fully initialized")
-            return
+            throw XCTSkip("LCPAudiobooks could not be constructed from this fixture")
         }
 
         // Before loading content, publication should be nil
         XCTAssertNil(audiobook.getPublication())
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
     // MARK: - Cached Content Dictionary Tests
 
-    func testCachedContentDictionary_initiallyReturnsNil() {
+    func testCachedContentDictionary_initiallyReturnsNil() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
 
         guard let audiobook = LCPAudiobooks(for: testURL) else {
-            XCTAssertTrue(true, "LCP not fully initialized")
-            return
+            throw XCTSkip("LCPAudiobooks could not be constructed from this fixture")
         }
 
         // Before loading, cached dictionary should be nil
         XCTAssertNil(audiobook.cachedContentDictionary())
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
     // MARK: - Prefetch Tests
 
-    func testStartPrefetch_doesNotCrash() {
+    func testStartPrefetch_doesNotCrash() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
 
         guard let audiobook = LCPAudiobooks(for: testURL) else {
-            XCTAssertTrue(true, "LCP not fully initialized")
-            return
+            throw XCTSkip("LCPAudiobooks could not be constructed from this fixture")
         }
 
         // Should not crash
@@ -836,17 +832,16 @@ final class LCPAudiobooksTests: XCTestCase {
         let cached = audiobook.cachedContentDictionary()
         XCTAssertTrue(cached == nil || cached != nil, "Cached content should be queryable after prefetch start")
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
-    func testCancelPrefetch_doesNotCrash() {
+    func testCancelPrefetch_doesNotCrash() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
 
         guard let audiobook = LCPAudiobooks(for: testURL) else {
-            XCTAssertTrue(true, "LCP not fully initialized")
-            return
+            throw XCTSkip("LCPAudiobooks could not be constructed from this fixture")
         }
 
         // Start and then cancel
@@ -859,17 +854,16 @@ final class LCPAudiobooksTests: XCTestCase {
         XCTAssertNil(audiobook.cachedContentDictionary(),
                      "After cancelPrefetch, cached content should be nil")
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
-    func testCancelPrefetch_withoutStart_doesNotCrash() {
+    func testCancelPrefetch_withoutStart_doesNotCrash() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
 
         guard let audiobook = LCPAudiobooks(for: testURL) else {
-            XCTAssertTrue(true, "LCP not fully initialized")
-            return
+            throw XCTSkip("LCPAudiobooks could not be constructed from this fixture")
         }
 
         // Cancel without starting should not crash
@@ -881,19 +875,18 @@ final class LCPAudiobooksTests: XCTestCase {
         XCTAssertNil(audiobook.cachedContentDictionary(),
                      "Cached content should be nil when cancelled without prior start")
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
     // MARK: - Release Resources Tests
 
-    func testReleaseResources_clearsPublication() {
+    func testReleaseResources_clearsPublication() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
 
         guard let audiobook = LCPAudiobooks(for: testURL) else {
-            XCTAssertTrue(true, "LCP not fully initialized")
-            return
+            throw XCTSkip("LCPAudiobooks could not be constructed from this fixture")
         }
 
         audiobook.releaseResources()
@@ -901,17 +894,16 @@ final class LCPAudiobooksTests: XCTestCase {
         // After release, publication should be nil
         XCTAssertNil(audiobook.getPublication())
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
-    func testReleaseResources_cancelsPrefetch() {
+    func testReleaseResources_cancelsPrefetch() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
 
         guard let audiobook = LCPAudiobooks(for: testURL) else {
-            XCTAssertTrue(true, "LCP not fully initialized")
-            return
+            throw XCTSkip("LCPAudiobooks could not be constructed from this fixture")
         }
 
         audiobook.startPrefetch()
@@ -923,17 +915,16 @@ final class LCPAudiobooksTests: XCTestCase {
         XCTAssertNil(audiobook.cachedContentDictionary(),
                      "Cached content should be nil after releaseResources")
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
-    func testReleaseResources_canBeCalledMultipleTimes() {
+    func testReleaseResources_canBeCalledMultipleTimes() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
 
         guard let audiobook = LCPAudiobooks(for: testURL) else {
-            XCTAssertTrue(true, "LCP not fully initialized")
-            return
+            throw XCTSkip("LCPAudiobooks could not be constructed from this fixture")
         }
 
         audiobook.releaseResources()
@@ -946,7 +937,7 @@ final class LCPAudiobooksTests: XCTestCase {
         XCTAssertNil(audiobook.cachedContentDictionary(),
                      "Cached content should be nil after multiple releaseResources calls")
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
@@ -956,12 +947,11 @@ final class LCPAudiobooksTests: XCTestCase {
     /// a second Publication on the same .lcpa. Reopening races the new session's
     /// publicationOpener.open() inside Readium and deadlocks — this is the root cause
     /// of the "opening third audiobook hangs" bug.
-    func testContentDictionary_afterRelease_failsFast() {
+    func testContentDictionary_afterRelease_failsFast() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
         guard let audiobook = LCPAudiobooks(for: testURL) else {
-            XCTAssertTrue(true, "LCP not fully initialized")
-            return
+            throw XCTSkip("LCPAudiobooks could not be constructed from this fixture")
         }
 
         audiobook.releaseResources()
@@ -985,19 +975,18 @@ final class LCPAudiobooksTests: XCTestCase {
         XCTAssertNotNil(box.err, "contentDictionary must report an error after release")
         XCTAssertEqual(box.err?.domain, "Palace.LCPAudiobooks")
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
     /// After releaseResources(), decrypt must fail-fast. The previous behavior reopened
     /// the Publication via assetRetriever+publicationOpener — running concurrently with
     /// the new audiobook's publicationOpener.open() on the same .lcpa caused the hang.
-    func testDecrypt_afterRelease_failsFast() {
+    func testDecrypt_afterRelease_failsFast() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
         guard let audiobook = LCPAudiobooks(for: testURL) else {
-            XCTAssertTrue(true, "LCP not fully initialized")
-            return
+            throw XCTSkip("LCPAudiobooks could not be constructed from this fixture")
         }
 
         audiobook.releaseResources()
@@ -1016,18 +1005,17 @@ final class LCPAudiobooksTests: XCTestCase {
         let nsError = receivedError as NSError?
         XCTAssertEqual(nsError?.domain, "Palace.LCPAudiobooks")
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
     /// startPrefetch is a no-op once released so stale managers can't kick the
     /// publication lifecycle back on.
-    func testStartPrefetch_afterRelease_isNoOp() {
+    func testStartPrefetch_afterRelease_isNoOp() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
         guard let audiobook = LCPAudiobooks(for: testURL) else {
-            XCTAssertTrue(true, "LCP not fully initialized")
-            return
+            throw XCTSkip("LCPAudiobooks could not be constructed from this fixture")
         }
 
         audiobook.releaseResources()
@@ -1037,7 +1025,7 @@ final class LCPAudiobooksTests: XCTestCase {
                      "startPrefetch after release must not create a new publication")
         XCTAssertNil(audiobook.cachedContentDictionary())
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
     // MARK: - setupStreamingFor (PP-4724)
@@ -1145,7 +1133,7 @@ final class LCPAudiobooksTests: XCTestCase {
 @MainActor
 final class LCPAudiobookURLSchemeTests: XCTestCase {
 
-    func testReadiumLCPScheme_isCorrect() {
+    func testReadiumLCPScheme_isCorrect() throws {
         let expectedScheme = "readium-lcp"
         #if LCP
         // Verify the scheme used for LCP audio streaming
@@ -1155,7 +1143,7 @@ final class LCPAudiobookURLSchemeTests: XCTestCase {
         XCTAssertFalse(expectedScheme.isEmpty, "LCP scheme should not be empty")
         XCTAssertTrue(expectedScheme.contains("-"), "LCP scheme should contain hyphen separator")
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 

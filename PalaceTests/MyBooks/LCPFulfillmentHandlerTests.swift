@@ -563,6 +563,11 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
     /// arbitrary bytes.
     func testFulfill_audiobook_marksSuccessfulOnceContentLands() async throws {
         let audiobook = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        // The state the content completion actually runs against: the store
+        // step now asks whether the patron still holds the book, and
+        // `.downloading` is what production is in here — it is also the only
+        // legal predecessor of `.downloadSuccessful`.
+        registry.addBook(audiobook, state: .downloading)
 
         // Destination the content will be moved to.
         let destination = tempDir.appendingPathComponent("\(audiobook.identifier).lcpa")
