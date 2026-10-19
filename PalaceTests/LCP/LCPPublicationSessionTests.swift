@@ -283,6 +283,27 @@ final class LCPPublicationSessionTests: XCTestCase {
 
     // MARK: - Giving a waiting chapter the link
 
+    /// `resume()` moves a task to `.running` asynchronously. A hold only
+    /// suspends what reports `isRunning`, so a test that holds immediately
+    /// after resuming can find nothing to hold — and then fails its own
+    /// precondition, under load only. Wait for the transition rather than
+    /// assume it: the production behaviour is unchanged either way.
+    private func waitUntilRunning(
+        _ task: URLSessionDownloadTask,
+        timeout: TimeInterval = 5,
+        line: UInt = #line
+    ) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while task.state != .running, Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
+        XCTAssertEqual(
+            task.state, .running,
+            "the transfer must be moving bytes before a hold can hold it",
+            line: line
+        )
+    }
+
     /// A chapter the patron is waiting on gets the link: the background
     /// archive transfer is suspended for the load and resumed after it.
     ///
@@ -296,7 +317,7 @@ final class LCPPublicationSessionTests: XCTestCase {
         let task = handle.downloadTask(with: URLRequest(url: URL(string: "https://example.invalid/a.lcpa")!))
         task.resume()
         registry.setTask(task, for: "hold-1")
-        XCTAssertEqual(task.state, .running, "precondition: the transfer must be moving bytes")
+        waitUntilRunning(task)
         _ = transfer
 
         let held = registry.holdTransfersForChapterLoad()
@@ -327,6 +348,8 @@ final class LCPPublicationSessionTests: XCTestCase {
 
         let late = handle.downloadTask(with: URLRequest(url: URL(string: "https://example.invalid/b.lcpa")!))
         late.resume()
+        // No wait needed: a transfer registered during a hold is held by
+        // `setTask` whatever its transport state, which is the point of it.
         registry.setTask(late, for: "hold-2")
 
         XCTAssertTrue(
@@ -348,6 +371,7 @@ final class LCPPublicationSessionTests: XCTestCase {
         let task = handle.downloadTask(with: URLRequest(url: URL(string: "https://example.invalid/c.lcpa")!))
         task.resume()
         registry.setTask(task, for: "hold-3")
+        waitUntilRunning(task)
         registry.holdTransfersForChapterLoad()
 
         registry.finish("hold-3")
@@ -370,6 +394,7 @@ final class LCPPublicationSessionTests: XCTestCase {
         let task = handle.downloadTask(with: URLRequest(url: URL(string: "https://example.invalid/d.lcpa")!))
         task.resume()
         registry.setTask(task, for: "hold-4")
+        waitUntilRunning(task)
         registry.holdTransfersForChapterLoad()
 
         XCTAssertEqual(registry.releaseTransfersHeldForChapterLoad(), 1)
@@ -390,6 +415,7 @@ final class LCPPublicationSessionTests: XCTestCase {
         let task = handle.downloadTask(with: URLRequest(url: URL(string: "https://example.invalid/e.lcpa")!))
         task.resume()
         registry.setTask(task, for: "hold-5")
+        waitUntilRunning(task)
 
         // Already expired, standing in for a load that never reported its end.
         registry.holdTransfersForChapterLoad(until: Date().addingTimeInterval(-1))
