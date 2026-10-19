@@ -68,7 +68,7 @@ final class LCPArchiveTrackLengthResolverTests: XCTestCase {
             readRange: { await archive.read($0) },
             decipher: { $0 }
         )
-        .resolveLengths(forHrefs: ["track-a.mp3", "manifest.json", "track-b.mp3"]) { href, length in
+        .resolveLengths(forHrefs: ["track-a.mp3", "manifest.json", "track-b.mp3"]) { href, length, _ in
             reported.record(href, length)
         }
 
@@ -94,7 +94,7 @@ final class LCPArchiveTrackLengthResolverTests: XCTestCase {
             readRange: { await archive.read($0) },
             decipher: { $0 }
         )
-        .resolveLengths(forHrefs: ["track-a.mp3", "track-b.mp3"]) { href, length in
+        .resolveLengths(forHrefs: ["track-a.mp3", "track-b.mp3"]) { href, length, _ in
             reported.record(href, length)
         }
 
@@ -294,7 +294,7 @@ final class LCPArchiveTrackLengthResolverTests: XCTestCase {
             .resolveLengths(
                 forHrefs: ["track-b.mp3", "track c.mp3"],
                 maxConcurrentReads: 1
-            ) { href, length in
+            ) { href, length, _ in
                 reported.record(href, length)
             }
         }
@@ -334,7 +334,7 @@ final class LCPArchiveTrackLengthResolverTests: XCTestCase {
             .resolveLengths(
                 forHrefs: ["track-a.mp3", "track-b.mp3", "track c.mp3"],
                 maxConcurrentReads: 2
-            ) { href, length in
+            ) { href, length, _ in
                 reported.record(href, length)
             }
         }
@@ -474,7 +474,7 @@ final class LCPArchiveTrackLengthResolverTests: XCTestCase {
             forHrefs: hrefs,
             maxConcurrentReads: maxConcurrentReads,
             nextDemanded: { demanded }
-        ) { href, length in
+        ) { href, length, _ in
             reported.record(href, length)
         }
         return reported.values

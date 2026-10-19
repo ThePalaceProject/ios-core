@@ -40,6 +40,13 @@ import PalaceBookModel
 
     private let audiobookUrl: AbsoluteURL
     private let licenseUrl: URL?
+
+    /// The archive transfers a chapter load yields the link from.
+    ///
+    /// Held rather than reached for at each hook: the hold, its release and
+    /// its backstop must all act on ONE registry, and a test needs to supply
+    /// its own to exercise the begin -> hold -> end wiring at all.
+    private let sessions: LCPPublicationSessionRegistry
     private let archiveReadClient: PartialArchiveCachingHTTPClient
     private let assetRetriever: AssetRetriever
     private let publicationOpener: PublicationOpener
@@ -47,6 +54,11 @@ import PalaceBookModel
 
     private var cachedPublication: Publication?
     private let publicationCacheQueue = DispatchQueue(label: "org.thepalaceproject.lcpaudiobooks.publicationcache")
+
+    /// Where each track's bytes begin in the archive, learned for free while
+    /// resolving its length. Needed to ask the byte-range cache whether a
+    /// track's opening read is already on disk.
+    private let dataOffsets = DataOffsetStore()
 
     /// The tracks a chapter load asked the length cache for and did not find,
     /// oldest first. The oldest outstanding ask is the chapter being waited on:
@@ -79,7 +91,16 @@ import PalaceBookModel
     /// Initialize for an LCP audiobook
     /// - Parameter audiobookUrl: can be a local `.lcpa` package URL OR an `.lcpl` license URL for streaming
     /// - Parameter licenseUrl: optional license URL for streaming authentication (deprecated, use audiobookUrl)
-    @objc init?(for audiobookUrl: URL, licenseUrl: URL? = nil) {
+    @objc convenience init?(for audiobookUrl: URL, licenseUrl: URL? = nil) {
+        self.init(for: audiobookUrl, licenseUrl: licenseUrl, sessions: .shared)
+    }
+
+    init?(
+        for audiobookUrl: URL,
+        licenseUrl: URL? = nil,
+        sessions: LCPPublicationSessionRegistry
+    ) {
+        self.sessions = sessions
 
         if let fileUrl = FileURL(url: audiobookUrl) {
             self.audiobookUrl = fileUrl
@@ -791,8 +812,9 @@ extension LCPAudiobooks: LCPStreamingProvider {
             forHrefs: missing,
             maxConcurrentReads: maxConcurrentReads,
             nextDemanded: { self.demandedTracks.first }
-        ) { href, length in
+        ) { href, length, dataOffset in
             self.cachePlaintextLength(length, forHref: href)
+            if let dataOffset { self.recordDataOffset(dataOffset, forHref: href) }
         }
     }
 
@@ -954,22 +976,49 @@ extension LCPAudiobooks: LCPStreamingProvider {
     /// Written out rather than defaulted: the protocol gives this pair no
     /// default, so a conformer that stops binding them fails to compile rather
     /// than losing the behaviour with no diagnostic.
+    /// Records where a track's bytes begin, learned during length resolution.
+    nonisolated func recordDataOffset(_ offset: UInt64, forHref href: String) {
+        dataOffsets.record(offset, forHref: href)
+    }
+
+    /// Whether this track's opening read is already on disk.
+    ///
+    /// "Opening read" is one archive fill, because that is what a read of the
+    /// first bytes actually costs: every buffer in the chain fetches
+    /// `lowerBound ..< max(upperBound, lowerBound + bufferSize)`, so the floor
+    /// is `max(per-track window, Readium's archive buffer)`. Asking about two
+    /// bytes would answer about a read nobody makes.
+    ///
+    /// Answers false when the offset is unknown or the archive is not an HTTP
+    /// one: unknown means no resolution has reached this track, which is the
+    /// cold case this predicts.
+    nonisolated public func trackHeadIsCached(forHref href: String) -> Bool {
+        guard let offset = dataOffsets.offset(forHref: href) else { return false }
+        guard let archiveURL = audiobookUrl as? HTTPURL
+            ?? licenseUrl.flatMap(Self.publicationURL(inLicenseAt:))
+        else { return false }
+        let fill = PartialArchiveCachingHTTPClient.archiveFillSize
+        return archiveReadClient.rangeIsFullyCached(offset ..< (offset + fill), forArchiveAt: archiveURL)
+    }
+
     nonisolated public func streamingLoadDidBegin() {
-        let held = LCPPublicationSessionRegistry.shared.holdTransfersForChapterLoad()
-        guard held > 0 else { return }
-        Log.info(#file, "📥 [LCP] holding \(held) archive transfer(s) while a chapter loads")
-        // The clock-based release. `releaseTransfersHeldForChapterLoad` is
-        // idempotent, so whichever of this and `streamingLoadDidEnd()` arrives
-        // first ends the hold and the other finds nothing held.
+        let held = sessions.holdTransfersForChapterLoad()
+        // Armed whether or not anything was suspended HERE. The hold is
+        // recorded either way, and a transfer registered during it is held by
+        // `setTask`; with the timer behind a `held > 0` guard that transfer had
+        // no backstop at all if the paired end was lost. The log line stays
+        // behind the guard because a hold that suspended nothing says nothing.
         DispatchQueue.main.asyncAfter(
             deadline: .now() + LCPPublicationSessionRegistry.maxChapterLoadHold
-        ) {
-            LCPPublicationSessionRegistry.shared.healExpiredHoldForChapterLoad()
+        ) { [sessions] in
+            sessions.healExpiredHoldForChapterLoad()
         }
+        guard held > 0 else { return }
+        Log.info(#file, "📥 [LCP] holding \(held) archive transfer(s) while a chapter loads")
     }
 
     nonisolated public func streamingLoadDidEnd() {
-        let resumed = LCPPublicationSessionRegistry.shared.releaseTransfersHeldForChapterLoad()
+        let resumed = sessions.releaseTransfersHeldForChapterLoad()
         guard resumed > 0 else { return }
         Log.info(#file, "📥 [LCP] chapter load finished — resuming \(resumed) archive transfer(s)")
     }
@@ -1202,6 +1251,26 @@ enum LCPTrackFileWriter {
             try? fileManager.removeItem(at: partial)
             throw error
         }
+    }
+}
+
+/// Where each track's bytes begin in the archive, by href.
+///
+/// Written once per track by the length resolution and read from the playback
+/// poll, so it is guarded rather than actor-isolated: both sides are
+/// `nonisolated` and neither can afford a hop.
+private final class DataOffsetStore: @unchecked Sendable {
+    private let lock = NSLock()
+    private var offsets: [String: UInt64] = [:]
+
+    func record(_ offset: UInt64, forHref href: String) {
+        lock.lock(); defer { lock.unlock() }
+        offsets[href] = offset
+    }
+
+    func offset(forHref href: String) -> UInt64? {
+        lock.lock(); defer { lock.unlock() }
+        return offsets[href]
     }
 }
 

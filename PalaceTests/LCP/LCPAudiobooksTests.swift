@@ -496,6 +496,132 @@ final class LCPAudiobooksTests: XCTestCase {
         return try XCTUnwrap(LCPAudiobooks(for: url), "the licence must be openable as an audiobook source")
     }
 
+    /// Builds an audiobook whose chapter-load hold acts on `registry`, which is
+    /// what makes the begin -> hold -> end wiring observable: reaching for the
+    /// shared registry left these three lines with no test at all, and mutation
+    /// reported them uncovered rather than killed.
+    private func makeAudiobook(
+        publicationHref: String,
+        sessions: LCPPublicationSessionRegistry
+    ) throws -> LCPAudiobooks {
+        let license: [String: Any] = [
+            "id": UUID().uuidString,
+            "links": [["rel": "publication", "type": "application/audiobook+lcp", "href": publicationHref]]
+        ]
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("hold-\(UUID().uuidString).lcpl")
+        try JSONSerialization.data(withJSONObject: license).write(to: url)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        return try XCTUnwrap(
+            LCPAudiobooks(for: url, licenseUrl: nil, sessions: sessions),
+            "the licence must be openable as an audiobook source"
+        )
+    }
+
+    // MARK: - Yielding the link to a loading chapter
+
+    /// The wiring, end to end: the toolkit announcing a load reaches the
+    /// registry and suspends the archive transfer, and announcing the end
+    /// resumes it. Six registry tests prove the mechanism; this proves the
+    /// hooks are connected to it.
+    func testStreamingLoadBeginAndEnd_holdAndReleaseTheArchiveTransfer() throws {
+        let registry = LCPPublicationSessionRegistry()
+        let audiobook = try makeAudiobook(
+            publicationHref: "https://archive.test/book.lcpa", sessions: registry
+        )
+        let handle = FakeHoldSessionHandle()
+        _ = registry.transfer(for: "wiring-1", delegate: TPPLicensesService()) { _ in handle }
+        let task = FakeHoldTask(isRunning: true)
+        registry.setTask(task, for: "wiring-1")
+
+        audiobook.streamingLoadDidBegin()
+
+        XCTAssertEqual(task.suspensions, 1, "a chapter the patron waits on must get the link")
+        XCTAssertTrue(registry.isHeldForChapterLoad("wiring-1"))
+
+        audiobook.streamingLoadDidEnd()
+
+        XCTAssertEqual(task.resumptions, 1, "and the archive must continue once the chapter is loaded")
+        XCTAssertFalse(registry.isHeldForChapterLoad("wiring-1"))
+    }
+
+    /// A load that begins with nothing transferring still records the hold, so
+    /// a transfer registered during it is held rather than taking the link.
+    func testStreamingLoadBegin_withNothingTransferring_stillHoldsWhatArrivesDuringIt() throws {
+        let registry = LCPPublicationSessionRegistry()
+        let audiobook = try makeAudiobook(
+            publicationHref: "https://archive.test/book.lcpa", sessions: registry
+        )
+        let handle = FakeHoldSessionHandle()
+        _ = registry.transfer(for: "wiring-2", delegate: TPPLicensesService()) { _ in handle }
+
+        audiobook.streamingLoadDidBegin()
+
+        let late = FakeHoldTask(isRunning: true)
+        registry.setTask(late, for: "wiring-2")
+
+        XCTAssertEqual(
+            late.suspensions, 1,
+            "the hold is recorded even when it suspended nothing, or a transfer starting mid-load takes the link"
+        )
+        audiobook.streamingLoadDidEnd()
+        XCTAssertEqual(late.resumptions, 1)
+    }
+
+    // MARK: - Is this track's opening read already cached
+
+    /// With no offset learned for the track, nothing is known to be cached, so
+    /// the start is predicted slow — the cold case.
+    func testTrackHeadIsCached_withNoOffsetLearned_isFalse() throws {
+        let audiobook = try makeAudiobook(
+            publicationHref: "https://archive.test/book.lcpa",
+            sessions: LCPPublicationSessionRegistry()
+        )
+
+        XCTAssertFalse(
+            audiobook.trackHeadIsCached(forHref: "never-resolved.mp3"),
+            "an unresolved track has no cached head, which is what a cold chapter looks like"
+        )
+    }
+
+    /// An offset alone is not coverage: with no store open for the archive the
+    /// answer stays false rather than optimistically true.
+    func testTrackHeadIsCached_withAnOffsetButNoOpenStore_isFalse() throws {
+        let audiobook = try makeAudiobook(
+            publicationHref: "https://archive.test/book.lcpa",
+            sessions: LCPPublicationSessionRegistry()
+        )
+        audiobook.recordDataOffset(4096, forHref: "track-a.mp3")
+
+        XCTAssertFalse(
+            audiobook.trackHeadIsCached(forHref: "track-a.mp3"),
+            "no store means nothing is known to be on disk; claiming otherwise would hide a cold start"
+        )
+    }
+
+    /// With no publication link in the licence there is no archive to ask
+    /// about, so the answer is false rather than an optimistic true.
+    ///
+    /// Reached only when the licence cannot name its archive, which a fixture
+    /// that always carries a link never exercises: mutation reported the guard
+    /// surviving until this case existed.
+    func testTrackHeadIsCached_whenTheLicenceNamesNoArchive_isFalse() throws {
+        let license: [String: Any] = ["id": UUID().uuidString, "links": []]
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("nolink-\(UUID().uuidString).lcpl")
+        try JSONSerialization.data(withJSONObject: license).write(to: url)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        let audiobook = try XCTUnwrap(
+            LCPAudiobooks(for: url, licenseUrl: nil, sessions: LCPPublicationSessionRegistry())
+        )
+        audiobook.recordDataOffset(4096, forHref: "track-a.mp3")
+
+        XCTAssertFalse(
+            audiobook.trackHeadIsCached(forHref: "track-a.mp3"),
+            "with no archive named, nothing can be known to be cached"
+        )
+    }
+
     // MARK: - Initialization Tests
 
     func testInit_withValidFileURL_createsInstance() {
@@ -1345,4 +1471,39 @@ final class LCPSlowPublicationOpenTests: XCTestCase {
         #endif
     }
 
+}
+
+// MARK: - Doubles for the chapter-load hold
+
+/// Minimal session handle: the hold tests never let a task reach a network.
+private final class FakeHoldSessionHandle: LCPPublicationSessionHandle {
+    private let taskSource = URLSession(configuration: .ephemeral)
+    func downloadTask(with request: URLRequest) -> URLSessionDownloadTask {
+        taskSource.downloadTask(with: request)
+    }
+    func downloadTask(withResumeData resumeData: Data) -> URLSessionDownloadTask {
+        taskSource.downloadTask(with: URL(string: "https://archive.test/resumed")!)
+    }
+    func finishTasksAndInvalidate() {}
+    func getAllTasks(completionHandler: @escaping @Sendable ([URLSessionTask]) -> Void) {
+        completionHandler([])
+    }
+}
+
+/// Counts suspends and resumes rather than flagging them, so a second suspend
+/// that one release cannot undo is visible as a count.
+private final class FakeHoldTask: OutstandingArchiveTask, @unchecked Sendable {
+    let taskIdentifier = 1
+    let archiveURL: URL? = URL(string: "https://archive.test/book.lcpa")
+    let isFinished = false
+    let bytesTransferred: Int64 = 0
+    private(set) var suspensions = 0
+    private(set) var resumptions = 0
+    var isRunning: Bool
+
+    init(isRunning: Bool) { self.isRunning = isRunning }
+
+    func cancelTransfer() {}
+    func suspendTransfer() { suspensions += 1; isRunning = false }
+    func resumeTransfer() { resumptions += 1; isRunning = true }
 }

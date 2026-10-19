@@ -85,7 +85,7 @@ struct LCPArchiveTrackLengthResolver: Sendable {
         forHrefs hrefs: [String],
         maxConcurrentReads: Int = Self.defaultMaxConcurrentReads,
         nextDemanded: @escaping @Sendable () -> String? = { nil },
-        report: @Sendable (_ href: String, _ length: UInt64) -> Void
+        report: @Sendable (_ href: String, _ length: UInt64, _ dataOffset: UInt64?) -> Void
     ) async -> Summary {
         var summary = Summary()
         guard !hrefs.isEmpty, archiveLength > 0 else { return summary }
@@ -110,7 +110,7 @@ struct LCPArchiveTrackLengthResolver: Sendable {
                 summary.requests += finished.summary.requests
                 summary.bytes += finished.summary.bytes
                 if let length = finished.length {
-                    report(finished.href, length)
+                    report(finished.href, length, finished.dataOffset)
                     summary.resolved += 1
                 }
                 // A cancelled resolution lets the tracks already in flight
@@ -136,6 +136,11 @@ struct LCPArchiveTrackLengthResolver: Sendable {
     private struct TrackResolution: Sendable {
         let href: String
         let length: UInt64?
+        /// Where this entry's bytes begin in the archive. Read for free while
+        /// resolving the length — the local header is already fetched — and
+        /// reported so a caller can ask the byte-range cache whether this
+        /// track's opening read is already on disk.
+        let dataOffset: UInt64?
         let summary: Summary
     }
 
@@ -143,8 +148,13 @@ struct LCPArchiveTrackLengthResolver: Sendable {
         forHref href: String, entry: LCPArchiveTrackLengths.Entry
     ) async -> TrackResolution {
         var summary = Summary()
-        let length = await plaintextLength(for: entry, into: &summary)
-        return TrackResolution(href: href, length: length, summary: summary)
+        let resolved = await plaintextLength(for: entry, into: &summary)
+        return TrackResolution(
+            href: href,
+            length: resolved.length,
+            dataOffset: resolved.dataOffset,
+            summary: summary
+        )
     }
 
     /// The next track to read: the demanded one if it is still outstanding,
@@ -190,11 +200,11 @@ struct LCPArchiveTrackLengthResolver: Sendable {
     /// interpreted at another's offsets.
     private func plaintextLength(
         for entry: LCPArchiveTrackLengths.Entry, into summary: inout Summary
-    ) async -> UInt64? {
+    ) async -> (length: UInt64?, dataOffset: UInt64?) {
         guard !entry.isCompressed,
               LCPArchiveTrackLengths.isValidCiphertextLength(entry.storedLength),
               entry.localHeaderOffset < archiveLength
-        else { return nil }
+        else { return (nil, nil) }
 
         let headerEnd = min(entry.localHeaderOffset + Self.localHeaderReadLength, archiveLength)
         guard let header = await read(entry.localHeaderOffset ..< headerEnd, into: &summary),
@@ -208,10 +218,13 @@ struct LCPArchiveTrackLengthResolver: Sendable {
               let ciphertext = await read(tailRange, into: &summary),
               ciphertext.count == Int(2 * LCPArchiveTrackLengths.aesBlockSize),
               let plaintext = decipher(ciphertext)
-        else { return nil }
+        else { return (nil, nil) }
 
-        return LCPArchiveTrackLengths.plaintextLength(
-            storedLength: entry.storedLength, decipheredTail: plaintext
+        return (
+            LCPArchiveTrackLengths.plaintextLength(
+                storedLength: entry.storedLength, decipheredTail: plaintext
+            ),
+            dataOffset
         )
     }
 

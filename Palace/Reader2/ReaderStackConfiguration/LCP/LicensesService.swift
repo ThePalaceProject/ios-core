@@ -100,7 +100,12 @@ final class LCPPublicationSessionRegistry: @unchecked Sendable {
         let delegate: TPPLicensesService
         /// The task carrying the archive, so a repeat request can be handed the
         /// transfer already running instead of starting a second one.
-        fileprivate(set) var task: URLSessionDownloadTask?
+        /// Held as the seam rather than `URLSessionDownloadTask` so the hold
+        /// can be driven by a double. The concrete type has no accessible
+        /// initializer, which previously forced the hold's tests to drive real
+        /// tasks at a real host and made them depend on `resume()`'s
+        /// asynchronous transition.
+        fileprivate(set) var task: OutstandingArchiveTask?
 
         /// Whether this transfer is suspended to give a chapter load the link.
         ///
@@ -158,19 +163,30 @@ final class LCPPublicationSessionRegistry: @unchecked Sendable {
     }
 
     /// The task carrying `identifier`, if a transfer is in flight.
+    /// The download task carrying `identifier`. Narrowed back to the concrete
+    /// type for `acquirePublication`, which hands it to callers as one.
     func task(for identifier: String) -> URLSessionDownloadTask? {
         lock.lock(); defer { lock.unlock() }
-        return transfers[identifier]?.task
+        return transfers[identifier]?.task as? URLSessionDownloadTask
     }
 
-    func setTask(_ task: URLSessionDownloadTask?, for identifier: String) {
+    func setTask(_ task: OutstandingArchiveTask?, for identifier: String) {
         lock.lock()
         transfers[identifier]?.task = task
         // A transfer registered or resumed from partial data while a chapter is
         // waiting must start held, or the hold leaks the link to the transfer
         // that arrived during it. `holdExpiry` is consulted so a stale hold
         // cannot suspend a new transfer indefinitely.
-        let holdApplies = isHolding && task != nil && !holdHasExpired
+        // `transfers[identifier]?.isHeld == false` carries two conditions at
+        // once: the transfer is still registered, and it is not already held.
+        // Both matter because suspend/resume NEST — a second suspend needs a
+        // second resume, and the single release cannot give it. A duplicate
+        // task landing inside one hold, or a callback landing after `finish`,
+        // would otherwise strand the archive at the byte it had reached.
+        let holdApplies = isHolding
+            && task != nil
+            && !holdHasExpired
+            && transfers[identifier]?.isHeld == false
         if holdApplies { transfers[identifier]?.isHeld = true }
         lock.unlock()
         if holdApplies { task?.suspendTransfer() }
