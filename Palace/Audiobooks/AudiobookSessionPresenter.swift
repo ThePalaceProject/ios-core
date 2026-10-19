@@ -61,6 +61,10 @@ class AudiobookSessionPresenter: ObservableObject {
     /// download-bar visibility. Reset to false on `clearActiveSession()`.
     @Published private(set) var isDownloading: Bool = false
 
+    /// Forwarded: the session owns the player that can answer this, and the
+    /// overlay asks the presenter.
+    var expectsSlowChapterStart: Bool { sessionManager.expectsSlowChapterStart }
+
     /// Whether audio has begun at least once for THIS session. Latched — it
     /// never returns to false while the session lives — and reset only by
     /// `clearActiveSession()`.
@@ -102,6 +106,20 @@ class AudiobookSessionPresenter: ObservableObject {
     /// Cleared on stopPlayback by the session manager calling
     /// `clearActiveSession()`.
     @Published private(set) var currentBook: TPPBook?
+
+    /// Whether this open has to fetch audio before playback can start, decided
+    /// at `presentLoadingShell` time.
+    ///
+    /// The overlay's first decision is made before `adoptPlaybackModel`, so a
+    /// prediction that asks the player resolves to its `false` fallback at the
+    /// only moment it is read, and the shimmer wins. `currentBook` is set in the
+    /// same pre-loader call, so "is the audio on disk" is answerable there and
+    /// the player's own prediction is not.
+    ///
+    /// With streaming on, `shouldTriggerContentDownloadBeforeOpen` returns
+    /// false, so the content gate that used to call `showDownloadProgress` never
+    /// runs and nothing else raises `isDownloading` this early.
+    @Published private(set) var expectsSlowOpen = false
 
     /// Drives the root-level full-player fullScreenCover. View code binds
     /// to this and shows / hides the cover accordingly.
@@ -149,12 +167,16 @@ class AudiobookSessionPresenter: ObservableObject {
         sessionManager: AudiobookSessionManaging,
         archiveTransferPublisher: AnyPublisher<(String, Bool), Never>? = nil,
         archiveProgressPublisher: AnyPublisher<(String, Double), Never>? = nil,
-        isArchiveTransferActive: @escaping (String) -> Bool = { _ in false }
+        isArchiveTransferActive: @escaping (String) -> Bool = { _ in false },
+        contentIsLocal: @escaping (String) -> Bool = {
+            AudiobookSessionManager.audiobookContentIsLocal($0)
+        }
     ) {
         self.sessionManager = sessionManager
         self.archiveTransferPublisher = archiveTransferPublisher
         self.archiveProgressPublisher = archiveProgressPublisher
         self.isArchiveTransferActive = isArchiveTransferActive
+        self.contentIsLocal = contentIsLocal
         subscribeToSessionState()
         subscribeToAppLifecycle()
         subscribeToArchiveTransfers()
@@ -163,6 +185,11 @@ class AudiobookSessionPresenter: ObservableObject {
     private let archiveTransferPublisher: AnyPublisher<(String, Bool), Never>?
     private let archiveProgressPublisher: AnyPublisher<(String, Double), Never>?
     private let isArchiveTransferActive: (String) -> Bool
+
+    /// Whether this book's audio package is already on disk. Injected so the
+    /// prediction below is drivable without a real file, and so tests do not
+    /// reach the production container.
+    private let contentIsLocal: (String) -> Bool
 
     /// Mirrors the archive fetch for whichever book is currently bound.
     /// Filtered on `currentBook` at DELIVERY time rather than captured at
@@ -247,6 +274,7 @@ class AudiobookSessionPresenter: ObservableObject {
         // re-open skips `clearActiveSession()`, so resetting on identifier change
         // in `adoptBook` would miss it and hide the content-wait bar.
         hasStartedPlayback = false
+        expectsSlowOpen = !contentIsLocal(book.identifier)
         adoptBook(book)
         adoptCoverImage(coverImage)
         presentOnFirstOpen()
@@ -332,6 +360,7 @@ class AudiobookSessionPresenter: ObservableObject {
         isDownloading = false
         archiveProgress = nil
         hasStartedPlayback = false
+        expectsSlowOpen = false
         toastMessage = nil
         playbackModelCancellables.removeAll()
     }

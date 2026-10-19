@@ -1273,4 +1273,81 @@ final class AudiobookSessionPresenterTests: XCTestCase {
         XCTAssertFalse(presenter.isFetchingArchive,
                        "a seed that only ever sets and never clears leaves a finished transfer's bar up forever")
     }
+
+    // MARK: - Pre-bind slow-open prediction
+
+    /// The overlay's first decision happens before the toolkit playback model
+    /// exists, so a prediction that asks the player resolves to its `false`
+    /// fallback and the shimmer wins the one moment that matters. These pin the
+    /// prediction to a question answerable at `presentLoadingShell` time: is the
+    /// audio already on disk.
+
+    /// Streaming open: the audio has to come down the wire first, so the open is
+    /// slow and the explanation must be available from the first frame.
+    func testPresentLoadingShell_whenAudioIsNotOnDisk_expectsSlowOpen() {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let presenter = AudiobookSessionPresenter(
+            sessionManager: spySession,
+            contentIsLocal: { _ in false }
+        )
+
+        presenter.presentLoadingShell(for: book, coverImage: nil)
+
+        XCTAssertTrue(
+            presenter.expectsSlowOpen,
+            "a streamed open shows the shimmer first and replaces it with Downloading a frame later"
+        )
+    }
+
+    /// The ordinary case, and the reason this is a prediction rather than a
+    /// blanket takeover: a downloaded book opens straight into the shimmer, with
+    /// no explanation in front of a wait that is not happening.
+    func testPresentLoadingShell_whenAudioIsOnDisk_doesNotExpectSlowOpen() {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let presenter = AudiobookSessionPresenter(
+            sessionManager: spySession,
+            contentIsLocal: { _ in true }
+        )
+
+        presenter.presentLoadingShell(for: book, coverImage: nil)
+
+        XCTAssertFalse(
+            presenter.expectsSlowOpen,
+            "explaining a download that is not happening is the flicker this prediction exists to avoid"
+        )
+    }
+
+    /// Asked about the book being opened. A prediction keyed on the wrong
+    /// identifier reads the previous session's book and is wrong in whichever
+    /// direction that book differed.
+    func testPresentLoadingShell_asksAboutTheBookBeingOpened() {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        var asked: [String] = []
+        let presenter = AudiobookSessionPresenter(
+            sessionManager: spySession,
+            contentIsLocal: { asked.append($0); return true }
+        )
+
+        presenter.presentLoadingShell(for: book, coverImage: nil)
+
+        XCTAssertEqual(asked, [book.identifier])
+    }
+
+    /// Teardown clears it, so the next open predicts from its own book rather
+    /// than inheriting a streamed book's verdict.
+    func testClearActiveSession_clearsTheSlowOpenPrediction() {
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        let presenter = AudiobookSessionPresenter(
+            sessionManager: spySession,
+            contentIsLocal: { _ in false }
+        )
+        presenter.presentLoadingShell(for: book, coverImage: nil)
+
+        presenter.clearActiveSession()
+
+        XCTAssertFalse(
+            presenter.expectsSlowOpen,
+            "a stale true puts the Downloading panel in front of the next book's fast open"
+        )
+    }
 }

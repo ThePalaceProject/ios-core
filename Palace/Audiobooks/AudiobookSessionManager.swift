@@ -180,6 +180,20 @@ public final class AudiobookSessionManager: ObservableObject {
 
     private var managerCancellables = Set<AnyCancellable>()
 
+    /// Whether a book's package is on disk. Injected so the landed-archive
+    /// re-open is drivable in a test and does not read the production
+    /// container.
+    private let contentIsLocal: (String) -> Bool
+
+    /// Rising/falling edges of the LCP package transfer, keyed by book
+    /// identifier. The falling edge is what tells a streaming session its
+    /// package has landed.
+    private let archiveTransferPublisher: AnyPublisher<(String, Bool), Never>?
+
+    /// Whether the current session opened over the network rather than a local
+    /// package. Fixed for the session's life; see `openAudiobook`.
+    private var sessionOpenedStreaming = false
+
     /// Cancellables tied to the manager's lifetime (singleton) — NOT cleared
     /// on stopPlayback. Used for the phone-side error subscriber that presents
     /// alerts for user-actionable session errors.
@@ -307,8 +321,14 @@ public final class AudiobookSessionManager: ObservableObject {
         notificationCenter: NotificationCenter,
         overdriveRefulfillStarter: @escaping @MainActor (TPPBook) -> Void,
         showOpenFailureAlert: @escaping @MainActor (TPPBook, [String: Any]) -> Void,
-        makeLoader: @escaping @MainActor (Bool) -> AudiobookLoader
+        makeLoader: @escaping @MainActor (Bool) -> AudiobookLoader,
+        archiveTransferPublisher: AnyPublisher<(String, Bool), Never>? = nil,
+        contentIsLocal: @escaping (String) -> Bool = {
+            AudiobookSessionManager.audiobookContentIsLocal($0)
+        }
     ) {
+        self.archiveTransferPublisher = archiveTransferPublisher
+        self.contentIsLocal = contentIsLocal
         self.bookRegistry = bookRegistry
         self.positionResolver = AudiobookPositionResolver(bookRegistry: bookRegistry)
         self.accountsManager = accountsManager
@@ -334,6 +354,7 @@ public final class AudiobookSessionManager: ObservableObject {
         // directly via AudiobookLoader; no pub/sub handoff is needed.
         subscribeToPhoneSideErrorAlerts()
         subscribeToBookReturn()
+        subscribeToLandedArchive()
         subscribeToAppLifecyclePositionPersistence()
         mediaServicesResetRecovery.host = self
     }
@@ -357,6 +378,10 @@ public final class AudiobookSessionManager: ObservableObject {
             AppContainer.production().downloadCenter.redownloadLCPContentFile(for: book)
         },
         lcpStreamingEnabledProvider: @escaping () -> Bool = { RemoteFeatureFlags.shared.isLCPAudiobookStreamingEnabled },
+        archiveTransferPublisher: AnyPublisher<(String, Bool), Never>? = nil,
+        contentIsLocal: @escaping (String) -> Bool = {
+            AudiobookSessionManager.audiobookContentIsLocal($0)
+        },
         readinessProbeFactory: @escaping @MainActor (Player) -> PlaybackReadinessProbing = { player in
             PlayerReadinessProbe(isLoadedSnapshot: { [weak player] in player?.isLoaded ?? false })
         },
@@ -388,7 +413,10 @@ public final class AudiobookSessionManager: ObservableObject {
             notificationCenter: notificationCenter,
             overdriveRefulfillStarter: overdriveRefulfillStarter,
             showOpenFailureAlert: showOpenFailureAlert ?? AudiobookOpenFailureAlert.presenter(bookRegistry: appContainer.bookRegistry),
-            makeLoader: makeLoader
+            makeLoader: makeLoader,
+            archiveTransferPublisher: archiveTransferPublisher
+                ?? appContainer.downloadCenter.lcpContentDownloadPublisher.eraseToAnyPublisher(),
+            contentIsLocal: contentIsLocal
         )
     }
 
@@ -415,6 +443,44 @@ public final class AudiobookSessionManager: ObservableObject {
     /// file deletion) until a new book is opened. Account-switch teardown is
     /// handled separately (`cleanupActiveContentBeforeAccountSwitch` nils
     /// `currentBook` first), so its mass `.unregistered` emissions no-op here.
+    /// Reopens the session when the package it is streaming lands on disk.
+    ///
+    /// Without this the patron waits on a stream whose bytes are already local,
+    /// because the transport cannot change after the open. Quitting and
+    /// relaunching fixes it by hand; this does the same thing for them.
+    ///
+    /// The falling edge alone is not enough: it can arrive for a cancelled or
+    /// failed transfer, and it can be stale. Both are settled by asking whether
+    /// the package is actually on disk.
+    private func subscribeToLandedArchive() {
+        archiveTransferPublisher?
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] identifier, isActive in
+                guard let self, !isActive else { return }
+                self.handleLandedArchive(for: identifier)
+            }
+            .store(in: &lifecycleCancellables)
+    }
+
+    /// Split from the subscription so a test can drive it without a publisher.
+    func handleLandedArchive(for identifier: String) {
+        guard let book = currentBook, book.identifier == identifier else { return }
+        guard Self.shouldReopenForLandedArchive(
+            sessionIsStreaming: sessionOpenedStreaming,
+            contentIsLocal: contentIsLocal(identifier),
+            isPlaying: isPlaying,
+            hasCurrentBook: true,
+            alreadyReopened: recoveryAttempts.hasAttemptedLandedArchiveReopen(for: identifier)
+        ) else { return }
+        recoveryAttempts.recordLandedArchiveReopen(for: identifier)
+        Log.info(#file, "LCP package landed while streaming — re-opening the session from the local file")
+        Task { [weak self] in
+            guard let self else { return }
+            guard self.currentBook?.identifier == identifier else { return }
+            _ = await self.openAudiobook(book, startPlaying: true, forceRefulfill: false)
+        }
+    }
+
     private func subscribeToBookReturn() {
         bookRegistry.bookStatePublisher
             .receive(on: DispatchQueue.main)
@@ -720,6 +786,11 @@ public final class AudiobookSessionManager: ObservableObject {
                 self.audiobookSessionPresenterProvider().showDownloadProgress(fraction)
             }
         }
+        // The session's transport is fixed here: `archiveIsLocalFile()` is
+        // `licenseUrl == nil`, so a session opened for streaming keeps serving
+        // remote reads for its whole life. Recorded so a package landing later
+        // can be acted on (`shouldReopenForLandedArchive`).
+        sessionOpenedStreaming = !contentIsLocal(book.identifier)
         let gateResult = await gateOnLCPContentDownload(
             for: book,
             isColdLoadRecovery: isColdLoadRecovery,
@@ -1035,8 +1106,22 @@ public final class AudiobookSessionManager: ObservableObject {
     /// overlay. Not `@Published`; the view re-reads it on `isPlaying`/position
     /// ticks. (`UnifiedPositionSystem.isLoaded` is `@Published` upstream, so a
     /// crisp presenter mirror is a follow-up if the tick cadence proves too coarse.)
+    /// Forwards the player's own prediction. Nil while no player is bound,
+    /// which reads as "not slow" and leaves the shimmer in place — the
+    /// conservative direction, since the alternative is explaining a wait that
+    /// is not happening.
+    var expectsSlowChapterStart: Bool {
+        playbackModel?.expectsSlowChapterStart ?? false
+    }
+
     public var isLoaded: Bool {
         manager?.audiobook.player.isLoaded ?? false
+    }
+
+    /// Read off the same player as `isLoaded`, which on its own cannot tell a
+    /// player that is playing from one that says it is playing in silence.
+    var transportIsWaitingForData: Bool {
+        manager?.audiobook.player.isWaitingForData ?? false
     }
 
     /// Whether a sleep timer is currently counting down (drives the active-chip

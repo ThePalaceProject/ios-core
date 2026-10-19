@@ -38,6 +38,34 @@ extension AudiobookSessionManager {
         !hasEverStartedPlayback && hasCurrentBook && !alreadyAttempted
     }
 
+    /// Whether a landed archive should reopen the session.
+    ///
+    /// A session's transport is fixed when it opens: `archiveIsLocalFile()` is
+    /// `licenseUrl == nil`, so a session opened for streaming keeps serving
+    /// remote reads after the package lands on disk. The patron then waits on a
+    /// stream whose bytes are already local, and the only way out is to quit and
+    /// relaunch, which builds a session bound to the file. Reopening does that
+    /// for them.
+    ///
+    /// Separate from `shouldAutoReopenOnColdLoadFailure`'s budget because the
+    /// condition genuinely changed rather than being retried: the bytes are
+    /// local now. Still bounded to one reopen per book, never while audio is
+    /// audible (a working stream must not be interrupted), and never without a
+    /// book to reopen.
+    static func shouldReopenForLandedArchive(
+        sessionIsStreaming: Bool,
+        contentIsLocal: Bool,
+        isPlaying: Bool,
+        hasCurrentBook: Bool,
+        alreadyReopened: Bool
+    ) -> Bool {
+        guard sessionIsStreaming else { return false }
+        guard contentIsLocal else { return false }
+        guard hasCurrentBook else { return false }
+        guard !isPlaying else { return false }
+        return !alreadyReopened
+    }
+
     /// True once the LCP audiobook's content package is on disk. Both writers
     /// move the `.lcpa` into place with a rename
     /// (`BackgroundDownloadHandler.replaceBook`, `LocalBookContentService`), so

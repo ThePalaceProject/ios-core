@@ -80,6 +80,10 @@ struct AudiobookMorphingPlayerView: View {
     /// anywhere in this file. That prose is what sent PP-5205's first analysis down the
     /// wrong path, so it is corrected rather than deleted.
     @State private var loadingTimedOut = false
+    /// Latched once a download has been observed, so the pre-download window
+    /// that shows the explanation cannot re-open and take the screen back from
+    /// the shimmer when progress briefly reports nothing.
+    @State private var hasSeenDownloading = false
 
     /// PP-5205 (F13): the 30s timer, held so a re-arm can CANCEL the prior one.
     ///
@@ -918,10 +922,12 @@ struct AudiobookMorphingPlayerView: View {
         isDownloading: Bool,
         loadingTimedOut: Bool,
         hasStartedPlayback: Bool,
+        expectsSlowStart: Bool,
+        hasSeenDownloading: Bool,
+        transportIsWaitingForData: Bool = false,
         forceSkeletons: Bool
     ) -> LoadingOverlayState {
         if forceSkeletons { return .skeleton }
-        guard !isLoaded else { return .hidden }
 
         // MID-SESSION. Never take over the screen — but a genuine stall must still
         // reach the error, or the latch would hide the failure as well as the
@@ -931,13 +937,43 @@ struct AudiobookMorphingPlayerView: View {
         // the 30s error. `testLoadingOverlayState_downloadingBeatsSkeletonAndTimeout`
         // caught it.
         if hasStartedPlayback {
+            guard !isLoaded else { return .hidden }
             return loadingTimedOut ? .loadError : .awaitingReload
         }
 
-        // PRE-PLAYBACK — unchanged. The patron is genuinely blocked here, and a
-        // download in flight is healthy progress that outranks the timeout.
+        // FIRST open. `isLoaded` is not "audio is coming out": several writers
+        // in the streaming player set it to release the UI rather than because
+        // a byte played, so hiding on it alone shows transport controls over
+        // silence. `isWaitingForData` is AVFoundation's own answer
+        // (`timeControlStatus == .waitingToPlayAtSpecifiedRate`), and the gap
+        // between the two is the wait the patron sits through. Measured on
+        // device 2026-10-19: 4.5 s to first byte, 5.4 s to audible.
+        //
+        // `.skeleton` rather than `.downloading`: the explanation has already
+        // had its turn by now, and returning to it after the shimmer reads as
+        // going backwards. `.skeleton` also arms the load timeout, so a start
+        // that never becomes audible still reaches `.loadError`.
+        if isLoaded {
+            guard transportIsWaitingForData else { return .hidden }
+            return loadingTimedOut ? .loadError : .skeleton
+        }
+
+        // PRE-PLAYBACK. The patron is genuinely blocked here, and a download in
+        // flight is healthy progress that outranks the timeout.
         if isDownloading { return .downloading }
         if loadingTimedOut { return .loadError }
+
+        // Before the download registers, `isDownloading` is still false, so a
+        // start that the player already knows will be slow fell through to the
+        // shimmer and was replaced about a tenth of a second later. Measured on
+        // device 2026-10-19: one frame of skeleton, then 1.3 s of "Downloading
+        // 0%". The explanation comes first, and the shimmer becomes what it
+        // says it is — the brief hand-over before the player is usable.
+        //
+        // `hasSeenDownloading` ends it: once a download has been observed, this
+        // window is over and the shimmer covers the remaining gap.
+        if expectsSlowStart && !hasSeenDownloading { return .downloading }
+
         return .skeleton
     }
 
@@ -945,6 +981,17 @@ struct AudiobookMorphingPlayerView: View {
     /// usable yet". Pure so the table can assert it — an arming rule that lives only
     /// inside a `.onChange` closure cannot be enumerated, and the cell that matters
     /// (`.awaitingReload` DOES arm) is the one that closes PP-5205's F1 hole.
+    /// Whether the download bar draws a fraction or just shows motion.
+    ///
+    /// A streamed open reports nothing for about a second before the first
+    /// fraction arrives, and a determinate bar pinned at zero reads as a
+    /// stalled download rather than one that has not started reporting yet.
+    /// Non-positive covers the negative case too: the fraction comes from the
+    /// download center and nothing promises it is in range.
+    nonisolated static func downloadBarIsDeterminate(progress: Float) -> Bool {
+        progress > 0
+    }
+
     nonisolated static func stateArmsLoadTimeout(_ state: LoadingOverlayState) -> Bool {
         loadTimeoutAction(for: state) == .arm
     }
@@ -1055,6 +1102,14 @@ struct AudiobookMorphingPlayerView: View {
             isDownloading: presenter.isDownloading,
             loadingTimedOut: loadingTimedOut,
             hasStartedPlayback: presenter.hasStartedPlayback,
+            // Two predictions, because neither covers the whole window. The
+            // presenter's is decided pre-loader and is the only one that exists
+            // at the first evaluation; the session's needs the playback model
+            // and answers for a chapter the patron selects later.
+            expectsSlowStart: presenter.expectsSlowOpen
+                || audiobookSession.expectsSlowChapterStart,
+            hasSeenDownloading: hasSeenDownloading,
+            transportIsWaitingForData: audiobookSession.transportIsWaitingForData,
             forceSkeletons: DebugSettings.forceSkeletons
         )
     }
@@ -1120,6 +1175,21 @@ struct AudiobookMorphingPlayerView: View {
             // it would have been asked about was correct; it was never asked.
             .onAppear { applyLoadTimeoutArming(for: loadingOverlayCurrentState) }
             .onChange(of: loadingOverlayCurrentState) { applyLoadTimeoutArming(for: $0) }
+            // Both panels declare `.transition(.opacity)`, but a transition only
+            // runs inside an animated transaction and nothing animated this
+            // value, so every handover was a hard cut — the explanation popped
+            // to the shimmer and the shimmer popped to the player. Crossfading
+            // the handover is what the declared transitions were always for.
+            .animation(
+                UIAccessibility.isReduceMotionEnabled ? nil : PalaceMotion.gentle,
+                value: loadingOverlayCurrentState
+            )
+            // Latch the first download of this session. Once one has been seen
+            // the pre-download window is over, so a moment of reported-nothing
+            // cannot take the screen back from the shimmer.
+            .onChange(of: presenter.isDownloading) { _, downloading in
+                if downloading { hasSeenDownloading = true }
+            }
     }
 
     /// The single arming decision, so the birth hook and the transition hook cannot
@@ -1199,14 +1269,32 @@ struct AudiobookMorphingPlayerView: View {
                 titleAuthorFull
                     .padding(.horizontal, 24)
                 VStack(spacing: 10) {
-                    ProgressView(value: Double(min(max(presenter.overallDownloadProgress, 0), 1)), total: 1.0)
-                        .progressViewStyle(.linear)
-                        .tint(.accentColor)
-                        .frame(maxWidth: 260)
+                    // The ARCHIVE's number while a `.lcpa` fetch is what is
+                    // running: no track download is in flight then, so the
+                    // toolkit channel reads ~0 and the bar sits at 0% for the
+                    // whole fetch.
+                    let shownProgress = AudiobookDownloadProgressPolicy.barProgress(
+                        archiveProgress: presenter.archiveProgress,
+                        overallDownloadProgress: presenter.overallDownloadProgress
+                    )
+                    // `SwiftUI.Group`: `MyBooksViewModel`'s `enum Group` shadows it.
+                    SwiftUI.Group {
+                        if Self.downloadBarIsDeterminate(progress: shownProgress) {
+                            ProgressView(
+                                value: Double(min(max(shownProgress, 0), 1)),
+                                total: 1.0
+                            )
+                        } else {
+                            ProgressView()
+                        }
+                    }
+                    .progressViewStyle(.linear)
+                    .tint(.accentColor)
+                    .frame(maxWidth: 260)
                     HStack(spacing: 8) {
                         ProgressView()
                             .controlSize(.mini)
-                        Text("\(Strings.Generic.audiobookDownloading) \(Int(presenter.overallDownloadProgress * 100))%")
+                        Text("\(Strings.Generic.audiobookDownloading) \(Int(shownProgress * 100))%")
                             .font(.system(.footnote, weight: .medium))
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
@@ -1221,7 +1309,10 @@ struct AudiobookMorphingPlayerView: View {
         .accessibilityLabel(Self.downloadingAccessibilityLabel(
             title: presenter.currentBook?.title,
             authors: presenter.currentBook?.authors,
-            progress: Double(presenter.overallDownloadProgress)
+            progress: Double(AudiobookDownloadProgressPolicy.barProgress(
+                archiveProgress: presenter.archiveProgress,
+                overallDownloadProgress: presenter.overallDownloadProgress
+            ))
         ))
     }
 

@@ -49,6 +49,23 @@ protocol AudiobookSessionManaging: AnyObject {
     /// MediaControlPublisher will handle a transport command.
     var hasActiveManager: Bool { get }
 
+    /// Whether the chapter about to be heard is expected to take long enough
+    /// that the patron should be told.
+    ///
+    /// Asked before any download has registered, which is the window the
+    /// overlay could not otherwise describe: at the moment the book opens,
+    /// `isDownloading` is still false, so a shimmer was shown and replaced
+    /// about a tenth of a second later by the explanation.
+    var expectsSlowChapterStart: Bool { get }
+
+    /// Whether the transport wants to play and has no data to play.
+    ///
+    /// `isLoaded` answers "stop waiting", not "audio is coming out": several
+    /// writers in the streaming player set it to release the UI. This is
+    /// AVFoundation's own answer, so the overlay can tell waiting apart from
+    /// playing.
+    var transportIsWaitingForData: Bool { get }
+
     // MARK: - Publishers
 
     /// Emits when playback state changes (for CarPlay UI updates, etc.).
@@ -184,6 +201,19 @@ protocol AudiobookSessionManaging: AnyObject {
 // MARK: - Default implementations
 
 extension AudiobookSessionManaging {
+    /// Not slow unless a conformer says otherwise.
+    ///
+    /// Answering `false` leaves the shimmer in place, which is the behaviour
+    /// every conformer had before this existed. The opposite default would put
+    /// an explanation in front of openings that need none — the flicker this
+    /// whole presentation exists to avoid — so a conformer that cannot tell
+    /// stays quiet rather than guessing loudly.
+    var expectsSlowChapterStart: Bool { false }
+
+    /// Default false: a double with no transport is never waiting on one, and
+    /// false keeps the overlay's pre-existing behaviour (hide once loaded).
+    var transportIsWaitingForData: Bool { false }
+
     /// Default no-op so lightweight test doubles need not implement seeking.
     /// The production `AudiobookSessionManager` overrides this.
     func seek(to fraction: Double) {}

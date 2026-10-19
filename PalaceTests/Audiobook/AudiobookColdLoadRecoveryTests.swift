@@ -47,4 +47,79 @@ final class AudiobookColdLoadRecoveryTests: XCTestCase {
             hasEverStartedPlayback: false, hasCurrentBook: true, alreadyAttempted: true),
             "Bounded to one reopen per book per session — a persistent cold-load failure must reach the 'Audiobook Unavailable' alert instead of looping the auto-reopen")
     }
+
+    // MARK: - Reopen when the archive lands
+
+    /// The case the patron hit: a streamed session stalls, the package finishes
+    /// downloading, and nothing rebinds the session to the file. Reopening is
+    /// what quitting and relaunching does by hand.
+    func testLandedArchive_onAStalledStreamedSession_reopens() {
+        XCTAssertTrue(AudiobookSessionManager.shouldReopenForLandedArchive(
+            sessionIsStreaming: true,
+            contentIsLocal: true,
+            isPlaying: false,
+            hasCurrentBook: true,
+            alreadyReopened: false
+        ))
+    }
+
+    /// A working stream is never interrupted. Reopening audible playback would
+    /// trade a stall the patron does not have for a gap they would hear.
+    func testLandedArchive_whileAudioIsPlaying_doesNotReopen() {
+        XCTAssertFalse(AudiobookSessionManager.shouldReopenForLandedArchive(
+            sessionIsStreaming: true,
+            contentIsLocal: true,
+            isPlaying: true,
+            hasCurrentBook: true,
+            alreadyReopened: false
+        ))
+    }
+
+    /// A session already reading the file has nothing to gain and would restart
+    /// playback for no reason.
+    func testLandedArchive_onALocalSession_doesNotReopen() {
+        XCTAssertFalse(AudiobookSessionManager.shouldReopenForLandedArchive(
+            sessionIsStreaming: false,
+            contentIsLocal: true,
+            isPlaying: false,
+            hasCurrentBook: true,
+            alreadyReopened: false
+        ))
+    }
+
+    /// A falling transfer edge can arrive without the package being on disk (a
+    /// cancelled or failed transfer). Reopening then just rebuilds the same
+    /// stalled stream.
+    func testLandedArchive_whenTheContentIsNotActuallyLocal_doesNotReopen() {
+        XCTAssertFalse(AudiobookSessionManager.shouldReopenForLandedArchive(
+            sessionIsStreaming: true,
+            contentIsLocal: false,
+            isPlaying: false,
+            hasCurrentBook: true,
+            alreadyReopened: false
+        ))
+    }
+
+    /// Bounded to one per book, so a transfer that reports several falling edges
+    /// cannot reopen repeatedly.
+    func testLandedArchive_afterOneReopen_doesNotReopenAgain() {
+        XCTAssertFalse(AudiobookSessionManager.shouldReopenForLandedArchive(
+            sessionIsStreaming: true,
+            contentIsLocal: true,
+            isPlaying: false,
+            hasCurrentBook: true,
+            alreadyReopened: true
+        ))
+    }
+
+    /// An edge for a book no session holds has nothing to reopen.
+    func testLandedArchive_withNoCurrentBook_doesNotReopen() {
+        XCTAssertFalse(AudiobookSessionManager.shouldReopenForLandedArchive(
+            sessionIsStreaming: true,
+            contentIsLocal: true,
+            isPlaying: false,
+            hasCurrentBook: false,
+            alreadyReopened: false
+        ))
+    }
 }
