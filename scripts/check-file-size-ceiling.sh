@@ -89,7 +89,7 @@ read -r -d '' ALLOWLIST <<'EOF'
 # when PP-5302 moved the phone alert mapping to +ErrorMapping, then -> 1173
 # when the book-open tracker's recording call was removed, then -> 1168
 # when the open-failure alert moved to AudiobookOpenFailureAlert.
-1168 Palace/Audiobooks/AudiobookSessionManager.swift
+1165 Palace/Audiobooks/AudiobookSessionManager.swift
 # 1213 -> 1172 when the mid-download network-loss handler moved to
 # DownloadNetworkLossMonitor.swift.
 1172 Palace/MyBooks/MyBooksDownloadCenter.swift

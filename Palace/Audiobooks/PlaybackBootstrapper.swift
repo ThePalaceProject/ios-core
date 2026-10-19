@@ -69,7 +69,7 @@ public final class PlaybackBootstrapper {
     /// Off-main-safe read of "is an audiobook manager currently bound," for the
     /// remote-command handlers, which run on MediaRemote's background queue and
     /// must not touch `@MainActor` state (#1218 / #1199). Reads the `nonisolated`
-    /// `AudiobookSessionManager.hasActiveManagerSnapshot` mirror.
+    /// `AudiobookSessionSnapshots.hasActiveManager` mirror.
     private let hasActiveManagerSnapshot: @Sendable () -> Bool
     /// Dispatches the deferred audio-session configuration off the synchronous
     /// launch path (see `ensureInitialized()`). Production hops to a background
@@ -88,7 +88,7 @@ public final class PlaybackBootstrapper {
     private init(
         bookRegistry: TPPBookRegistryProvider,
         audiobookSessionProvider: @escaping () -> AudiobookSessionManaging,
-        hasActiveManagerSnapshot: @escaping @Sendable () -> Bool = { AudiobookSessionManager.hasActiveManagerSnapshot },
+        hasActiveManagerSnapshot: @escaping @Sendable () -> Bool = { AudiobookSessionSnapshots.hasActiveManager },
         launchAudioSessionDispatcher: @escaping (@escaping @Sendable () -> Void) -> Void = { work in
             DispatchQueue.global(qos: .utility).async(execute: work)
         }
@@ -111,7 +111,7 @@ public final class PlaybackBootstrapper {
     convenience init(
         appContainer: AppContainer,
         audiobookSessionProvider: @escaping () -> AudiobookSessionManaging,
-        hasActiveManagerSnapshot: @escaping @Sendable () -> Bool = { AudiobookSessionManager.hasActiveManagerSnapshot },
+        hasActiveManagerSnapshot: @escaping @Sendable () -> Bool = { AudiobookSessionSnapshots.hasActiveManager },
         launchAudioSessionDispatcher: @escaping (@escaping @Sendable () -> Void) -> Void = { work in
             DispatchQueue.global(qos: .utility).async(execute: work)
         }

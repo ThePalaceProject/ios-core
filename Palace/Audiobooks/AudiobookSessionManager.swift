@@ -144,7 +144,7 @@ public final class AudiobookSessionManager: ObservableObject {
             // after #1222 merged. The Bool snapshot is Sendable, so hoisting it
             // out fixes it with identical behavior.
             let isActive = (manager != nil)
-            Self._hasActiveManagerMirror.withLock { $0 = isActive }
+            AudiobookSessionSnapshots.setHasActiveManager(isActive)
         }
     }
     private(set) var playbackModel: AudiobookPlaybackModel?
@@ -154,50 +154,6 @@ public final class AudiobookSessionManager: ObservableObject {
     /// an `AudiobookManager` is bound without leaking the toolkit type
     /// through the protocol.
     public var hasActiveManager: Bool { manager != nil }
-
-    /// Off-main-safe mirror of `hasActiveManager` (`manager != nil`).
-    ///
-    /// Remote-command handlers run on a background MediaRemote queue, where
-    /// reading the `@MainActor` `hasActiveManager` trips
-    /// `dispatch_assert_queue_fail` (#1199, #1218). This lock-guarded snapshot
-    /// is written on main by `manager`'s `didSet` and readable from any thread.
-    /// Static because there is a single manager per process.
-    // `nonisolated` so the `nonisolated` `hasActiveManagerSnapshot` can read
-    // it; `OSAllocatedUnfairLock` is `Sendable`.
-    nonisolated private static let _hasActiveManagerMirror =
-        OSAllocatedUnfairLock<Bool>(initialState: false)
-
-    /// Off-main-safe read of "is a manager currently bound." Reflects the last
-    /// main-actor `bind`/`stopPlayback` transition; the write window is a single
-    /// main-actor hop, so any staleness is sub-frame and self-correcting.
-    nonisolated static var hasActiveManagerSnapshot: Bool {
-        _hasActiveManagerMirror.withLock { $0 }
-    }
-
-    // `nonisolated` for the reason given above `_hasActiveManagerMirror`: an
-    // un-annotated `static let` on this `@MainActor` class cannot be read from
-    // the `nonisolated` accessor below.
-    nonisolated private static let _currentBookIdentifierMirror =
-        OSAllocatedUnfairLock<String?>(initialState: nil)
-
-    /// Off-main-safe read of "which book is loaded for playback", or nil when
-    /// none is. Written only from `currentBook`'s `didSet` on the main actor.
-    ///
-    /// The archive re-download queue reads this to serve the book the patron is
-    /// listening to before the rest of the shelf: that book streams every
-    /// chapter from the origin until its archive lands, and the others are
-    /// prefetching for an offline listen nobody is waiting on.
-    nonisolated static var currentBookIdentifierSnapshot: String? {
-        _currentBookIdentifierMirror.withLock { $0 }
-    }
-
-    /// Writes the mirror above. Called from the two writers of `currentBook`
-    /// (open and `stopPlayback`), which `private(set)` keeps as the only ones.
-    /// A `String?` is `Sendable`, so it crosses into the `@Sendable` closure;
-    /// reading the `@MainActor` `currentBook` inside it would not compile.
-    nonisolated private static func mirrorCurrentBookIdentifier(_ identifier: String?) {
-        _currentBookIdentifierMirror.withLock { $0 = identifier }
-    }
 
     /// DRM decryptor tied to the currently loaded audiobook. Owned atomically
     /// alongside manager/audiobook/playbackModel so stopPlayback can release
@@ -735,7 +691,7 @@ public final class AudiobookSessionManager: ObservableObject {
 
         state = .loading(bookId: book.identifier)
         currentBook = book
-        Self.mirrorCurrentBookIdentifier(book.identifier)
+        AudiobookSessionSnapshots.setCurrentBookIdentifier(book.identifier)
         hasEverStartedPlayback = false
         playbackStatePublisher.send(state)
 
@@ -1214,7 +1170,7 @@ public final class AudiobookSessionManager: ObservableObject {
         audiobook = nil
         playbackModel = nil
         currentBook = nil
-        Self.mirrorCurrentBookIdentifier(nil)
+        AudiobookSessionSnapshots.setCurrentBookIdentifier(nil)
         currentChapters = []
         currentChapter = nil
         currentPosition = nil

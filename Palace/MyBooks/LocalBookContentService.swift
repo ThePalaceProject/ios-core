@@ -243,7 +243,7 @@ class LocalBookContentService {
             accountsManager?.currentAccountId
         }
         self.playingBookIdentifierProvider = playingBookIdentifierProvider ?? {
-            AudiobookSessionManager.currentBookIdentifierSnapshot
+            AudiobookSessionSnapshots.currentBookIdentifier
         }
         self.downloadCenterHasTransfer = downloadCenterHasTransfer
         self.bookRegistry = bookRegistry
