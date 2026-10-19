@@ -42,7 +42,14 @@ struct LCPArchiveTrackLengthResolver: Sendable {
     static let localHeaderReadLength: UInt64 = 128
 
     /// How many archive reads this resolution keeps in flight.
-    static let defaultMaxConcurrentReads = 3
+    ///
+    /// One. Three was measured on device and made chapters unplayable: the
+    /// archive's caching client admits two reads at a time, so three queued
+    /// reads held both slots for the whole fill and the chapter's own read
+    /// waited behind them. A 50-track book then served two bytes of its first
+    /// chapter in 55.2s, with 97 of the resolution's requests inside that
+    /// window. The chapter needs one of those two slots at all times.
+    static let defaultMaxConcurrentReads = 1
 
     /// What one resolution did, for the caller's report.
     ///

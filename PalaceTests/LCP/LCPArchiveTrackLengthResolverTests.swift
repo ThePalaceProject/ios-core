@@ -431,6 +431,14 @@ final class LCPArchiveTrackLengthResolverTests: XCTestCase {
         XCTAssertEqual(depth.highest, 1)
     }
 
+    /// What ships. The archive's caching client admits two reads at a time and
+    /// the chapter being listened to needs one of them; a fill that takes both
+    /// made a 50-track book serve two bytes of its first chapter in 55.2s on
+    /// device.
+    func testDefaultConcurrency_leavesTheChapterARead() {
+        XCTAssertEqual(LCPArchiveTrackLengthResolver.defaultMaxConcurrentReads, 1)
+    }
+
     /// Counts how many reads are open at once.
     private final class ReadDepth: @unchecked Sendable {
         private let lock = NSLock()
