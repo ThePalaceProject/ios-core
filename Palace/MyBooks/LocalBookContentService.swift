@@ -184,8 +184,10 @@ class LocalBookContentService {
     /// `LCPFulfillmentHandler` with streaming off, and always for LCP PDF/EPUB)
     /// and its sibling `moveFile` both ask the same question through
     /// `completedDownloadMayBeStored`, which delegates here so the writers
-    /// cannot drift on which states mean the loan is live. The streaming-on
-    /// license-only arm in `LCPFulfillmentHandler` still does not ask.
+    /// cannot drift on which states mean the loan is live. Other fulfilment
+    /// completions do not ask at all — `LCPFulfillmentHandler`'s streaming-on
+    /// license-only arm and `AdobeDRMHandler`'s among them — so this list is
+    /// the writers that DO ask, not the full set that could.
     ///
     /// A library switch always writes; see `accountUnchanged` below.
     ///
