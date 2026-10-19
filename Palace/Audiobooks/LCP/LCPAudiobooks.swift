@@ -930,33 +930,49 @@ extension LCPAudiobooks: LCPStreamingProvider {
         return licenseUrl == nil
     }
 
-    /// The link-yielding pair is bound, and deliberately does nothing yet.
+    /// Gives the chapter the patron is waiting on the link to itself.
     ///
     /// The toolkit announces the start and end of a load the patron is waiting
-    /// on so a provider can hold its background package fetch and let that
-    /// chapter have the link (PP-5367). Neither hook holds the fetch.
+    /// on so a provider can hold its background package fetch (PP-5367). The
+    /// two are separate URLSessions over one link, and the sizes are not
+    /// comparable: a chapter start moves about 6 MB, a whole-archive transfer
+    /// 0.7-1.2 GB. Measured on device 2026-10-19, a cold chapter start took
+    /// 17.2 s for its opening read.
     ///
-    /// Suspending the transfer here was implemented and withdrawn. A hold needs
-    /// somewhere to record the task it suspended, and one process-wide slot is
-    /// not enough: registering a second transfer, finishing one, or resuming
-    /// one from partial data all replaced that slot, leaving the suspended task
-    /// with nothing holding a reference that could resume it. The patron saw a
-    /// download stop at the byte it had reached. A correct hold keys the
-    /// suspension per transfer and expires on a timer rather than on a
-    /// callback that may never arrive.
+    /// An earlier attempt was withdrawn because it kept one process-wide slot
+    /// for the suspended task, and registering a second transfer, finishing
+    /// one, or resuming one from partial data each replaced that slot, leaving
+    /// the suspended task with nothing that could resume it — the patron saw a
+    /// download stop at the byte it had reached. The hold is now recorded on
+    /// the transfer itself, so a transfer that ends while held takes its hold
+    /// with it, and it carries a deadline so a load torn down without its
+    /// paired `streamingLoadDidEnd()` cannot strand a transfer.
     ///
-    /// The competitor worth removing is larger than this one anyway: the
-    /// playback model prefetched whole tracks over the same link, three at a
-    /// time, and now defers that until the archive is local. The load timeout
-    /// is decided from bytes served and elapsed time inside the player, so it
-    /// does not depend on either hook.
+    /// Nothing here fetches, so egress is unchanged: a held transfer keeps its
+    /// progress and its resume data and gives up only the link.
     ///
     /// Written out rather than defaulted: the protocol gives this pair no
     /// default, so a conformer that stops binding them fails to compile rather
-    /// than losing the behaviour with no diagnostic once it is wired up.
-    nonisolated public func streamingLoadDidBegin() {}
+    /// than losing the behaviour with no diagnostic.
+    nonisolated public func streamingLoadDidBegin() {
+        let held = LCPPublicationSessionRegistry.shared.holdTransfersForChapterLoad()
+        guard held > 0 else { return }
+        Log.info(#file, "📥 [LCP] holding \(held) archive transfer(s) while a chapter loads")
+        // The clock-based release. `releaseTransfersHeldForChapterLoad` is
+        // idempotent, so whichever of this and `streamingLoadDidEnd()` arrives
+        // first ends the hold and the other finds nothing held.
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + LCPPublicationSessionRegistry.maxChapterLoadHold
+        ) {
+            LCPPublicationSessionRegistry.shared.healExpiredHoldForChapterLoad()
+        }
+    }
 
-    nonisolated public func streamingLoadDidEnd() {}
+    nonisolated public func streamingLoadDidEnd() {
+        let resumed = LCPPublicationSessionRegistry.shared.releaseTransfersHeldForChapterLoad()
+        guard resumed > 0 else { return }
+        Log.info(#file, "📥 [LCP] chapter load finished — resuming \(resumed) archive transfer(s)")
+    }
 
     /// Nonisolated on purpose — see the note on the extension. This is a
     /// nonisolated witness of a `@MainActor` protocol requirement, which Swift

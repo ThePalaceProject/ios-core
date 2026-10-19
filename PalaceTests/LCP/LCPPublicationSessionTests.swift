@@ -281,6 +281,144 @@ final class LCPPublicationSessionTests: XCTestCase {
         // callbacks here have no production counterpart.
     }
 
+    // MARK: - Giving a waiting chapter the link
+
+    /// A chapter the patron is waiting on gets the link: the background
+    /// archive transfer is suspended for the load and resumed after it.
+    ///
+    /// The two are separate URLSessions over one link and the sizes are not
+    /// comparable — a chapter start moves about 6 MB against a 0.7-1.2 GB
+    /// archive — so the fetch is what makes a cold chapter slow.
+    func testChapterLoad_suspendsTheArchiveTransferAndResumesItAfterwards() throws {
+        let registry = LCPPublicationSessionRegistry()
+        let handle = FakeSessionHandle(identifier: "hold-1")
+        let (transfer, _) = registry.transfer(for: "hold-1", delegate: makeDelegate()) { _ in handle }
+        let task = handle.downloadTask(with: URLRequest(url: URL(string: "https://example.invalid/a.lcpa")!))
+        task.resume()
+        registry.setTask(task, for: "hold-1")
+        XCTAssertEqual(task.state, .running, "precondition: the transfer must be moving bytes")
+        _ = transfer
+
+        let held = registry.holdTransfersForChapterLoad()
+
+        XCTAssertEqual(held, 1, "the running transfer must be held")
+        XCTAssertEqual(task.state, .suspended, "a held transfer gives up the link")
+        XCTAssertTrue(registry.isHeldForChapterLoad("hold-1"))
+
+        let resumed = registry.releaseTransfersHeldForChapterLoad()
+
+        XCTAssertEqual(resumed, 1, "the hold must be given back")
+        XCTAssertEqual(task.state, .running, "the archive keeps downloading after the chapter loads")
+        XCTAssertFalse(registry.isHeldForChapterLoad("hold-1"))
+        task.cancel()
+    }
+
+    /// A transfer registered DURING a hold starts held.
+    ///
+    /// This is one of the three cases that sank the earlier attempt: it kept a
+    /// single slot for the suspended task, so a transfer arriving mid-hold took
+    /// the link the hold was protecting.
+    func testTransferRegisteredDuringAHold_startsHeld() throws {
+        let registry = LCPPublicationSessionRegistry()
+        let handle = FakeSessionHandle(identifier: "hold-2")
+        _ = registry.transfer(for: "hold-2", delegate: makeDelegate()) { _ in handle }
+
+        registry.holdTransfersForChapterLoad()
+
+        let late = handle.downloadTask(with: URLRequest(url: URL(string: "https://example.invalid/b.lcpa")!))
+        late.resume()
+        registry.setTask(late, for: "hold-2")
+
+        XCTAssertTrue(
+            registry.isHeldForChapterLoad("hold-2"),
+            "a transfer that arrives while a chapter is loading must not take the link"
+        )
+        XCTAssertEqual(late.state, .suspended)
+        registry.releaseTransfersHeldForChapterLoad()
+        XCTAssertEqual(late.state, .running, "and it must be resumed with the rest")
+        late.cancel()
+    }
+
+    /// A transfer that ends while held takes its hold with it, so the release
+    /// has nothing dangling to resume. The second of the three earlier cases.
+    func testTransferThatFinishesWhileHeld_leavesNoHoldBehind() throws {
+        let registry = LCPPublicationSessionRegistry()
+        let handle = FakeSessionHandle(identifier: "hold-3")
+        _ = registry.transfer(for: "hold-3", delegate: makeDelegate()) { _ in handle }
+        let task = handle.downloadTask(with: URLRequest(url: URL(string: "https://example.invalid/c.lcpa")!))
+        task.resume()
+        registry.setTask(task, for: "hold-3")
+        registry.holdTransfersForChapterLoad()
+
+        registry.finish("hold-3")
+
+        XCTAssertFalse(registry.isHeldForChapterLoad("hold-3"), "the finished transfer is gone")
+        XCTAssertEqual(
+            registry.releaseTransfersHeldForChapterLoad(), 0,
+            "releasing must not resume a transfer that already ended"
+        )
+        task.cancel()
+    }
+
+    /// Releasing twice resumes nothing the second time, so a hold ended by the
+    /// timer and then by `streamingLoadDidEnd()` cannot start a transfer that
+    /// was suspended for some other reason.
+    func testReleasingAHoldTwice_resumesNothingTheSecondTime() throws {
+        let registry = LCPPublicationSessionRegistry()
+        let handle = FakeSessionHandle(identifier: "hold-4")
+        _ = registry.transfer(for: "hold-4", delegate: makeDelegate()) { _ in handle }
+        let task = handle.downloadTask(with: URLRequest(url: URL(string: "https://example.invalid/d.lcpa")!))
+        task.resume()
+        registry.setTask(task, for: "hold-4")
+        registry.holdTransfersForChapterLoad()
+
+        XCTAssertEqual(registry.releaseTransfersHeldForChapterLoad(), 1)
+        XCTAssertEqual(registry.releaseTransfersHeldForChapterLoad(), 0, "the second release is a no-op")
+        task.cancel()
+    }
+
+    /// A hold whose deadline passed is released by the next registry
+    /// operation, without anyone calling release.
+    ///
+    /// The third earlier case: the paired `streamingLoadDidEnd()` can fail to
+    /// arrive when a load is torn down unusually, and a transfer must not stay
+    /// suspended until the app is relaunched.
+    func testHoldPastItsDeadline_isReleasedWithoutTheCallback() throws {
+        let registry = LCPPublicationSessionRegistry()
+        let handle = FakeSessionHandle(identifier: "hold-5")
+        _ = registry.transfer(for: "hold-5", delegate: makeDelegate()) { _ in handle }
+        let task = handle.downloadTask(with: URLRequest(url: URL(string: "https://example.invalid/e.lcpa")!))
+        task.resume()
+        registry.setTask(task, for: "hold-5")
+
+        // Already expired, standing in for a load that never reported its end.
+        registry.holdTransfersForChapterLoad(until: Date().addingTimeInterval(-1))
+        XCTAssertEqual(task.state, .suspended, "precondition: the transfer is held")
+
+        registry.healExpiredHoldForChapterLoad()
+
+        XCTAssertEqual(task.state, .running, "an expired hold must not strand the download")
+        XCTAssertFalse(registry.isHeldForChapterLoad("hold-5"))
+        task.cancel()
+    }
+
+    /// A transfer that has not started is not "held": suspending it would make
+    /// the release START it, which is a transfer the hold invented rather than
+    /// one it paused.
+    func testTransferThatIsNotRunning_isNotHeld() throws {
+        let registry = LCPPublicationSessionRegistry()
+        let handle = FakeSessionHandle(identifier: "hold-6")
+        _ = registry.transfer(for: "hold-6", delegate: makeDelegate()) { _ in handle }
+        let idle = handle.downloadTask(with: URLRequest(url: URL(string: "https://example.invalid/f.lcpa")!))
+        registry.setTask(idle, for: "hold-6")
+        XCTAssertEqual(idle.state, .suspended, "precondition: an unstarted task is suspended")
+
+        XCTAssertEqual(registry.holdTransfersForChapterLoad(), 0, "nothing was moving, so nothing is held")
+
+        registry.releaseTransfersHeldForChapterLoad()
+        XCTAssertEqual(idle.state, .suspended, "the release must not start a transfer nobody began")
+    }
+
     // MARK: - Nothing to transfer
 
     func testAcquireWithAnUnparsableLicence_startsNoTransfer() throws {
@@ -312,6 +450,14 @@ final class LCPPublicationSessionTests: XCTestCase {
     }
 
     // MARK: - Helpers
+
+    /// A delegate for the registry's own tests. The registry keeps it only to
+    /// route callbacks; these cases drive the hold directly and never deliver
+    /// one, so any instance will do.
+    private func makeDelegate() -> TPPLicensesService {
+        TPPLicensesService(makeSession: factory.make)
+    }
+
 
     /// A licence whose URL is unique per test, so its background identifier —
     /// derived from that URL — cannot collide with another test's.
@@ -436,15 +582,30 @@ private final class FakeDownloadTask: OutstandingArchiveTask, @unchecked Sendabl
     let bytesTransferred: Int64
     let isFinished: Bool
     private(set) var wasCancelled = false
+    /// Suspend/resume are recorded rather than counted into one flag, so a
+    /// double release is visible as two resumes instead of reading the same as
+    /// one.
+    private(set) var suspensions = 0
+    private(set) var resumptions = 0
+    var isRunning: Bool
 
-    init(identifier: Int, url: URL, bytesReceived: Int64, isFinished: Bool = false) {
+    init(
+        identifier: Int,
+        url: URL,
+        bytesReceived: Int64,
+        isFinished: Bool = false,
+        isRunning: Bool = true
+    ) {
         taskIdentifier = identifier
         archiveURL = url
         bytesTransferred = bytesReceived
         self.isFinished = isFinished
+        self.isRunning = isRunning
     }
 
     func cancelTransfer() { wasCancelled = true }
+    func suspendTransfer() { suspensions += 1; isRunning = false }
+    func resumeTransfer() { resumptions += 1; isRunning = true }
 }
 
 // MARK: - Choosing which duplicate task survives

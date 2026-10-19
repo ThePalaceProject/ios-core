@@ -52,6 +52,13 @@ protocol OutstandingArchiveTask: AnyObject {
     var isFinished: Bool { get }
     var bytesTransferred: Int64 { get }
     func cancelTransfer()
+    /// Whether the transfer is moving bytes right now, so a hold suspends only
+    /// what is actually competing and a release resumes only what it held.
+    var isRunning: Bool { get }
+    /// Stops the transfer without ending it. The archive keeps its progress and
+    /// its resume data; only the link is given up.
+    func suspendTransfer()
+    func resumeTransfer()
 }
 
 extension URLSessionDownloadTask: OutstandingArchiveTask {
@@ -59,6 +66,9 @@ extension URLSessionDownloadTask: OutstandingArchiveTask {
     var isFinished: Bool { state == .completed }
     var bytesTransferred: Int64 { countOfBytesReceived }
     func cancelTransfer() { cancel() }
+    var isRunning: Bool { state == .running }
+    func suspendTransfer() { suspend() }
+    func resumeTransfer() { resume() }
 }
 
 
@@ -92,6 +102,17 @@ final class LCPPublicationSessionRegistry: @unchecked Sendable {
         /// transfer already running instead of starting a second one.
         fileprivate(set) var task: URLSessionDownloadTask?
 
+        /// Whether this transfer is suspended to give a chapter load the link.
+        ///
+        /// Recorded per transfer, not once for the registry: the earlier attempt
+        /// kept a single process-wide slot, and registering a second transfer,
+        /// finishing one, or resuming one from partial data each replaced that
+        /// slot and left the suspended task with nothing holding a reference
+        /// that could resume it. The patron saw a download stop at the byte it
+        /// had reached. Keeping the flag on the transfer means a transfer that
+        /// ends while held takes its hold with it.
+        fileprivate(set) var isHeld = false
+
         fileprivate init(identifier: String,
                          session: LCPPublicationSessionHandle,
                          delegate: TPPLicensesService) {
@@ -116,6 +137,7 @@ final class LCPPublicationSessionRegistry: @unchecked Sendable {
         delegate: TPPLicensesService,
         startingWith startSession: (String) -> LCPPublicationSessionHandle
     ) -> (transfer: Transfer, isNew: Bool) {
+        healExpiredHoldForChapterLoad()
         lock.lock(); defer { lock.unlock() }
         if let running = transfers[identifier] {
             return (running, false)
@@ -142,13 +164,111 @@ final class LCPPublicationSessionRegistry: @unchecked Sendable {
     }
 
     func setTask(_ task: URLSessionDownloadTask?, for identifier: String) {
-        lock.lock(); defer { lock.unlock() }
+        lock.lock()
         transfers[identifier]?.task = task
+        // A transfer registered or resumed from partial data while a chapter is
+        // waiting must start held, or the hold leaks the link to the transfer
+        // that arrived during it. `holdExpiry` is consulted so a stale hold
+        // cannot suspend a new transfer indefinitely.
+        let holdApplies = isHolding && task != nil && !holdHasExpired
+        if holdApplies { transfers[identifier]?.isHeld = true }
+        lock.unlock()
+        if holdApplies { task?.suspendTransfer() }
+    }
+
+    // MARK: - Giving a waiting chapter the link
+
+    /// Whether a chapter load is currently holding the archive transfers, and
+    /// when that hold stops applying.
+    ///
+    /// A hold must expire on a clock, not only on a callback: the toolkit's
+    /// `streamingLoadDidEnd()` is the paired signal, and a load that is torn
+    /// down in an unusual way can fail to send it. An expired hold is released
+    /// by the next registry operation, so the worst case is a transfer that
+    /// resumes late rather than one that never resumes.
+    private var holdExpiry: Date?
+    private var isHolding: Bool { holdExpiry != nil }
+    private var holdHasExpired: Bool {
+        guard let holdExpiry else { return false }
+        return Date() >= holdExpiry
+    }
+
+    /// How long a single chapter load may hold the archive transfers.
+    ///
+    /// Longer than the player's load progress window (30 s) would outlive the
+    /// load it was taken for; much shorter would release the link back while
+    /// the patron is still waiting. The load timeout re-arms while bytes
+    /// arrive, so a healthy slow chapter re-takes the hold on its next load.
+    static let maxChapterLoadHold: TimeInterval = 30
+
+    /// Suspends every running archive transfer so the chapter the patron is
+    /// waiting on has the link to itself.
+    ///
+    /// The background package fetch and a streamed chapter are separate
+    /// URLSessions over one link, so the fetch competes with the chapter the
+    /// patron is waiting for (PP-5367). Measured on device: a chapter start
+    /// moves ~6 MB, and a whole-archive transfer is 0.7-1.2 GB.
+    ///
+    /// - Returns: how many transfers this call suspended.
+    @discardableResult
+    func holdTransfersForChapterLoad(
+        until deadline: Date = Date().addingTimeInterval(LCPPublicationSessionRegistry.maxChapterLoadHold)
+    ) -> Int {
+        lock.lock()
+        holdExpiry = deadline
+        // Only what is actually moving bytes: suspending a task that has not
+        // started would make `resumeTransfer()` start it, which is a transfer
+        // the hold invented rather than one it paused.
+        let toHold = transfers.values.filter { !$0.isHeld && ($0.task?.isRunning ?? false) }
+        for transfer in toHold { transfer.isHeld = true }
+        let tasks = toHold.compactMap(\.task)
+        lock.unlock()
+        for task in tasks { task.suspendTransfer() }
+        return tasks.count
+    }
+
+    /// Resumes whatever `holdTransfersForChapterLoad` suspended.
+    ///
+    /// Idempotent, and safe to call when nothing is held: only a transfer this
+    /// registry recorded as held is resumed, so a second call cannot start a
+    /// transfer that was suspended for some other reason.
+    ///
+    /// - Returns: how many transfers this call resumed.
+    @discardableResult
+    func releaseTransfersHeldForChapterLoad() -> Int {
+        lock.lock()
+        holdExpiry = nil
+        let held = transfers.values.filter(\.isHeld)
+        for transfer in held { transfer.isHeld = false }
+        let tasks = held.compactMap(\.task)
+        lock.unlock()
+        for task in tasks { task.resumeTransfer() }
+        return tasks.count
+    }
+
+    /// Whether `identifier`'s transfer is held, for the tests and the log line.
+    func isHeldForChapterLoad(_ identifier: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return transfers[identifier]?.isHeld ?? false
+    }
+
+    /// Releases a hold whose deadline has passed.
+    ///
+    /// Called from the registry's entry points so a lost
+    /// `streamingLoadDidEnd()` cannot strand a transfer until the app is
+    /// relaunched. The timer that normally ends a hold is the primary release;
+    /// this is the backstop that does not depend on a callback arriving.
+    func healExpiredHoldForChapterLoad() {
+        lock.lock()
+        let expired = holdHasExpired
+        lock.unlock()
+        if expired { releaseTransfersHeldForChapterLoad() }
     }
 
     /// Ends the transfer: the session is invalidated so it and its delegate are
     /// released, and the identifier is free for a later attempt at the book.
     func finish(_ identifier: String) {
+        healExpiredHoldForChapterLoad()
         lock.lock()
         let finished = transfers.removeValue(forKey: identifier)
         lock.unlock()
