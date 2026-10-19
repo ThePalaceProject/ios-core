@@ -167,18 +167,20 @@ final class LCPPublicationSessionTests: XCTestCase {
         let service = TPPLicensesService(makeSession: factory.make)
         var delivered: URL?
         var reported: Error?
-        let completed = expectation(description: "the archive is handed to the caller")
+        // No wait: this licence has no path-in-zip, so the service hands the
+        // archive over synchronously from the delegate callback below. A
+        // deadline here would be a wall-clock wait on work already done — and
+        // if that ever stops being synchronous, `delivered` is nil and this
+        // fails loudly instead of flaking under parallel clones.
         _ = service.acquirePublication(from: licence, progress: { _ in }, completion: { url, error in
             delivered = url
             reported = error
-            completed.fulfill()
         })
         let handle = try XCTUnwrap(factory.handles.first)
 
         let downloaded = try writeFile(contents: "archive bytes")
         service.urlSession(URLSession.shared, downloadTask: anyDownloadTask(), didFinishDownloadingTo: downloaded)
 
-        wait(for: [completed], timeout: 2.0)
         let archive = try XCTUnwrap(delivered, "the caller must receive the archive it waited for")
         writtenFiles.append(archive)
         XCTAssertNil(reported)
@@ -191,10 +193,11 @@ final class LCPPublicationSessionTests: XCTestCase {
         let licence = try writeLicence()
         let service = TPPLicensesService(makeSession: factory.make)
         var reported: Error?
-        let completed = expectation(description: "the failure reaches the caller")
+        // Synchronous for the same reason as above: the copy of an absent file
+        // throws inside the delegate callback, so the failure is reported
+        // before that call returns.
         _ = service.acquirePublication(from: licence, progress: { _ in }, completion: { _, error in
             reported = error
-            completed.fulfill()
         })
         let handle = try XCTUnwrap(factory.handles.first)
 
@@ -202,7 +205,6 @@ final class LCPPublicationSessionTests: XCTestCase {
             .appendingPathComponent("never-written-\(UUID().uuidString).zip")
         service.urlSession(URLSession.shared, downloadTask: anyDownloadTask(), didFinishDownloadingTo: missing)
 
-        wait(for: [completed], timeout: 2.0)
         XCTAssertNotNil(reported, "a download whose file cannot be read is a failure the caller must hear about")
         XCTAssertEqual(handle.invalidations, 1, "the session must be released however the transfer ended")
     }
