@@ -373,6 +373,42 @@ final class BackgroundDownloadHandlerTests: XCTestCase {
 
     // MARK: - File Replace
 
+    /// The sibling writer, and the larger population: a plain non-DRM
+    /// download that completes after the patron returned the book.
+    ///
+    /// Tested directly, unlike the LCP path, because `moveFile` writes
+    /// `.downloadSuccessful` itself — the state write is here, not in a caller,
+    /// so this IS the producer. `BookReturnService` removes the book without
+    /// cancelling the transfer, which is what leaves the window open.
+    func testMoveFile_forAReturnedBook_shelvesNothingAndReportsNoFailure() throws {
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let registry = mockDelegate.bookRegistry as! TPPBookRegistryMock
+        registry.addBook(book, state: .unregistered)
+
+        let tempDir = FileManager.default.temporaryDirectory
+        let sourceFile = tempDir.appendingPathComponent("moved_src_\(UUID().uuidString).epub")
+        let destFile = tempDir.appendingPathComponent("moved_dst_\(UUID().uuidString).epub")
+        try Data("content that must not be shelved".utf8).write(to: sourceFile)
+        mockDelegate.fileUrls[book.identifier] = destFile
+
+        let task = inertTestSession.downloadTask(with: URL(string: "https://example.com")!)
+        let result = handler.moveFile(at: sourceFile, toDestinationForBook: book, forDownloadTask: task)
+
+        XCTAssertTrue(result, "a deliberate discard is not a move failure")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: destFile.path),
+            "a returned book's content must not reach the shelf"
+        )
+        XCTAssertEqual(
+            registry.state(for: book.identifier),
+            .unregistered,
+            "and .unregistered must not advance to .downloadSuccessful, which is not reachable from it"
+        )
+
+        try? FileManager.default.removeItem(at: sourceFile)
+        try? FileManager.default.removeItem(at: destFile)
+    }
+
     /// The end-to-end shape of the guard: a download completing after the
     /// patron returned the book writes nothing, and reports NO failure.
     ///

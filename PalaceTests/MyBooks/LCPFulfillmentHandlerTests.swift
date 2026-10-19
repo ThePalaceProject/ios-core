@@ -550,17 +550,6 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
                       "No alert should publish for an already-opened audiobook on phase-2 failure")
     }
 
-    /// The positive path, and the reason this test exists: after 3.2.3 moved
-    /// `markDownloadSuccessful` out of the license-fulfilled branch and into the
-    /// content-landed branch, NOTHING asserted that an LCP audiobook ever
-    /// reaches `.downloadSuccessful` at all. Deleting that call killed zero
-    /// tests while stranding every fresh LCP download in `.downloading`
-    /// (Cancel-only, no Listen). Reviewers caught it; this pins it.
-    ///
-    /// Reaching the branch needs the real `replaceBook` to succeed, which needs
-    /// a delegate that can resolve a destination — hence the mock delegate — and
-    /// a license the completion can parse, hence the JSON fixture rather than
-    /// arbitrary bytes.
     /// The negative twin of the test below, and the one that matters: an LCP
     /// audiobook whose content download finishes AFTER the patron returned it.
     ///
@@ -615,6 +604,17 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
         )
     }
 
+    /// The positive path, and the reason this test exists: after 3.2.3 moved
+    /// `markDownloadSuccessful` out of the license-fulfilled branch and into the
+    /// content-landed branch, NOTHING asserted that an LCP audiobook ever
+    /// reaches `.downloadSuccessful` at all. Deleting that call killed zero
+    /// tests while stranding every fresh LCP download in `.downloading`
+    /// (Cancel-only, no Listen). Reviewers caught it; this pins it.
+    ///
+    /// Reaching the branch needs the real `replaceBook` to succeed, which needs
+    /// a delegate that can resolve a destination — hence the mock delegate — and
+    /// a license the completion can parse, hence the JSON fixture rather than
+    /// arbitrary bytes.
     func testFulfill_audiobook_marksSuccessfulOnceContentLands() async throws {
         let audiobook = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
         // The state the content completion actually runs against: the store

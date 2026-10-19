@@ -431,6 +431,27 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
 
         guard let finalFileURL = delegate.fileUrl(for: book.identifier) else { return false }
 
+        // The same window `storeBook` guards, on the sibling writer: this one
+        // sets `.downloadSuccessful` itself, so a download finishing after a
+        // Return takes `.unregistered` to a state that is not reachable from
+        // it. `BookReturnService` removes the book without cancelling the
+        // transfer, so the window is real for every non-DRM EPUB and PDF.
+        // Returns true because nothing failed — the Bool here only reports
+        // failure, and no caller marks the book successful for this arm.
+        let registryState = delegate.bookRegistry.state(for: book.identifier)
+        guard Self.completedDownloadMayBeStored(
+            registryState: registryState,
+            startedAccountID: Self.startedAccountID(
+                forBookID: book.identifier,
+                in: delegate.stateManager.persistedRecords()
+            ),
+            currentAccountID: delegate.userAccount.libraryUUID
+        ) else {
+            Log.info(#file, "'\(book.title)' is no longer held (state: \(registryState.stringValue())) — discarding the moved file instead of shelving it")
+            try? FileManager.default.removeItem(at: sourceLocation)
+            return true
+        }
+
         do {
             try FileManager.default.removeItem(at: finalFileURL)
         } catch {

@@ -182,9 +182,10 @@ class LocalBookContentService {
     ///
     /// Not the only writer: `BackgroundDownloadHandler.replaceBook` (reached from
     /// `LCPFulfillmentHandler` with streaming off, and always for LCP PDF/EPUB)
-    /// asks the same question through `completedDownloadMayBeStored`, which
-    /// delegates here so the two cannot drift on which states mean the loan is
-    /// live.
+    /// and its sibling `moveFile` both ask the same question through
+    /// `completedDownloadMayBeStored`, which delegates here so the writers
+    /// cannot drift on which states mean the loan is live. The streaming-on
+    /// license-only arm in `LCPFulfillmentHandler` still does not ask.
     ///
     /// A library switch always writes; see `accountUnchanged` below.
     ///
