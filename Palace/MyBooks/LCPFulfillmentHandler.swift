@@ -243,7 +243,19 @@ final class LCPFulfillmentHandler: @unchecked Sendable {
             }
             self.bookRegistry.setFulfillmentId(license.identifier, for: book.identifier)
 
-            if !self.backgroundDownloadHandler.replaceBook(book, withFileAtURL: localUrl, forDownloadTask: downloadTask) {
+            // Switched on the outcome, not a Bool. `storeBook` leaves the
+            // success state to this caller for an LCP audiobook and PDF, so
+            // "did not fail" and "is on disk" are different claims: a download
+            // finishing after a Return writes nothing, and marking it
+            // successful would take `.unregistered` to `.downloadSuccessful`
+            // and announce a completed download for a book the patron gave
+            // back.
+            let outcome = self.backgroundDownloadHandler.storeBook(book, withFileAtURL: localUrl, forDownloadTask: downloadTask)
+            if outcome == .discardedNotHeld {
+                Log.info(#file, "Content arrived after the loan ended — not marking download successful: \(book.identifier)")
+                return
+            }
+            if outcome == .failed {
                 // Storing the content failed, so there is no playable audio on
                 // disk and (with streaming broken) nothing to fall back to.
                 // This used to warn and continue, leaving the book in the

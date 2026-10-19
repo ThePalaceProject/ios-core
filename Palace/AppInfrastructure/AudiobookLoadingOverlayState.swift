@@ -141,10 +141,6 @@ extension AudiobookMorphingPlayerView {
         return .skeleton
     }
 
-    /// Which states arm the load-error timer: the ones meaning "the player is not
-    /// usable yet". Pure so the table can assert it — an arming rule that lives only
-    /// inside a `.onChange` closure cannot be enumerated, and the cell that matters
-    /// (`.awaitingReload` DOES arm) is the one that closes PP-5205's F1 hole.
     /// The download-seen latch: once true it stays true.
     ///
     /// One-way on purpose. A live `isDownloading` would re-open the

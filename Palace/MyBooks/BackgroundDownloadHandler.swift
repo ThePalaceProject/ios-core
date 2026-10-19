@@ -285,7 +285,6 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
     /// already unwrapped it, so there is no nil arm to invent a fallback for — and
     /// the fallback an earlier draft used reached `AppContainer.production()` from
     /// a collaborator, which is the composition-root rule this project holds.
-
     func startedForAccount(for book: TPPBook, delegate: BackgroundDownloadHandlerDelegate) -> TPPUserAccount {
         guard let startedAccountID = delegate.stateManager
             .persistedRecords()
@@ -469,9 +468,32 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
         return success
     }
 
+    /// What became of a completed download's content.
+    ///
+    /// Three outcomes, because a Bool cannot carry them: the success arm
+    /// writes the state for some content types and leaves it to the caller for
+    /// others, so "no failure" and "it is on disk" are different claims and a
+    /// caller that conflates them marks a returned book downloaded.
+    enum ContentStoreOutcome: Equatable {
+        /// The content is at the book's path.
+        case stored
+        /// The patron no longer holds the book, so nothing was written. Not a
+        /// failure: there is nothing to tell them and nothing to retry.
+        case discardedNotHeld
+        /// The write was attempted and did not succeed.
+        case failed
+    }
+
+    /// Kept for callers that only need to know whether the write FAILED —
+    /// `RightsManagementDispatcher` through `BackgroundDownloadFileOps`, and
+    /// the tests. A deliberate discard is not a failure.
     func replaceBook(_ book: TPPBook, withFileAtURL sourceLocation: URL, forDownloadTask downloadTask: URLSessionDownloadTask) -> Bool {
-        guard let delegate = delegate else { return false }
-        guard let destURL = delegate.fileUrl(for: book.identifier) else { return false }
+        storeBook(book, withFileAtURL: sourceLocation, forDownloadTask: downloadTask) != .failed
+    }
+
+    func storeBook(_ book: TPPBook, withFileAtURL sourceLocation: URL, forDownloadTask downloadTask: URLSessionDownloadTask) -> ContentStoreOutcome {
+        guard let delegate = delegate else { return .failed }
+        guard let destURL = delegate.fileUrl(for: book.identifier) else { return .failed }
 
         let fileManager = FileManager.default
 
@@ -487,17 +509,9 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
             ),
             currentAccountID: delegate.userAccount.libraryUUID
         ) else {
-            // NOT `false`: both callers read a false return as "the write
-            // failed" and escalate — `LCPFulfillmentHandler` to
-            // `failDownloadWithAlert`, which writes `.downloadFailed` and shows
-            // a retry alert, and `RightsManagementDispatcher` to
-            // `failureRequiringAlert`. Nothing failed here: the download was
-            // deliberately discarded because the patron no longer holds the
-            // book, and telling them it failed is a worse answer than the
-            // illegal transition this guard exists to prevent.
             Log.info(#file, "'\(book.title)' is no longer held (state: \(registryState.stringValue())) — discarding the downloaded file instead of writing it to disk")
             try? fileManager.removeItem(at: sourceLocation)
-            return true
+            return .discardedNotHeld
         }
 
         do {
@@ -515,7 +529,7 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
 
             guard validateDownloadedFile(at: destURL, for: book) else {
                 Log.error(#file, "File validation failed after replace/move for '\(book.title)'")
-                return false
+                return .failed
             }
 
             #if LCP
@@ -528,7 +542,7 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
             delegate.bookRegistry.setState(.downloadSuccessful, for: book.identifier)
             delegate.progressReporter.announceDownloadCompleted(for: book)
             #endif
-            return true
+            return .stored
         } catch {
             delegate.logBookDownloadFailure(book,
                                    reason: "Couldn't replace/move downloaded book",
@@ -541,7 +555,7 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
                                    ])
         }
 
-        return false
+        return .failed
     }
 
     func validateDownloadedFile(at fileURL: URL, for book: TPPBook) -> Bool {
