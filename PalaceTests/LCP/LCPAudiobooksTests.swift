@@ -236,6 +236,165 @@ final class LCPAudiobooksTests: XCTestCase {
         )
     }
 
+    // MARK: - Waiting for a length rather than probing for it
+    //
+    // The states a track's length can be in, and what the chapter's ask does
+    // in each:
+    //
+    //   known                        -> answers at once, no probe
+    //   nothing running              -> nil at once, the probe stands
+    //   running, reaches this track  -> answers with the length, no probe
+    //   running, ends without it     -> nil, before the wait runs out
+    //   running, too slow            -> nil when the wait runs out
+    //   chapter dropped while waiting -> nil
+
+    /// A length already learned is the cheap case and must stay cheap: no
+    /// wait, whatever timeout the caller offers.
+    func testPlaintextLength_whenAlreadyKnown_answersWithoutWaiting() async throws {
+        let book = try makeAudiobook(
+            publicationHref: "https://storage.googleapis.com/bucket/k1-\(UUID().uuidString)"
+        )
+        book.cachePlaintextLength(4_073, forHref: "track-a.mp3")
+
+        let startedAt = Date()
+        let length = await book.plaintextLength(forHref: "track-a.mp3", waitingUpTo: 5)
+
+        XCTAssertEqual(length, 4_073)
+        XCTAssertLessThan(Date().timeIntervalSince(startedAt), 1)
+    }
+
+    /// With no resolution running — a local package, or one that has already
+    /// finished — no answer is coming, and waiting would only delay the probe
+    /// the chapter now has to run.
+    func testPlaintextLength_withNoResolutionRunning_answersNilAtOnce() async throws {
+        let book = try makeAudiobook(
+            publicationHref: "https://storage.googleapis.com/bucket/n1-\(UUID().uuidString)"
+        )
+
+        let startedAt = Date()
+        let length = await book.plaintextLength(forHref: "track-a.mp3", waitingUpTo: 5)
+
+        XCTAssertNil(length)
+        XCTAssertLessThan(Date().timeIntervalSince(startedAt), 1)
+    }
+
+    /// The change this is all for: the chapter waits for the two small reads
+    /// the resolution makes for its track instead of running Readium's tail
+    /// probe, measured on device at 18.6 MB to deliver two bytes.
+    func testPlaintextLength_whileAResolutionIsRunning_waitsForTheTrackItNeeds() async throws {
+        let book = try makeAudiobook(
+            publicationHref: "https://storage.googleapis.com/bucket/r1-\(UUID().uuidString)"
+        )
+        let archive = LCPSyntheticArchive.make()
+        archive.onReadAsync = { _ in try? await Task.sleep(nanoseconds: 50_000_000) }
+
+        let resolution = Task {
+            await book.resolveTrackLengths(
+                hrefs: ["track-a.mp3", "track-b.mp3", "track c.mp3"],
+                archiveLength: archive.declaredLength,
+                maxConcurrentReads: 1,
+                readRange: { await archive.read($0) },
+                decipher: { $0 }
+            )
+        }
+        try await waitUntil(timeout: 5) { !archive.reads.isEmpty }
+
+        let length = await book.plaintextLength(forHref: "track c.mp3", waitingUpTo: 5)
+        _ = await resolution.value
+
+        XCTAssertEqual(length, LCPSyntheticArchive.trackC.plaintextLength)
+    }
+
+    /// A resolution that ends without this track — it was not in the archive,
+    /// or its read failed — must release the chapter rather than hold it for
+    /// the whole wait.
+    func testPlaintextLength_whenTheResolutionEndsWithoutTheTrack_stopsWaiting() async throws {
+        let book = try makeAudiobook(
+            publicationHref: "https://storage.googleapis.com/bucket/e1-\(UUID().uuidString)"
+        )
+        let archive = LCPSyntheticArchive.make()
+        archive.onReadAsync = { _ in try? await Task.sleep(nanoseconds: 50_000_000) }
+
+        let resolution = Task {
+            await book.resolveTrackLengths(
+                hrefs: ["track-a.mp3"],
+                archiveLength: archive.declaredLength,
+                maxConcurrentReads: 1,
+                readRange: { await archive.read($0) },
+                decipher: { $0 }
+            )
+        }
+        try await waitUntil(timeout: 5) { !archive.reads.isEmpty }
+
+        let startedAt = Date()
+        let length = await book.plaintextLength(forHref: "track-b.mp3", waitingUpTo: 5)
+        _ = await resolution.value
+
+        XCTAssertNil(length)
+        XCTAssertLessThan(
+            Date().timeIntervalSince(startedAt), 3,
+            "the answer comes when the resolution ends, not when the wait runs out"
+        )
+    }
+
+    /// A resolution slower than the chapter can wait for: the probe is the
+    /// fallback, and the wait must end so it can start.
+    func testPlaintextLength_whenTheWaitRunsOut_answersNil() async throws {
+        let book = try makeAudiobook(
+            publicationHref: "https://storage.googleapis.com/bucket/t1-\(UUID().uuidString)"
+        )
+        let archive = LCPSyntheticArchive.make()
+        archive.onReadAsync = { _ in try? await Task.sleep(nanoseconds: 2_000_000_000) }
+
+        let resolution = Task {
+            await book.resolveTrackLengths(
+                hrefs: ["track-a.mp3", "track c.mp3"],
+                archiveLength: archive.declaredLength,
+                maxConcurrentReads: 1,
+                readRange: { await archive.read($0) },
+                decipher: { $0 }
+            )
+        }
+        try await waitUntil(timeout: 5) { !archive.reads.isEmpty }
+
+        let length = await book.plaintextLength(forHref: "track c.mp3", waitingUpTo: 0.2)
+
+        XCTAssertNil(length)
+        resolution.cancel()
+        _ = await resolution.value
+    }
+
+    /// AVFoundation drops the request when the patron moves on again. The ask
+    /// must end with it; the non-cancelled path is pinned by
+    /// `testPlaintextLength_whileAResolutionIsRunning_waitsForTheTrackItNeeds`.
+    func testPlaintextLength_whenTheChapterIsDroppedWhileWaiting_answersNil() async throws {
+        let book = try makeAudiobook(
+            publicationHref: "https://storage.googleapis.com/bucket/c1-\(UUID().uuidString)"
+        )
+        let archive = LCPSyntheticArchive.make()
+        archive.onReadAsync = { _ in try? await Task.sleep(nanoseconds: 1_000_000_000) }
+
+        let resolution = Task {
+            await book.resolveTrackLengths(
+                hrefs: ["track-a.mp3", "track c.mp3"],
+                archiveLength: archive.declaredLength,
+                maxConcurrentReads: 1,
+                readRange: { await archive.read($0) },
+                decipher: { $0 }
+            )
+        }
+        try await waitUntil(timeout: 5) { !archive.reads.isEmpty }
+
+        let asking = Task { await book.plaintextLength(forHref: "track c.mp3", waitingUpTo: 5) }
+        try await Task.sleep(nanoseconds: 150_000_000)
+        asking.cancel()
+
+        let length = await asking.value
+        XCTAssertNil(length)
+        resolution.cancel()
+        _ = await resolution.value
+    }
+
     /// What the resolution is asked to learn. The player keys a track by its
     /// href without the fragment, so a length stored under the full href is
     /// never found, and a track already known must not be fetched again.
@@ -842,6 +1001,17 @@ final class LCPAudiobooksTests: XCTestCase {
         throw XCTSkip("LCP not enabled in this configuration")
         #endif
     }
+    /// Waits for a condition the code under test reaches on another task.
+    private func waitUntil(timeout: TimeInterval, _ condition: () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            if Date() > deadline {
+                XCTFail("condition not met within \(timeout) s")
+                throw CancellationError()
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+    }
 }
 
 // MARK: - LCP Audiobook URL Scheme Tests
@@ -1174,4 +1344,5 @@ final class LCPSlowPublicationOpenTests: XCTestCase {
         )
         #endif
     }
+
 }

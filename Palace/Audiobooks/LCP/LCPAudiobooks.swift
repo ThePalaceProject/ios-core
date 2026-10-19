@@ -53,6 +53,15 @@ import PalaceBookModel
     /// the player asks for the one it is about to play before the items it
     /// prefetches behind it.
     private let demandedTracks = DemandedTracks()
+
+    /// How many track-length resolutions are in flight for this archive.
+    ///
+    /// A chapter waits for a length only while one is running: with nothing
+    /// running no answer is coming, and Readium's probe is the only one left.
+    /// A count rather than a flag because the open's resolution and the
+    /// resolution it calls both announce themselves, and the inner one ending
+    /// must not say the outer one has.
+    private let trackLengthResolutions = WorkInFlight()
     private var currentPrefetchTask: Task<Void, Never>?
     /// The background resolution of this archive's track lengths.
     private var trackLengthTask: Task<Void, Never>?
@@ -713,6 +722,46 @@ extension LCPAudiobooks: LCPStreamingProvider {
         demandedTracks.resolved(href)
     }
 
+    /// The length a chapter needs, waiting for the resolution already running
+    /// rather than letting Readium read the entry's CBC tail.
+    ///
+    /// Which answer applies is decided here, not by the caller: the length is
+    /// already known; nothing is running, so none is coming; the resolution
+    /// reaches this track and reports it; or it ends, or the wait runs out,
+    /// without it. Only the first and third spare the chapter the probe, which
+    /// was measured at 18.6 MB of origin traffic to deliver two bytes.
+    nonisolated public func plaintextLength(
+        forHref href: String,
+        waitingUpTo timeout: TimeInterval
+    ) async -> UInt64? {
+        // Through the recording read: this ask is what puts the track at the
+        // head of the resolution's queue.
+        if let known = cachedPlaintextLength(forHref: href) { return known }
+        guard trackLengthResolutions.isRunning else { return nil }
+
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            // Polled rather than signalled. The resolution reports a length by
+            // storing it, and a waiter registry would have to stay correct
+            // against cancellation, teardown, and a resolution that ends
+            // without this track — four more states on the chapter-change
+            // path. The interval costs at most itself, inside a wait the
+            // chapter is already in.
+            do {
+                try await Task.sleep(nanoseconds: Self.trackLengthPollInterval)
+            } catch {
+                return nil // this chapter was dropped while waiting
+            }
+            if let learned = storedPlaintextLength(forHref: href) { return learned }
+            // The resolution has ended without this track, so nothing further
+            // is coming and waiting out the timeout would only delay the probe.
+            guard trackLengthResolutions.isRunning else { return nil }
+        }
+        return nil
+    }
+
+    static let trackLengthPollInterval: UInt64 = 100_000_000
+
     /// Learns and remembers the plaintext length of every named track that has
     /// none yet, reading the archive directly instead of through Readium's
     /// buffered probe.
@@ -729,6 +778,9 @@ extension LCPAudiobooks: LCPStreamingProvider {
     ) async -> LCPArchiveTrackLengthResolver.Summary {
         let missing = hrefs.filter { storedPlaintextLength(forHref: $0) == nil }
         guard !missing.isEmpty else { return .init() }
+
+        trackLengthResolutions.enter()
+        defer { trackLengthResolutions.leave() }
 
         return await LCPArchiveTrackLengthResolver(
             archiveLength: archiveLength,
@@ -800,7 +852,12 @@ extension LCPAudiobooks: LCPStreamingProvider {
         }
 
         let client = archiveReadClient
+        // Announced before the task runs, not inside it: the archive's length
+        // is a request of its own, and a chapter asking in that gap would
+        // otherwise be told nothing is coming and go to the probe.
+        trackLengthResolutions.enter()
         let task = Task { [weak self] in
+            defer { self?.trackLengthResolutions.leave() }
             guard let self, !self.isReleasedSnapshot() else { return }
             let startedAt = Date()
             guard let archiveLength = await Self.archiveLength(of: archiveURL, using: client) else {
@@ -1173,6 +1230,22 @@ private struct SendableDecryptCompletion: @unchecked Sendable {
 private struct LCPContentResultBox: @unchecked Sendable {
     let json: NSDictionary?
     let error: NSError?
+}
+
+/// How many pieces of work of one kind are in flight.
+///
+/// - Sendable invariant: every access goes through `lock`.
+private final class WorkInFlight: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var isRunning: Bool { lock.withLock { count > 0 } }
+
+    func enter() { lock.withLock { count += 1 } }
+
+    /// Never below zero: a leave without an enter would otherwise make a later
+    /// enter read as not running.
+    func leave() { lock.withLock { count = max(0, count - 1) } }
 }
 
 /// The tracks a chapter load has asked the length cache for and not found.
