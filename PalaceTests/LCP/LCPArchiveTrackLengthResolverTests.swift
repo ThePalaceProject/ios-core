@@ -320,9 +320,14 @@ final class LCPArchiveTrackLengthResolverTests: XCTestCase {
     func testResolveLengths_whenCancelledWithReadsOverlapping_startsNoFurtherTrack() async {
         let archive = Archive.make()
         let box = TaskBox()
-        archive.onRead = { range in
-            if range.lowerBound == Archive.trackB.localHeaderOffset { box.cancel() }
-        }
+        // Cancel on the FIRST read, not on track B's specifically. The
+        // resolver tests cancellation when a resolution FINISHES, so keying
+        // the cancel to B's read only holds if B starts before A completes —
+        // scheduling decides that, and when A won the race the third track
+        // was admitted legitimately and this test failed. Width 2 primes both
+        // tracks into the group before any read begins, so cancelling on the
+        // first read keeps the overlap this covers without the ordering guess.
+        archive.onRead = { _ in box.cancel() }
 
         let reported = Reported()
         let task = Task {
