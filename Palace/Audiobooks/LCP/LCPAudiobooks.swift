@@ -934,7 +934,7 @@ extension LCPAudiobooks: LCPStreamingProvider {
     ///
     /// The toolkit announces the start and end of a load the patron is waiting
     /// on so a provider can hold its background package fetch and let that
-    /// chapter have the link (PP-5367). This hotfix does not hold the fetch.
+    /// chapter have the link (PP-5367). Neither hook holds the fetch.
     ///
     /// Suspending the transfer here was implemented and withdrawn. A hold needs
     /// somewhere to record the task it suspended, and one process-wide slot is
