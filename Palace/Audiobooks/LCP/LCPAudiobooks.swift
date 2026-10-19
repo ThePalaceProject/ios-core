@@ -47,6 +47,12 @@ import PalaceBookModel
 
     private var cachedPublication: Publication?
     private let publicationCacheQueue = DispatchQueue(label: "org.thepalaceproject.lcpaudiobooks.publicationcache")
+
+    /// The tracks a chapter load asked the length cache for and did not find,
+    /// oldest first. The oldest outstanding ask is the chapter being waited on:
+    /// the player asks for the one it is about to play before the items it
+    /// prefetches behind it.
+    private let demandedTracks = DemandedTracks()
     private var currentPrefetchTask: Task<Void, Never>?
     /// The background resolution of this archive's track lengths.
     private var trackLengthTask: Task<Void, Never>?
@@ -681,7 +687,20 @@ extension LCPAudiobooks: LCPStreamingProvider {
     /// length does not change when the bytes are reclaimed), and a read happens
     /// on the chapter-change path where opening a file would be the thing being
     /// avoided.
+    /// The player's ask. A miss is recorded as demand: this call is the only
+    /// signal here for where in the book the patron is, and a chapter whose
+    /// length is unknown pays Readium's probe, measured at 18.6 MB to deliver
+    /// two bytes. `storedPlaintextLength` is the same read without the record,
+    /// for this object's own filtering.
     nonisolated public func cachedPlaintextLength(forHref href: String) -> UInt64? {
+        guard let length = storedPlaintextLength(forHref: href) else {
+            demandedTracks.record(href)
+            return nil
+        }
+        return length
+    }
+
+    nonisolated private func storedPlaintextLength(forHref href: String) -> UInt64? {
         guard let prefix = plaintextLengthKeyPrefix else { return nil }
         let stored = UserDefaults.standard.object(forKey: prefix + href) as? NSNumber
         guard let value = stored?.uint64Value, value > 0 else { return nil }
@@ -691,6 +710,7 @@ extension LCPAudiobooks: LCPStreamingProvider {
     nonisolated public func cachePlaintextLength(_ length: UInt64, forHref href: String) {
         guard length > 0, let prefix = plaintextLengthKeyPrefix else { return }
         UserDefaults.standard.set(NSNumber(value: length), forKey: prefix + href)
+        demandedTracks.resolved(href)
     }
 
     /// Learns and remembers the plaintext length of every named track that has
@@ -703,10 +723,11 @@ extension LCPAudiobooks: LCPStreamingProvider {
     nonisolated func resolveTrackLengths(
         hrefs: [String],
         archiveLength: UInt64,
+        maxConcurrentReads: Int = LCPArchiveTrackLengthResolver.defaultMaxConcurrentReads,
         readRange: @escaping LCPArchiveTrackLengthResolver.ReadRange,
         decipher: @escaping LCPArchiveTrackLengthResolver.Decipher
     ) async -> LCPArchiveTrackLengthResolver.Summary {
-        let missing = hrefs.filter { cachedPlaintextLength(forHref: $0) == nil }
+        let missing = hrefs.filter { storedPlaintextLength(forHref: $0) == nil }
         guard !missing.isEmpty else { return .init() }
 
         return await LCPArchiveTrackLengthResolver(
@@ -714,9 +735,28 @@ extension LCPAudiobooks: LCPStreamingProvider {
             readRange: readRange,
             decipher: decipher
         )
-        .resolveLengths(forHrefs: missing) { href, length in
+        .resolveLengths(
+            forHrefs: missing,
+            maxConcurrentReads: maxConcurrentReads,
+            nextDemanded: { self.demandedTracks.first }
+        ) { href, length in
             self.cachePlaintextLength(length, forHref: href)
         }
+    }
+
+    /// The reading-order hrefs with no length yet, keyed as the player will ask
+    /// for them: the fragment dropped, the order kept.
+    ///
+    /// `known` is passed in rather than read here so a test states the
+    /// selection without a length store, and so the caller decides whether an
+    /// ask counts as a chapter waiting.
+    nonisolated static func unresolvedTrackHrefs(
+        in publication: Publication,
+        known: (String) -> UInt64?
+    ) -> [String] {
+        publication.readingOrder
+            .map { link in link.href.components(separatedBy: "#").first ?? link.href }
+            .filter { known($0) == nil }
     }
 
     /// Starts learning this archive's track lengths in the background.
@@ -751,9 +791,9 @@ extension LCPAudiobooks: LCPStreamingProvider {
         // Asked here as well as inside `resolveTrackLengths` so that a book
         // whose lengths are all known from an earlier session costs not even
         // the HEAD that locates the archive's tail.
-        let hrefs = publication.readingOrder
-            .map { link in link.href.components(separatedBy: "#").first ?? link.href }
-            .filter { cachedPlaintextLength(forHref: $0) == nil }
+        let hrefs = Self.unresolvedTrackHrefs(in: publication) {
+            self.storedPlaintextLength(forHref: $0)
+        }
         guard !hrefs.isEmpty else {
             Log.error(#file, "LCP track lengths: all \(publication.readingOrder.count) track length(s) already known")
             return
@@ -1133,6 +1173,36 @@ private struct SendableDecryptCompletion: @unchecked Sendable {
 private struct LCPContentResultBox: @unchecked Sendable {
     let json: NSDictionary?
     let error: NSError?
+}
+
+/// The tracks a chapter load has asked the length cache for and not found.
+///
+/// Holds its own lock rather than using the publication cache queue: the ask
+/// happens on the chapter-change path, from whatever thread AVFoundation hands
+/// the loader, and that queue also serialises the publication open.
+///
+/// - Sendable invariant: every access goes through `lock`.
+private final class DemandedTracks: @unchecked Sendable {
+    /// A player builds seven items at a time, so a longer queue would only
+    /// hold tracks nobody is waiting for.
+    private static let capacity = 8
+
+    private let lock = NSLock()
+    private var hrefs: [String] = []
+
+    /// The oldest ask still outstanding.
+    var first: String? { lock.withLock { hrefs.first } }
+
+    func record(_ href: String) {
+        lock.withLock {
+            guard !hrefs.contains(href) else { return }
+            hrefs = Array((hrefs + [href]).suffix(Self.capacity))
+        }
+    }
+
+    func resolved(_ href: String) {
+        lock.withLock { hrefs.removeAll { $0 == href } }
+    }
 }
 
 #endif

@@ -41,6 +41,9 @@ struct LCPArchiveTrackLengthResolver: Sendable {
     /// answers a shorter range than asked for.
     static let localHeaderReadLength: UInt64 = 128
 
+    /// How many archive reads this resolution keeps in flight.
+    static let defaultMaxConcurrentReads = 3
+
     /// What one resolution did, for the caller's report.
     ///
     /// Counted here rather than off the archive client: that client is shared
@@ -57,14 +60,24 @@ struct LCPArchiveTrackLengthResolver: Sendable {
     let decipher: Decipher
 
     /// Resolves the length of each named track, reporting each one as it lands,
-    /// and returns how many were reported.
+    /// and returns what the resolution did.
     ///
-    /// Serial, and in the order given: the tracks are reported in reading order
-    /// so the chapters the patron reaches first are known first, and the player
-    /// keeps the link it is streaming audio over.
+    /// Two things decide the order. `nextDemanded` names the track a chapter
+    /// load is waiting on, which is taken before anything else: a patron who
+    /// resumes in the middle of a book needs that length first, and reading
+    /// order would reach it last. Otherwise the order given stands, which is
+    /// reading order.
+    ///
+    /// `maxConcurrentReads` bounds how many reads are open at once. Measured on
+    /// device, 28 tracks took 47.0s for 70,016 bytes: the fill is bound by
+    /// round trips, not bytes, and a chapter change inside that window still
+    /// pays Readium's probe. The bound is low because the link is shared with
+    /// the audio the patron is listening to.
     @discardableResult
     func resolveLengths(
         forHrefs hrefs: [String],
+        maxConcurrentReads: Int = Self.defaultMaxConcurrentReads,
+        nextDemanded: @escaping @Sendable () -> String? = { nil },
         report: @Sendable (_ href: String, _ length: UInt64) -> Void
     ) async -> Summary {
         var summary = Summary()
@@ -73,15 +86,76 @@ struct LCPArchiveTrackLengthResolver: Sendable {
         let directory = await readEntries(into: &summary)
         guard !directory.isEmpty else { return summary }
 
-        for href in hrefs {
-            if Task.isCancelled { return summary }
-            guard let entry = Self.entry(forHref: href, in: directory),
-                  let length = await plaintextLength(for: entry, into: &summary)
-            else { continue }
-            report(href, length)
-            summary.resolved += 1
+        var remaining = hrefs
+        let width = max(1, maxConcurrentReads)
+
+        return await withTaskGroup(of: TrackResolution.self) { group in
+            var inFlight = 0
+            while inFlight < width,
+                  let next = Self.takeNext(from: &remaining, preferring: nextDemanded(), in: directory)
+            {
+                group.addTask { await self.resolution(forHref: next.href, entry: next.entry) }
+                inFlight += 1
+            }
+
+            while let finished = await group.next() {
+                inFlight -= 1
+                summary.requests += finished.summary.requests
+                summary.bytes += finished.summary.bytes
+                if let length = finished.length {
+                    report(finished.href, length)
+                    summary.resolved += 1
+                }
+                // A cancelled resolution lets the tracks already in flight
+                // finish — their bytes are paid for — and starts no others.
+                guard !Task.isCancelled else {
+                    group.cancelAll()
+                    continue
+                }
+                while inFlight < width,
+                      let next = Self.takeNext(from: &remaining, preferring: nextDemanded(), in: directory)
+                {
+                    group.addTask { await self.resolution(forHref: next.href, entry: next.entry) }
+                    inFlight += 1
+                }
+            }
+            return summary
         }
-        return summary
+    }
+
+    /// One track's outcome, carried back to the caller's accumulator. A child
+    /// cannot add to the parent's summary, so it counts its own reads and the
+    /// parent adds them.
+    private struct TrackResolution: Sendable {
+        let href: String
+        let length: UInt64?
+        let summary: Summary
+    }
+
+    private func resolution(
+        forHref href: String, entry: LCPArchiveTrackLengths.Entry
+    ) async -> TrackResolution {
+        var summary = Summary()
+        let length = await plaintextLength(for: entry, into: &summary)
+        return TrackResolution(href: href, length: length, summary: summary)
+    }
+
+    /// The next track to read: the demanded one if it is still outstanding,
+    /// otherwise the first of those left. Hrefs the directory does not name are
+    /// dropped here; they cost no read.
+    private static func takeNext(
+        from remaining: inout [String],
+        preferring demanded: String?,
+        in directory: [LCPArchiveTrackLengths.Entry]
+    ) -> (href: String, entry: LCPArchiveTrackLengths.Entry)? {
+        while !remaining.isEmpty {
+            let index = demanded.flatMap { remaining.firstIndex(of: $0) } ?? remaining.startIndex
+            let href = remaining.remove(at: index)
+            if let entry = entry(forHref: href, in: directory) {
+                return (href, entry)
+            }
+        }
+        return nil
     }
 
     /// Every archive read goes through here, so the summary counts all of them

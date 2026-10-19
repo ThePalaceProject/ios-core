@@ -184,6 +184,9 @@ final class LCPArchiveReadDouble: @unchecked Sendable {
     var failReadsAt: UInt64?
     /// Called before each range is served.
     var onRead: (@Sendable (Range<UInt64>) -> Void)?
+    /// Awaited before each range is served, so a test can hold a read open and
+    /// observe how many run at once.
+    var onReadAsync: (@Sendable (Range<UInt64>) async -> Void)?
 
     init(bytes: Data) {
         self.bytes = bytes
@@ -197,8 +200,9 @@ final class LCPArchiveReadDouble: @unchecked Sendable {
     func read(_ range: Range<UInt64>) async -> Data? {
         // Recorded and read back through `withLock` rather than `lock()`:
         // `NSLock.lock` is unavailable from an async context.
-        let (failAt, blob, handler) = record(range)
+        let (failAt, blob, handler, asyncHandler) = record(range)
         handler?(range)
+        await asyncHandler?(range)
         guard range.lowerBound != failAt else { return nil }
         let start = Int(range.lowerBound)
         let end = min(Int(range.upperBound), blob.count)
@@ -208,10 +212,15 @@ final class LCPArchiveReadDouble: @unchecked Sendable {
 
     private func record(
         _ range: Range<UInt64>
-    ) -> (UInt64?, Data, (@Sendable (Range<UInt64>) -> Void)?) {
+    ) -> (
+        UInt64?,
+        Data,
+        (@Sendable (Range<UInt64>) -> Void)?,
+        (@Sendable (Range<UInt64>) async -> Void)?
+    ) {
         lock.withLock {
             requested.append(range)
-            return (failReadsAt, bytes, onRead)
+            return (failReadsAt, bytes, onRead, onReadAsync)
         }
     }
 }

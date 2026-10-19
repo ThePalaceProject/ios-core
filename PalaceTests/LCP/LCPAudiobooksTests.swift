@@ -175,6 +175,124 @@ final class LCPAudiobooksTests: XCTestCase {
         )
     }
 
+    /// The loader asks the cache for the chapter it is about to play. That ask
+    /// is the only signal here for where in the book the patron is, so a miss
+    /// puts the track at the head of the resolution. Reading order reaches a
+    /// resumed chapter last, and until then it pays Readium's probe — measured
+    /// on device at 18.6 MB to deliver two bytes.
+    func testTrackLengths_resolveTheTrackAChapterLoadAskedForBeforeReadingOrder() async throws {
+        let book = try makeAudiobook(
+            publicationHref: "https://storage.googleapis.com/bucket/d-\(UUID().uuidString)"
+        )
+        let archive = LCPSyntheticArchive.make()
+
+        // The chapter load's own ask, as the loader makes it.
+        XCTAssertNil(book.cachedPlaintextLength(forHref: "track c.mp3"))
+
+        _ = await book.resolveTrackLengths(
+            hrefs: ["track-a.mp3", "track-b.mp3", "track c.mp3"],
+            archiveLength: archive.declaredLength,
+            maxConcurrentReads: 1,
+            readRange: { await archive.read($0) },
+            decipher: { $0 }
+        )
+
+        XCTAssertEqual(
+            archive.reads.dropFirst().first,
+            LCPSyntheticArchive.trackC.localHeaderOffset
+                ..< LCPSyntheticArchive.trackC.localHeaderOffset
+                + LCPArchiveTrackLengthResolver.localHeaderReadLength,
+            "after the archive tail, the track the chapter load asked for is read first"
+        )
+        XCTAssertEqual(
+            book.cachedPlaintextLength(forHref: "track c.mp3"),
+            LCPSyntheticArchive.trackC.plaintextLength,
+            "and it is cached, so the chapter change that follows costs no probe"
+        )
+    }
+
+    /// A resolution this object starts for itself must not read as a chapter
+    /// waiting: every missing track would then be "demanded" and the signal
+    /// would name whichever one came first in reading order.
+    func testTrackLengths_withNoChapterWaiting_keepReadingOrder() async throws {
+        let book = try makeAudiobook(
+            publicationHref: "https://storage.googleapis.com/bucket/o-\(UUID().uuidString)"
+        )
+        let archive = LCPSyntheticArchive.make()
+
+        _ = await book.resolveTrackLengths(
+            hrefs: ["track-a.mp3", "track-b.mp3", "track c.mp3"],
+            archiveLength: archive.declaredLength,
+            maxConcurrentReads: 1,
+            readRange: { await archive.read($0) },
+            decipher: { $0 }
+        )
+
+        XCTAssertEqual(
+            archive.reads.dropFirst().first,
+            LCPSyntheticArchive.trackA.localHeaderOffset
+                ..< LCPSyntheticArchive.trackA.localHeaderOffset
+                + LCPArchiveTrackLengthResolver.localHeaderReadLength
+        )
+    }
+
+    /// What the resolution is asked to learn. The player keys a track by its
+    /// href without the fragment, so a length stored under the full href is
+    /// never found, and a track already known must not be fetched again.
+    func testUnresolvedTrackHrefs_dropTheFragmentAndTheLengthsAlreadyKnown() {
+        let publication = Publication(manifest: Manifest(
+            metadata: Metadata(title: "Doomsday"),
+            readingOrder: [
+                Link(href: "track-a.mp3", mediaType: .mp3),
+                Link(href: "track-b.mp3#t=0", mediaType: .mp3),
+                Link(href: "track c.mp3", mediaType: .mp3)
+            ]
+        ))
+
+        let unresolved = LCPAudiobooks.unresolvedTrackHrefs(in: publication) { href in
+            href == "track-a.mp3" ? 4_073 : nil
+        }
+
+        XCTAssertEqual(
+            unresolved,
+            ["track-b.mp3", "track c.mp3"],
+            "the fragment is dropped, the known track is left out, and reading order stands"
+        )
+    }
+
+    /// Learning one waiting chapter's length must not discard the others. The
+    /// demand list is the only record of where the patron is; emptied, the
+    /// resolution falls back to reading order and the chapter they are waiting
+    /// on goes back to the end of the queue.
+    func testTrackLengths_whenOneWaitingChapterIsLearned_theOtherIsStillServedFirst() async throws {
+        let book = try makeAudiobook(
+            publicationHref: "https://storage.googleapis.com/bucket/w-\(UUID().uuidString)"
+        )
+        let archive = LCPSyntheticArchive.make()
+
+        // Two chapter loads ask and miss, oldest first.
+        XCTAssertNil(book.cachedPlaintextLength(forHref: "track c.mp3"))
+        XCTAssertNil(book.cachedPlaintextLength(forHref: "track-b.mp3"))
+        // The first one is learned, so only it leaves the list.
+        book.cachePlaintextLength(LCPSyntheticArchive.trackC.plaintextLength, forHref: "track c.mp3")
+
+        _ = await book.resolveTrackLengths(
+            hrefs: ["track-a.mp3", "track-b.mp3", "track c.mp3"],
+            archiveLength: archive.declaredLength,
+            maxConcurrentReads: 1,
+            readRange: { await archive.read($0) },
+            decipher: { $0 }
+        )
+
+        XCTAssertEqual(
+            archive.reads.dropFirst().first,
+            LCPSyntheticArchive.trackB.localHeaderOffset
+                ..< LCPSyntheticArchive.trackB.localHeaderOffset
+                + LCPArchiveTrackLengthResolver.localHeaderReadLength,
+            "the chapter still waiting is read first, not the one in reading order"
+        )
+    }
+
     /// A second open of a book already played must cost the origin nothing:
     /// the lengths are already known, and the archive is 715 MB away.
     func testTrackLengths_alreadyKnown_costNoArchiveRead() async throws {

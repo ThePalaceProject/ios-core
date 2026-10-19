@@ -275,7 +275,8 @@ final class LCPArchiveTrackLengthResolverTests: XCTestCase {
     // MARK: - Cancellation
 
     /// The resolution outlives the open it starts from, so a patron who closes
-    /// the book must not leave 49 tracks' worth of requests running.
+    /// the book must not leave 49 tracks' worth of requests running. One read
+    /// at a time, so the boundary is the next track.
     func testResolveLengths_whenCancelled_stopsBeforeTheNextTrack() async {
         let archive = Archive.make()
         let box = TaskBox()
@@ -290,7 +291,10 @@ final class LCPArchiveTrackLengthResolverTests: XCTestCase {
                 readRange: { await archive.read($0) },
                 decipher: { $0 }
             )
-            .resolveLengths(forHrefs: ["track-b.mp3", "track c.mp3"]) { href, length in
+            .resolveLengths(
+                forHrefs: ["track-b.mp3", "track c.mp3"],
+                maxConcurrentReads: 1
+            ) { href, length in
                 reported.record(href, length)
             }
         }
@@ -311,11 +315,145 @@ final class LCPArchiveTrackLengthResolverTests: XCTestCase {
         )
     }
 
+    /// The same contract with reads overlapping: the tracks already in flight
+    /// finish, and no track behind them is started.
+    func testResolveLengths_whenCancelledWithReadsOverlapping_startsNoFurtherTrack() async {
+        let archive = Archive.make()
+        let box = TaskBox()
+        archive.onRead = { range in
+            if range.lowerBound == Archive.trackB.localHeaderOffset { box.cancel() }
+        }
+
+        let reported = Reported()
+        let task = Task {
+            _ = await LCPArchiveTrackLengthResolver(
+                archiveLength: archive.declaredLength,
+                readRange: { await archive.read($0) },
+                decipher: { $0 }
+            )
+            .resolveLengths(
+                forHrefs: ["track-a.mp3", "track-b.mp3", "track c.mp3"],
+                maxConcurrentReads: 2
+            ) { href, length in
+                reported.record(href, length)
+            }
+        }
+        box.hold(task)
+        await task.value
+
+        XCTAssertNil(reported.values["track c.mp3"], "the third track was never started")
+        XCTAssertTrue(
+            archive.reads.allSatisfy { $0.lowerBound < Archive.trackC.localHeaderOffset },
+            "no read may be issued for a track the cancellation never admitted"
+        )
+    }
+
     // MARK: - Driving the resolver
+
+    // MARK: - Which track first, and how many at a time
+
+    /// A patron who resumes in the middle of a book needs that chapter's
+    /// length first. Reading order would reach it last, and the chapter pays
+    /// Readium's megabyte probe in the meantime.
+    func testResolveLengths_readsTheTrackAChapterLoadAskedForBeforeReadingOrder() async {
+        let archive = Archive.make()
+
+        let reported = await resolve(
+            ["track-a.mp3", "track-b.mp3", "track c.mp3"],
+            in: archive,
+            demanding: "track c.mp3"
+        )
+
+        XCTAssertEqual(reported.count, 3, "every track is still resolved")
+        XCTAssertEqual(
+            archive.reads.dropFirst().first,
+            Archive.trackC.localHeaderOffset
+                ..< Archive.trackC.localHeaderOffset + LCPArchiveTrackLengthResolver.localHeaderReadLength,
+            "after the tail, the demanded track's header is the first thing read"
+        )
+    }
+
+    /// With nothing demanded the order is the order given, which is reading
+    /// order: the chapters a patron reaches first are known first.
+    func testResolveLengths_withNothingDemanded_keepsTheOrderItWasGiven() async {
+        let archive = Archive.make()
+
+        _ = await resolve(["track-a.mp3", "track-b.mp3", "track c.mp3"], in: archive)
+
+        XCTAssertEqual(
+            archive.reads.dropFirst().first,
+            Archive.trackA.localHeaderOffset
+                ..< Archive.trackA.localHeaderOffset + LCPArchiveTrackLengthResolver.localHeaderReadLength
+        )
+    }
+
+    /// Measured on device: 28 tracks took 47.0s for 70,016 bytes, so the fill
+    /// is bound by round trips rather than bytes, and a chapter change during
+    /// it still pays the probe. Reads overlap to shorten that window.
+    func testResolveLengths_withSeveralReadsAllowed_keepsMoreThanOneInFlight() async {
+        let archive = Archive.make()
+        let depth = ReadDepth()
+        archive.onReadAsync = { _ in
+            depth.enter()
+            try? await Task.sleep(nanoseconds: 20_000_000)
+            depth.leave()
+        }
+
+        let reported = await resolve(
+            ["track-a.mp3", "track-b.mp3", "track c.mp3"],
+            in: archive,
+            maxConcurrentReads: 3
+        )
+
+        XCTAssertEqual(reported.count, 3)
+        XCTAssertGreaterThan(depth.highest, 1, "reads for different tracks must overlap")
+        XCTAssertLessThanOrEqual(depth.highest, 3, "and no more than the bound allows")
+    }
+
+    /// The bound is a bound: at one read at a time nothing overlaps, so a
+    /// patron's chapter is never competing with three of these.
+    func testResolveLengths_withOneReadAllowed_runsThemOneAtATime() async {
+        let archive = Archive.make()
+        let depth = ReadDepth()
+        archive.onReadAsync = { _ in
+            depth.enter()
+            try? await Task.sleep(nanoseconds: 20_000_000)
+            depth.leave()
+        }
+
+        let reported = await resolve(
+            ["track-a.mp3", "track-b.mp3", "track c.mp3"],
+            in: archive,
+            maxConcurrentReads: 1
+        )
+
+        XCTAssertEqual(reported.count, 3)
+        XCTAssertEqual(depth.highest, 1)
+    }
+
+    /// Counts how many reads are open at once.
+    private final class ReadDepth: @unchecked Sendable {
+        private let lock = NSLock()
+        private var current = 0
+        private var maximum = 0
+
+        var highest: Int { lock.withLock { maximum } }
+
+        func enter() {
+            lock.withLock {
+                current += 1
+                maximum = max(maximum, current)
+            }
+        }
+
+        func leave() { lock.withLock { current -= 1 } }
+    }
 
     private func resolve(
         _ hrefs: [String],
         in archive: LCPArchiveReadDouble,
+        maxConcurrentReads: Int = 1,
+        demanding demanded: String? = nil,
         decipher: @escaping LCPArchiveTrackLengthResolver.Decipher = { $0 }
     ) async -> [String: UInt64] {
         let reported = Reported()
@@ -324,7 +462,11 @@ final class LCPArchiveTrackLengthResolverTests: XCTestCase {
             readRange: { await archive.read($0) },
             decipher: decipher
         )
-        .resolveLengths(forHrefs: hrefs) { href, length in
+        .resolveLengths(
+            forHrefs: hrefs,
+            maxConcurrentReads: maxConcurrentReads,
+            nextDemanded: { demanded }
+        ) { href, length in
             reported.record(href, length)
         }
         return reported.values
