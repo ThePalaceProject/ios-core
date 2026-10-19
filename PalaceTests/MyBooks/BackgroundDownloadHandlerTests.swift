@@ -404,6 +404,10 @@ final class BackgroundDownloadHandlerTests: XCTestCase {
             .unregistered,
             "and .unregistered must not advance to .downloadSuccessful, which is not reachable from it"
         )
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: sourceFile.path),
+            "the discarded download must not leak its temp file"
+        )
 
         try? FileManager.default.removeItem(at: sourceFile)
         try? FileManager.default.removeItem(at: destFile)
