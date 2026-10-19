@@ -285,6 +285,45 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
     /// already unwrapped it, so there is no nil arm to invent a fallback for — and
     /// the fallback an earlier draft used reached `AppContainer.production()` from
     /// a collaborator, which is the composition-root rule this project holds.
+    /// The account a book's download started under, from the durable records.
+    ///
+    /// Matched on `bookID`: the records cover every in-flight download, so a
+    /// lookup that drifted onto another book's row would judge this one against
+    /// a stranger's library and let a returned book's content be written.
+    static func startedAccountID(
+        forBookID bookID: String,
+        in records: [PersistedDownloadRecord]
+    ) -> String? {
+        records.first(where: { $0.bookID == bookID })?.account
+    }
+
+    /// Whether a COMPLETED download may still be written for this book.
+    ///
+    /// This is the writer `LocalBookContentService.mayStoreFetchedContent`
+    /// documents as unguarded. A download that finishes after a Return wrote the
+    /// file and then set `.downloadSuccessful`, which is not a legal move out of
+    /// `.unregistered`: in DEBUG that trips the registry's illegal-transition
+    /// assertion, and in release the state is applied anyway so a returned book
+    /// reappears as downloaded.
+    ///
+    /// Classification is delegated rather than restated, so the two writers
+    /// cannot drift on which states mean "the loan is live".
+    ///
+    /// An unrecorded start account degrades to the current one, matching
+    /// `startedForAccount`, so an unrecorded download is judged on its registry
+    /// state instead of being written unconditionally.
+    static func completedDownloadMayBeStored(
+        registryState: TPPBookState,
+        startedAccountID: String?,
+        currentAccountID: String?
+    ) -> Bool {
+        let started = (startedAccountID?.isEmpty == false) ? startedAccountID : currentAccountID
+        return LocalBookContentService.mayStoreFetchedContent(
+            registryState: registryState,
+            accountUnchanged: started == currentAccountID
+        )
+    }
+
     func startedForAccount(for book: TPPBook, delegate: BackgroundDownloadHandlerDelegate) -> TPPUserAccount {
         guard let startedAccountID = delegate.stateManager
             .persistedRecords()
@@ -434,6 +473,23 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
         guard let destURL = delegate.fileUrl(for: book.identifier) else { return false }
 
         let fileManager = FileManager.default
+
+        // Ahead of the move, not after it: a download can finish after the
+        // patron returns the book, and writing it then re-creates content the
+        // return just deleted and marks the book downloaded again.
+        let registryState = delegate.bookRegistry.state(for: book.identifier)
+        guard Self.completedDownloadMayBeStored(
+            registryState: registryState,
+            startedAccountID: Self.startedAccountID(
+                forBookID: book.identifier,
+                in: delegate.stateManager.persistedRecords()
+            ),
+            currentAccountID: delegate.userAccount.libraryUUID
+        ) else {
+            Log.info(#file, "'\(book.title)' is no longer held (state: \(registryState.stringValue())) — discarding the downloaded file instead of writing it to disk")
+            try? fileManager.removeItem(at: sourceLocation)
+            return false
+        }
 
         do {
             let parentDir = destURL.deletingLastPathComponent()

@@ -7,6 +7,7 @@
 //
 
 import XCTest
+import PalaceBookModel
 import PalaceCatalog
 @testable import Palace
 
@@ -41,6 +42,126 @@ final class InertNoOpURLProtocol: URLProtocol {
 // Swift 6 sending error, while from a nonisolated test everything stays in
 // one isolation domain. Nothing here touches UI or main-actor state.
 final class BackgroundDownloadHandlerTests: XCTestCase {
+
+    // MARK: - Which record the start account comes from
+
+    private func record(bookID: String, account: String) -> PersistedDownloadRecord {
+        PersistedDownloadRecord(
+            bookID: bookID,
+            taskIdentifier: 1,
+            downloadURL: URL(string: "https://example.org/\(bookID)")!,
+            account: account,
+            expectedBytes: nil,
+            startedAt: Date()
+        )
+    }
+
+    /// The records cover every in-flight download, so the lookup must pick this
+    /// book's row. Drifting onto another book's row judges this download against
+    /// a stranger's library, which reads as a library switch and lets a returned
+    /// book's content be written.
+    func testStartedAccount_picksTheRowForTheBookBeingStored() {
+        let records = [
+            record(bookID: "other-book", account: "lib-2"),
+            record(bookID: "this-book", account: "lib-1")
+        ]
+
+        XCTAssertEqual(
+            BackgroundDownloadHandler.startedAccountID(forBookID: "this-book", in: records),
+            "lib-1"
+        )
+    }
+
+    /// A book with no record has no recorded start account, which the caller
+    /// degrades to the current one rather than guessing from another row.
+    func testStartedAccount_withNoRowForTheBook_isNil() {
+        let records = [record(bookID: "other-book", account: "lib-2")]
+
+        XCTAssertNil(
+            BackgroundDownloadHandler.startedAccountID(forBookID: "this-book", in: records)
+        )
+    }
+
+    // MARK: - A download that finishes after a Return
+
+    /// The crash this guard closes: a download completing after the patron
+    /// returned the book set `.downloadSuccessful`, which is not a legal move
+    /// out of `.unregistered`. In DEBUG that trips the registry's
+    /// illegal-transition assertion; in release the state is applied anyway and
+    /// a returned book reappears as downloaded.
+    func testCompletedDownload_forAReturnedBook_isNotStored() {
+        XCTAssertFalse(
+            BackgroundDownloadHandler.completedDownloadMayBeStored(
+                registryState: .unregistered,
+                startedAccountID: "lib-1",
+                currentAccountID: "lib-1"
+            ),
+            "writing a returned book's download marks it downloaded again"
+        )
+    }
+
+    /// `.returning` is the same loan a moment earlier: the cleanup is already in
+    /// flight, so writing here re-creates exactly what it is deleting.
+    func testCompletedDownload_whileReturning_isNotStored() {
+        XCTAssertFalse(
+            BackgroundDownloadHandler.completedDownloadMayBeStored(
+                registryState: .returning,
+                startedAccountID: "lib-1",
+                currentAccountID: "lib-1"
+            )
+        )
+    }
+
+    /// The ordinary case, and the one that must not regress: a live loan still
+    /// gets its content.
+    func testCompletedDownload_forALiveLoan_isStored() {
+        for state in [TPPBookState.downloading, .downloadNeeded, .downloadSuccessful, .used] {
+            XCTAssertTrue(
+                BackgroundDownloadHandler.completedDownloadMayBeStored(
+                    registryState: state,
+                    startedAccountID: "lib-1",
+                    currentAccountID: "lib-1"
+                ),
+                "\(state) is a live loan and its content belongs on the device"
+            )
+        }
+    }
+
+    /// A library switch is not a loan ending. The registry is scoped to the
+    /// current account and reports `.unregistered` for a book the other library
+    /// still holds, so the write proceeds rather than discarding a finished
+    /// download: retention is recoverable where deletion is not.
+    func testCompletedDownload_afterALibrarySwitch_isStored() {
+        XCTAssertTrue(
+            BackgroundDownloadHandler.completedDownloadMayBeStored(
+                registryState: .unregistered,
+                startedAccountID: "lib-1",
+                currentAccountID: "lib-2"
+            ),
+            "the other library may still hold this loan"
+        )
+    }
+
+    /// No recorded start account degrades to the current one, matching what
+    /// `startedForAccount` already does, so an unrecorded download is judged on
+    /// its registry state rather than being written unconditionally.
+    func testCompletedDownload_withNoRecordedStartAccount_judgesOnStateAlone() {
+        XCTAssertFalse(
+            BackgroundDownloadHandler.completedDownloadMayBeStored(
+                registryState: .unregistered,
+                startedAccountID: nil,
+                currentAccountID: "lib-1"
+            )
+        )
+        XCTAssertFalse(
+            BackgroundDownloadHandler.completedDownloadMayBeStored(
+                registryState: .unregistered,
+                startedAccountID: "",
+                currentAccountID: "lib-1"
+            ),
+            "an empty id is not recorded, which startedForAccount already treats as current"
+        )
+    }
 
     private var handler: BackgroundDownloadHandler!
     private var mockDelegate: MockBackgroundDownloadDelegate!
