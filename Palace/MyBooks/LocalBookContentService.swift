@@ -464,7 +464,7 @@ class LocalBookContentService {
                 }
                 #endif
             case .audiobook:
-                try deleteLocalAudiobookContent(forAudiobook: book, at: bookURL)
+                try deleteLocalAudiobookContent(forAudiobook: book, at: bookURL, account: currentAccount)
             case .streamingHTML:
                 // PP-4161: streaming-HTML has no local on-device asset to
                 // delete. The reader streams from the server every open;
@@ -483,7 +483,7 @@ class LocalBookContentService {
     /// generic `deleteLocalContent` is skipped. Non-LCP audiobooks decode
     /// the manifest first so the toolkit can clean per-track files
     /// alongside the manifest itself.
-    private func deleteLocalAudiobookContent(forAudiobook book: TPPBook, at bookURL: URL) throws {
+    private func deleteLocalAudiobookContent(forAudiobook book: TPPBook, at bookURL: URL, account: String?) throws {
         #if LCP
         let isLcpAudiobook = LCPAudiobooks.canOpenBook(book)
         #else
@@ -518,7 +518,7 @@ class LocalBookContentService {
             // and unlinked a directory its live store holds. The unkeyed clear
             // stays as the fallback for a licence this build cannot read, where
             // the archive URL that names the directory is unavailable.
-            if let licenseURL = lcpLicenseURL(forBookIdentifier: book.identifier) {
+            if let licenseURL = lcpLicenseURL(forBookIdentifier: book.identifier, account: account) {
                 LCPAudiobooks.removeArchiveStore(forLicenseAt: licenseURL)
             } else {
                 LCPAudiobooks.removeAllArchiveStores()

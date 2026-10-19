@@ -322,6 +322,34 @@ final class LocalBookContentServiceTests: XCTestCase {
         #endif
     }
 
+    /// The licence must be looked up for the same account the content was, or
+    /// the keyed removal silently degrades to the unkeyed one.
+    ///
+    /// The delete resolves the content through the book overload and the licence
+    /// through the identifier overload, which is the one that applies the
+    /// side-load rule. A caller-pinned account reaching the first and not the
+    /// second resolves a path the book does not live at: no licence is found,
+    /// and the fallback clears every book's retained ranges.
+    func testDeleteForBook_lcpAudiobook_resolvesTheLicenceForTheSameAccountAsTheContent() throws {
+        #if LCP
+        let book = makeLCPAudiobook()
+        seedBook(book)
+        try writeFile(at: bookFileManager.fakeURLFor(book), bytes: 128)
+
+        service.deleteLocalContent(forBook: book, account: "pinned-account-id")
+
+        // Every resolution, in order, for the reason the fetch-path test above
+        // gives: a `nil` in any slot is a step that re-resolved the live library
+        // for itself. The licence lookup goes through the identifier overload,
+        // which applies the side-load rule and then delegates here.
+        XCTAssertEqual(
+            bookFileManager.resolvedAccounts,
+            ["pinned-account-id", "pinned-account-id"],
+            "the content and its licence must both resolve under the caller's library. A `nil` in the second slot means the licence was looked up against the live library, no licence was found, and the removal fell back to clearing every book's retained ranges."
+        )
+        #endif
+    }
+
     // MARK: - Post-return content leak (the write guard)
     //
     // CONFIRMED ON DEVICE, not theorised. Moes Max, build 505: two returned
