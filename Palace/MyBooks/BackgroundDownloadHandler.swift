@@ -285,6 +285,19 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
     /// already unwrapped it, so there is no nil arm to invent a fallback for — and
     /// the fallback an earlier draft used reached `AppContainer.production()` from
     /// a collaborator, which is the composition-root rule this project holds.
+
+    func startedForAccount(for book: TPPBook, delegate: BackgroundDownloadHandlerDelegate) -> TPPUserAccount {
+        guard let startedAccountID = delegate.stateManager
+            .persistedRecords()
+            .first(where: { $0.bookID == book.identifier })?
+            .account,
+            !startedAccountID.isEmpty
+        else {
+            return delegate.userAccount
+        }
+        return delegate.userAccount(forCapturedId: startedAccountID)
+    }
+
     /// The account a book's download started under, from the durable records.
     ///
     /// Matched on `bookID`: the records cover every in-flight download, so a
@@ -322,18 +335,6 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
             registryState: registryState,
             accountUnchanged: started == currentAccountID
         )
-    }
-
-    func startedForAccount(for book: TPPBook, delegate: BackgroundDownloadHandlerDelegate) -> TPPUserAccount {
-        guard let startedAccountID = delegate.stateManager
-            .persistedRecords()
-            .first(where: { $0.bookID == book.identifier })?
-            .account,
-            !startedAccountID.isEmpty
-        else {
-            return delegate.userAccount
-        }
-        return delegate.userAccount(forCapturedId: startedAccountID)
     }
 
     /// Shared follow-up step for both OPDS-entry XML and OPDS2 JSON publication
@@ -486,9 +487,17 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
             ),
             currentAccountID: delegate.userAccount.libraryUUID
         ) else {
+            // NOT `false`: both callers read a false return as "the write
+            // failed" and escalate — `LCPFulfillmentHandler` to
+            // `failDownloadWithAlert`, which writes `.downloadFailed` and shows
+            // a retry alert, and `RightsManagementDispatcher` to
+            // `failureRequiringAlert`. Nothing failed here: the download was
+            // deliberately discarded because the patron no longer holds the
+            // book, and telling them it failed is a worse answer than the
+            // illegal transition this guard exists to prevent.
             Log.info(#file, "'\(book.title)' is no longer held (state: \(registryState.stringValue())) — discarding the downloaded file instead of writing it to disk")
             try? fileManager.removeItem(at: sourceLocation)
-            return false
+            return true
         }
 
         do {

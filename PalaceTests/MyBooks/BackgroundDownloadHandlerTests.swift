@@ -373,6 +373,47 @@ final class BackgroundDownloadHandlerTests: XCTestCase {
 
     // MARK: - File Replace
 
+    /// The end-to-end shape of the guard: a download completing after the
+    /// patron returned the book writes nothing, and reports NO failure.
+    ///
+    /// Reporting failure is the trap. Both callers read a false return as "the
+    /// write failed" and escalate — one to `failDownloadWithAlert`, which sets
+    /// `.downloadFailed` and shows a retry alert for a book the patron chose to
+    /// give back.
+    func testReplaceBook_forAReturnedBook_writesNothingAndReportsNoFailure() throws {
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let registry = mockDelegate.bookRegistry as! TPPBookRegistryMock
+        registry.addBook(book, state: .unregistered)
+
+        let tempDir = FileManager.default.temporaryDirectory
+        let sourceFile = tempDir.appendingPathComponent("returned_src_\(UUID().uuidString).epub")
+        let destFile = tempDir.appendingPathComponent("returned_dst_\(UUID().uuidString).epub")
+        try Data("content that must not land".utf8).write(to: sourceFile)
+        mockDelegate.fileUrls[book.identifier] = destFile
+
+        let task = inertTestSession.downloadTask(with: URL(string: "https://example.com")!)
+        let result = handler.replaceBook(book, withFileAtURL: sourceFile, forDownloadTask: task)
+
+        XCTAssertTrue(
+            result,
+            "a deliberate discard must not read as a write failure — that surfaces a retry alert"
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: destFile.path),
+            "the content of a returned book must not reach the shelf"
+        )
+        XCTAssertEqual(
+            registry.state(for: book.identifier),
+            .unregistered,
+            "the returned book must stay returned"
+        )
+        XCTAssertTrue(mockDelegate.logBookDownloadFailureCalls.isEmpty,
+                      "nothing failed, so nothing may be logged as a failure")
+
+        try? FileManager.default.removeItem(at: sourceFile)
+        try? FileManager.default.removeItem(at: destFile)
+    }
+
     func testReplaceBook_success_setsDownloadSuccessful() throws {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         let registry = mockDelegate.bookRegistry as! TPPBookRegistryMock

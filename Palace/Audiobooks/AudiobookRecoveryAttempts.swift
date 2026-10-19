@@ -28,7 +28,6 @@ struct AudiobookRecoveryAttempts {
     private var overdrive: [String: OverdriveRefulfill] = [:]
     private var bearerTokenRefulfilled = Set<String>()
     private var coldLoadReopened = Set<String>()
-    private var landedArchiveReopened = Set<String>()
 
     /// True only for an open the patron started. Every automatic re-open
     /// passes one of these flags; if such a re-open re-armed the bounds, a
@@ -97,19 +96,5 @@ struct AudiobookRecoveryAttempts {
 
     mutating func recordColdLoadReopen(for bookId: String) {
         coldLoadReopened.insert(bookId)
-    }
-
-    // MARK: Landed-archive re-open
-
-    /// Tracked apart from the cold-load re-open so one does not spend the
-    /// other's budget: a cold-load re-open normally happens while the package
-    /// is still downloading, and the re-open that binds the session to the
-    /// landed file has to still be available afterwards.
-    func hasAttemptedLandedArchiveReopen(for bookId: String) -> Bool {
-        landedArchiveReopened.contains(bookId)
-    }
-
-    mutating func recordLandedArchiveReopen(for bookId: String) {
-        landedArchiveReopened.insert(bookId)
     }
 }

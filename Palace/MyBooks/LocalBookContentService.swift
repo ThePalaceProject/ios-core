@@ -182,8 +182,9 @@ class LocalBookContentService {
     ///
     /// Not the only writer: `BackgroundDownloadHandler.replaceBook` (reached from
     /// `LCPFulfillmentHandler` with streaming off, and always for LCP PDF/EPUB)
-    /// has no such guard, so this narrows the orphan window on the streaming
-    /// path only.
+    /// asks the same question through `completedDownloadMayBeStored`, which
+    /// delegates here so the two cannot drift on which states mean the loan is
+    /// live.
     ///
     /// A library switch always writes; see `accountUnchanged` below.
     ///

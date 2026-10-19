@@ -180,24 +180,10 @@ public final class AudiobookSessionManager: ObservableObject {
 
     private var managerCancellables = Set<AnyCancellable>()
 
-    /// Whether a book's package is on disk. Injected so the landed-archive
-    /// re-open is drivable in a test and does not read the production
-    /// container.
-    let contentIsLocal: (String) -> Bool
-
-    /// Rising/falling edges of the LCP package transfer, keyed by book
-    /// identifier. The falling edge is what tells a streaming session its
-    /// package has landed.
-    let archiveTransferPublisher: AnyPublisher<(String, Bool), Never>?
-
-    /// Whether the current session opened over the network rather than a local
-    /// package. Fixed for the session's life; see `openAudiobook`.
-    var sessionOpenedStreaming = false
-
     /// Cancellables tied to the manager's lifetime (singleton) — NOT cleared
     /// on stopPlayback. Used for the phone-side error subscriber that presents
     /// alerts for user-actionable session errors.
-    var lifecycleCancellables = Set<AnyCancellable>()
+    private var lifecycleCancellables = Set<AnyCancellable>()
 
     // MARK: - Publishers for External Observers
 
@@ -321,14 +307,8 @@ public final class AudiobookSessionManager: ObservableObject {
         notificationCenter: NotificationCenter,
         overdriveRefulfillStarter: @escaping @MainActor (TPPBook) -> Void,
         showOpenFailureAlert: @escaping @MainActor (TPPBook, [String: Any]) -> Void,
-        makeLoader: @escaping @MainActor (Bool) -> AudiobookLoader,
-        archiveTransferPublisher: AnyPublisher<(String, Bool), Never>? = nil,
-        contentIsLocal: @escaping (String) -> Bool = {
-            AudiobookSessionManager.audiobookContentIsLocal($0)
-        }
+        makeLoader: @escaping @MainActor (Bool) -> AudiobookLoader
     ) {
-        self.archiveTransferPublisher = archiveTransferPublisher
-        self.contentIsLocal = contentIsLocal
         self.bookRegistry = bookRegistry
         self.positionResolver = AudiobookPositionResolver(bookRegistry: bookRegistry)
         self.accountsManager = accountsManager
@@ -354,7 +334,6 @@ public final class AudiobookSessionManager: ObservableObject {
         // directly via AudiobookLoader; no pub/sub handoff is needed.
         subscribeToPhoneSideErrorAlerts()
         subscribeToBookReturn()
-        subscribeToLandedArchive()
         subscribeToAppLifecyclePositionPersistence()
         mediaServicesResetRecovery.host = self
     }
@@ -378,10 +357,6 @@ public final class AudiobookSessionManager: ObservableObject {
             AppContainer.production().downloadCenter.redownloadLCPContentFile(for: book)
         },
         lcpStreamingEnabledProvider: @escaping () -> Bool = { RemoteFeatureFlags.shared.isLCPAudiobookStreamingEnabled },
-        archiveTransferPublisher: AnyPublisher<(String, Bool), Never>? = nil,
-        contentIsLocal: @escaping (String) -> Bool = {
-            AudiobookSessionManager.audiobookContentIsLocal($0)
-        },
         readinessProbeFactory: @escaping @MainActor (Player) -> PlaybackReadinessProbing = { player in
             PlayerReadinessProbe(isLoadedSnapshot: { [weak player] in player?.isLoaded ?? false })
         },
@@ -413,10 +388,7 @@ public final class AudiobookSessionManager: ObservableObject {
             notificationCenter: notificationCenter,
             overdriveRefulfillStarter: overdriveRefulfillStarter,
             showOpenFailureAlert: showOpenFailureAlert ?? AudiobookOpenFailureAlert.presenter(bookRegistry: appContainer.bookRegistry),
-            makeLoader: makeLoader,
-            archiveTransferPublisher: archiveTransferPublisher
-                ?? appContainer.downloadCenter.lcpContentDownloadPublisher.eraseToAnyPublisher(),
-            contentIsLocal: contentIsLocal
+            makeLoader: makeLoader
         )
     }
 
@@ -592,7 +564,7 @@ public final class AudiobookSessionManager: ObservableObject {
     /// (PP-4542). Each runs at most once per patron-initiated open, so a
     /// persistent failure reaches the patron-facing error instead of looping.
     /// Only a patron open re-arms them; see `AudiobookRecoveryAttempts`.
-    var recoveryAttempts = AudiobookRecoveryAttempts()
+    private(set) var recoveryAttempts = AudiobookRecoveryAttempts()
 
     /// Re-arms the recovery bounds when `isPatronOpen`, and returns whether it
     /// did. Every open reports here, so the re-arm rule has one call site.
@@ -748,11 +720,6 @@ public final class AudiobookSessionManager: ObservableObject {
                 self.audiobookSessionPresenterProvider().showDownloadProgress(fraction)
             }
         }
-        // The session's transport is fixed here: `archiveIsLocalFile()` is
-        // `licenseUrl == nil`, so a session opened for streaming keeps serving
-        // remote reads for its whole life. Recorded so a package landing later
-        // can be acted on (`shouldReopenForLandedArchive`).
-        sessionOpenedStreaming = !contentIsLocal(book.identifier)
         let gateResult = await gateOnLCPContentDownload(
             for: book,
             isColdLoadRecovery: isColdLoadRecovery,

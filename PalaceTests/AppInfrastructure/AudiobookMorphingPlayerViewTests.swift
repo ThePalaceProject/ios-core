@@ -95,6 +95,33 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
         )
     }
 
+    // MARK: - The download-seen latch
+
+    /// One-way is the whole point. A live value would re-open the pre-download
+    /// window every time progress briefly reports nothing, taking the screen
+    /// back from the shimmer — the flicker the window exists to avoid.
+    func testHasSeenDownloading_staysTrueWhenDownloadingFallsBack() {
+        XCTAssertTrue(
+            AudiobookMorphingPlayerView.hasSeenDownloading(previous: true, isDownloading: false),
+            "a latch that follows isDownloading down re-summons the explanation"
+        )
+    }
+
+    /// The rising edge sets it.
+    func testHasSeenDownloading_isSetByTheFirstDownload() {
+        XCTAssertTrue(
+            AudiobookMorphingPlayerView.hasSeenDownloading(previous: false, isDownloading: true)
+        )
+    }
+
+    /// Before any download has been seen it stays false, or the pre-download
+    /// window would never open at all.
+    func testHasSeenDownloading_beforeAnyDownload_isFalse() {
+        XCTAssertFalse(
+            AudiobookMorphingPlayerView.hasSeenDownloading(previous: false, isDownloading: false)
+        )
+    }
+
     // MARK: - Which progress channel the loading panel shows
 
     /// An LCP archive fetch drives `archiveProgress`; no track download is

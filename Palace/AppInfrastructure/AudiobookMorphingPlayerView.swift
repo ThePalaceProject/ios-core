@@ -80,9 +80,8 @@ struct AudiobookMorphingPlayerView: View {
     /// anywhere in this file. That prose is what sent PP-5205's first analysis down the
     /// wrong path, so it is corrected rather than deleted.
     @State private var loadingTimedOut = false
-    /// Latched once a download has been observed, so the pre-download window
-    /// that shows the explanation cannot re-open and take the screen back from
-    /// the shimmer when progress briefly reports nothing.
+    /// Latched once a download has been observed; the one-way rule and why it
+    /// must be one-way live in `hasSeenDownloading(previous:isDownloading:)`.
     @State private var hasSeenDownloading = false
 
     /// PP-5205 (F13): the 30s timer, held so a re-arm can CANCEL the prior one.
@@ -1044,7 +1043,7 @@ struct AudiobookMorphingPlayerView: View {
             // the pre-download window is over, so a moment of reported-nothing
             // cannot take the screen back from the shimmer.
             .onChange(of: presenter.isDownloading) { _, downloading in
-                if downloading { hasSeenDownloading = true }
+                hasSeenDownloading = Self.hasSeenDownloading(previous: hasSeenDownloading, isDownloading: downloading)
             }
     }
 

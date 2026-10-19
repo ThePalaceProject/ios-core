@@ -61,10 +61,6 @@ class AudiobookSessionPresenter: ObservableObject {
     /// download-bar visibility. Reset to false on `clearActiveSession()`.
     @Published private(set) var isDownloading: Bool = false
 
-    /// Forwarded: the session owns the player that can answer this, and the
-    /// overlay asks the presenter.
-    var expectsSlowChapterStart: Bool { sessionManager.expectsSlowChapterStart }
-
     /// Whether audio has begun at least once for THIS session. Latched — it
     /// never returns to false while the session lives — and reset only by
     /// `clearActiveSession()`.
