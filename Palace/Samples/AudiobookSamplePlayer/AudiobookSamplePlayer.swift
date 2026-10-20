@@ -10,6 +10,18 @@
 import Combine
 import PalaceLogging
 
+/// The playback calls the sample player makes. `AVAudioPlayer` provides them
+/// as is; tests pass a fake so position handling runs without audio.
+protocol SampleAudioEngine: AnyObject {
+    var currentTime: TimeInterval { get set }
+    var duration: TimeInterval { get }
+    @discardableResult func play() -> Bool
+    func pause()
+    func stop()
+}
+
+extension AVAudioPlayer: SampleAudioEngine {}
+
 enum AudiobookSamplePlayerState {
     case initialized
     case loading
@@ -37,12 +49,17 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
         }
     }
 
-    private var sample: AudiobookSample
-    private var player: AVAudioPlayer?
+    private var sample: any Sample & Sendable
+    private var player: (any SampleAudioEngine)?
     private var timer: Timer?
+    private let makeEngine: (Data, AVAudioPlayerDelegate) throws -> any SampleAudioEngine
 
-    init(sample: AudiobookSample) {
+    init(
+        sample: any Sample & Sendable,
+        makeEngine: @escaping (Data, AVAudioPlayerDelegate) throws -> any SampleAudioEngine = AudiobookSamplePlayer.makeAudioPlayer
+    ) {
         self.sample = sample
+        self.makeEngine = makeEngine
         super.init()
 
         configureAudioSession()
@@ -101,11 +118,15 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
         state = .playing
     }
 
-    private func setupPlayer(data: Data) throws {
-        player = try AVAudioPlayer(data: data)
+    nonisolated static func makeAudioPlayer(data: Data, delegate: AVAudioPlayerDelegate) throws -> any SampleAudioEngine {
+        let player = try AVAudioPlayer(data: data)
+        player.delegate = delegate
+        player.volume = 1.0
+        return player
+    }
 
-        player?.delegate = self
-        player?.volume = 1.0
+    private func setupPlayer(data: Data) throws {
+        player = try makeEngine(data, self)
         startTimer()
         player?.play()
         state = .playing
@@ -116,16 +137,21 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
         state = .paused
     }
 
-    func goBack() {
-        guard let player = player, player.currentTime > 0 else { return }
-        timer?.invalidate()
+    nonisolated static let skipBackInterval: TimeInterval = 30
 
-        self.player?.pause()
-        let currentTime = remainingTime
-        let newLocation = min(player.duration, currentTime + 30)
-        remainingTime = newLocation
-        self.player?.play(atTime: remainingTime)
-        startTimer()
+    /// Where the playhead lands after a skip back from `currentTime`: never
+    /// before the start of the preview.
+    nonisolated static func skipBackTarget(from currentTime: TimeInterval) -> TimeInterval {
+        max(0, currentTime - skipBackInterval)
+    }
+
+    /// Moves the playhead back and keeps playing or paused as it was (PP-4027).
+    /// Seeks through `currentTime`: `AVAudioPlayer.play(atTime:)` schedules a
+    /// start on the device clock and does not move the playhead.
+    func goBack() {
+        guard let player else { return }
+        player.currentTime = Self.skipBackTarget(from: player.currentTime)
+        remainingTime = player.duration - player.currentTime
     }
 
     @objc private func setDuration() {
