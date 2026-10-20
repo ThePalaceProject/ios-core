@@ -59,7 +59,7 @@ extension AudiobookSessionManager: MediaServicesResetRecoveryHost {
     func mediaServicesResetReestablish(book: TPPBook, resumePlaying: Bool) async -> Bool {
         guard currentBook?.identifier == book.identifier else { return false }
         if resumePlaying {
-            let result = await openAudiobook(book, startPlaying: true, forceRefulfill: false, isRecoveryReopen: true)
+            let result = await reopen(book, because: .recovery)
             if case .success = result { return true }
             return false
         }

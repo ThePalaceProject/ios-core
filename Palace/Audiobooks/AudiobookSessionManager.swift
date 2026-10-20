@@ -286,6 +286,16 @@ public final class AudiobookSessionManager: ObservableObject {
     /// Injected so the call site is observable without presenting UIKit alerts.
     private let showOpenFailureAlert: @MainActor (TPPBook, [String: Any]) -> Void
 
+    /// Whether a book's audiobook content is on disk, and a bounded wait for it
+    /// to land. Read by the first-play recovery to pick between re-opening now
+    /// and waiting for the download. Injected so tests drive both branches
+    /// without the production download centre.
+    private let contentIsLocal: @MainActor (String) -> Bool
+    private let awaitContentLocal: @MainActor (String) async -> Bool
+
+    /// Traces each open and reports one that stalls (PP-4973).
+    private let openMonitor: AudiobookOpenMonitor
+
     // MARK: - Initialization
 
     /// Designated init — every dependency is explicit. `private` so the
@@ -307,6 +317,9 @@ public final class AudiobookSessionManager: ObservableObject {
         notificationCenter: NotificationCenter,
         overdriveRefulfillStarter: @escaping @MainActor (TPPBook) -> Void,
         showOpenFailureAlert: @escaping @MainActor (TPPBook, [String: Any]) -> Void,
+        contentIsLocal: @escaping @MainActor (String) -> Bool,
+        awaitContentLocal: @escaping @MainActor (String) async -> Bool,
+        openMonitor: AudiobookOpenMonitor,
         makeLoader: @escaping @MainActor (Bool) -> AudiobookLoader
     ) {
         self.bookRegistry = bookRegistry
@@ -326,6 +339,9 @@ public final class AudiobookSessionManager: ObservableObject {
         self.mediaServicesResetRecovery = MediaServicesResetRecovery(notificationCenter: notificationCenter)
         self.overdriveRefulfillStarter = overdriveRefulfillStarter
         self.showOpenFailureAlert = showOpenFailureAlert
+        self.contentIsLocal = contentIsLocal
+        self.awaitContentLocal = awaitContentLocal
+        self.openMonitor = openMonitor
         self.makeLoader = makeLoader
         Log.info(#file, "AudiobookSessionManager initialized")
         nowPlayingCoordinator = NowPlayingCoordinator()
@@ -369,6 +385,9 @@ public final class AudiobookSessionManager: ObservableObject {
             AppContainer.production().downloadCenter.startDownload(for: book, withRequest: nil)
         },
         showOpenFailureAlert: (@MainActor (TPPBook, [String: Any]) -> Void)? = nil,
+        contentIsLocal: @escaping @MainActor (String) -> Bool = { AudiobookSessionManager.audiobookContentIsLocal($0) },
+        awaitContentLocal: @escaping @MainActor (String) async -> Bool = { await AudiobookSessionManager.awaitAudiobookContentLocal($0) },
+        openMonitor: AudiobookOpenMonitor? = nil,
         makeLoader: @escaping @MainActor (Bool) -> AudiobookLoader = { AudiobookLoader(forceRefulfill: $0) }
     ) {
         self.init(
@@ -388,6 +407,9 @@ public final class AudiobookSessionManager: ObservableObject {
             notificationCenter: notificationCenter,
             overdriveRefulfillStarter: overdriveRefulfillStarter,
             showOpenFailureAlert: showOpenFailureAlert ?? AudiobookOpenFailureAlert.presenter(bookRegistry: appContainer.bookRegistry),
+            contentIsLocal: contentIsLocal,
+            awaitContentLocal: awaitContentLocal,
+            openMonitor: openMonitor ?? AudiobookOpenMonitor(),
             makeLoader: makeLoader
         )
     }
@@ -523,7 +545,7 @@ public final class AudiobookSessionManager: ObservableObject {
     /// - Returns: Result indicating success or failure
     @discardableResult
     public func openAudiobook(_ book: TPPBook, startPlaying: Bool = true) async -> Result<Void, AudiobookSessionError> {
-        await openAudiobook(book, startPlaying: startPlaying, forceRefulfill: false)
+        await openAudiobook(book, startPlaying: startPlaying, origin: .patron)
     }
 
     /// Protocol witness for the early-present variant — threads the
@@ -532,7 +554,7 @@ public final class AudiobookSessionManager: ObservableObject {
     /// loading shell appears, not after the whole download lands. See
     /// fix/audiobook-first-open-hang.
     public func openAudiobook(_ book: TPPBook, startPlaying: Bool, onLoadingShellPresented: (@MainActor () -> Void)?) async -> Result<Void, AudiobookSessionError> {
-        await openAudiobook(book, startPlaying: startPlaying, forceRefulfill: false, onLoadingShellPresented: onLoadingShellPresented)
+        await openAudiobook(book, startPlaying: startPlaying, origin: .patron, onLoadingShellPresented: onLoadingShellPresented)
     }
 
     /// Presents the morphing player's loading shell and fires the early
@@ -566,18 +588,13 @@ public final class AudiobookSessionManager: ObservableObject {
     /// Only a patron open re-arms them; see `AudiobookRecoveryAttempts`.
     private(set) var recoveryAttempts = AudiobookRecoveryAttempts()
 
-    /// Re-arms the recovery bounds when `isPatronOpen`, and returns whether it
+    /// Re-arms the recovery bounds for a patron open, and returns whether it
     /// did. Every open reports here, so the re-arm rule has one call site.
-    func noteOpenForRecoveryBounds(of bookId: String, forceRefulfill: Bool, isColdLoadRecovery: Bool, isRecoveryReopen: Bool) -> Bool {
-        let isPatronOpen = AudiobookRecoveryAttempts.isPatronOpen(
-            forceRefulfill: forceRefulfill,
-            isColdLoadRecovery: isColdLoadRecovery,
-            isRecoveryReopen: isRecoveryReopen
-        )
-        if isPatronOpen {
+    func noteOpenForRecoveryBounds(of bookId: String, origin: AudiobookOpenOrigin) -> Bool {
+        if origin.isPatron {
             recoveryAttempts.notePatronOpen(of: bookId)
         }
-        return isPatronOpen
+        return origin.isPatron
     }
 
     /// The decision for one `.playbackFailed`, read from the live bounds.
@@ -593,9 +610,7 @@ public final class AudiobookSessionManager: ObservableObject {
                 bearerTokenRefulfillAlreadyAttempted: recoveryAttempts.hasAttemptedBearerTokenRefulfill(for: bookId),
                 coldLoadReopenAlreadyAttempted: recoveryAttempts.hasAttemptedColdLoadReopen(for: bookId),
                 hasEverStartedPlayback: hasEverStartedPlayback,
-                contentIsLocal: {
-                    AudiobookSessionManager.audiobookContentIsLocal(bookId)
-                }
+                contentIsLocal: { [contentIsLocal] in contentIsLocal(bookId) }
             )
         )
     }
@@ -626,49 +641,38 @@ public final class AudiobookSessionManager: ObservableObject {
     private var boundContentSource: (bookId: String, source: AudiobookContentSource)?
     private var playbackFailureDeduplicator = PlaybackFailureRecordDeduplicator()
 
-    /// Builds the loader for each open; the argument is `forceRefulfill`.
-    /// Injected at init so tests can hold a load in flight.
+    /// Builds the loader for each open; the argument is whether to fetch a
+    /// fresh manifest instead of the one on disk. Injected at init so tests can
+    /// hold a load in flight.
     private(set) var makeLoader: @MainActor (Bool) -> AudiobookLoader
 
-    /// - parameter forceRefulfill: recovery re-open — when true the loader
-    ///   bypasses `LocalFileAdapter` so the book re-fulfills FRESH signed URLs
-    ///   instead of replaying the expired on-disk manifest. Internal (not part of
-    ///   the public `AudiobookSessionManaging` surface); the public 2-param
-    ///   witness above delegates here, and the in-class recovery branch calls it.
-    func openAudiobook(_ book: TPPBook, startPlaying: Bool, forceRefulfill: Bool, isColdLoadRecovery: Bool = false, isRecoveryReopen: Bool = false, onLoadingShellPresented: (@MainActor () -> Void)? = nil) async -> Result<Void, AudiobookSessionError> {
-        Log.info(#file, "Opening audiobook: '\(book.title)' (id: \(book.identifier))\(forceRefulfill ? " [re-fulfill]" : "")\(isColdLoadRecovery ? " [cold-load recovery]" : "")")
+    /// - parameter origin: who started this open. Internal (not part of the
+    ///   public `AudiobookSessionManaging` surface): the public witnesses above
+    ///   open as `.patron`, and recoveries re-open through `reopen(_:because:)`.
+    func openAudiobook(_ book: TPPBook, startPlaying: Bool, origin: AudiobookOpenOrigin, onLoadingShellPresented: (@MainActor () -> Void)? = nil) async -> Result<Void, AudiobookSessionError> {
+        Log.info(#file, "Opening audiobook: '\(book.title)' (id: \(book.identifier)) [\(origin)]")
 
-        // A recovery re-open (PP-4800) re-opens a book the `.playbackFailed`
-        // handler parked at `.loading`, so it must bypass this duplicate-open
-        // guard; `loadGeneration` still supersedes any concurrent load.
-        if case .loading(let loadingId) = state, loadingId == book.identifier, !isRecoveryReopen {
+        guard origin.admitsOpen(of: book.identifier, whileIn: state) else {
             Log.warn(#file, "Audiobook already loading: \(book.identifier)")
             return .failure(.alreadyLoading)
         }
 
-        // PP-5241: a fresh patron-initiated open ends any media-services-reset
-        // episode. Automatic re-opens (including the reset recovery's own,
-        // which passes `isRecoveryReopen`) must not, or the episode bound
-        // never holds. Below the `.alreadyLoading` guard: a re-tap refused
-        // while the recovery holds `.loading` opens nothing, so it must not
-        // end the episode.
-        //
-        // The same rule re-arms the recovery bounds (PP-4967). The OverDrive
-        // re-fulfilment re-opens with `isRecoveryReopen`; when that re-open
-        // re-armed the bound, a fresh link that also failed started another
-        // re-fulfilment, without end.
-        if noteOpenForRecoveryBounds(
-            of: book.identifier,
-            forceRefulfill: forceRefulfill,
-            isColdLoadRecovery: isColdLoadRecovery,
-            isRecoveryReopen: isRecoveryReopen
-        ) {
+        let openId = openMonitor.begin(book, origin: origin)
+        defer { openMonitor.finish(openId) }
+
+        // PP-5241: a patron open ends any media-services-reset episode; a
+        // re-open (including the reset recovery's own) must not, or the episode
+        // bound never holds. Below the admission check: a repeated tap refused
+        // while a recovery holds `.loading` opens nothing, so it must not end
+        // the episode. The same rule re-arms the recovery bounds (PP-4967).
+        if noteOpenForRecoveryBounds(of: book.identifier, origin: origin) {
             mediaServicesResetRecovery.handleSessionEnded()
         }
 
         let isSameBook = currentBook?.identifier == book.identifier
 
         if state.isActive {
+            openMonitor.enter(.stoppingPreviousSession, for: openId)
             // Skip the teardown's final-position save when re-opening the same
             // book; the prior loan's live position would otherwise leak into the
             // freshly-borrowed registry record (HelpSpot 17988).
@@ -682,6 +686,7 @@ public final class AudiobookSessionManager: ObservableObject {
             )
         }
 
+        openMonitor.enter(.checkingAccess, for: openId)
         if let error = await validateRequirements(for: book) {
             Log.error(#file, "Validation failed: \(error)")
             state = .error(bookId: book.identifier, message: error.localizedDescription)
@@ -722,11 +727,12 @@ public final class AudiobookSessionManager: ObservableObject {
         }
         let gateResult = await gateOnLCPContentDownload(
             for: book,
-            isColdLoadRecovery: isColdLoadRecovery,
+            isColdLoadRecovery: origin.skipsContentGate,
             canOpenLCPBook: LCPAudiobooks.canOpenBook(book),
-            contentIsLocal: Self.audiobookContentIsLocal(book.identifier),
-            awaitContentLanding: { bookId in
-                await Self.awaitAudiobookContentLocal(bookId, onProgress: progressSink)
+            contentIsLocal: contentIsLocal(book.identifier),
+            awaitContentLanding: { [weak self] bookId in
+                self?.openMonitor.enter(.awaitingContent, for: openId)
+                return await Self.awaitAudiobookContentLocal(bookId, onProgress: progressSink)
             }
         )
         if gateResult != .proceed {
@@ -757,8 +763,9 @@ public final class AudiobookSessionManager: ObservableObject {
 
         loadGeneration &+= 1
         let generation = loadGeneration
-        let loader = makeLoader(forceRefulfill)
+        let loader = makeLoader(origin.fetchesFreshManifest)
         currentLoader = loader
+        openMonitor.enter(.loading, for: openId)
 
         // `load` is awaited rather than wrapped in a continuation plus a
         // `Task { @MainActor in }` (PP-5301). It resumes on this actor, so the
@@ -817,7 +824,7 @@ public final class AudiobookSessionManager: ObservableObject {
                             return
                         }
                         Log.info(#file, "SAML re-auth succeeded — re-attempting audiobook open")
-                        _ = await self.openAudiobook(book, startPlaying: startPlaying)
+                        await self.reopen(book, because: .recovery, startPlaying: startPlaying)
                     }
                 }
             } else {
@@ -1546,31 +1553,6 @@ public final class AudiobookSessionManager: ObservableObject {
         }
     }
 
-    // MARK: - Chapter TOC normalization
-
-    /// Passthrough: TOC collapse lives in the toolkit's
-    /// `AudiobookTableOfContents`. A second collapse here would number chapters
-    /// differently from the toolkit's currentChapter / saved position.
-    static func normalizedChapters(for toc: AudiobookTableOfContents) -> [Chapter] {
-        toc.toc
-    }
-
-    /// Test-only spec for the 1.5x oversubdivision THRESHOLD (one chapter per
-    /// physical track when `tocCount > trackCount * 1.5`). NOTE: this is no longer
-    /// the production collapse seam — `normalizedChapters(for:)` is now a passthrough
-    /// and the collapse is implemented in the toolkit's `AudiobookTableOfContents`
-    /// (`isOversubdivided` + keep-first). This primitive is retained only to keep the
-    /// threshold math pinned by unit tests without constructing toolkit types; it
-    /// does not drive any production code path.
-    static func normalizedChaptersCount(tocCount: Int, trackCount: Int) -> Int {
-        if !ChapterTOCNormalizer.isOversubdivided(tocCount: tocCount, expectedChapterCount: trackCount) {
-            return tocCount
-        }
-        return trackCount
-    }
-
-
-
     /// PP-4542: the upfront LCP content gate. If the audiobook is openable but
     /// its `.lcpa` is not on disk, trigger the content download and await it;
     /// otherwise return `.proceed`. Triggering first matters because a
@@ -1811,8 +1793,7 @@ public final class AudiobookSessionManager: ObservableObject {
                         case .success:
                             Log.info(#file, "Coordinator re-auth succeeded - re-fetching fulfill link and resuming audiobook")
                             Task { [weak self] in
-                                guard let self else { return }
-                                _ = await self.openAudiobook(book, startPlaying: true)
+                                await self?.reopen(book, because: .recovery)
                             }
                         case .failure(let cancellation):
                             Log.info(#file, "Coordinator re-auth did not resume audiobook — \(cancellation)")
@@ -1859,7 +1840,7 @@ public final class AudiobookSessionManager: ObservableObject {
                 Task { [weak self] in
                     guard let self else { return }
                     guard self.currentBook?.identifier == book.identifier else { return }
-                    _ = await self.openAudiobook(book, startPlaying: true, forceRefulfill: true)
+                    await self.reopen(book, because: .freshManifest)
                 }
                 return
 
@@ -1879,14 +1860,14 @@ public final class AudiobookSessionManager: ObservableObject {
                 playbackStatePublisher.send(state)
                 Task { [weak self] in
                     guard let self else { return }
-                    let becameLocal = await Self.awaitAudiobookContentLocal(book.identifier)
+                    let becameLocal = await self.awaitContentLocal(book.identifier)
                     // The wait is over — stop swallowing failures for this book
                     // so the re-open's own success/failure drives the UI.
                     self.awaitingContentDownloadBookIds.remove(book.identifier)
                     guard self.currentBook?.identifier == book.identifier else { return }
                     if becameLocal {
                         Log.info(#file, "Content download landed — re-opening audiobook from local path")
-                        _ = await self.openAudiobook(book, startPlaying: true, forceRefulfill: false, isColdLoadRecovery: true)
+                        await self.reopen(book, because: .coldLoad)
                     } else {
                         Log.info(#file, "Content download did not land within wait window — surfacing unavailable alert")
                         await self.dismissAndPresentColdLoadUnavailable()
@@ -1905,7 +1886,7 @@ public final class AudiobookSessionManager: ObservableObject {
                 Task { [weak self] in
                     guard let self else { return }
                     guard self.currentBook?.identifier == book.identifier else { return }
-                    _ = await self.openAudiobook(book, startPlaying: true, forceRefulfill: false, isColdLoadRecovery: true)
+                    await self.reopen(book, because: .coldLoad)
                 }
                 return
 

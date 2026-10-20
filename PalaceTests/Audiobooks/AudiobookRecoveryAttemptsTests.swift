@@ -8,7 +8,8 @@
 //
 //  OverDrive re-fulfilment states: available, inFlight, spent.
 //  Events: begin, finish, patron open. An automatic re-open is not an event on
-//  the bounds at all; `isPatronOpen` decides which opens reach `notePatronOpen`.
+//  the bounds at all; `AudiobookOpenOrigin.isPatron` decides which opens reach
+//  `notePatronOpen` (see `AudiobookOpenOriginTests`).
 //
 
 import XCTest
@@ -156,26 +157,6 @@ final class AudiobookRecoveryAttemptsTests: XCTestCase {
             XCTAssertEqual(a.overdriveRefulfill(for: book), overdrive, "\(recovery)")
             XCTAssertEqual(a.hasAttemptedBearerTokenRefulfill(for: book), bearer, "\(recovery)")
             XCTAssertEqual(a.hasAttemptedColdLoadReopen(for: book), coldLoad, "\(recovery)")
-        }
-    }
-
-    // MARK: - Which opens re-arm the bounds
-
-    /// Only a patron-initiated open re-arms. Each automatic re-open passes one
-    /// of the three flags; a re-open that re-armed its own bound would let a
-    /// persistently failing book loop (fail → recover → re-open → fail …).
-    func testIsPatronOpen_overEveryFlagCombination() {
-        for force in [false, true] {
-            for coldLoad in [false, true] {
-                for recovery in [false, true] {
-                    let expected = !force && !coldLoad && !recovery
-                    XCTAssertEqual(
-                        AudiobookRecoveryAttempts.isPatronOpen(
-                            forceRefulfill: force, isColdLoadRecovery: coldLoad, isRecoveryReopen: recovery),
-                        expected,
-                        "forceRefulfill=\(force) coldLoad=\(coldLoad) recoveryReopen=\(recovery)")
-                }
-            }
         }
     }
 }

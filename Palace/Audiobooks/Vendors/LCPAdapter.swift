@@ -95,9 +95,11 @@ final class LCPAdapter: AudiobookVendorAdapter {
         if let localURL = downloadCenter.fileUrl(for: book.identifier),
            fileManager.fileExists(atPath: localURL.path),
            Self.archiveIsComplete(at: localURL) {
+            Log.info(#file, "LCP audiobook \(book.identifier): opening the local archive")
             return .success(localURL)
         }
         if let license = licenseURL(forBookIdentifier: book.identifier) {
+            Log.info(#file, "LCP audiobook \(book.identifier): streaming from the license")
             return .success(license)
         }
         Log.info(#file, "LCP audiobook with no local files - re-downloading license")
@@ -158,13 +160,16 @@ final class LCPAdapter: AudiobookVendorAdapter {
         do {
             (data, response) = try await networkExecutor.fetchLicense(from: fulfillURL)
         } catch {
+            Log.error(#file, "LCP license download for \(book.identifier) failed: \(error.localizedDescription)")
             return .failure(.licenseDownloadFailed(underlying: error))
         }
 
         guard !data.isEmpty else {
+            Log.error(#file, "LCP license download for \(book.identifier) returned an empty body")
             return .failure(.licenseDownloadFailed(underlying: nil))
         }
         if let httpResponse = response as? HTTPURLResponse, !httpResponse.isSuccess() {
+            Log.error(#file, "LCP license download for \(book.identifier) returned HTTP \(httpResponse.statusCode)")
             return .failure(.licenseDownloadFailed(underlying: nil))
         }
         do {

@@ -80,7 +80,7 @@ final class AudiobookOverdriveRefulfillWiringTests: XCTestCase {
 
     private func patronOpen() {
         XCTAssertTrue(sut.noteOpenForRecoveryBounds(
-            of: book.identifier, forceRefulfill: false, isColdLoadRecovery: false, isRecoveryReopen: false))
+            of: book.identifier, origin: .patron))
     }
 
     /// Starts the one re-fulfilment exactly as the `.playbackFailed` arm does.
@@ -120,7 +120,7 @@ final class AudiobookOverdriveRefulfillWiringTests: XCTestCase {
         await sut.recoverExpiredOverdriveByRefulfilling(book)
 
         XCTAssertFalse(sut.noteOpenForRecoveryBounds(
-            of: book.identifier, forceRefulfill: false, isColdLoadRecovery: false, isRecoveryReopen: true))
+            of: book.identifier, origin: .reopen(.recovery)))
 
         XCTAssertEqual(recovery(for: expired), .overdriveRefulfillExhausted,
                        "re-arming here is what let a fresh link that also failed re-fulfil without end")
@@ -132,29 +132,29 @@ final class AudiobookOverdriveRefulfillWiringTests: XCTestCase {
         await sut.recoverExpiredOverdriveByRefulfilling(book)
 
         XCTAssertFalse(sut.noteOpenForRecoveryBounds(
-            of: book.identifier, forceRefulfill: false, isColdLoadRecovery: true, isRecoveryReopen: false))
+            of: book.identifier, origin: .reopen(.coldLoad)))
 
         XCTAssertEqual(recovery(for: expired), .overdriveRefulfillExhausted)
     }
 
-    /// Through `openAudiobook` itself: the recovery's re-open passes
-    /// `isRecoveryReopen`, and that open must not re-arm the bound.
+    /// Through the session's own re-open: a recovery re-open must not re-arm
+    /// the bound.
     func testOpenAudiobook_asRecoveryReopen_doesNotReArm() async throws {
-        _ = await sut.openAudiobook(book, startPlaying: false, forceRefulfill: false)
+        _ = await sut.openAudiobook(book, startPlaying: false)
         try startRefulfilment()
         await sut.recoverExpiredOverdriveByRefulfilling(book)
 
-        _ = await sut.openAudiobook(book, startPlaying: false, forceRefulfill: false, isRecoveryReopen: true)
+        await sut.reopen(book, because: .recovery, startPlaying: false)
 
         XCTAssertEqual(recovery(for: expired), .overdriveRefulfillExhausted)
     }
 
     func testOpenAudiobook_byPatron_afterExhaustion_reArms() async throws {
-        _ = await sut.openAudiobook(book, startPlaying: false, forceRefulfill: false)
+        _ = await sut.openAudiobook(book, startPlaying: false)
         try startRefulfilment()
         await sut.recoverExpiredOverdriveByRefulfilling(book)
 
-        _ = await sut.openAudiobook(book, startPlaying: false, forceRefulfill: false)
+        _ = await sut.openAudiobook(book, startPlaying: false)
 
         XCTAssertEqual(recovery(for: expired), .overdriveRefulfill)
     }

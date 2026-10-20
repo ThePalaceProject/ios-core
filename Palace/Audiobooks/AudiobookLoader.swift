@@ -192,7 +192,7 @@ final class AudiobookLoader {
             return .failure(.manifestFetchFailed)
         }
 
-        Log.debug(#file, "  → Dispatching to \(type(of: adapter))")
+        Log.info(#file, "Audiobook \(book.identifier): resolving manifest with \(type(of: adapter))")
         switch await adapter.resolveManifest(for: book) {
         case .success(let value):
             return .success((value.json, value.decryptor))
