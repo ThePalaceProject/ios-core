@@ -818,6 +818,84 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
                        "No server title at all is a different case from a suppressed one.")
     }
 
+    // MARK: - Sign-out failure alert
+    //
+    // Palace ships no `en.lproj/Localizable.strings`, so a key with no
+    // `value:` reaches the alert as an identifier in every language. These pin
+    // each of the three arms' title as English a patron can read.
+
+    /// True when a patron would read `text` as an identifier rather than as
+    /// English. Mirrors the predicate in `AlertTextLocalizationTests`; kept
+    /// local so this suite does not depend on that one.
+    private func readsAsIdentifier(_ text: String) -> Bool {
+        guard text.count >= 3, !text.contains(where: { $0.isWhitespace }) else { return false }
+        guard text.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }) else { return false }
+        return zip(text, text.dropFirst()).contains { $0.isLowercase && $1.isUppercase }
+    }
+
+    func testSignOutError_WithError_ShowsReadableTitleAndTheErrorDescription() async {
+        let vm = AccountDetailViewModel(libraryAccountID: seededLibraryID, appContainer: .production())
+        vm.isLoading = true
+        vm.isSigningOut = true
+
+        let err = NSError(domain: "test", code: 7,
+                          userInfo: [NSLocalizedDescriptionKey: "The server refused the request."])
+        vm.businessLogic(vm.businessLogic, didEncounterSignOutError: err, withHTTPStatusCode: 500)
+
+        XCTAssertFalse(vm.isLoading)
+        XCTAssertFalse(vm.isSigningOut)
+        XCTAssertTrue(vm.showingAlert)
+        XCTAssertFalse(readsAsIdentifier(vm.alertTitle),
+                       "a patron reads the identifier \"\(vm.alertTitle)\"")
+        XCTAssertEqual(vm.alertTitle, "Sign Out Failed")
+        XCTAssertEqual(vm.alertMessage, "The server refused the request.",
+                       "the error's own description must reach the patron intact")
+    }
+
+    func testSignOutError_WithoutError_ShowsReadableTitleAndUnknownErrorMessage() async {
+        let vm = AccountDetailViewModel(libraryAccountID: seededLibraryID, appContainer: .production())
+        vm.isLoading = true
+        vm.isSigningOut = true
+
+        vm.businessLogic(vm.businessLogic, didEncounterSignOutError: nil, withHTTPStatusCode: 500)
+
+        XCTAssertFalse(vm.isLoading)
+        XCTAssertFalse(vm.isSigningOut)
+        XCTAssertTrue(vm.showingAlert)
+        XCTAssertFalse(readsAsIdentifier(vm.alertTitle),
+                       "a patron reads the identifier \"\(vm.alertTitle)\"")
+        XCTAssertEqual(vm.alertTitle, "Sign Out Failed")
+        XCTAssertEqual(vm.alertMessage, "An unknown error occurred while trying to sign out.")
+    }
+
+    /// The 401 arm carries its own copy: an expired card is a different
+    /// situation from a failed sign-out, and collapsing the three arms onto one
+    /// title would still pass the two tests above.
+    func testSignOutError_401_KeepsTheUnexpectedCredentialsCopy() async {
+        let vm = AccountDetailViewModel(libraryAccountID: seededLibraryID, appContainer: .production())
+
+        vm.businessLogic(vm.businessLogic, didEncounterSignOutError: nil, withHTTPStatusCode: 401)
+
+        XCTAssertTrue(vm.showingAlert)
+        XCTAssertEqual(vm.alertTitle, "Unexpected Credentials")
+        XCTAssertTrue(vm.alertMessage.hasPrefix("Your username or password may have changed"),
+                      "401 must explain that the card's credentials changed, got: \(vm.alertMessage)")
+    }
+
+    /// A 401 carrying an error must still take the 401 arm: the status check
+    /// comes first, and reordering it would hand the patron the generic
+    /// sign-out-failed copy for an expired card.
+    func testSignOutError_401WithAnError_StillTakesThe401Arm() async {
+        let vm = AccountDetailViewModel(libraryAccountID: seededLibraryID, appContainer: .production())
+
+        let err = NSError(domain: "test", code: 401,
+                          userInfo: [NSLocalizedDescriptionKey: "Unauthorized"])
+        vm.businessLogic(vm.businessLogic, didEncounterSignOutError: err, withHTTPStatusCode: 401)
+
+        XCTAssertEqual(vm.alertTitle, "Unexpected Credentials")
+        XCTAssertNotEqual(vm.alertMessage, "Unauthorized",
+                          "the 401 arm must not fall through to the error's description")
+    }
     func testBusinessLogicValidationError_CancelledErrorClearsPin() async {
         let libraryID = seededLibraryID
         let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())

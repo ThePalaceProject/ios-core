@@ -171,6 +171,59 @@ struct Strings {
         static let uknownLocationError = NSLocalizedString("Unknown error occurred. Please try again.", value: "Unknown error occurred. Please try again.", comment: "Error message shown to user when an unknown location error occurs.")
         static let locationFetchFailed = NSLocalizedString("Failed to get current location. Please try again.", comment: "Error message shown to user when CoreLocation does not return the current location.")
         static let tryAgain = NSLocalizedString("Please try again later.", comment: "Error message to please try again.")
+
+        // The alert copy below carries `value:` because the keys are
+        // identifiers rather than English. Palace ships no
+        // `en.lproj/Localizable.strings`, so a lookup with no `value:` returns
+        // the key, and each of these was written as a bare literal that
+        // `TPPAlertUtils.alert(title:message:style:)` localizes at runtime --
+        // a variable lookup, with no literal call site for a fallback to sit
+        // on. The English is the app's own, restored from the `en` table that
+        // the Transifex integration removed. Same class as PP-5094.
+        static let notConnected = NSLocalizedString(
+            "NotConnected",
+            value: "You are not connected to the internet. Please connect and try again.",
+            comment: "Alert message for NSURLErrorNotConnectedToInternet")
+        static let timedOut = NSLocalizedString(
+            "TimedOut",
+            value: "The server did not respond. Please check your connection or try again later.",
+            comment: "Alert message for NSURLErrorTimedOut")
+        static let unsupportedURL = NSLocalizedString(
+            "UnsupportedURL",
+            value: "The link could not be opened. Please report an issue from the Settings tab.",
+            comment: "Alert message for NSURLErrorUnsupportedURL, where retrying cannot help because the address itself is unusable")
+        static let invalidDRMCredentials = NSLocalizedString(
+            "SettingsAccountViewControllerInvalidCredentials",
+            value: "Your barcode and pin combination was not valid. Please try again.",
+            comment: "Alert message for Adobe NYPLADEPTError.authenticationFailed")
+        static let tooManyDRMActivations = NSLocalizedString(
+            "SettingsAccountViewControllerMessageTooManyActivations",
+            value: "Too many devices have been authorized with this library card.",
+            comment: "Alert message for Adobe NYPLADEPTError.tooManyActivations")
+
+        static let signOutFailedTitle = NSLocalizedString(
+            "SettingsAccountViewControllerLogoutFailed",
+            value: "Sign Out Failed",
+            comment: "Title of the alert shown when a sign-out request fails")
+        static let signOutUnknownError = NSLocalizedString(
+            "An unknown error occurred while trying to sign out.",
+            comment: "Alert message when sign-out fails and the server supplied no error")
+        static let signOutUnexpectedCredentialsTitle = NSLocalizedString(
+            "Unexpected Credentials",
+            value: "Unexpected Credentials",
+            comment: "Title of the alert shown when a sign-out request returns 401")
+        static let signOutUnexpectedCredentialsMessage = NSLocalizedString(
+            "Your username or password may have changed since the last time you logged in.\n\nIf you believe this is an error, please contact your library.",
+            comment: "Alert message shown when a sign-out request returns 401, meaning the card's credentials changed server-side")
+
+        static let cannotSignOutTitle = NSLocalizedString(
+            "SettingsAccountViewControllerCannotLogOutTitle",
+            value: "Logout Failed",
+            comment: "Title of the alert shown when sign-out is refused because the book registry is still syncing")
+        static let cannotSignOutMessage = NSLocalizedString(
+            "SettingsAccountViewControllerCannotLogOutMessage",
+            value: "Please wait for certain download-related actions to finish before logging out.",
+            comment: "Message of the alert shown when sign-out is refused because the book registry is still syncing")
     }
 
     struct Generic {
