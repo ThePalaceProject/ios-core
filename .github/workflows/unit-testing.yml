@@ -431,8 +431,16 @@ jobs:
 
           PATTERN="\\b($(IFS='|'; echo "${TYPES[*]}"))\\b|isLCPAudiobookStreamingEnabled|lcpStreamingEnabledProvider|lcpAudiobookStreamingLocalOverrideKey|LCPStreamingTestPin"
           CLASSES=$({ grep -rlE "$PATTERN" PalaceTests --include='*.swift' || true; } \
-            | { xargs grep -hE '^[[:space:]]*(@MainActor[[:space:]]+)?((final|private|fileprivate|internal)[[:space:]]+)*class[[:space:]]+[A-Za-z0-9_]+[[:space:]]*:[[:space:]]*(XCTestCase|PalaceTestCase|PalaceWiringTestCase)\b' || true; } \
-            | sed -E 's/.*class[[:space:]]+([A-Za-z0-9_]+).*/\1/' | LC_ALL=C sort -u)
+            | { xargs awk '
+                # A base class with no test methods of its own never appears as a suite
+                # in the result bundle, so list a class only once a test method follows it.
+                FNR == 1 { cls = "" }
+                /^((@MainActor|final|private|fileprivate|internal|open|public)[[:space:]]+)*(class|struct|enum|actor)[[:space:]]/ { cls = "" }
+                /^[[:space:]]*(@MainActor[[:space:]]+)?((final|private|fileprivate|internal)[[:space:]]+)*class[[:space:]]+[A-Za-z0-9_]+[[:space:]]*:[[:space:]]*(XCTestCase|PalaceTestCase|PalaceWiringTestCase)([^A-Za-z0-9_]|$)/ {
+                  cls = $0; sub(/.*class[[:space:]]+/, "", cls); sub(/[^A-Za-z0-9_].*/, "", cls)
+                }
+                cls != "" && /func[[:space:]]+test/ { print cls; cls = "" }' || true; } \
+            | LC_ALL=C sort -u)
           echo "$CLASSES" | grep -qx 'LCPStreamingTestPinTests' || { echo "::error::derived class list lacks LCPStreamingTestPinTests"; exit 1; }
           echo "ON leg: $(echo "$CLASSES" | wc -l | tr -d ' ') classes"
           ONLY_ARGS=()
