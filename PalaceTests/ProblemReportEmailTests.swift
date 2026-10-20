@@ -5,6 +5,7 @@
 //  Tests for ProblemReportEmail body generation.
 //
 
+import TriageBotCore
 import XCTest
 @testable import Palace
 
@@ -28,21 +29,21 @@ final class ProblemReportEmailTests: XCTestCase {
     func testGenerateBody_withBook_containsBookInfo() {
         let book = TPPBookMocker.mockBook(title: "Test Book Title", authors: "Test Author")
 
-        let body = emailService.generateBody(book: book)
+        let body = emailService.generateBody(book: book, context: context(patron: nil))
 
         XCTAssertTrue(body.contains("Title: Test Book Title"))
         XCTAssertTrue(body.contains("ID: "))
     }
 
     func testGenerateBody_withoutBook_doesNotContainBookInfo() {
-        let body = emailService.generateBody(book: nil)
+        let body = emailService.generateBody(book: nil, context: context(patron: nil))
 
         XCTAssertFalse(body.contains("Title:"))
         XCTAssertFalse(body.contains("ID:"))
     }
 
     func testGenerateBody_containsDeviceIdiom() {
-        let body = emailService.generateBody(book: nil)
+        let body = emailService.generateBody(book: nil, context: context(patron: nil))
 
         XCTAssertTrue(body.contains("Idiom:"))
         // The idiom should be one of: phone, pad, tv, mac, carPlay, unspecified
@@ -56,7 +57,7 @@ final class ProblemReportEmailTests: XCTestCase {
     /// labels in a known order. Lock the whole structure in one test so a
     /// dropped label, reordered field, or swapped separator fails here.
     func testGenerateBody_includesEnvironmentFieldsInExpectedStructure() {
-        let body = emailService.generateBody(book: nil)
+        let body = emailService.generateBody(book: nil, context: context(patron: nil))
 
         // User-message space + separator are the visual scaffolding of the email.
         XCTAssertTrue(body.hasPrefix("\n\n"),
@@ -91,71 +92,40 @@ final class ProblemReportEmailTests: XCTestCase {
         XCTAssertLessThan(heightIdx, palaceIdx)
     }
 
-    // MARK: - Patron ID Tests (PP-3651)
+    // MARK: - Patron reference (PP-3651, PP-4818)
 
-    /// Regression test for PP-3651: patron ID must be appended when provided
-    /// and entirely omitted (no label leak) when nil. Both branches in one
-    /// test so always-printing or always-omitting fails here.
-    func testPP3651_generateBody_includesPatronIDOnlyWhenProvided() {
-        let withPatron = emailService.generateBody(book: nil, patronIdentifier: "23333098765432")
-        let withoutPatron = emailService.generateBody(book: nil, patronIdentifier: nil)
-
-        XCTAssertTrue(withPatron.contains("Patron ID: 23333098765432"),
-                      "Patron ID must be appended when provided")
-        XCTAssertFalse(withoutPatron.contains("Patron ID:"),
-                       "Patron ID label must NOT leak into the body when nil — privacy + correctness")
-        XCTAssertFalse(withoutPatron.contains("23333098765432"),
-                       "Even raw patron-ID digits must not appear when none was passed")
+    private func context(patron: String?, libraryName: String? = nil, libraryUUID: String? = nil) -> SupportReportContext {
+        SupportReportContext(rawPatronIdentifier: patron, libraryName: libraryName, libraryUUID: libraryUUID)
     }
 
-    /// Regression test for PP-3651: Patron ID should appear alongside book info
-    func testPP3651_generateBody_withBookAndPatronID_containsBothBookAndPatronInfo() {
+    /// The body carries the hashed patron reference support can match, and
+    /// never the raw card number (PP-4818).
+    func testGenerateBody_signedIn_carriesTheHashedReferenceNotTheBarcode() {
+        let barcode = "23333098765432"
+
+        let body = emailService.generateBody(book: nil, context: context(patron: barcode))
+
+        XCTAssertFalse(body.contains(barcode), "the raw barcode must not reach the email")
+        XCTAssertTrue(body.contains("Patron reference: \(ContextRedactor().hashIdentifier(barcode))"))
+    }
+
+    /// Signed out: no patron line at all (PP-3651).
+    func testGenerateBody_signedOut_hasNoPatronLine() {
+        let body = emailService.generateBody(book: nil, context: context(patron: nil))
+
+        XCTAssertFalse(body.contains("Patron"))
+    }
+
+    /// The reference sits in the diagnostics block below the separator, next
+    /// to the book details.
+    func testGenerateBody_withBook_placesTheReferenceAfterTheSeparator() {
         let book = TPPBookMocker.mockBook(title: "Test Book", authors: "Test Author")
-        let patronID = "12345678901234"
 
-        let body = emailService.generateBody(book: book, patronIdentifier: patronID)
+        let body = emailService.generateBody(book: book, context: context(patron: "99887766554433"))
 
-        XCTAssertTrue(body.contains("Title: Test Book"),
-                      "Email body should contain book title")
-        XCTAssertTrue(body.contains("Patron ID: \(patronID)"),
-                      "Email body should contain patron ID alongside book info")
-    }
-
-    /// Regression test for PP-3651: Patron ID should appear in the device info section (after the separator)
-    func testPP3651_generateBody_patronID_appearsAfterSeparator() {
-        let patronID = "99887766554433"
-
-        let body = emailService.generateBody(book: nil, patronIdentifier: patronID)
-
-        // The patron ID should appear after the "---" separator along with other device info
-        guard let separatorRange = body.range(of: "---") else {
-            XCTFail("Body should contain separator")
-            return
-        }
-        let afterSeparator = String(body[separatorRange.upperBound...])
-        XCTAssertTrue(afterSeparator.contains("Patron ID: \(patronID)"),
-                      "Patron ID should appear in the device info section after the separator")
-    }
-
-    // MARK: - Library-scoped Patron ID Tests (PP-3651 follow-up)
-
-    /// Regression test: cross-library patron ID leakage is the bug PP-3651
-    /// flagged — the caller must pass the patron ID for the *viewed* library,
-    /// and when there is no signed-in patron there, the body must not surface
-    /// any other library's identifier. This test covers the contract from the
-    /// generateBody side; library-resolution is enforced at the beginComposing
-    /// call site (which is exercised end-to-end by the production code path).
-    func testPP3651_generateBody_doesNotLeakOtherLibrarysPatronIDWhenNilPassed() {
-        // Body produced for "viewed library has no patron" must be free of any
-        // patron-shaped digit run. Use a sentinel that would obviously look
-        // like a leaked identifier if it appeared.
-        let sentinel = "11111122223333"
-        let body = emailService.generateBody(book: nil, patronIdentifier: nil)
-
-        XCTAssertFalse(body.contains("Patron ID:"),
-                       "Patron ID label must not appear when no patron is passed")
-        XCTAssertFalse(body.contains(sentinel),
-                       "Sanity check that the body does not contain unrelated identifier-shaped text")
+        let afterSeparator = body.components(separatedBy: "---").dropFirst().joined()
+        XCTAssertTrue(afterSeparator.contains("Patron reference: anon-"))
+        XCTAssertTrue(afterSeparator.contains("Title: Test Book"))
     }
 
     // MARK: - PP-5078: the Library line is never blank
@@ -180,9 +150,7 @@ final class ProblemReportEmailTests: XCTestCase {
         for testCase in cases {
             let body = emailService.generateBody(
                 book: nil,
-                patronIdentifier: nil,
-                libraryName: testCase.name,
-                libraryUUID: testCase.uuid
+                context: context(patron: nil, libraryName: testCase.name, libraryUUID: testCase.uuid)
             )
 
             // Parse the value actually rendered after `Library:` rather than
@@ -211,9 +179,7 @@ final class ProblemReportEmailTests: XCTestCase {
     func testPP5078_generateBody_usesLibraryNameWhenKnown() {
         let body = emailService.generateBody(
             book: nil,
-            patronIdentifier: nil,
-            libraryName: "Park Ridge Public Library",
-            libraryUUID: "urn:uuid:should-not-be-used"
+            context: context(patron: nil, libraryName: "Park Ridge Public Library", libraryUUID: "urn:uuid:should-not-be-used")
         )
 
         XCTAssertTrue(body.contains("Library: Park Ridge Public Library"),

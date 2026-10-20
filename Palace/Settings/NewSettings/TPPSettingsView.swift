@@ -221,9 +221,7 @@ struct TPPSettingsView: View {
             to: address,
             presentingViewController: topVC,
             book: nil as TPPBook?,
-            patronIdentifier: ctx.patronIdentifier,
-            libraryName: ctx.libraryName,
-            libraryUUID: ctx.libraryUUID
+            context: ctx
         )
     }
 

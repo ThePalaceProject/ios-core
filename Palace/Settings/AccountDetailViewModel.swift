@@ -74,7 +74,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     }
 
     /// Caller-snapshotted context for the report-issue composer.
-    var problemReportContext: (patronIdentifier: String?, libraryName: String?, libraryUUID: String?) {
+    var problemReportContext: SupportReportContext {
         accountsManager.problemReportContext(forLibrary: selectedAccount?.uuid)
     }
 
