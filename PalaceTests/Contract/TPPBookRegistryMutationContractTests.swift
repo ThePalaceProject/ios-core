@@ -70,6 +70,32 @@ final class TPPBookRegistryMutationContractTests: PalaceWiringTestCase {
         XCTAssertFalse(TPPBookState.canTransition(from: .used, to: .downloading))
     }
 
+    /// Content arriving for a book that reconciliation parked at
+    /// `.downloadNeeded` promotes it to `.downloadSuccessful`.
+    ///
+    /// Two production paths perform this pair. `LCPFulfillmentHandler`'s
+    /// audiobook completion arm marks the book successful once
+    /// `BackgroundDownloadHandler.storeBook` reports `.stored`, and
+    /// `LocalBookContentService`'s `.lcpa` re-download promotes the record on a
+    /// successful move, guarded on the state already being `.downloadNeeded`.
+    /// `BookRegistrySync` reaches the same conclusion for the same reason: its
+    /// `.downloadNeeded` + content-present cell reconciles to
+    /// `.downloadSuccessful`.
+    func testCanTransition_contentLandingOnAReconciledRecord_isAllowed() {
+        XCTAssertTrue(TPPBookState.canTransition(from: .downloadNeeded, to: .downloadSuccessful),
+                      "an LCP content transfer that lands after reconciliation parked the book at .downloadNeeded")
+    }
+
+    /// Legalizing the pair above must not legalize the rest of the
+    /// `.downloadNeeded` row. Catches a fix that widened the row, or that
+    /// replaced the pair-wise lookup with a `from == .downloadNeeded` wildcard.
+    func testCanTransition_downloadNeededRow_staysNarrow() {
+        for to: TPPBookState in [.used, .returning, .unsupported] {
+            XCTAssertFalse(TPPBookState.canTransition(from: .downloadNeeded, to: to),
+                           ".downloadNeeded -> \(to.stringValue()) is not a transition any caller makes")
+        }
+    }
+
     // MARK: - 2. Enforcement at the real setState seam
 
     /// Illegal transition → handler fires with the exact pair AND the write is
@@ -108,6 +134,36 @@ final class TPPBookRegistryMutationContractTests: PalaceWiringTestCase {
 
         XCTAssertTrue(recorder.calls.isEmpty, "a legal transition must not trip the handler")
         XCTAssertEqual(registry.state(for: id), .downloading)
+
+        registry.removeBook(forIdentifier: id)
+    }
+
+    /// The real seam: a fulfilment completing against a record reconciliation
+    /// moved to `.downloadNeeded` must not be reported as a violation, and the
+    /// book must end up `.downloadSuccessful`.
+    ///
+    /// This is the sequence the crash came from. The `.lcpl` license lands and
+    /// the book is `.downloading` while the multi-gigabyte `.lcpa` transfers on
+    /// Readium's own background session. The app is relaunched; that session
+    /// resumes but the in-memory content-transfer registration
+    /// (`isDownloadInFlight`) does not, so `load()` sees a license with no
+    /// content and reconciles `.downloading` to `.downloadNeeded`. The transfer
+    /// then completes and the content is written.
+    func testSetState_contentLandingAfterReconciliation_doesNotInvokeHandler() {
+        let recorder = TransitionRecorder()
+        let registry = makeRegistry(onIllegal: { recorder.record($0, $1, $2) })
+        let id = "reconciled-content-\(UUID().uuidString)"
+        registry.addBook(TPPBookMocker.mockBook(identifier: id, title: "Reconciled"),
+                         state: .downloading)
+
+        // Reconciliation's own move for a license with no content on disk.
+        registry.setState(.downloadNeeded, for: id)
+        // The resumed transfer lands and the content is stored.
+        registry.setState(.downloadSuccessful, for: id)
+
+        XCTAssertTrue(recorder.calls.isEmpty,
+                      "neither step of the reconcile-then-complete sequence is a violation; got \(recorder.calls.map { "\($0.from.stringValue())->\($0.to.stringValue())" })")
+        XCTAssertEqual(registry.state(for: id), .downloadSuccessful)
 
         registry.removeBook(forIdentifier: id)
     }
