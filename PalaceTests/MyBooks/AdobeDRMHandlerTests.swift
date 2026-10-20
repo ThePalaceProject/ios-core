@@ -213,6 +213,117 @@ final class AdobeDRMHandlerTests: XCTestCase {
         XCTAssertEqual(spy.failed, [])
     }
 
+    /// A Return leaves the record in the registry at `.unregistered`, so the
+    /// book lookup still succeeds and the rest of fulfilment would run. Shelving
+    /// there takes `.unregistered` to `.downloadSuccessful`, which is not a legal
+    /// transition, and leaves DRM content for a loan the patron gave back.
+    func testHandleFulfillment_bookReturnedBeforeAdobeFinished_doesNotShelveOrMarkSuccessful() throws {
+        let alreadyThere = Data("content-the-patron-still-has".utf8)
+        try alreadyThere.write(to: destFileURL)
+        registry.setState(.unregistered, for: book.identifier)
+
+        handler.handleFulfillmentResult(
+            didFinishDownload: true,
+            to: sourceFileURL,
+            fulfillmentID: "fulfill-after-return",
+            isReturnable: true,
+            rightsData: Data("<r/>".utf8),
+            tag: book.identifier,
+            adeptError: nil
+        )
+
+        XCTAssertEqual(spy.markedSuccessful, [], "A loan that ended must not be marked downloadSuccessful.")
+        XCTAssertEqual(spy.failed, [], "Discarding a returned book's fulfilment is not a download failure to show the patron.")
+        XCTAssertNil(registry.fulfillmentId(forIdentifier: book.identifier), "A returned book must not gain a fulfilment ID.")
+        XCTAssertEqual(registry.registry[book.identifier]?.state, .unregistered, "The discard must leave the returned state alone.")
+        XCTAssertEqual(try Data(contentsOf: destFileURL), alreadyThere, "The discard must not touch what is already at the destination.")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sourceFileURL.path), "Adobe's temp file must not be left behind by the discard.")
+    }
+
+    /// `.returning` is the same loan a moment earlier: the cleanup is in flight,
+    /// so writing here re-creates exactly what it is deleting.
+    func testHandleFulfillment_returnInFlight_doesNotShelveOrMarkSuccessful() {
+        registry.setState(.returning, for: book.identifier)
+
+        handler.handleFulfillmentResult(
+            didFinishDownload: true,
+            to: sourceFileURL,
+            fulfillmentID: "fulfill-mid-return",
+            isReturnable: true,
+            rightsData: Data("<r/>".utf8),
+            tag: book.identifier,
+            adeptError: nil
+        )
+
+        XCTAssertEqual(spy.markedSuccessful, [])
+        XCTAssertEqual(spy.failed, [])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destFileURL.path), "A return in flight must not leave content at the destination.")
+    }
+
+    /// The counterpart that keeps the guard honest: a hold is not a loan either,
+    /// so a fulfilment landing against one is discarded the same way.
+    func testHandleFulfillment_bookOnHold_doesNotShelveOrMarkSuccessful() {
+        registry.setState(.holding, for: book.identifier)
+
+        handler.handleFulfillmentResult(
+            didFinishDownload: true,
+            to: sourceFileURL,
+            fulfillmentID: "fulfill-hold",
+            isReturnable: true,
+            rightsData: Data("<r/>".utf8),
+            tag: book.identifier,
+            adeptError: nil
+        )
+
+        XCTAssertEqual(spy.markedSuccessful, [])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destFileURL.path))
+    }
+
+    /// The event dimension of the same guard: the transfer failed AND the loan
+    /// was already over. No alert, because a download-failed prompt for a
+    /// returned book is not actionable, and nothing shelved. `to: nil` drives
+    /// the discard's own nil binding at the same time.
+    func testHandleFulfillment_transferFailedAfterReturn_isSilentAndShelvesNothing() {
+        registry.setState(.unregistered, for: book.identifier)
+
+        handler.handleFulfillmentResult(
+            didFinishDownload: false,
+            to: nil,
+            fulfillmentID: "fulfill-failed-after-return",
+            isReturnable: true,
+            rightsData: Data("<r/>".utf8),
+            tag: book.identifier,
+            adeptError: NSError(domain: "ADEPT", code: 7, userInfo: nil)
+        )
+
+        XCTAssertEqual(spy.markedSuccessful, [], "A failed transfer for a returned loan must not be marked successful.")
+        XCTAssertEqual(spy.failed, [], "A returned book must not raise a download-failed alert.")
+        XCTAssertEqual(registry.registry[book.identifier]?.state, .unregistered, "The silent discard must leave the returned state alone.")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destFileURL.path), "Nothing may be written for a loan that ended.")
+    }
+
+    /// The discard removes Adobe's temp file with `try?`. A FileManager that
+    /// throws there must not change the outcome: the book still is not shelved.
+    /// Without this, a later `try!` would crash on a path nothing exercises.
+    func testHandleFulfillment_returnedAndTempFileCannotBeRemoved_stillDiscards() {
+        registry.setState(.unregistered, for: book.identifier)
+
+        handler.handleFulfillmentResult(
+            didFinishDownload: true,
+            to: sourceFileURL,
+            fulfillmentID: "fulfill-undeletable",
+            isReturnable: true,
+            rightsData: Data("<r/>".utf8),
+            tag: book.identifier,
+            adeptError: nil,
+            fileManager: RemoveRefusingFileManager()
+        )
+
+        XCTAssertEqual(spy.markedSuccessful, [], "A failing cleanup must not turn the discard into a shelve.")
+        XCTAssertEqual(registry.registry[book.identifier]?.state, .unregistered)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destFileURL.path))
+    }
+
     // MARK: - Cancellation
 
     func testHandleCancellation_setsRegistryStateAndBroadcasts() {
@@ -245,6 +356,16 @@ final class AdobeDRMHandlerTests: XCTestCase {
     }
 }
 
+// MARK: - Fault injection
+
+/// Refuses every removal so the `try?` in the discard arm is exercised rather
+/// than assumed harmless.
+private final class RemoveRefusingFileManager: FileManager {
+    override func removeItem(at URL: URL) throws {
+        throw NSError(domain: NSCocoaErrorDomain, code: NSFileWriteNoPermissionError, userInfo: nil)
+    }
+}
+
 // MARK: - SpyDRMDelegate
 
 private final class SpyDRMDelegate: AdobeDRMHandlerDelegate {
@@ -268,8 +389,12 @@ private final class SpyDRMDelegate: AdobeDRMHandlerDelegate {
         failed.append(book.identifier)
     }
 
+    /// Mirrors `MyBooksDownloadCenter.markDownloadSuccessful`, which writes the
+    /// state as well as announcing. Recording the call alone cannot show the
+    /// `.unregistered` to `.downloadSuccessful` move this handler must not make.
     func markDownloadSuccessful(for book: TPPBook) {
         markedSuccessful.append(book.identifier)
+        bookRegistry.setState(.downloadSuccessful, for: book.identifier)
     }
 
     func broadcastUpdate() {

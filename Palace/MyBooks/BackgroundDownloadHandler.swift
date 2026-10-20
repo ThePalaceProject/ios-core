@@ -311,8 +311,8 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
 
     /// Whether a COMPLETED download may still be written for this book.
     ///
-    /// This is the writer `LocalBookContentService.mayStoreFetchedContent`
-    /// documents as unguarded. A download that finishes after a Return wrote the
+    /// This is one of the writers `LocalBookContentService.mayStoreFetchedContent`
+    /// documents. A download that finishes after a Return wrote the
     /// file and then set `.downloadSuccessful`, which is not a legal move out of
     /// `.unregistered`: in DEBUG that trips the registry's illegal-transition
     /// assertion, and in release the state is applied anyway so a returned book
