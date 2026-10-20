@@ -356,8 +356,11 @@ private final class RMSDKHandoffSpy: AdobeDRMHandlerDelegate {
         failed.append(book.identifier)
     }
 
+    /// Mirrors `MyBooksDownloadCenter.markDownloadSuccessful`, which writes the
+    /// state as well as announcing.
     func markDownloadSuccessful(for book: TPPBook) {
         markedSuccessful.append(book.identifier)
+        bookRegistry.setState(.downloadSuccessful, for: book.identifier)
     }
 
     func broadcastUpdate() {
