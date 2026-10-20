@@ -49,13 +49,13 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
         }
     }
 
-    private var sample: any Sample
+    private var sample: any Sample & Sendable
     private var player: (any SampleAudioEngine)?
     private var timer: Timer?
     private let makeEngine: (Data, AVAudioPlayerDelegate) throws -> any SampleAudioEngine
 
     init(
-        sample: any Sample,
+        sample: any Sample & Sendable,
         makeEngine: @escaping (Data, AVAudioPlayerDelegate) throws -> any SampleAudioEngine = AudiobookSamplePlayer.makeAudioPlayer
     ) {
         self.sample = sample
