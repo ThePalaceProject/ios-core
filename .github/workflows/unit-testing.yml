@@ -433,10 +433,11 @@ jobs:
           CLASSES=$({ grep -rlE "$PATTERN" PalaceTests --include='*.swift' || true; } \
             | { xargs awk '
                 # A base class with no test methods of its own never appears as a suite
-                # in the result bundle, so list a class only once a test method follows it.
+                # in the result bundle, so list a top-level class only once a test method
+                # follows it; a nested test-case class must not take over the outer name.
                 FNR == 1 { cls = "" }
                 /^((@MainActor|final|private|fileprivate|internal|open|public)[[:space:]]+)*(class|struct|enum|actor)[[:space:]]/ { cls = "" }
-                /^[[:space:]]*(@MainActor[[:space:]]+)?((final|private|fileprivate|internal)[[:space:]]+)*class[[:space:]]+[A-Za-z0-9_]+[[:space:]]*:[[:space:]]*(XCTestCase|PalaceTestCase|PalaceWiringTestCase)([^A-Za-z0-9_]|$)/ {
+                /^(@MainActor[[:space:]]+)?((final|private|fileprivate|internal)[[:space:]]+)*class[[:space:]]+[A-Za-z0-9_]+[[:space:]]*:[[:space:]]*(XCTestCase|PalaceTestCase|PalaceWiringTestCase)([^A-Za-z0-9_]|$)/ {
                   cls = $0; sub(/.*class[[:space:]]+/, "", cls); sub(/[^A-Za-z0-9_].*/, "", cls)
                 }
                 cls != "" && /func[[:space:]]+test/ { print cls; cls = "" }' || true; } \
