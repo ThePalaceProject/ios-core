@@ -50,6 +50,12 @@ extension AudiobookSessionManager {
     /// it", where a false negative only delays a prompt; the adapter chooses
     /// between reading on disk and streaming, and a file that is present but
     /// not whole stalls a chapter with no error rather than falling back.
+    /// A bounded wait for a book's content to land on disk, with optional
+    /// progress. The open's content gate and the first-play recovery both wait
+    /// through one injected value, so tests drive either without the
+    /// production download centre.
+    typealias ContentLandingWait = @MainActor (String, (@MainActor @Sendable (Float) -> Void)?) async -> Bool
+
     static func audiobookContentIsLocal(_ bookId: String) -> Bool {
         guard let url = AppContainer.production().downloadCenter.fileUrl(for: bookId) else { return false }
         return FileManager.default.fileExists(atPath: url.path)

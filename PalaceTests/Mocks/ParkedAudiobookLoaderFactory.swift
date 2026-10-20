@@ -11,8 +11,11 @@
 @MainActor
 final class ParkedAudiobookLoaderFactory {
     private(set) var adapters: [DeferredAudiobookVendorAdapter] = []
+    /// Whether each open asked for a fresh manifest instead of the one on disk.
+    private(set) var fetchesFreshManifest: [Bool] = []
 
-    func makeLoader() -> AudiobookLoader {
+    func makeLoader(fetchesFreshManifest: Bool = false) -> AudiobookLoader {
+        self.fetchesFreshManifest.append(fetchesFreshManifest)
         let adapter = DeferredAudiobookVendorAdapter()
         adapters.append(adapter)
         let userAccount = TPPUserAccountMock()

@@ -291,7 +291,7 @@ public final class AudiobookSessionManager: ObservableObject {
     /// and waiting for the download. Injected so tests drive both branches
     /// without the production download centre.
     private let contentIsLocal: @MainActor (String) -> Bool
-    private let awaitContentLocal: @MainActor (String) async -> Bool
+    private let awaitContentLocal: ContentLandingWait
 
     /// Traces each open and reports one that stalls (PP-4973).
     private let openMonitor: AudiobookOpenMonitor
@@ -318,7 +318,7 @@ public final class AudiobookSessionManager: ObservableObject {
         overdriveRefulfillStarter: @escaping @MainActor (TPPBook) -> Void,
         showOpenFailureAlert: @escaping @MainActor (TPPBook, [String: Any]) -> Void,
         contentIsLocal: @escaping @MainActor (String) -> Bool,
-        awaitContentLocal: @escaping @MainActor (String) async -> Bool,
+        awaitContentLocal: @escaping ContentLandingWait,
         openMonitor: AudiobookOpenMonitor,
         makeLoader: @escaping @MainActor (Bool) -> AudiobookLoader
     ) {
@@ -386,7 +386,7 @@ public final class AudiobookSessionManager: ObservableObject {
         },
         showOpenFailureAlert: (@MainActor (TPPBook, [String: Any]) -> Void)? = nil,
         contentIsLocal: @escaping @MainActor (String) -> Bool = { AudiobookSessionManager.audiobookContentIsLocal($0) },
-        awaitContentLocal: @escaping @MainActor (String) async -> Bool = { await AudiobookSessionManager.awaitAudiobookContentLocal($0) },
+        awaitContentLocal: @escaping ContentLandingWait = { await AudiobookSessionManager.awaitAudiobookContentLocal($0, onProgress: $1) },
         openMonitor: AudiobookOpenMonitor? = nil,
         makeLoader: @escaping @MainActor (Bool) -> AudiobookLoader = { AudiobookLoader(forceRefulfill: $0) }
     ) {
@@ -732,7 +732,7 @@ public final class AudiobookSessionManager: ObservableObject {
             contentIsLocal: contentIsLocal(book.identifier),
             awaitContentLanding: { [weak self] bookId in
                 self?.openMonitor.enter(.awaitingContent, for: openId)
-                return await Self.awaitAudiobookContentLocal(bookId, onProgress: progressSink)
+                return await self?.awaitContentLocal(bookId, progressSink) ?? false
             }
         )
         if gateResult != .proceed {
@@ -1860,7 +1860,7 @@ public final class AudiobookSessionManager: ObservableObject {
                 playbackStatePublisher.send(state)
                 Task { [weak self] in
                     guard let self else { return }
-                    let becameLocal = await self.awaitContentLocal(book.identifier)
+                    let becameLocal = await self.awaitContentLocal(book.identifier, nil)
                     // The wait is over — stop swallowing failures for this book
                     // so the re-open's own success/failure drives the UI.
                     self.awaitingContentDownloadBookIds.remove(book.identifier)
