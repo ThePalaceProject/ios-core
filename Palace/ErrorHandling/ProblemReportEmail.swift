@@ -13,25 +13,17 @@ import PalaceUtilities
 
     /// Composes a problem report email. The caller snapshots the
     /// account-derived context (see AccountsManager.problemReportContext) so
-    /// ErrorHandling does not name AccountsManager/TPPUserAccount.
-    /// `patronIdentifier`/`libraryName` are deliberately NOT defaulted so every
-    /// call site migrates explicitly (a defaulted overload would let a missed
-    /// site compile and silently drop the patron ID).
+    /// ErrorHandling does not name AccountsManager/TPPUserAccount. `context`
+    /// is not defaulted, so a missed call site does not compile.
     func beginComposing(
         to emailAddress: String,
         presentingViewController: UIViewController,
         book: TPPBook?,
-        patronIdentifier: String?,
-        libraryName: String?,
-        libraryUUID: String? = nil) {
+        context: SupportReportContext) {
         beginComposing(
             to: emailAddress,
             presentingViewController: presentingViewController,
-            body: generateBody(
-                book: book,
-                patronIdentifier: patronIdentifier,
-                libraryName: libraryName,
-                libraryUUID: libraryUUID))
+            body: generateBody(book: book, context: context))
     }
 
     func beginComposing(
@@ -96,7 +88,7 @@ import PalaceUtilities
         return "(none selected)"
     }
 
-    func generateBody(book: TPPBook?, patronIdentifier: String? = nil, libraryName: String? = nil, libraryUUID: String? = nil) -> String {
+    func generateBody(book: TPPBook?, context: SupportReportContext) -> String {
         let nativeHeight = UIScreen.main.nativeBounds.height
         let systemVersion = UIDevice.current.systemVersion
         let idiom: String
@@ -122,10 +114,10 @@ import PalaceUtilities
         }
 
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-        var body = "\n\n---\nIdiom: \(idiom)\nPlatform: iOS\nOS: \(systemVersion)\nHeight: \(nativeHeight)\nPalace Version: \(appVersion)\nLibrary: \(Self.libraryFieldValue(name: libraryName, uuid: libraryUUID))"
+        var body = "\n\n---\nIdiom: \(idiom)\nPlatform: iOS\nOS: \(systemVersion)\nHeight: \(nativeHeight)\nPalace Version: \(appVersion)\nLibrary: \(Self.libraryFieldValue(name: context.libraryName, uuid: context.libraryUUID))"
 
-        if let patronIdentifier = patronIdentifier {
-            body += "\nPatron ID: \(patronIdentifier)"
+        if let patronLine = context.patronReferenceLine {
+            body += "\n\(patronLine)"
         }
 
         if let book = book {

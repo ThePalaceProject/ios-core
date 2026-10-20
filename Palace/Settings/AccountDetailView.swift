@@ -737,9 +737,7 @@ struct AccountDetailView: View {
             to: email.rawValue,
             presentingViewController: topVC,
             book: nil as TPPBook?,
-            patronIdentifier: ctx.patronIdentifier,
-            libraryName: ctx.libraryName,
-            libraryUUID: ctx.libraryUUID
+            context: ctx
         )
     }
 
