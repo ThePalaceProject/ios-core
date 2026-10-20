@@ -27,17 +27,59 @@ final class LoanStillHeldWriterLintTests: XCTestCase {
         "discardedNotHeld"
     ]
 
-    /// A line that ASKS the question, as code rather than as prose.
+    /// The line with comments and string-literal contents removed.
     ///
-    /// Comment-blindness is load-bearing, not tidiness. Both handlers explain
-    /// the rule in comments that name the delegating forms, and the first
-    /// version of this lint read them: deleting the streaming-arm guard left
-    /// the explanation behind, the explanation contained `.discardedNotHeld`,
-    /// and the lint reported a clean census over a live defect.
+    /// One left-to-right pass, because the two cannot be stripped
+    /// independently: a `//` inside a string is not a comment, and a quote
+    /// inside a comment does not open a string.
+    ///
+    /// Load-bearing twice over. It keeps prose from satisfying the guard scan —
+    /// deleting a guard leaves the comment that explains it, and that comment
+    /// names the guard's own token. And it keeps prose out of the brace
+    /// arithmetic below: a single unmatched `{` in a doc-comment code sample
+    /// cancels a sibling block's close, pulls that sibling's guard back to the
+    /// announcement's level, and re-masks it. `Palace/` carries 11 such lines
+    /// today, all doc samples.
+    static func codeOnly(_ line: String) -> String {
+        var out = ""
+        var inString = false
+        var escaped = false
+        var index = line.startIndex
+        while index < line.endIndex {
+            let ch = line[index]
+            let next = line.index(after: index)
+            if inString {
+                if escaped { escaped = false }
+                else if ch == "\\" { escaped = true }
+                else if ch == "\"" { inString = false }
+                index = next
+                continue
+            }
+            if ch == "\"" { inString = true; index = next; continue }
+            if ch == "/", next < line.endIndex {
+                if line[next] == "/" { break }            // line comment: done
+                if line[next] == "*" {                     // block comment: skip to */
+                    var scan = line.index(after: next)
+                    while scan < line.endIndex {
+                        let s2 = line.index(after: scan)
+                        if line[scan] == "*", s2 < line.endIndex, line[s2] == "/" {
+                            scan = line.index(after: s2); break
+                        }
+                        scan = s2
+                    }
+                    index = scan
+                    continue
+                }
+            }
+            out.append(ch)
+            index = next
+        }
+        return out
+    }
+
+    /// A line that ASKS the question, as code rather than as prose.
     static func asksTheQuestion(_ line: String) -> Bool {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.hasPrefix("//") else { return false }
-        let code = trimmed.components(separatedBy: "//").first ?? trimmed
+        let code = codeOnly(line)
         return guardTokens.contains(where: { code.contains($0) })
     }
 
@@ -48,8 +90,7 @@ final class LoanStillHeldWriterLintTests: XCTestCase {
     /// while explaining the rule — a predicate that reads prose reports a
     /// violation that is not code.
     static func announcesACompletedDownload(_ line: String) -> Bool {
-        let trimmed = line.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.hasPrefix("//") else { return false }
+        let trimmed = codeOnly(line).trimmingCharacters(in: .whitespaces)
         // A declaration reads `markDownloadSuccessful(for book: TPPBook)`, which
         // does NOT contain `markDownloadSuccessful(for:` — the first guard
         // already rejects it. An explicit `!contains("func …")` clause here was
@@ -63,24 +104,39 @@ final class LoanStillHeldWriterLintTests: XCTestCase {
     ///
     /// Walks the enclosing brace chain outward, checking only lines at or
     /// above the announcement's own block level and only lines ABOVE it. A
-    /// sibling block's interior is skipped; the line that OPENS a sibling block
-    /// is checked, because `if outcome == .discardedNotHeld { return }` guards
-    /// everything after it at the level it sits on.
+    /// brace-delimited sibling block's interior is skipped; the line that OPENS
+    /// such a block is checked, because `if outcome == .discardedNotHeld { return }`
+    /// guards everything after it at the level it sits on. An `else` arm is NOT
+    /// a brace-delimited sibling by this measure — see the limit below.
     ///
     /// Function scope was the first attempt and it was wrong in a way that only
     /// showed under mutation: `fulfillLCPLicense` holds three announce sites, so
     /// the streaming arm's own guard sat above the download-first arm's sites
     /// and covered them. Neutering `if outcome == .discardedNotHeld` left the
     /// census clean — three of the four sites had silently come to rest on one
-    /// token. That is the same defect the file-level version had, at a smaller
-    /// radius, and it is why this walks blocks rather than counting lines.
+    /// token.
+    ///
+    /// WHAT THIS DOES NOT HANDLE. `} else {` is brace-neutral, so the walk does
+    /// not register crossing out of an else-arm into the if-arm: a guard in the
+    /// if-arm reads as covering an announcement in the else-arm.
+    /// `testAnElseArmIsNotDistinguished_knownLimit` pins it. Ignoring `opens` on
+    /// a `}…else` line was tried and false-positives on the multi-line guards
+    /// this file's real callers use, so the limit is stated rather than papered
+    /// over: line-based brace arithmetic is at its edge here, and closing this
+    /// properly means parsing Swift, not counting characters.
+    ///
+    /// The claim is therefore narrower than "every arm is independently
+    /// guarded": a new announce site in a function with no guard at all fails
+    /// here, which is the fifth-writer case this exists for. An arm added as the
+    /// `else` of an already-guarded branch does not.
     static func guardOnThePathAsksTheQuestion(lines: [String], index: Int) -> Bool {
         guard index > 0 else { return false }
         var depth = 0
         for i in stride(from: index - 1, through: 0, by: -1) {
             let line = lines[i]
-            let opens = line.filter { $0 == "{" }.count
-            let closes = line.filter { $0 == "}" }.count
+            let code = codeOnly(line)
+            let opens = code.filter { $0 == "{" }.count
+            let closes = code.filter { $0 == "}" }.count
             // The level this line sits ON, which is the level it guards.
             let levelOfLine = depth + closes - opens
             if levelOfLine <= 0 && asksTheQuestion(line) { return true }
@@ -239,6 +295,77 @@ final class LoanStillHeldWriterLintTests: XCTestCase {
         ]
         XCTAssertTrue(Self.guardOnThePathAsksTheQuestion(lines: lines, index: 3))
         XCTAssertTrue(Self.guardOnThePathAsksTheQuestion(lines: lines, index: 6))
+    }
+
+    /// `} else {` is brace-neutral, so the walk cannot tell an else-arm from a
+    /// continuation of the if-arm, and a guard in the if-arm reads as covering
+    /// an announcement in the else-arm. This is a characterization test: it
+    /// asserts the CURRENT behaviour so the limit is visible and measured. If
+    /// someone teaches the walk about `else`, this test fails — update it, do
+    /// not delete it.
+    func testAnElseArmIsNotDistinguished_knownLimit() {
+        let lines = [
+            "    func fulfill() {",
+            "        if streaming {",
+            "            guard LocalBookContentService.mayStoreFetchedContent() else { return }",
+            "            delegate?.markDownloadSuccessful(for: book)",
+            "        } else {",
+            "            delegate?.markDownloadSuccessful(for: book)",
+            "        }",
+            "    }"
+        ]
+        XCTAssertTrue(Self.guardOnThePathAsksTheQuestion(lines: lines, index: 3),
+                      "the if-arm is genuinely guarded")
+        XCTAssertTrue(Self.guardOnThePathAsksTheQuestion(lines: lines, index: 5),
+                      "KNOWN LIMIT: the else-arm is not distinguished from the if-arm")
+    }
+
+    /// A brace in prose or in a string must not move the arithmetic. One stray
+    /// `{` in a doc-comment code sample cancels a sibling block's close and
+    /// re-masks the arm after it — reproduced in both directions before this
+    /// sanitiser existed.
+    func testBracesInCommentsAndStringsDoNotMoveTheWalk() {
+        let withComment = [
+            "    func fulfill() {",
+            "        if streaming {",
+            "            // doc sample: accessibleWithAnimation {",
+            "            guard LocalBookContentService.mayStoreFetchedContent() else { return }",
+            "            delegate?.markDownloadSuccessful(for: book)",
+            "        }",
+            "        if other {",
+            "            delegate?.markDownloadSuccessful(for: book)",
+            "        }",
+            "    }"
+        ]
+        XCTAssertFalse(Self.guardOnThePathAsksTheQuestion(lines: withComment, index: 7),
+                       "a brace in a comment must not pull the sibling's guard into scope")
+
+        let withString = [
+            "    func fulfill() {",
+            "        if streaming {",
+            "            Log.info(\"opening brace { in a message\")",
+            "            guard LocalBookContentService.mayStoreFetchedContent() else { return }",
+            "            delegate?.markDownloadSuccessful(for: book)",
+            "        }",
+            "        if other {",
+            "            delegate?.markDownloadSuccessful(for: book)",
+            "        }",
+            "    }"
+        ]
+        XCTAssertFalse(Self.guardOnThePathAsksTheQuestion(lines: withString, index: 7),
+                       "a brace in a string literal must not pull the sibling's guard into scope")
+    }
+
+    func testCodeOnlyStripsCommentsAndStringsButNotCode() {
+        XCTAssertEqual(Self.codeOnly("if x { // trailing }").trimmingCharacters(in: .whitespaces), "if x {")
+        XCTAssertEqual(Self.codeOnly("// whole line {"), "")
+        XCTAssertEqual(Self.codeOnly("/* block { */ if y {").trimmingCharacters(in: .whitespaces), "if y {")
+        XCTAssertEqual(Self.codeOnly("let s = \"a // b { c\"").trimmingCharacters(in: .whitespaces), "let s =")
+        XCTAssertEqual(Self.codeOnly("if a { b() }"), "if a { b() }")
+        // A `//` inside a string is not a comment; a quote inside a comment does
+        // not open a string. Stripping them in two passes gets both wrong.
+        XCTAssertTrue(Self.asksTheQuestion("let u = \"http://x\"; if o == .discardedNotHeld { return }"))
+        XCTAssertFalse(Self.asksTheQuestion("// he said \"mayStoreFetchedContent\" here"))
     }
 
     /// Only lines ABOVE the announcement count. A guard added after it cannot
