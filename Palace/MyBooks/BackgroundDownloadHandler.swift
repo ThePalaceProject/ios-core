@@ -297,6 +297,45 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
         return delegate.userAccount(forCapturedId: startedAccountID)
     }
 
+    /// The account a book's download started under, from the durable records.
+    ///
+    /// Matched on `bookID`: the records cover every in-flight download, so a
+    /// lookup that drifted onto another book's row would judge this one against
+    /// a stranger's library and let a returned book's content be written.
+    static func startedAccountID(
+        forBookID bookID: String,
+        in records: [PersistedDownloadRecord]
+    ) -> String? {
+        records.first(where: { $0.bookID == bookID })?.account
+    }
+
+    /// Whether a COMPLETED download may still be written for this book.
+    ///
+    /// This is the writer `LocalBookContentService.mayStoreFetchedContent`
+    /// documents as unguarded. A download that finishes after a Return wrote the
+    /// file and then set `.downloadSuccessful`, which is not a legal move out of
+    /// `.unregistered`: in DEBUG that trips the registry's illegal-transition
+    /// assertion, and in release the state is applied anyway so a returned book
+    /// reappears as downloaded.
+    ///
+    /// Classification is delegated rather than restated, so the two writers
+    /// cannot drift on which states mean "the loan is live".
+    ///
+    /// An unrecorded start account degrades to the current one, matching
+    /// `startedForAccount`, so an unrecorded download is judged on its registry
+    /// state instead of being written unconditionally.
+    static func completedDownloadMayBeStored(
+        registryState: TPPBookState,
+        startedAccountID: String?,
+        currentAccountID: String?
+    ) -> Bool {
+        let started = (startedAccountID?.isEmpty == false) ? startedAccountID : currentAccountID
+        return LocalBookContentService.mayStoreFetchedContent(
+            registryState: registryState,
+            accountUnchanged: started == currentAccountID
+        )
+    }
+
     /// Shared follow-up step for both OPDS-entry XML and OPDS2 JSON publication
     /// paths. Given a book whose `defaultAcquisition` resolves to a direct
     /// content URL (not another opds-catalog), this swaps the original task
@@ -392,6 +431,27 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
 
         guard let finalFileURL = delegate.fileUrl(for: book.identifier) else { return false }
 
+        // The same window `storeBook` guards, on the sibling writer: this one
+        // sets `.downloadSuccessful` itself, so a download finishing after a
+        // Return takes `.unregistered` to a state that is not reachable from
+        // it. `BookReturnService` removes the book without cancelling the
+        // transfer, so the window is real for every non-DRM EPUB and PDF.
+        // Returns true because nothing failed — the Bool here only reports
+        // failure, and no caller marks the book successful for this arm.
+        let registryState = delegate.bookRegistry.state(for: book.identifier)
+        guard Self.completedDownloadMayBeStored(
+            registryState: registryState,
+            startedAccountID: Self.startedAccountID(
+                forBookID: book.identifier,
+                in: delegate.stateManager.persistedRecords()
+            ),
+            currentAccountID: delegate.userAccount.libraryUUID
+        ) else {
+            Log.info(#file, "'\(book.title)' is no longer held (state: \(registryState.stringValue())) — discarding the moved file instead of shelving it")
+            try? FileManager.default.removeItem(at: sourceLocation)
+            return true
+        }
+
         do {
             try FileManager.default.removeItem(at: finalFileURL)
         } catch {
@@ -429,11 +489,51 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
         return success
     }
 
+    /// What became of a completed download's content.
+    ///
+    /// Three outcomes, because a Bool cannot carry them: the success arm
+    /// writes the state for some content types and leaves it to the caller for
+    /// others, so "no failure" and "it is on disk" are different claims and a
+    /// caller that conflates them marks a returned book downloaded.
+    enum ContentStoreOutcome: Equatable {
+        /// The content is at the book's path.
+        case stored
+        /// The patron no longer holds the book, so nothing was written. Not a
+        /// failure: there is nothing to tell them and nothing to retry.
+        case discardedNotHeld
+        /// The write was attempted and did not succeed.
+        case failed
+    }
+
+    /// Kept for callers that only need to know whether the write FAILED —
+    /// `RightsManagementDispatcher` through `BackgroundDownloadFileOps`, and
+    /// the tests. A deliberate discard is not a failure.
     func replaceBook(_ book: TPPBook, withFileAtURL sourceLocation: URL, forDownloadTask downloadTask: URLSessionDownloadTask) -> Bool {
-        guard let delegate = delegate else { return false }
-        guard let destURL = delegate.fileUrl(for: book.identifier) else { return false }
+        storeBook(book, withFileAtURL: sourceLocation, forDownloadTask: downloadTask) != .failed
+    }
+
+    func storeBook(_ book: TPPBook, withFileAtURL sourceLocation: URL, forDownloadTask downloadTask: URLSessionDownloadTask) -> ContentStoreOutcome {
+        guard let delegate = delegate else { return .failed }
+        guard let destURL = delegate.fileUrl(for: book.identifier) else { return .failed }
 
         let fileManager = FileManager.default
+
+        // Ahead of the move, not after it: a download can finish after the
+        // patron returns the book, and writing it then re-creates content the
+        // return just deleted and marks the book downloaded again.
+        let registryState = delegate.bookRegistry.state(for: book.identifier)
+        guard Self.completedDownloadMayBeStored(
+            registryState: registryState,
+            startedAccountID: Self.startedAccountID(
+                forBookID: book.identifier,
+                in: delegate.stateManager.persistedRecords()
+            ),
+            currentAccountID: delegate.userAccount.libraryUUID
+        ) else {
+            Log.info(#file, "'\(book.title)' is no longer held (state: \(registryState.stringValue())) — discarding the downloaded file instead of writing it to disk")
+            try? fileManager.removeItem(at: sourceLocation)
+            return .discardedNotHeld
+        }
 
         do {
             let parentDir = destURL.deletingLastPathComponent()
@@ -450,7 +550,7 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
 
             guard validateDownloadedFile(at: destURL, for: book) else {
                 Log.error(#file, "File validation failed after replace/move for '\(book.title)'")
-                return false
+                return .failed
             }
 
             #if LCP
@@ -463,7 +563,7 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
             delegate.bookRegistry.setState(.downloadSuccessful, for: book.identifier)
             delegate.progressReporter.announceDownloadCompleted(for: book)
             #endif
-            return true
+            return .stored
         } catch {
             delegate.logBookDownloadFailure(book,
                                    reason: "Couldn't replace/move downloaded book",
@@ -476,7 +576,7 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
                                    ])
         }
 
-        return false
+        return .failed
     }
 
     func validateDownloadedFile(at fileURL: URL, for book: TPPBook) -> Bool {

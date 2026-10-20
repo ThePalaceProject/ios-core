@@ -144,7 +144,7 @@ public final class AudiobookSessionManager: ObservableObject {
             // after #1222 merged. The Bool snapshot is Sendable, so hoisting it
             // out fixes it with identical behavior.
             let isActive = (manager != nil)
-            Self._hasActiveManagerMirror.withLock { $0 = isActive }
+            AudiobookSessionSnapshots.setHasActiveManager(isActive)
         }
     }
     private(set) var playbackModel: AudiobookPlaybackModel?
@@ -154,25 +154,6 @@ public final class AudiobookSessionManager: ObservableObject {
     /// an `AudiobookManager` is bound without leaking the toolkit type
     /// through the protocol.
     public var hasActiveManager: Bool { manager != nil }
-
-    /// Off-main-safe mirror of `hasActiveManager` (`manager != nil`).
-    ///
-    /// Remote-command handlers run on a background MediaRemote queue, where
-    /// reading the `@MainActor` `hasActiveManager` trips
-    /// `dispatch_assert_queue_fail` (#1199, #1218). This lock-guarded snapshot
-    /// is written on main by `manager`'s `didSet` and readable from any thread.
-    /// Static because there is a single manager per process.
-    // `nonisolated` so the `nonisolated` `hasActiveManagerSnapshot` can read
-    // it; `OSAllocatedUnfairLock` is `Sendable`.
-    nonisolated private static let _hasActiveManagerMirror =
-        OSAllocatedUnfairLock<Bool>(initialState: false)
-
-    /// Off-main-safe read of "is a manager currently bound." Reflects the last
-    /// main-actor `bind`/`stopPlayback` transition; the write window is a single
-    /// main-actor hop, so any staleness is sub-frame and self-correcting.
-    nonisolated static var hasActiveManagerSnapshot: Bool {
-        _hasActiveManagerMirror.withLock { $0 }
-    }
 
     /// DRM decryptor tied to the currently loaded audiobook. Owned atomically
     /// alongside manager/audiobook/playbackModel so stopPlayback can release
@@ -710,6 +691,7 @@ public final class AudiobookSessionManager: ObservableObject {
 
         state = .loading(bookId: book.identifier)
         currentBook = book
+        AudiobookSessionSnapshots.setCurrentBookIdentifier(book.identifier)
         hasEverStartedPlayback = false
         playbackStatePublisher.send(state)
 
@@ -1053,52 +1035,12 @@ public final class AudiobookSessionManager: ObservableObject {
     /// overlay. Not `@Published`; the view re-reads it on `isPlaying`/position
     /// ticks. (`UnifiedPositionSystem.isLoaded` is `@Published` upstream, so a
     /// crisp presenter mirror is a follow-up if the tick cadence proves too coarse.)
-    public var isLoaded: Bool {
-        manager?.audiobook.player.isLoaded ?? false
-    }
-
-    /// Whether a sleep timer is currently counting down (drives the active-chip
-    /// display). Reads the toolkit's public `SleepTimer`.
-    public var sleepTimerIsActive: Bool {
-        (manager as? DefaultAudiobookManager)?.sleepTimer.isActive ?? false
-    }
-
-    /// Seconds left on the active sleep timer (0 when inactive).
-    public var sleepTimerRemaining: TimeInterval {
-        (manager as? DefaultAudiobookManager)?.sleepTimer.timeRemaining ?? 0
-    }
-
-    /// Overall download progress (0…1) for the current audiobook's tracks —
-    /// reads the toolkit playback model's published `overallDownloadProgress`.
-    /// Drives the download bar in the in-app custom player.
-    public var overallDownloadProgress: Float {
-        playbackModel?.overallDownloadProgress ?? 0
-    }
-
-    /// Whether tracks are still downloading / decrypting in the background
-    /// (progress < 1). Reads the toolkit playback model's `isDownloading`.
-    public var isDownloading: Bool {
-        playbackModel?.isDownloading ?? false
-    }
-
-    /// Chapter-relative playhead offset (seconds into the current chapter) —
-    /// the raw value behind the toolkit player's elapsed timecode.
-    public var chapterOffset: TimeInterval {
-        playbackModel?.chapterPlayheadOffset ?? 0
-    }
-
-    /// Seconds remaining in the current chapter — the raw value behind the
-    /// toolkit player's chapter time-left timecode.
-    public var chapterTimeLeft: TimeInterval {
-        playbackModel?.chapterTimeLeft ?? 0
-    }
-
-    /// Latest transient toast (bookmark-added / playback error), or `nil` when
-    /// the toolkit's message is empty. The toolkit uses an empty string as its
-    /// "no message" sentinel; we normalize that to `nil` for the Palace surface.
-    public var toastMessage: String? {
-        let message = playbackModel?.toastMessage
-        return (message?.isEmpty ?? true) ? nil : message
+    /// Forwards the player's own prediction. Nil while no player is bound,
+    /// which reads as "not slow" and leaves the shimmer in place — the
+    /// conservative direction, since the alternative is explaining a wait that
+    /// is not happening.
+    var expectsSlowChapterStart: Bool {
+        playbackModel?.expectsSlowChapterStart ?? false
     }
 
     /// Adds a bookmark at the current playback position via the toolkit
@@ -1188,6 +1130,7 @@ public final class AudiobookSessionManager: ObservableObject {
         audiobook = nil
         playbackModel = nil
         currentBook = nil
+        AudiobookSessionSnapshots.setCurrentBookIdentifier(nil)
         currentChapters = []
         currentChapter = nil
         currentPosition = nil

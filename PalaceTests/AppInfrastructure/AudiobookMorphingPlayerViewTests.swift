@@ -16,6 +16,169 @@ import PalaceAudiobookToolkit
 @MainActor
 final class AudiobookMorphingPlayerViewTests: XCTestCase {
 
+    // MARK: - Holding the shimmer until audio is audible
+
+    /// The gap the patron watches transport controls through. `isLoaded` has
+    /// several writers in the streaming player that release the UI without
+    /// audio, so it means "stop waiting", not "audio is coming out".
+    /// `isWaitingForData` is AVFoundation's own answer.
+    func testFirstOpen_loadedButTransportIsWaiting_holdsTheShimmer() {
+        XCTAssertEqual(
+            AudiobookMorphingPlayerView.loadingOverlayState(
+                isLoaded: true,
+                isDownloading: false,
+                loadingTimedOut: false,
+                hasStartedPlayback: false,
+                expectsSlowStart: false,
+                hasSeenDownloading: true,
+                transportIsWaitingForData: true,
+                forceSkeletons: false
+            ),
+            .skeleton,
+            "hiding here shows transport controls over silence"
+        )
+    }
+
+    /// Audio is coming out, so the player is usable and the overlay goes.
+    func testFirstOpen_loadedAndNotWaiting_hidesTheOverlay() {
+        XCTAssertEqual(
+            AudiobookMorphingPlayerView.loadingOverlayState(
+                isLoaded: true,
+                isDownloading: false,
+                loadingTimedOut: false,
+                hasStartedPlayback: false,
+                expectsSlowStart: false,
+                hasSeenDownloading: true,
+                transportIsWaitingForData: false,
+                forceSkeletons: false
+            ),
+            .hidden
+        )
+    }
+
+    /// A load that never becomes audible still reaches the error. Holding the
+    /// shimmer must not make `.loadError` unreachable, which is the failure
+    /// this file already records once.
+    func testFirstOpen_waitingAndTimedOut_reachesTheError() {
+        XCTAssertEqual(
+            AudiobookMorphingPlayerView.loadingOverlayState(
+                isLoaded: true,
+                isDownloading: false,
+                loadingTimedOut: true,
+                hasStartedPlayback: false,
+                expectsSlowStart: false,
+                hasSeenDownloading: true,
+                transportIsWaitingForData: true,
+                forceSkeletons: false
+            ),
+            .loadError
+        )
+    }
+
+    /// MID-SESSION the gate must not apply: a buffering stall during playback
+    /// would take the screen back from a book the patron is listening to, which
+    /// is the takeover `.awaitingReload` exists to prevent.
+    func testMidSession_loadedButTransportIsWaiting_doesNotTakeOverTheScreen() {
+        XCTAssertEqual(
+            AudiobookMorphingPlayerView.loadingOverlayState(
+                isLoaded: true,
+                isDownloading: false,
+                loadingTimedOut: false,
+                hasStartedPlayback: true,
+                expectsSlowStart: false,
+                hasSeenDownloading: true,
+                transportIsWaitingForData: true,
+                forceSkeletons: false
+            ),
+            .hidden,
+            "a stall mid-playback must not replace the player with a shimmer"
+        )
+    }
+
+    // MARK: - The download-seen latch
+
+    /// One-way is the whole point. A live value would re-open the pre-download
+    /// window every time progress briefly reports nothing, taking the screen
+    /// back from the shimmer — the flicker the window exists to avoid.
+    func testHasSeenDownloading_staysTrueWhenDownloadingFallsBack() {
+        XCTAssertTrue(
+            AudiobookMorphingPlayerView.hasSeenDownloading(previous: true, isDownloading: false),
+            "a latch that follows isDownloading down re-summons the explanation"
+        )
+    }
+
+    /// The rising edge sets it.
+    func testHasSeenDownloading_isSetByTheFirstDownload() {
+        XCTAssertTrue(
+            AudiobookMorphingPlayerView.hasSeenDownloading(previous: false, isDownloading: true)
+        )
+    }
+
+    /// Before any download has been seen it stays false, or the pre-download
+    /// window would never open at all.
+    func testHasSeenDownloading_beforeAnyDownload_isFalse() {
+        XCTAssertFalse(
+            AudiobookMorphingPlayerView.hasSeenDownloading(previous: false, isDownloading: false)
+        )
+    }
+
+    // MARK: - Which progress channel the loading panel shows
+
+    /// An LCP archive fetch drives `archiveProgress`; no track download is
+    /// running, so `overallDownloadProgress` reads 0. The panel must show the
+    /// archive's number, or a streamed open reports 0% for the whole fetch —
+    /// the defect `AudiobookDownloadProgressPolicy` exists to fix, which this
+    /// panel reintroduced by reading the toolkit channel directly.
+    func testLoadingPanel_duringAnArchiveFetch_showsTheArchiveProgress() {
+        let shown = AudiobookDownloadProgressPolicy.barProgress(
+            archiveProgress: 0.42,
+            overallDownloadProgress: 0
+        )
+
+        XCTAssertEqual(shown, 0.42, accuracy: 0.0001)
+        XCTAssertTrue(
+            AudiobookMorphingPlayerView.downloadBarIsDeterminate(progress: shown),
+            "a 42% archive fetch must draw a determinate bar, not a spinner"
+        )
+    }
+
+    // MARK: - Download bar determinacy
+
+    /// A streamed open sits at 0% for about a second before the first fraction
+    /// arrives (measured on device 2026-10-19: 1.3 s). A determinate bar pinned
+    /// at zero reads as stuck, so the bar shows motion until there is a real
+    /// fraction to draw.
+    func testDownloadBar_beforeAnyProgress_isIndeterminate() {
+        XCTAssertFalse(
+            AudiobookMorphingPlayerView.downloadBarIsDeterminate(progress: 0),
+            "a determinate bar at 0% reads as a stalled download"
+        )
+    }
+
+    /// Once a real fraction exists the bar becomes determinate, which is the
+    /// whole point of reporting a percentage.
+    func testDownloadBar_onceProgressArrives_isDeterminate() {
+        XCTAssertTrue(
+            AudiobookMorphingPlayerView.downloadBarIsDeterminate(progress: 0.04)
+        )
+    }
+
+    /// A negative fraction is not progress. The download center's
+    /// `downloadProgress(for:)` is the source and nothing promises it is
+    /// non-negative, so the bar must not read a bogus value as "started".
+    func testDownloadBar_withNegativeProgress_isIndeterminate() {
+        XCTAssertFalse(
+            AudiobookMorphingPlayerView.downloadBarIsDeterminate(progress: -0.1)
+        )
+    }
+
+    /// A complete download is determinate — the boundary opposite zero.
+    func testDownloadBar_atCompletion_isDeterminate() {
+        XCTAssertTrue(
+            AudiobookMorphingPlayerView.downloadBarIsDeterminate(progress: 1)
+        )
+    }
+
     typealias V = AudiobookMorphingPlayerView
 
     // MARK: - Bookmark error → localized toast (item 1)
@@ -151,11 +314,11 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
     /// A loaded player shows no overlay — regardless of the other flags.
     func testLoadingOverlayState_loadedIsHidden() {
         XCTAssertEqual(
-            V.loadingOverlayState(isLoaded: true, isDownloading: false, loadingTimedOut: false, hasStartedPlayback: false, forceSkeletons: false),
+            V.loadingOverlayState(isLoaded: true, isDownloading: false, loadingTimedOut: false, hasStartedPlayback: false, expectsSlowStart: false, hasSeenDownloading: false, forceSkeletons: false),
             .hidden,
             "A loaded, non-downloading player has no loading overlay")
         XCTAssertEqual(
-            V.loadingOverlayState(isLoaded: true, isDownloading: true, loadingTimedOut: true, hasStartedPlayback: false, forceSkeletons: false),
+            V.loadingOverlayState(isLoaded: true, isDownloading: true, loadingTimedOut: true, hasStartedPlayback: false, expectsSlowStart: false, hasSeenDownloading: false, forceSkeletons: false),
             .hidden,
             "Once loaded, neither a lingering download flag nor a stale timeout resurrects the overlay")
     }
@@ -168,11 +331,11 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
     /// (or falls through to `.skeleton`) before `isDownloading`.
     func testLoadingOverlayState_downloadingBeatsSkeletonAndTimeout() {
         XCTAssertEqual(
-            V.loadingOverlayState(isLoaded: false, isDownloading: true, loadingTimedOut: false, hasStartedPlayback: false, forceSkeletons: false),
+            V.loadingOverlayState(isLoaded: false, isDownloading: true, loadingTimedOut: false, hasStartedPlayback: false, expectsSlowStart: false, hasSeenDownloading: false, forceSkeletons: false),
             .downloading,
             "An in-flight download shows the determinate downloading state, not the shimmer skeleton")
         XCTAssertEqual(
-            V.loadingOverlayState(isLoaded: false, isDownloading: true, loadingTimedOut: true, hasStartedPlayback: false, forceSkeletons: false),
+            V.loadingOverlayState(isLoaded: false, isDownloading: true, loadingTimedOut: true, hasStartedPlayback: false, expectsSlowStart: false, hasSeenDownloading: false, forceSkeletons: false),
             .downloading,
             "A download in flight is healthy progress — it must win over a fired load timeout, never the error overlay")
     }
@@ -181,7 +344,7 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
     /// the error+retry. Kills dropping the `loadingTimedOut` branch.
     func testLoadingOverlayState_timeoutWithoutDownloadIsLoadError() {
         XCTAssertEqual(
-            V.loadingOverlayState(isLoaded: false, isDownloading: false, loadingTimedOut: true, hasStartedPlayback: false, forceSkeletons: false),
+            V.loadingOverlayState(isLoaded: false, isDownloading: false, loadingTimedOut: true, hasStartedPlayback: false, expectsSlowStart: false, hasSeenDownloading: false, forceSkeletons: false),
             .loadError,
             "A stalled, non-downloading load that fired the 30s timer shows the load-error overlay")
     }
@@ -191,11 +354,11 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
     /// skeleton even over a loaded/downloading player so it can be inspected.
     func testLoadingOverlayState_skeletonDefaultAndForceOverride() {
         XCTAssertEqual(
-            V.loadingOverlayState(isLoaded: false, isDownloading: false, loadingTimedOut: false, hasStartedPlayback: false, forceSkeletons: false),
+            V.loadingOverlayState(isLoaded: false, isDownloading: false, loadingTimedOut: false, hasStartedPlayback: false, expectsSlowStart: false, hasSeenDownloading: false, forceSkeletons: false),
             .skeleton,
             "The brief pre-download load window is the shimmer skeleton")
         XCTAssertEqual(
-            V.loadingOverlayState(isLoaded: true, isDownloading: true, loadingTimedOut: false, hasStartedPlayback: false, forceSkeletons: true),
+            V.loadingOverlayState(isLoaded: true, isDownloading: true, loadingTimedOut: false, hasStartedPlayback: false, expectsSlowStart: false, hasSeenDownloading: false, forceSkeletons: true),
             .skeleton,
             "forceSkeletons is the QA inspection override — it wins over every other flag")
     }
@@ -368,11 +531,62 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
     private typealias Overlay = V.LoadingOverlayState
 
     private func state(
-        loaded: Bool, downloading: Bool, timedOut: Bool, started: Bool, force: Bool = false
+        loaded: Bool, downloading: Bool, timedOut: Bool, started: Bool,
+        expectsSlow: Bool = false, seenDownloading: Bool = false, force: Bool = false
     ) -> Overlay {
         V.loadingOverlayState(
             isLoaded: loaded, isDownloading: downloading,
-            loadingTimedOut: timedOut, hasStartedPlayback: started, forceSkeletons: force
+            loadingTimedOut: timedOut, hasStartedPlayback: started,
+            expectsSlowStart: expectsSlow, hasSeenDownloading: seenDownloading,
+            forceSkeletons: force
+        )
+    }
+
+    /// A cold streamed start explains itself before anything else.
+    ///
+    /// At the tap the download has not registered, so `isDownloading` is still
+    /// false and this fell through to the shimmer — measured on device as one
+    /// frame of skeleton followed by 1.3 s of "Downloading 0%". The patron saw
+    /// the states in the wrong order.
+    func testLoadingOverlayState_predictedSlowBeforeTheDownloadRegisters_explainsFirst() {
+        XCTAssertEqual(
+            state(loaded: false, downloading: false, timedOut: false, started: false,
+                    expectsSlow: true, seenDownloading: false),
+            .downloading,
+            "a start the player knows will be slow shows the explanation, not a shimmer that is replaced"
+        )
+    }
+
+    /// An ordinary opening is unchanged: no prediction, no explanation, just the
+    /// brief shimmer and then the player. This is the cell that keeps the
+    /// loading screen off a book that opens quickly.
+    func testLoadingOverlayState_ordinaryOpening_showsOnlyTheSkeleton() {
+        XCTAssertEqual(
+            state(loaded: false, downloading: false, timedOut: false, started: false,
+                    expectsSlow: false, seenDownloading: false),
+            .skeleton,
+            "a quick opening must not be given a loading screen it does not need"
+        )
+    }
+
+    /// Once a download has been seen the pre-download window is over, so the
+    /// shimmer covers the remaining gap — loading, then skeleton, then player.
+    func testLoadingOverlayState_afterTheDownloadIsSeen_handsOverToTheSkeleton() {
+        XCTAssertEqual(
+            state(loaded: false, downloading: false, timedOut: false, started: false,
+                    expectsSlow: true, seenDownloading: true),
+            .skeleton,
+            "the explanation gives way to the shimmer once the download has been and gone"
+        )
+    }
+
+    /// The prediction must never outrank a real failure.
+    func testLoadingOverlayState_predictedSlowButTimedOut_stillShowsTheError() {
+        XCTAssertEqual(
+            state(loaded: false, downloading: false, timedOut: true, started: false,
+                    expectsSlow: true, seenDownloading: false),
+            .loadError,
+            "a fired timeout is a failure to surface, not a wait to explain"
         )
     }
 
@@ -515,7 +729,7 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
     func testLoadingOverlayState_staleLatchMidSession_wouldPaintErrorOverAWorkingPlayer() {
         XCTAssertEqual(
             V.loadingOverlayState(isLoaded: false, isDownloading: false, loadingTimedOut: true,
-                                  hasStartedPlayback: true, forceSkeletons: false),
+                                  hasStartedPlayback: true, expectsSlowStart: false, hasSeenDownloading: false, forceSkeletons: false),
             .loadError,
             "premise: mid-session, a true latch goes straight to the error — which is why the latch must be cleared on recovery"
         )

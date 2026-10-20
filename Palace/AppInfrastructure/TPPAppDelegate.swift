@@ -196,11 +196,29 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
             AppContainer.production().accountsManager.currentUserAccount.authToken
         }
 
+
         // `Task { @MainActor }` (was `DispatchQueue.main.async`): `didFinishLaunching()`
         // touches the `@MainActor`-isolated `audiobookLifecycleManager`; the Task
         // gives the closure main-actor isolation so the access is checked, not a
         // `@Sendable` capture of main-actor state. Same "next main run-loop" timing.
         Task { @MainActor in
+            // Route the audiobook toolkit's logging into the app's persistent
+            // log. `ATLog` writes to os_log and to this handler only, and
+            // nothing had ever installed one — so every toolkit stall, loader
+            // failure, decrypt error and watchdog event was absent from the log
+            // a patron exports, which is the log an audiobook defect has to be
+            // diagnosed from. Warnings and errors only: the toolkit logs
+            // per-read detail at info, which would swamp the file.
+            DefaultAudiobookManager.setLogHandler { level, message, error in
+                guard level == .warn || level == .error else { return }
+                let detail = error.map { "\(message): \($0.localizedDescription)" } ?? message
+                if level == .error {
+                    Log.error("AudiobookToolkit", detail)
+                } else {
+                    Log.warn("AudiobookToolkit", detail)
+                }
+            }
+
             self.audiobookLifecycleManager.didFinishLaunching()
 
             // TODO: Implement audiobook downloads migration from Caches to Application Support

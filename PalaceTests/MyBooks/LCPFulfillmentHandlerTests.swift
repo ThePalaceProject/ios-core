@@ -550,6 +550,60 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
                       "No alert should publish for an already-opened audiobook on phase-2 failure")
     }
 
+    /// The negative twin of the test below, and the one that matters: an LCP
+    /// audiobook whose content download finishes AFTER the patron returned it.
+    ///
+    /// Driven through the fulfillment handler rather than `replaceBook`,
+    /// because the defect lives in the caller. `replaceBook` deliberately
+    /// leaves the success state to this handler for an LCP audiobook, and its
+    /// not-held arm reports no failure — so a handler that trusts that Bool
+    /// takes `.unregistered` to `.downloadSuccessful`, which is not a legal
+    /// transition, and announces a completed download for a returned book.
+    func testFulfill_audiobook_afterTheBookIsReturned_doesNotMarkSuccessful() async throws {
+        let audiobook = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        registry.addBook(audiobook, state: .unregistered)
+
+        let destination = tempDir.appendingPathComponent("\(audiobook.identifier).lcpa")
+        let mockDelegate = MockBackgroundDownloadDelegate(bookRegistry: registry)
+        mockDelegate.fileUrls[audiobook.identifier] = destination
+        backgroundHandler.delegate = mockDelegate
+
+        let sourceURL = tempDir.appendingPathComponent("incoming-\(UUID().uuidString).lcpa")
+        let licenseJSON = """
+        {"id":"urn:uuid:\(UUID().uuidString)","links":[]}
+        """
+        try licenseJSON.data(using: .utf8)!.write(to: sourceURL)
+
+        let downloadTask = FakeDownloadTask(state: .completed, identifier: 1)
+        handler.fulfillLCPLicense(fileUrl: sourceURL, forBook: audiobook, downloadTask: downloadTask)
+
+        let contentURL = tempDir.appendingPathComponent("content-\(UUID().uuidString).lcpa")
+        try Data(repeating: 0xAB, count: 4096).write(to: contentURL)
+
+        let completion = try XCTUnwrap(lcpService.lastCompletion)
+        completion(contentURL, nil)
+        // The discard deletes the fetched file, so its disappearance is a
+        // positive signal that the store step ran — a negative assertion has
+        // no edge of its own to wait on.
+        await awaitConditionAsync {
+            !FileManager.default.fileExists(atPath: contentURL.path)
+        }
+
+        XCTAssertTrue(
+            spyDelegate.markSuccessfulCalls.isEmpty,
+            "a returned book must not be marked downloaded — that is the illegal transition this guards"
+        )
+        XCTAssertEqual(
+            registry.state(for: audiobook.identifier),
+            .unregistered,
+            "the returned book must stay returned"
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: destination.path),
+            "and its content must not reach the shelf"
+        )
+    }
+
     /// The positive path, and the reason this test exists: after 3.2.3 moved
     /// `markDownloadSuccessful` out of the license-fulfilled branch and into the
     /// content-landed branch, NOTHING asserted that an LCP audiobook ever
@@ -563,6 +617,11 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
     /// arbitrary bytes.
     func testFulfill_audiobook_marksSuccessfulOnceContentLands() async throws {
         let audiobook = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        // The state the content completion actually runs against: the store
+        // step now asks whether the patron still holds the book, and
+        // `.downloading` is what production is in here — it is also the only
+        // legal predecessor of `.downloadSuccessful`.
+        registry.addBook(audiobook, state: .downloading)
 
         // Destination the content will be moved to.
         let destination = tempDir.appendingPathComponent("\(audiobook.identifier).lcpa")

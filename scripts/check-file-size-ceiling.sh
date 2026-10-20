@@ -89,11 +89,11 @@ read -r -d '' ALLOWLIST <<'EOF'
 # when PP-5302 moved the phone alert mapping to +ErrorMapping, then -> 1173
 # when the book-open tracker's recording call was removed, then -> 1168
 # when the open-failure alert moved to AudiobookOpenFailureAlert.
-1168 Palace/Audiobooks/AudiobookSessionManager.swift
+1143 Palace/Audiobooks/AudiobookSessionManager.swift
 # 1213 -> 1172 when the mid-download network-loss handler moved to
 # DownloadNetworkLossMonitor.swift.
 1172 Palace/MyBooks/MyBooksDownloadCenter.swift
-1028 Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift
+1019 Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift
 867  Palace/Book/UI/BookDetail/BookDetailViewModel.swift
 871  Palace/Utilities/Localization/Strings.swift
 # AccountsManager is 363 under this metric: it was pinned at 367 after #1520

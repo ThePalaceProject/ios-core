@@ -132,7 +132,7 @@ final class AudiobookSessionManagerShutdownTests: XCTestCase {
 
     /// Off-main remote/CarPlay/lock-screen command handlers reach the session
     /// through the ONE `nonisolated` accessor built for that purpose —
-    /// `hasActiveManagerSnapshot` (an `OSAllocatedUnfairLock`-backed mirror of
+    /// `AudiobookSessionSnapshots.hasActiveManager` (an `OSAllocatedUnfairLock` mirror of
     /// `manager != nil`, written only on the main actor at the bind/unbind
     /// seams). This is the exact class of read that trips
     /// `dispatch_assert_queue_fail` if it ever synchronously touches a
@@ -159,7 +159,7 @@ final class AudiobookSessionManagerShutdownTests: XCTestCase {
                 for _ in 0..<readsPerReader {
                     // A synchronous off-main read of an isolated member would
                     // trap here; reaching the OR proves the read returned.
-                    let snapshot = AudiobookSessionManager.hasActiveManagerSnapshot
+                    let snapshot = AudiobookSessionSnapshots.hasActiveManager
                     sawAnyValueSafely = sawAnyValueSafely && (snapshot || !snapshot)
                     await Task.yield()
                 }
@@ -192,7 +192,7 @@ final class AudiobookSessionManagerShutdownTests: XCTestCase {
         // The off-main snapshot is the mirror teardown's manager-didSet writes;
         // after the last stop it must have converged to false. This is the leg
         // that proves the off-main read path reflects the serialized teardown.
-        XCTAssertFalse(AudiobookSessionManager.hasActiveManagerSnapshot,
+        XCTAssertFalse(AudiobookSessionSnapshots.hasActiveManager,
                        "Post-teardown, the off-main snapshot must reflect the unbound manager (false)")
     }
 

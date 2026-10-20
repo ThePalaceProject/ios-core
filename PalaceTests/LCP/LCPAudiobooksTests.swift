@@ -7,14 +7,624 @@
 
 import XCTest
 import PalaceAudiobookToolkit
+import ReadiumShared
 @testable import Palace
 
 @MainActor
 final class LCPAudiobooksTests: XCTestCase {
 
+    // MARK: - Plaintext length cache
+
+    /// Learning a track's plaintext length costs a read of the entry's CBC
+    /// tail, measured on device at 17.8-28.8 MB of origin traffic to serve no
+    /// audio. The archive is immutable, so the answer must survive the session
+    /// that learned it — and it must be keyed per archive, or one book would
+    /// answer with another's track length.
+    func testPlaintextLength_isRememberedPerArchive_andNotSharedBetweenBooks() throws {
+        let archiveA = "https://storage.googleapis.com/bucket/a-\(UUID().uuidString)"
+        let archiveB = "https://storage.googleapis.com/bucket/b-\(UUID().uuidString)"
+        let bookA = try makeAudiobook(publicationHref: archiveA)
+        let bookB = try makeAudiobook(publicationHref: archiveB)
+
+        XCTAssertNil(
+            bookA.cachedPlaintextLength(forHref: "track1.mp3"),
+            "precondition: nothing is known before the first probe"
+        )
+
+        bookA.cachePlaintextLength(14_680_064, forHref: "track1.mp3")
+
+        XCTAssertEqual(
+            bookA.cachedPlaintextLength(forHref: "track1.mp3"), 14_680_064,
+            "a length learned once must skip the probe for every later chapter change"
+        )
+        XCTAssertNil(
+            bookA.cachedPlaintextLength(forHref: "track2.mp3"),
+            "only the track that was measured is known"
+        )
+        XCTAssertNil(
+            bookB.cachedPlaintextLength(forHref: "track1.mp3"),
+            "a different archive must not answer with this one's length — that would decrypt to the wrong end"
+        )
+    }
+
+    /// A zero length would mean "cached but unknown", and the loader treats the
+    /// length as load-bearing, so it must not be storable.
+    func testPlaintextLength_zeroIsNotStored() throws {
+        let book = try makeAudiobook(
+            publicationHref: "https://storage.googleapis.com/bucket/z-\(UUID().uuidString)"
+        )
+        book.cachePlaintextLength(0, forHref: "track1.mp3")
+        XCTAssertNil(
+            book.cachedPlaintextLength(forHref: "track1.mp3"),
+            "zero is not a length; storing it would skip the probe and then fail the read"
+        )
+    }
+
+    // MARK: - Asking the archive for bytes
+
+    /// A `Range` is half-open and an HTTP range header is inclusive. One byte
+    /// out here reads the wrong block and deciphers the wrong padding, so the
+    /// track's length comes back wrong rather than missing.
+    func testArchiveRangeRead_asksForAnInclusiveByteRange() async {
+        let client = StubHTTPClient(body: Data(repeating: 0xAB, count: 32))
+        let url = HTTPURL(string: "https://storage.googleapis.com/bucket/book.lcpa")!
+
+        let data = await LCPAudiobooks.readArchiveRange(100 ..< 132, of: url, using: client)
+
+        XCTAssertEqual(client.rangeHeaders, ["bytes=100-131"], "the last byte asked for is inclusive")
+        XCTAssertEqual(data?.count, 32, "the body the server sent is what the arithmetic reads")
+    }
+
+    /// Without a length there is no tail to read, and a wrong one would send
+    /// every later read to an offset in the middle of the audio.
+    func testArchiveLength_whenTheServerReportsNoLength_isNil() async {
+        let client = StubHTTPClient(body: Data(), headers: [:])
+        let url = HTTPURL(string: "https://storage.googleapis.com/bucket/book.lcpa")!
+
+        let length = await LCPAudiobooks.archiveLength(of: url, using: client)
+
+        XCTAssertNil(length, "a response with no Content-Length names no tail")
+    }
+
+    /// An archive of no length is not an archive. Believing a zero would send
+    /// the tail read to an empty range and cost a request that cannot answer.
+    func testArchiveLength_whenTheServerReportsZero_isNil() async {
+        let client = StubHTTPClient(body: Data(), headers: ["Content-Length": "0"])
+        let url = HTTPURL(string: "https://storage.googleapis.com/bucket/book.lcpa")!
+
+        let length = await LCPAudiobooks.archiveLength(of: url, using: client)
+
+        XCTAssertNil(length, "zero bytes names no central directory to read")
+    }
+
+    func testArchiveLength_readsTheLengthTheServerReports() async {
+        let client = StubHTTPClient(body: Data(), headers: ["Content-Length": "749772033"])
+        let url = HTTPURL(string: "https://storage.googleapis.com/bucket/book.lcpa")!
+
+        let length = await LCPAudiobooks.archiveLength(of: url, using: client)
+
+        XCTAssertEqual(length, 749_772_033)
+    }
+
+    /// Answers one body and records the range asked for.
+    private final class StubHTTPClient: HTTPClient, @unchecked Sendable {
+        private let lock = NSLock()
+        private var asked: [String?] = []
+        private let body: Data
+        private let headers: [String: String]
+
+        init(body: Data, headers: [String: String]? = nil) {
+            self.body = body
+            self.headers = headers ?? ["Content-Length": "\(body.count)"]
+        }
+
+        var rangeHeaders: [String?] { lock.withLock { asked } }
+
+        func stream(
+            request: any HTTPRequestConvertible,
+            consume: @escaping (Data, Double?) -> HTTPResult<Void>
+        ) async -> HTTPResult<HTTPResponse> {
+            guard case let .success(httpRequest) = request.httpRequest() else {
+                return .failure(HTTPError.malformedResponse(nil))
+            }
+            lock.withLock { asked.append(httpRequest.headers["Range"]) }
+            if !body.isEmpty, case let .failure(error) = consume(body, nil) {
+                return .failure(error)
+            }
+            return .success(HTTPResponse(
+                request: httpRequest,
+                url: httpRequest.url,
+                status: .ok,
+                headers: headers,
+                mediaType: nil,
+                body: nil
+            ))
+        }
+    }
+
+    // MARK: - Learning the lengths from the archive
+
+    /// The point of the change: the lengths arrive from two small ranged reads
+    /// per track and are remembered, so a chapter change pays neither the
+    /// probe nor the archive reads again.
+    func testTrackLengths_learnedFromTheArchive_areRememberedForTheNextChapterChange() async throws {
+        let book = try makeAudiobook(
+            publicationHref: "https://storage.googleapis.com/bucket/r-\(UUID().uuidString)"
+        )
+        let archive = LCPSyntheticArchive.make()
+
+        let resolved = await book.resolveTrackLengths(
+            hrefs: ["track-a.mp3", "track-b.mp3"],
+            archiveLength: archive.declaredLength,
+            readRange: { await archive.read($0) },
+            decipher: { $0 }
+        )
+
+        XCTAssertEqual(
+            resolved.resolved, 2,
+            "the count is what the log reports, so it must be the number actually stored"
+        )
+        XCTAssertEqual(
+            book.cachedPlaintextLength(forHref: "track-a.mp3"),
+            LCPSyntheticArchive.trackA.plaintextLength,
+            "the length read from the archive is what the player must find cached"
+        )
+        XCTAssertEqual(
+            book.cachedPlaintextLength(forHref: "track-b.mp3"),
+            LCPSyntheticArchive.trackB.plaintextLength
+        )
+    }
+
+    /// The loader asks the cache for the chapter it is about to play. That ask
+    /// is the only signal here for where in the book the patron is, so a miss
+    /// puts the track at the head of the resolution. Reading order reaches a
+    /// resumed chapter last, and until then it pays Readium's probe — measured
+    /// on device at 18.6 MB to deliver two bytes.
+    func testTrackLengths_resolveTheTrackAChapterLoadAskedForBeforeReadingOrder() async throws {
+        let book = try makeAudiobook(
+            publicationHref: "https://storage.googleapis.com/bucket/d-\(UUID().uuidString)"
+        )
+        let archive = LCPSyntheticArchive.make()
+
+        // The chapter load's own ask, as the loader makes it.
+        XCTAssertNil(book.cachedPlaintextLength(forHref: "track c.mp3"))
+
+        _ = await book.resolveTrackLengths(
+            hrefs: ["track-a.mp3", "track-b.mp3", "track c.mp3"],
+            archiveLength: archive.declaredLength,
+            maxConcurrentReads: 1,
+            readRange: { await archive.read($0) },
+            decipher: { $0 }
+        )
+
+        XCTAssertEqual(
+            archive.reads.dropFirst().first,
+            LCPSyntheticArchive.trackC.localHeaderOffset
+                ..< LCPSyntheticArchive.trackC.localHeaderOffset
+                + LCPArchiveTrackLengthResolver.localHeaderReadLength,
+            "after the archive tail, the track the chapter load asked for is read first"
+        )
+        XCTAssertEqual(
+            book.cachedPlaintextLength(forHref: "track c.mp3"),
+            LCPSyntheticArchive.trackC.plaintextLength,
+            "and it is cached, so the chapter change that follows costs no probe"
+        )
+    }
+
+    /// A resolution this object starts for itself must not read as a chapter
+    /// waiting: every missing track would then be "demanded" and the signal
+    /// would name whichever one came first in reading order.
+    func testTrackLengths_withNoChapterWaiting_keepReadingOrder() async throws {
+        let book = try makeAudiobook(
+            publicationHref: "https://storage.googleapis.com/bucket/o-\(UUID().uuidString)"
+        )
+        let archive = LCPSyntheticArchive.make()
+
+        _ = await book.resolveTrackLengths(
+            hrefs: ["track-a.mp3", "track-b.mp3", "track c.mp3"],
+            archiveLength: archive.declaredLength,
+            maxConcurrentReads: 1,
+            readRange: { await archive.read($0) },
+            decipher: { $0 }
+        )
+
+        XCTAssertEqual(
+            archive.reads.dropFirst().first,
+            LCPSyntheticArchive.trackA.localHeaderOffset
+                ..< LCPSyntheticArchive.trackA.localHeaderOffset
+                + LCPArchiveTrackLengthResolver.localHeaderReadLength
+        )
+    }
+
+    // MARK: - Waiting for a length rather than probing for it
+    //
+    // The states a track's length can be in, and what the chapter's ask does
+    // in each:
+    //
+    //   known                        -> answers at once, no probe
+    //   nothing running              -> nil at once, the probe stands
+    //   running, reaches this track  -> answers with the length, no probe
+    //   running, ends without it     -> nil, before the wait runs out
+    //   running, too slow            -> nil when the wait runs out
+    //   chapter dropped while waiting -> nil
+
+    /// A length already learned is the cheap case and must stay cheap: no
+    /// wait, whatever timeout the caller offers.
+    func testPlaintextLength_whenAlreadyKnown_answersWithoutWaiting() async throws {
+        let book = try makeAudiobook(
+            publicationHref: "https://storage.googleapis.com/bucket/k1-\(UUID().uuidString)"
+        )
+        book.cachePlaintextLength(4_073, forHref: "track-a.mp3")
+
+        let startedAt = Date()
+        let length = await book.plaintextLength(forHref: "track-a.mp3", waitingUpTo: 5)
+
+        XCTAssertEqual(length, 4_073)
+        XCTAssertLessThan(Date().timeIntervalSince(startedAt), 1)
+    }
+
+    /// With no resolution running — a local package, or one that has already
+    /// finished — no answer is coming, and waiting would only delay the probe
+    /// the chapter now has to run.
+    func testPlaintextLength_withNoResolutionRunning_answersNilAtOnce() async throws {
+        let book = try makeAudiobook(
+            publicationHref: "https://storage.googleapis.com/bucket/n1-\(UUID().uuidString)"
+        )
+
+        let startedAt = Date()
+        let length = await book.plaintextLength(forHref: "track-a.mp3", waitingUpTo: 5)
+
+        XCTAssertNil(length)
+        XCTAssertLessThan(Date().timeIntervalSince(startedAt), 1)
+    }
+
+    /// The change this is all for: the chapter waits for the two small reads
+    /// the resolution makes for its track instead of running Readium's tail
+    /// probe, measured on device at 18.6 MB to deliver two bytes.
+    func testPlaintextLength_whileAResolutionIsRunning_waitsForTheTrackItNeeds() async throws {
+        let book = try makeAudiobook(
+            publicationHref: "https://storage.googleapis.com/bucket/r1-\(UUID().uuidString)"
+        )
+        let archive = LCPSyntheticArchive.make()
+        archive.onReadAsync = { _ in try? await Task.sleep(nanoseconds: 50_000_000) }
+
+        let resolution = Task {
+            await book.resolveTrackLengths(
+                hrefs: ["track-a.mp3", "track-b.mp3", "track c.mp3"],
+                archiveLength: archive.declaredLength,
+                maxConcurrentReads: 1,
+                readRange: { await archive.read($0) },
+                decipher: { $0 }
+            )
+        }
+        try await waitUntil(timeout: 5) { !archive.reads.isEmpty }
+
+        let length = await book.plaintextLength(forHref: "track c.mp3", waitingUpTo: 5)
+        _ = await resolution.value
+
+        XCTAssertEqual(length, LCPSyntheticArchive.trackC.plaintextLength)
+    }
+
+    /// A resolution that ends without this track — it was not in the archive,
+    /// or its read failed — must release the chapter rather than hold it for
+    /// the whole wait.
+    func testPlaintextLength_whenTheResolutionEndsWithoutTheTrack_stopsWaiting() async throws {
+        let book = try makeAudiobook(
+            publicationHref: "https://storage.googleapis.com/bucket/e1-\(UUID().uuidString)"
+        )
+        let archive = LCPSyntheticArchive.make()
+        archive.onReadAsync = { _ in try? await Task.sleep(nanoseconds: 50_000_000) }
+
+        let resolution = Task {
+            await book.resolveTrackLengths(
+                hrefs: ["track-a.mp3"],
+                archiveLength: archive.declaredLength,
+                maxConcurrentReads: 1,
+                readRange: { await archive.read($0) },
+                decipher: { $0 }
+            )
+        }
+        try await waitUntil(timeout: 5) { !archive.reads.isEmpty }
+
+        let startedAt = Date()
+        let length = await book.plaintextLength(forHref: "track-b.mp3", waitingUpTo: 5)
+        _ = await resolution.value
+
+        XCTAssertNil(length)
+        XCTAssertLessThan(
+            Date().timeIntervalSince(startedAt), 3,
+            "the answer comes when the resolution ends, not when the wait runs out"
+        )
+    }
+
+    /// A resolution slower than the chapter can wait for: the probe is the
+    /// fallback, and the wait must end so it can start.
+    func testPlaintextLength_whenTheWaitRunsOut_answersNil() async throws {
+        let book = try makeAudiobook(
+            publicationHref: "https://storage.googleapis.com/bucket/t1-\(UUID().uuidString)"
+        )
+        let archive = LCPSyntheticArchive.make()
+        archive.onReadAsync = { _ in try? await Task.sleep(nanoseconds: 2_000_000_000) }
+
+        let resolution = Task {
+            await book.resolveTrackLengths(
+                hrefs: ["track-a.mp3", "track c.mp3"],
+                archiveLength: archive.declaredLength,
+                maxConcurrentReads: 1,
+                readRange: { await archive.read($0) },
+                decipher: { $0 }
+            )
+        }
+        try await waitUntil(timeout: 5) { !archive.reads.isEmpty }
+
+        let length = await book.plaintextLength(forHref: "track c.mp3", waitingUpTo: 0.2)
+
+        XCTAssertNil(length)
+        resolution.cancel()
+        _ = await resolution.value
+    }
+
+    /// AVFoundation drops the request when the patron moves on again. The ask
+    /// must end with it; the non-cancelled path is pinned by
+    /// `testPlaintextLength_whileAResolutionIsRunning_waitsForTheTrackItNeeds`.
+    func testPlaintextLength_whenTheChapterIsDroppedWhileWaiting_answersNil() async throws {
+        let book = try makeAudiobook(
+            publicationHref: "https://storage.googleapis.com/bucket/c1-\(UUID().uuidString)"
+        )
+        let archive = LCPSyntheticArchive.make()
+        archive.onReadAsync = { _ in try? await Task.sleep(nanoseconds: 1_000_000_000) }
+
+        let resolution = Task {
+            await book.resolveTrackLengths(
+                hrefs: ["track-a.mp3", "track c.mp3"],
+                archiveLength: archive.declaredLength,
+                maxConcurrentReads: 1,
+                readRange: { await archive.read($0) },
+                decipher: { $0 }
+            )
+        }
+        try await waitUntil(timeout: 5) { !archive.reads.isEmpty }
+
+        let asking = Task { await book.plaintextLength(forHref: "track c.mp3", waitingUpTo: 5) }
+        try await Task.sleep(nanoseconds: 150_000_000)
+        asking.cancel()
+
+        let length = await asking.value
+        XCTAssertNil(length)
+        resolution.cancel()
+        _ = await resolution.value
+    }
+
+    /// What the resolution is asked to learn. The player keys a track by its
+    /// href without the fragment, so a length stored under the full href is
+    /// never found, and a track already known must not be fetched again.
+    func testUnresolvedTrackHrefs_dropTheFragmentAndTheLengthsAlreadyKnown() {
+        let publication = Publication(manifest: Manifest(
+            metadata: Metadata(title: "Doomsday"),
+            readingOrder: [
+                Link(href: "track-a.mp3", mediaType: .mp3),
+                Link(href: "track-b.mp3#t=0", mediaType: .mp3),
+                Link(href: "track c.mp3", mediaType: .mp3)
+            ]
+        ))
+
+        let unresolved = LCPAudiobooks.unresolvedTrackHrefs(in: publication) { href in
+            href == "track-a.mp3" ? 4_073 : nil
+        }
+
+        XCTAssertEqual(
+            unresolved,
+            ["track-b.mp3", "track c.mp3"],
+            "the fragment is dropped, the known track is left out, and reading order stands"
+        )
+    }
+
+    /// Learning one waiting chapter's length must not discard the others. The
+    /// demand list is the only record of where the patron is; emptied, the
+    /// resolution falls back to reading order and the chapter they are waiting
+    /// on goes back to the end of the queue.
+    func testTrackLengths_whenOneWaitingChapterIsLearned_theOtherIsStillServedFirst() async throws {
+        let book = try makeAudiobook(
+            publicationHref: "https://storage.googleapis.com/bucket/w-\(UUID().uuidString)"
+        )
+        let archive = LCPSyntheticArchive.make()
+
+        // Two chapter loads ask and miss, oldest first.
+        XCTAssertNil(book.cachedPlaintextLength(forHref: "track c.mp3"))
+        XCTAssertNil(book.cachedPlaintextLength(forHref: "track-b.mp3"))
+        // The first one is learned, so only it leaves the list.
+        book.cachePlaintextLength(LCPSyntheticArchive.trackC.plaintextLength, forHref: "track c.mp3")
+
+        _ = await book.resolveTrackLengths(
+            hrefs: ["track-a.mp3", "track-b.mp3", "track c.mp3"],
+            archiveLength: archive.declaredLength,
+            maxConcurrentReads: 1,
+            readRange: { await archive.read($0) },
+            decipher: { $0 }
+        )
+
+        XCTAssertEqual(
+            archive.reads.dropFirst().first,
+            LCPSyntheticArchive.trackB.localHeaderOffset
+                ..< LCPSyntheticArchive.trackB.localHeaderOffset
+                + LCPArchiveTrackLengthResolver.localHeaderReadLength,
+            "the chapter still waiting is read first, not the one in reading order"
+        )
+    }
+
+    /// A second open of a book already played must cost the origin nothing:
+    /// the lengths are already known, and the archive is 715 MB away.
+    func testTrackLengths_alreadyKnown_costNoArchiveRead() async throws {
+        let book = try makeAudiobook(
+            publicationHref: "https://storage.googleapis.com/bucket/k-\(UUID().uuidString)"
+        )
+        book.cachePlaintextLength(4_073, forHref: "track-a.mp3")
+        let archive = LCPSyntheticArchive.make()
+
+        let resolved = await book.resolveTrackLengths(
+            hrefs: ["track-a.mp3"],
+            archiveLength: archive.declaredLength,
+            readRange: { await archive.read($0) },
+            decipher: { $0 }
+        )
+
+        XCTAssertEqual(
+            resolved, .init(),
+            "nothing was learned and nothing was read, and the log must not claim otherwise"
+        )
+        XCTAssertEqual(
+            archive.reads, [],
+            "a track whose length is known must not be looked up again"
+        )
+        XCTAssertEqual(
+            book.cachedPlaintextLength(forHref: "track-a.mp3"), 4_073,
+            "and the length already learned is left as it is"
+        )
+    }
+
+    /// Builds an instance whose licence names `publicationHref`, which is what
+    /// the cache keys on.
+    private func makeAudiobook(publicationHref: String) throws -> LCPAudiobooks {
+        let license: [String: Any] = [
+            "id": UUID().uuidString,
+            "links": [["rel": "publication", "type": "application/audiobook+lcp", "href": publicationHref]]
+        ]
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("len-\(UUID().uuidString).lcpl")
+        try JSONSerialization.data(withJSONObject: license).write(to: url)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        return try XCTUnwrap(LCPAudiobooks(for: url), "the licence must be openable as an audiobook source")
+    }
+
+    /// Builds an audiobook whose chapter-load hold acts on `registry`, which is
+    /// what makes the begin -> hold -> end wiring observable: reaching for the
+    /// shared registry left these three lines with no test at all, and mutation
+    /// reported them uncovered rather than killed.
+    private func makeAudiobook(
+        publicationHref: String,
+        sessions: LCPPublicationSessionRegistry
+    ) throws -> LCPAudiobooks {
+        let license: [String: Any] = [
+            "id": UUID().uuidString,
+            "links": [["rel": "publication", "type": "application/audiobook+lcp", "href": publicationHref]]
+        ]
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("hold-\(UUID().uuidString).lcpl")
+        try JSONSerialization.data(withJSONObject: license).write(to: url)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        return try XCTUnwrap(
+            LCPAudiobooks(for: url, licenseUrl: nil, sessions: sessions),
+            "the licence must be openable as an audiobook source"
+        )
+    }
+
+    // MARK: - Yielding the link to a loading chapter
+
+    /// The wiring, end to end: the toolkit announcing a load reaches the
+    /// registry and suspends the archive transfer, and announcing the end
+    /// resumes it. Six registry tests prove the mechanism; this proves the
+    /// hooks are connected to it.
+    func testStreamingLoadBeginAndEnd_holdAndReleaseTheArchiveTransfer() throws {
+        let registry = LCPPublicationSessionRegistry()
+        let audiobook = try makeAudiobook(
+            publicationHref: "https://archive.test/book.lcpa", sessions: registry
+        )
+        let handle = FakeHoldSessionHandle()
+        _ = registry.transfer(for: "wiring-1", delegate: TPPLicensesService()) { _ in handle }
+        let task = FakeHoldTask(isRunning: true)
+        registry.setTask(task, for: "wiring-1")
+
+        audiobook.streamingLoadDidBegin()
+
+        XCTAssertEqual(task.suspensions, 1, "a chapter the patron waits on must get the link")
+        XCTAssertTrue(registry.isHeldForChapterLoad("wiring-1"))
+
+        audiobook.streamingLoadDidEnd()
+
+        XCTAssertEqual(task.resumptions, 1, "and the archive must continue once the chapter is loaded")
+        XCTAssertFalse(registry.isHeldForChapterLoad("wiring-1"))
+    }
+
+    /// A load that begins with nothing transferring still records the hold, so
+    /// a transfer registered during it is held rather than taking the link.
+    func testStreamingLoadBegin_withNothingTransferring_stillHoldsWhatArrivesDuringIt() throws {
+        let registry = LCPPublicationSessionRegistry()
+        let audiobook = try makeAudiobook(
+            publicationHref: "https://archive.test/book.lcpa", sessions: registry
+        )
+        let handle = FakeHoldSessionHandle()
+        _ = registry.transfer(for: "wiring-2", delegate: TPPLicensesService()) { _ in handle }
+
+        audiobook.streamingLoadDidBegin()
+
+        let late = FakeHoldTask(isRunning: true)
+        registry.setTask(late, for: "wiring-2")
+
+        XCTAssertEqual(
+            late.suspensions, 1,
+            "the hold is recorded even when it suspended nothing, or a transfer starting mid-load takes the link"
+        )
+        audiobook.streamingLoadDidEnd()
+        XCTAssertEqual(late.resumptions, 1)
+    }
+
+    // MARK: - Is this track's opening read already cached
+
+    /// With no offset learned for the track, nothing is known to be cached, so
+    /// the start is predicted slow — the cold case.
+    func testTrackHeadIsCached_withNoOffsetLearned_isFalse() throws {
+        let audiobook = try makeAudiobook(
+            publicationHref: "https://archive.test/book.lcpa",
+            sessions: LCPPublicationSessionRegistry()
+        )
+
+        XCTAssertFalse(
+            audiobook.trackHeadIsCached(forHref: "never-resolved.mp3"),
+            "an unresolved track has no cached head, which is what a cold chapter looks like"
+        )
+    }
+
+    /// An offset alone is not coverage: with no store open for the archive the
+    /// answer stays false rather than optimistically true.
+    func testTrackHeadIsCached_withAnOffsetButNoOpenStore_isFalse() throws {
+        let audiobook = try makeAudiobook(
+            publicationHref: "https://archive.test/book.lcpa",
+            sessions: LCPPublicationSessionRegistry()
+        )
+        audiobook.recordDataOffset(4096, forHref: "track-a.mp3")
+
+        XCTAssertFalse(
+            audiobook.trackHeadIsCached(forHref: "track-a.mp3"),
+            "no store means nothing is known to be on disk; claiming otherwise would hide a cold start"
+        )
+    }
+
+    /// With no publication link in the licence there is no archive to ask
+    /// about, so the answer is false rather than an optimistic true.
+    ///
+    /// Reached only when the licence cannot name its archive, which a fixture
+    /// that always carries a link never exercises: mutation reported the guard
+    /// surviving until this case existed.
+    func testTrackHeadIsCached_whenTheLicenceNamesNoArchive_isFalse() throws {
+        let license: [String: Any] = ["id": UUID().uuidString, "links": []]
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("nolink-\(UUID().uuidString).lcpl")
+        try JSONSerialization.data(withJSONObject: license).write(to: url)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        let audiobook = try XCTUnwrap(
+            LCPAudiobooks(for: url, licenseUrl: nil, sessions: LCPPublicationSessionRegistry())
+        )
+        audiobook.recordDataOffset(4096, forHref: "track-a.mp3")
+
+        XCTAssertFalse(
+            audiobook.trackHeadIsCached(forHref: "track-a.mp3"),
+            "with no archive named, nothing can be known to be cached"
+        )
+    }
+
     // MARK: - Initialization Tests
 
-    func testInit_withValidFileURL_createsInstance() {
+    func testInit_withValidFileURL_createsInstance() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
         let audiobook = LCPAudiobooks(for: testURL)
@@ -29,11 +639,11 @@ final class LCPAudiobooksTests: XCTestCase {
         XCTAssertEqual(testURL.pathExtension, "lcpa", "Test URL should have lcpa extension")
         XCTAssertEqual(testURL.path, "/tmp/test.lcpa", "Test URL path should be preserved")
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
-    func testInit_withValidHTTPURL_createsInstance() {
+    func testInit_withValidHTTPURL_createsInstance() throws {
         #if LCP
         let testURL = URL(string: "https://example.com/audiobook.lcpa")!
         let audiobook = LCPAudiobooks(for: testURL)
@@ -48,11 +658,11 @@ final class LCPAudiobooksTests: XCTestCase {
             XCTAssertNotNil(audiobook)
         }
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
-    func testInit_withLcplLicenseURL_setsLicenseUrl() {
+    func testInit_withLcplLicenseURL_setsLicenseUrl() throws {
         #if LCP
         let licenseURL = URL(fileURLWithPath: "/tmp/license.lcpl")
         let audiobook = LCPAudiobooks(for: licenseURL)
@@ -65,11 +675,11 @@ final class LCPAudiobooksTests: XCTestCase {
             XCTAssertNotNil(audiobook)
         }
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
-    func testInit_withSeparateLicenseURL_acceptsBothURLs() {
+    func testInit_withSeparateLicenseURL_acceptsBothURLs() throws {
         #if LCP
         let audiobookURL = URL(fileURLWithPath: "/tmp/audiobook.lcpa")
         let licenseURL = URL(fileURLWithPath: "/tmp/license.lcpl")
@@ -84,11 +694,11 @@ final class LCPAudiobooksTests: XCTestCase {
             XCTAssertNotNil(audiobook)
         }
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
-    func testInit_withNilURL_returnsNil() {
+    func testInit_withNilURL_returnsNil() throws {
         #if LCP
         // Testing with an invalid file URL
         let invalidURL = URL(fileURLWithPath: "")
@@ -102,13 +712,13 @@ final class LCPAudiobooksTests: XCTestCase {
             XCTAssertNotNil(audiobook, "If created with empty URL, instance should be non-nil")
         }
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
     // MARK: - Can Open Book Tests
 
-    func testCanOpenBook_withLCPAudiobook_returnsTrue() {
+    func testCanOpenBook_withLCPAudiobook_returnsTrue() throws {
         #if LCP
         let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
         let canOpen = LCPAudiobooks.canOpenBook(book)
@@ -119,100 +729,96 @@ final class LCPAudiobooksTests: XCTestCase {
         // canOpen is a valid Bool
         XCTAssertTrue(canOpen == true || canOpen == false, "canOpen should be a valid Bool")
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
-    func testCanOpenBook_withNonLCPAudiobook_returnsFalse() {
+    func testCanOpenBook_withNonLCPAudiobook_returnsFalse() throws {
         #if LCP
         let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
         let canOpen = LCPAudiobooks.canOpenBook(book)
         XCTAssertFalse(canOpen)
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
-    func testCanOpenBook_withEpub_returnsFalse() {
+    func testCanOpenBook_withEpub_returnsFalse() throws {
         #if LCP
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         let canOpen = LCPAudiobooks.canOpenBook(book)
         XCTAssertFalse(canOpen)
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
-    func testCanOpenBook_withPDF_returnsFalse() {
+    func testCanOpenBook_withPDF_returnsFalse() throws {
         #if LCP
         let book = TPPBookMocker.mockBook(distributorType: .OpenAccessPDF)
         let canOpen = LCPAudiobooks.canOpenBook(book)
         XCTAssertFalse(canOpen)
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
     // MARK: - Streaming Provider Tests
 
-    func testSupportsStreaming_returnsTrue() {
+    func testSupportsStreaming_returnsTrue() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
 
         guard let audiobook = LCPAudiobooks(for: testURL) else {
-            XCTAssertTrue(true, "LCP not fully initialized")
-            return
+            throw XCTSkip("LCPAudiobooks could not be constructed from this fixture")
         }
 
         XCTAssertTrue(audiobook.supportsStreaming())
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
-    func testGetPublication_initiallyReturnsNil() {
+    func testGetPublication_initiallyReturnsNil() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
 
         guard let audiobook = LCPAudiobooks(for: testURL) else {
-            XCTAssertTrue(true, "LCP not fully initialized")
-            return
+            throw XCTSkip("LCPAudiobooks could not be constructed from this fixture")
         }
 
         // Before loading content, publication should be nil
         XCTAssertNil(audiobook.getPublication())
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
     // MARK: - Cached Content Dictionary Tests
 
-    func testCachedContentDictionary_initiallyReturnsNil() {
+    func testCachedContentDictionary_initiallyReturnsNil() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
 
         guard let audiobook = LCPAudiobooks(for: testURL) else {
-            XCTAssertTrue(true, "LCP not fully initialized")
-            return
+            throw XCTSkip("LCPAudiobooks could not be constructed from this fixture")
         }
 
         // Before loading, cached dictionary should be nil
         XCTAssertNil(audiobook.cachedContentDictionary())
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
     // MARK: - Prefetch Tests
 
-    func testStartPrefetch_doesNotCrash() {
+    func testStartPrefetch_doesNotCrash() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
 
         guard let audiobook = LCPAudiobooks(for: testURL) else {
-            XCTAssertTrue(true, "LCP not fully initialized")
-            return
+            throw XCTSkip("LCPAudiobooks could not be constructed from this fixture")
         }
 
         // Should not crash
@@ -226,17 +832,16 @@ final class LCPAudiobooksTests: XCTestCase {
         let cached = audiobook.cachedContentDictionary()
         XCTAssertTrue(cached == nil || cached != nil, "Cached content should be queryable after prefetch start")
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
-    func testCancelPrefetch_doesNotCrash() {
+    func testCancelPrefetch_doesNotCrash() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
 
         guard let audiobook = LCPAudiobooks(for: testURL) else {
-            XCTAssertTrue(true, "LCP not fully initialized")
-            return
+            throw XCTSkip("LCPAudiobooks could not be constructed from this fixture")
         }
 
         // Start and then cancel
@@ -249,17 +854,16 @@ final class LCPAudiobooksTests: XCTestCase {
         XCTAssertNil(audiobook.cachedContentDictionary(),
                      "After cancelPrefetch, cached content should be nil")
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
-    func testCancelPrefetch_withoutStart_doesNotCrash() {
+    func testCancelPrefetch_withoutStart_doesNotCrash() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
 
         guard let audiobook = LCPAudiobooks(for: testURL) else {
-            XCTAssertTrue(true, "LCP not fully initialized")
-            return
+            throw XCTSkip("LCPAudiobooks could not be constructed from this fixture")
         }
 
         // Cancel without starting should not crash
@@ -271,19 +875,18 @@ final class LCPAudiobooksTests: XCTestCase {
         XCTAssertNil(audiobook.cachedContentDictionary(),
                      "Cached content should be nil when cancelled without prior start")
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
     // MARK: - Release Resources Tests
 
-    func testReleaseResources_clearsPublication() {
+    func testReleaseResources_clearsPublication() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
 
         guard let audiobook = LCPAudiobooks(for: testURL) else {
-            XCTAssertTrue(true, "LCP not fully initialized")
-            return
+            throw XCTSkip("LCPAudiobooks could not be constructed from this fixture")
         }
 
         audiobook.releaseResources()
@@ -291,17 +894,16 @@ final class LCPAudiobooksTests: XCTestCase {
         // After release, publication should be nil
         XCTAssertNil(audiobook.getPublication())
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
-    func testReleaseResources_cancelsPrefetch() {
+    func testReleaseResources_cancelsPrefetch() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
 
         guard let audiobook = LCPAudiobooks(for: testURL) else {
-            XCTAssertTrue(true, "LCP not fully initialized")
-            return
+            throw XCTSkip("LCPAudiobooks could not be constructed from this fixture")
         }
 
         audiobook.startPrefetch()
@@ -313,17 +915,16 @@ final class LCPAudiobooksTests: XCTestCase {
         XCTAssertNil(audiobook.cachedContentDictionary(),
                      "Cached content should be nil after releaseResources")
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
-    func testReleaseResources_canBeCalledMultipleTimes() {
+    func testReleaseResources_canBeCalledMultipleTimes() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
 
         guard let audiobook = LCPAudiobooks(for: testURL) else {
-            XCTAssertTrue(true, "LCP not fully initialized")
-            return
+            throw XCTSkip("LCPAudiobooks could not be constructed from this fixture")
         }
 
         audiobook.releaseResources()
@@ -336,7 +937,7 @@ final class LCPAudiobooksTests: XCTestCase {
         XCTAssertNil(audiobook.cachedContentDictionary(),
                      "Cached content should be nil after multiple releaseResources calls")
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
@@ -346,12 +947,11 @@ final class LCPAudiobooksTests: XCTestCase {
     /// a second Publication on the same .lcpa. Reopening races the new session's
     /// publicationOpener.open() inside Readium and deadlocks — this is the root cause
     /// of the "opening third audiobook hangs" bug.
-    func testContentDictionary_afterRelease_failsFast() {
+    func testContentDictionary_afterRelease_failsFast() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
         guard let audiobook = LCPAudiobooks(for: testURL) else {
-            XCTAssertTrue(true, "LCP not fully initialized")
-            return
+            throw XCTSkip("LCPAudiobooks could not be constructed from this fixture")
         }
 
         audiobook.releaseResources()
@@ -375,19 +975,18 @@ final class LCPAudiobooksTests: XCTestCase {
         XCTAssertNotNil(box.err, "contentDictionary must report an error after release")
         XCTAssertEqual(box.err?.domain, "Palace.LCPAudiobooks")
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
     /// After releaseResources(), decrypt must fail-fast. The previous behavior reopened
     /// the Publication via assetRetriever+publicationOpener — running concurrently with
     /// the new audiobook's publicationOpener.open() on the same .lcpa caused the hang.
-    func testDecrypt_afterRelease_failsFast() {
+    func testDecrypt_afterRelease_failsFast() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
         guard let audiobook = LCPAudiobooks(for: testURL) else {
-            XCTAssertTrue(true, "LCP not fully initialized")
-            return
+            throw XCTSkip("LCPAudiobooks could not be constructed from this fixture")
         }
 
         audiobook.releaseResources()
@@ -406,18 +1005,17 @@ final class LCPAudiobooksTests: XCTestCase {
         let nsError = receivedError as NSError?
         XCTAssertEqual(nsError?.domain, "Palace.LCPAudiobooks")
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
     /// startPrefetch is a no-op once released so stale managers can't kick the
     /// publication lifecycle back on.
-    func testStartPrefetch_afterRelease_isNoOp() {
+    func testStartPrefetch_afterRelease_isNoOp() throws {
         #if LCP
         let testURL = URL(fileURLWithPath: "/tmp/test.lcpa")
         guard let audiobook = LCPAudiobooks(for: testURL) else {
-            XCTAssertTrue(true, "LCP not fully initialized")
-            return
+            throw XCTSkip("LCPAudiobooks could not be constructed from this fixture")
         }
 
         audiobook.releaseResources()
@@ -427,7 +1025,7 @@ final class LCPAudiobooksTests: XCTestCase {
                      "startPrefetch after release must not create a new publication")
         XCTAssertNil(audiobook.cachedContentDictionary())
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
     // MARK: - setupStreamingFor (PP-4724)
@@ -443,6 +1041,10 @@ final class LCPAudiobooksTests: XCTestCase {
     private final class SpyStreamingPlayer: @MainActor StreamingCapablePlayer {
         private(set) var setProviderCallCount = 0
         private(set) var publicationDidLoadCallCount = 0
+
+        /// This spy is never asked to serve bytes, so the archive it would read
+        /// from is irrelevant to what it records.
+        var isServingRemoteArchive = false
 
         func setStreamingProvider(_ provider: StreamingResourceProvider) {
             setProviderCallCount += 1
@@ -513,6 +1115,17 @@ final class LCPAudiobooksTests: XCTestCase {
         throw XCTSkip("LCP not enabled in this configuration")
         #endif
     }
+    /// Waits for a condition the code under test reaches on another task.
+    private func waitUntil(timeout: TimeInterval, _ condition: () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            if Date() > deadline {
+                XCTFail("condition not met within \(timeout) s")
+                throw CancellationError()
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+    }
 }
 
 // MARK: - LCP Audiobook URL Scheme Tests
@@ -520,7 +1133,7 @@ final class LCPAudiobooksTests: XCTestCase {
 @MainActor
 final class LCPAudiobookURLSchemeTests: XCTestCase {
 
-    func testReadiumLCPScheme_isCorrect() {
+    func testReadiumLCPScheme_isCorrect() throws {
         let expectedScheme = "readium-lcp"
         #if LCP
         // Verify the scheme used for LCP audio streaming
@@ -530,7 +1143,7 @@ final class LCPAudiobookURLSchemeTests: XCTestCase {
         XCTAssertFalse(expectedScheme.isEmpty, "LCP scheme should not be empty")
         XCTAssertTrue(expectedScheme.contains("-"), "LCP scheme should contain hyphen separator")
         #else
-        XCTAssertTrue(true, "LCP not enabled - test skipped")
+        throw XCTSkip("LCP is not enabled in this build")
         #endif
     }
 
@@ -615,4 +1228,270 @@ extension LCPAudiobooksTests {
         )
         #endif
     }
+}
+
+// MARK: - The archive range store factory
+
+/// The factory the streaming read path hands to the caching client.
+///
+/// Its two halves are different questions: with a length it opens or repairs a
+/// store, and without one it must answer only for an archive whose ranges are
+/// already on disk. The second half is what lets a book opened again be served
+/// from disk instead of fetching a 6 MB window to discover how long the
+/// archive is.
+@MainActor
+final class LCPArchiveRangeStoreFactoryTests: XCTestCase {
+
+    private let contentURL = HTTPURL(string: "https://storage.example/bucket/factory-test.lcpa")!
+    private let archiveLength: UInt64 = 1_630_000_000
+
+    override func tearDownWithError() throws {
+        #if LCP
+        LCPAudiobooks.removeAllArchiveStores()
+        #endif
+        try super.tearDownWithError()
+    }
+
+    /// Nothing on disk and no length yet: there is nothing to answer with, and
+    /// that is not an error.
+    func testFactory_withNoLengthAndNothingOnDisk_declines() throws {
+        #if LCP
+        let store = try LCPAudiobooks.makeArchiveRangeStore(url: contentURL, totalSize: nil)
+        XCTAssertNil(store, "an archive never read before cannot be served from disk")
+        #endif
+    }
+
+    /// A length turns the first read of a new archive into an open store, which
+    /// is what gives the client somewhere to keep the window it is about to
+    /// fetch.
+    func testFactory_withALength_opensAStoreOfThatLength() throws {
+        #if LCP
+        let store = try LCPAudiobooks.makeArchiveRangeStore(url: contentURL, totalSize: archiveLength)
+        let opened: ArchiveRangeStore = try XCTUnwrap(
+            store, "a length is all that is needed to open a store"
+        )
+        XCTAssertEqual(opened.totalSize, archiveLength)
+        (opened as? PartialArchiveStore)?.close()
+        #endif
+    }
+
+    /// Once an archive has ranges on disk, the factory answers for it with no
+    /// length at all, reading the length back from the store itself.
+    func testFactory_withNoLengthButRangesOnDisk_opensTheExistingStore() throws {
+        #if LCP
+        let created = try LCPAudiobooks.makeArchiveRangeStore(url: contentURL, totalSize: archiveLength)
+        let first: ArchiveRangeStore = try XCTUnwrap(created)
+        try first.write(Data(repeating: 0x5A, count: 4096), at: 96_460_800)
+        (first as? PartialArchiveStore)?.close()
+
+        let reopened = try LCPAudiobooks.makeArchiveRangeStore(url: contentURL, totalSize: nil)
+        let store: ArchiveRangeStore = try XCTUnwrap(
+            reopened,
+            "an archive with ranges on disk must be served without a round trip to learn its length"
+        )
+        XCTAssertEqual(store.totalSize, archiveLength, "the length came from the store, not the server")
+        XCTAssertTrue(
+            store.missingRanges(in: 96_460_800 ..< 96_464_896).isEmpty,
+            "the bytes written before are still held, so they are not fetched again"
+        )
+        (store as? PartialArchiveStore)?.close()
+        #endif
+    }
+}
+
+// MARK: - The archive read path goes through the cache
+
+/// The byte-range cache must sit on the client that actually reads the archive.
+///
+/// `LCPService`'s injected retriever is the one its `ContentProtection` uses to
+/// fetch the publication a streaming licence names, and the container that
+/// returns is what every archive read for playback goes through
+/// (`LCPContentProtection.openLicense` -> `assetRetriever.retrieve(link:)`).
+/// Wrapping only the client inside `LCPAudiobooks` reaches the local `.lcpl`
+/// licence read and not one archive byte, so three device builds retained
+/// ranges that nothing ever read back.
+///
+/// Asserted against the source because the wiring is inside a private lazy
+/// builder over a third-party type, and the defect is silent: everything
+/// compiles, the cache reports no hits, and that is indistinguishable from an
+/// archive whose reads simply never repeat.
+final class LCPArchiveReadPathWiringTests: XCTestCase {
+
+    private func source(at relativePath: String) throws -> String {
+        var dir = URL(fileURLWithPath: #filePath)
+        while dir.pathComponents.count > 1, dir.lastPathComponent != "PalaceTests" {
+            dir.deleteLastPathComponent()
+        }
+        let root = dir.deletingLastPathComponent()
+        return try String(contentsOf: root.appendingPathComponent(relativePath), encoding: .utf8)
+    }
+
+    private func lcpLibraryServiceSource() throws -> String {
+        // This test target's bundle sits inside the build products directory;
+        // walk up to the repository root rather than hard-coding a path.
+        var dir = URL(fileURLWithPath: #filePath)
+        while dir.pathComponents.count > 1, dir.lastPathComponent != "PalaceTests" {
+            dir.deleteLastPathComponent()
+        }
+        let root = dir.deletingLastPathComponent()
+        let source = root
+            .appendingPathComponent("Palace/Reader2/ReaderStackConfiguration/LCP/LCPLibraryService.swift")
+        return try String(contentsOf: source, encoding: .utf8)
+    }
+
+    /// Exactly one caching client may exist for an archive.
+    ///
+    /// `PartialArchiveStore` holds an exclusive advisory lock on its directory,
+    /// so a second client for the same archive is refused and reads through for
+    /// the rest of the session — and which of the two loses is a race, so the
+    /// cache would work intermittently rather than fail outright.
+    /// The shared client is memoised, so every reader gets the same instance.
+    ///
+    /// This is the invariant the sharing exists for: a fresh client per call
+    /// would be refused the store's exclusive lock and read through, which is
+    /// the defect the sharing replaced.
+    func testArchiveReadClient_isTheSameInstanceEveryTime() {
+        #if LCP
+        let first = lcpService.archiveReadClient
+        let second = lcpService.archiveReadClient
+        XCTAssertTrue(
+            first === second,
+            "a second client for the same archive is refused the store lock and reads through"
+        )
+        #endif
+    }
+
+    func testOnlyTheLCPService_constructsTheCachingClient() throws {
+        let service = try lcpLibraryServiceSource()
+        let audiobooks = try source(at: "Palace/Audiobooks/LCP/LCPAudiobooks.swift")
+
+        XCTAssertEqual(
+            service.components(separatedBy: "PartialArchiveCachingHTTPClient(").count - 1,
+            1,
+            "the LCP service builds the one shared client"
+        )
+        XCTAssertFalse(
+            audiobooks.contains("PartialArchiveCachingHTTPClient("),
+            """
+            LCPAudiobooks must share the service's client rather than build a             second one: two clients contend for one store lock and the loser             reads through for the whole session
+            """
+        )
+        XCTAssertTrue(
+            audiobooks.contains("lcpService.archiveReadClient"),
+            "LCPAudiobooks must take the shared client from the service"
+        )
+    }
+
+    func testLCPServiceAssetRetriever_isBuiltOverTheCachingClient() throws {
+        let source = try lcpLibraryServiceSource()
+
+        // The construction this pins, found rather than assumed: the argument
+        // must name a client that caches, not a bare stripping client.
+        let retrieverLines = source
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { $0.contains("assetRetriever:") && $0.contains("AssetRetriever(") }
+        XCTAssertFalse(
+            retrieverLines.isEmpty,
+            "the LCPService construction this guard is about was not found — the guard, not the code, is out of date"
+        )
+        for line in retrieverLines {
+            XCTAssertFalse(
+                line.contains("LCPCredentialStrippingHTTPClient()"),
+                """
+                LCPService's retriever is built over a bare client, so the archive \
+                reads bypass the byte-range cache: \(line.trimmingCharacters(in: .whitespaces))
+                """
+            )
+        }
+        XCTAssertTrue(
+            source.contains("PartialArchiveCachingHTTPClient("),
+            "the archive read client must be the caching one, or retained ranges are never read back"
+        )
+    }
+}
+
+// MARK: - Recording a slow publication open
+
+/// An open that is heading for the streaming player's 30 s failure must be
+/// recorded while it is still only slow.
+///
+/// The device logs for builds 516 through 521 said the deadline passed and
+/// nothing about how long the open took or which phase spent it, so three
+/// builds were judged against a number nobody had.
+final class LCPSlowPublicationOpenTests: XCTestCase {
+
+    func testOpenAtTheThreshold_isRecorded() {
+        #if LCP
+        XCTAssertTrue(
+            LCPAudiobooks.shouldReportSlowPublicationOpen(duration: 10, threshold: 10),
+            "the boundary is inclusive, so an open exactly at the threshold is recorded"
+        )
+        #endif
+    }
+
+    func testOpenBelowTheThreshold_isNotRecorded() {
+        #if LCP
+        XCTAssertFalse(
+            LCPAudiobooks.shouldReportSlowPublicationOpen(duration: 9.9, threshold: 10),
+            "a normal open must not write to the patron-exportable log on every book"
+        )
+        #endif
+    }
+
+    func testOpenPastTheLoaderDeadline_isRecorded() {
+        #if LCP
+        XCTAssertTrue(
+            LCPAudiobooks.shouldReportSlowPublicationOpen(duration: 31, threshold: 10),
+            "the case that actually failed on device must appear in the log"
+        )
+        #endif
+    }
+
+    /// The shipped threshold has to sit below the deadline it warns about, or it
+    /// only ever fires after the chapter has already been failed.
+    func testTheShippedThreshold_isBelowTheLoaderDeadline() {
+        #if LCP
+        XCTAssertLessThan(
+            LCPAudiobooks.slowPublicationOpenThreshold,
+            25,
+            "the resource loader gives up at 25 s; a later threshold reports nothing useful"
+        )
+        #endif
+    }
+
+}
+
+// MARK: - Doubles for the chapter-load hold
+
+/// Minimal session handle: the hold tests never let a task reach a network.
+private final class FakeHoldSessionHandle: LCPPublicationSessionHandle {
+    private let taskSource = URLSession(configuration: .ephemeral)
+    func downloadTask(with request: URLRequest) -> URLSessionDownloadTask {
+        taskSource.downloadTask(with: request)
+    }
+    func downloadTask(withResumeData resumeData: Data) -> URLSessionDownloadTask {
+        taskSource.downloadTask(with: URL(string: "https://archive.test/resumed")!)
+    }
+    func finishTasksAndInvalidate() {}
+    func getAllTasks(completionHandler: @escaping @Sendable ([URLSessionTask]) -> Void) {
+        completionHandler([])
+    }
+}
+
+/// Counts suspends and resumes rather than flagging them, so a second suspend
+/// that one release cannot undo is visible as a count.
+private final class FakeHoldTask: OutstandingArchiveTask, @unchecked Sendable {
+    let taskIdentifier = 1
+    let archiveURL: URL? = URL(string: "https://archive.test/book.lcpa")
+    let isFinished = false
+    let bytesTransferred: Int64 = 0
+    private(set) var suspensions = 0
+    private(set) var resumptions = 0
+    var isRunning: Bool
+
+    init(isRunning: Bool) { self.isRunning = isRunning }
+
+    func cancelTransfer() {}
+    func suspendTransfer() { suspensions += 1; isRunning = false }
+    func resumeTransfer() { resumptions += 1; isRunning = true }
 }
