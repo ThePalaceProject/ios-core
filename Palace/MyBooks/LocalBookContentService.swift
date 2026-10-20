@@ -187,8 +187,11 @@ class LocalBookContentService {
     /// cannot drift on which states mean the loan is live.
     /// `AdobeDRMHandler.handleFulfillmentResult` asks directly, passing
     /// `accountUnchanged: true` because it tracks no starting account.
-    /// `LCPFulfillmentHandler`'s streaming-on license-only arm does not ask, so
-    /// this list is the writers that DO ask, not the full set that could.
+    /// `LCPFulfillmentHandler`'s streaming-on license-only arm asks directly on
+    /// the same terms as the Adobe handler: it short-circuits before `storeBook`,
+    /// so the outcome that guards the download-first path never reaches it.
+    /// `LoanStillHeldWriterLintTests` holds this census so it cannot drift back
+    /// into prose.
     ///
     /// A library switch always writes; see `accountUnchanged` below.
     ///
