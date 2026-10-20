@@ -1,8 +1,11 @@
 //
 //  LoanStillHeldWriterLintTests.swift
 //
-//  Holds the census of sites that announce a completed download, so a new one
-//  cannot be added without asking whether the patron still holds the book.
+//  Holds the census of sites that announce a completed download via
+//  `markDownloadSuccessful(for:`, so a new one cannot be added without asking
+//  whether the patron still holds the book. Direct `setState(.downloadSuccessful`
+//  writers are OUTSIDE this census; the four that exist are guarded by other
+//  means. Not "every site that could".
 //  `testEveryMarkDownloadSuccessfulCallSiteAsksWhetherTheLoanIsStillHeld`
 //  carries why that matters.
 //
@@ -46,37 +49,42 @@ final class LoanStillHeldWriterLintTests: XCTestCase {
     /// violation that is not code.
     static func announcesACompletedDownload(_ line: String) -> Bool {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.hasPrefix("//") && !trimmed.hasPrefix("///") else { return false }
-        guard trimmed.contains("markDownloadSuccessful(for:") else { return false }
-        return !trimmed.contains("func markDownloadSuccessful")
+        guard !trimmed.hasPrefix("//") else { return false }
+        // A declaration reads `markDownloadSuccessful(for book: TPPBook)`, which
+        // does NOT contain `markDownloadSuccessful(for:` — the first guard
+        // already rejects it. An explicit `!contains("func …")` clause here was
+        // unreachable, and the declaration cases below passed through it
+        // vacuously.
+        return trimmed.contains("markDownloadSuccessful(for:")
     }
 
-    /// Whether the function enclosing `index` asks the question anywhere in its
-    /// body.
+    /// Whether a guard on the path to the announcement at `index` asks the
+    /// question.
     ///
-    /// Scoped to the enclosing function rather than the file on purpose. A
-    /// file-wide search is what a prose census amounts to, and it is exactly
-    /// wrong here: `LCPFulfillmentHandler` has always guarded its
-    /// download-first path, so a file-level check waved its streaming arm
-    /// through while that arm took `.unregistered` to `.downloadSuccessful`.
+    /// Walks the enclosing brace chain outward, checking only lines at or
+    /// above the announcement's own block level and only lines ABOVE it. A
+    /// sibling block's interior is skipped; the line that OPENS a sibling block
+    /// is checked, because `if outcome == .discardedNotHeld { return }` guards
+    /// everything after it at the level it sits on.
     ///
-    /// Only lines ABOVE the announcement count, so a guard added after it
-    /// cannot cover it. The residual is a branch added LATER in a function
-    /// that already asked for an earlier branch: `fulfillLCPLicense` holds all
-    /// three LCP announce sites, so a fourth arm appended there would inherit
-    /// the download-first path's `.discardedNotHeld` check without being
-    /// covered by it. Narrowing to the innermost brace block would flag the
-    /// two arms that legitimately share one check, which is why this stops at
-    /// the function. Stated rather than closed.
-    static func enclosingFunctionAsksTheQuestion(lines: [String], index: Int) -> Bool {
-        var start = index
-        while start > 0 {
-            let trimmed = lines[start].trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("func ") || trimmed.contains(" func ") { break }
-            start -= 1
-        }
-        for i in start...index where asksTheQuestion(lines[i]) {
-            return true
+    /// Function scope was the first attempt and it was wrong in a way that only
+    /// showed under mutation: `fulfillLCPLicense` holds three announce sites, so
+    /// the streaming arm's own guard sat above the download-first arm's sites
+    /// and covered them. Neutering `if outcome == .discardedNotHeld` left the
+    /// census clean — three of the four sites had silently come to rest on one
+    /// token. That is the same defect the file-level version had, at a smaller
+    /// radius, and it is why this walks blocks rather than counting lines.
+    static func guardOnThePathAsksTheQuestion(lines: [String], index: Int) -> Bool {
+        guard index > 0 else { return false }
+        var depth = 0
+        for i in stride(from: index - 1, through: 0, by: -1) {
+            let line = lines[i]
+            let opens = line.filter { $0 == "{" }.count
+            let closes = line.filter { $0 == "}" }.count
+            // The level this line sits ON, which is the level it guards.
+            let levelOfLine = depth + closes - opens
+            if levelOfLine <= 0 && asksTheQuestion(line) { return true }
+            depth = max(0, levelOfLine)
         }
         return false
     }
@@ -118,6 +126,7 @@ final class LoanStillHeldWriterLintTests: XCTestCase {
                              "expected to walk the production sources, found \(files.count)")
 
         var callSites = 0
+        var filesWithSites: Set<String> = []
         var violators: [String] = []
         for url in files {
             guard let src = try? String(contentsOf: url, encoding: .utf8) else { continue }
@@ -125,15 +134,20 @@ final class LoanStillHeldWriterLintTests: XCTestCase {
             for (index, line) in lines.enumerated() {
                 guard Self.announcesACompletedDownload(line) else { continue }
                 callSites += 1
-                if Self.enclosingFunctionAsksTheQuestion(lines: lines, index: index) { continue }
+                filesWithSites.insert(url.lastPathComponent)
+                if Self.guardOnThePathAsksTheQuestion(lines: lines, index: index) { continue }
                 violators.append("\(url.lastPathComponent):\(index + 1): \(line.trimmingCharacters(in: .whitespaces))")
             }
         }
 
-        // A predicate that matched nothing would report a clean census. The
-        // known sites are the Adobe handler and the LCP handler's three arms.
-        XCTAssertGreaterThanOrEqual(callSites, 4,
-                                    "expected to find the known announce sites, found \(callSites)")
+        // A predicate that matched nothing would report a clean census. Assert
+        // the SET of files, not a count: a count floor equal to today's total
+        // cannot tell a legitimate removal from a scan that read nothing.
+        XCTAssertEqual(
+            filesWithSites,
+            ["AdobeDRMHandler.swift", "LCPFulfillmentHandler.swift"],
+            "the scan must still reach the files that announce; found \(callSites) site(s) in \(filesWithSites.sorted())"
+        )
         XCTAssertTrue(
             violators.isEmpty,
             "announcing a completed download for a book whose loan has ended takes "
@@ -177,14 +191,67 @@ final class LoanStillHeldWriterLintTests: XCTestCase {
             "        delegate?.markDownloadSuccessful(for: book)",
             "    }",
             "",
-            "    func unguardedPath() {",
+            "    private func unguardedPath() {",
             "        delegate?.markDownloadSuccessful(for: book)",
             "    }"
         ]
-        XCTAssertTrue(Self.enclosingFunctionAsksTheQuestion(lines: lines, index: 3),
-                      "the guarded function asks on the line above the announcement")
-        XCTAssertFalse(Self.enclosingFunctionAsksTheQuestion(lines: lines, index: 7),
+        XCTAssertTrue(Self.guardOnThePathAsksTheQuestion(lines: lines, index: 3))
+        // `private func`, not a bare `func`: a scan that recognised only the
+        // bare form widened to file scope for every modifier'd declaration.
+        XCTAssertFalse(Self.guardOnThePathAsksTheQuestion(lines: lines, index: 7),
                        "a guard in a sibling function must not cover this one")
+    }
+
+    /// The masking shape, reduced. Two arms of one function: the first carries
+    /// its own guard, the second does not. Under function scope the first arm's
+    /// guard covered the second. It must not.
+    func testAGuardInAnEarlierSiblingArmDoesNotCoverALaterArm() {
+        let lines = [
+            "    func fulfill() {",
+            "        if streaming {",
+            "            guard LocalBookContentService.mayStoreFetchedContent() else { return }",
+            "            delegate?.markDownloadSuccessful(for: book)",
+            "        }",
+            "        if other {",
+            "            delegate?.markDownloadSuccessful(for: book)",
+            "        }",
+            "    }"
+        ]
+        XCTAssertTrue(Self.guardOnThePathAsksTheQuestion(lines: lines, index: 3),
+                      "the guarded arm asks on the line above its own announcement")
+        XCTAssertFalse(Self.guardOnThePathAsksTheQuestion(lines: lines, index: 6),
+                       "a sibling arm's guard is not on this arm's path")
+    }
+
+    /// The converse, which the fix must not break: a check that returns early
+    /// at the enclosing level DOES cover arms nested below it.
+    func testAnEarlyReturnAtTheEnclosingLevelCoversNestedArms() {
+        let lines = [
+            "    func fulfill() {",
+            "        if outcome == .discardedNotHeld { return }",
+            "        if isAudiobook {",
+            "            delegate?.markDownloadSuccessful(for: book)",
+            "        }",
+            "        if isPDF {",
+            "            delegate?.markDownloadSuccessful(for: book)",
+            "        }",
+            "    }"
+        ]
+        XCTAssertTrue(Self.guardOnThePathAsksTheQuestion(lines: lines, index: 3))
+        XCTAssertTrue(Self.guardOnThePathAsksTheQuestion(lines: lines, index: 6))
+    }
+
+    /// Only lines ABOVE the announcement count. A guard added after it cannot
+    /// retroactively cover it, and a scan that read the whole block would say
+    /// otherwise.
+    func testAGuardBelowTheAnnouncementDoesNotCountAsAsking() {
+        let lines = [
+            "    func fulfill() {",
+            "        delegate?.markDownloadSuccessful(for: book)",
+            "        guard LocalBookContentService.mayStoreFetchedContent() else { return }",
+            "    }"
+        ]
+        XCTAssertFalse(Self.guardOnThePathAsksTheQuestion(lines: lines, index: 1))
     }
 
     /// Each delegating form counts. Requiring the predicate's own name would
@@ -198,7 +265,7 @@ final class LoanStillHeldWriterLintTests: XCTestCase {
                 "        delegate?.markDownloadSuccessful(for: book)",
                 "    }"
             ]
-            XCTAssertTrue(Self.enclosingFunctionAsksTheQuestion(lines: lines, index: 2),
+            XCTAssertTrue(Self.guardOnThePathAsksTheQuestion(lines: lines, index: 2),
                           "\(token) must count as asking")
         }
     }
@@ -218,6 +285,12 @@ final class LoanStillHeldWriterLintTests: XCTestCase {
             "            guard LocalBookContentService.mayStoreFetchedContent("))
         XCTAssertTrue(Self.asksTheQuestion(
             "            if outcome == .discardedNotHeld { return }  // not held"))
+        // Pins the TRAILING-comment half on its own. Dropping only the
+        // `components(separatedBy: "//")` strip leaves the `hasPrefix("//")`
+        // check, which answers this line correctly by accident — so without
+        // this case either mechanism alone kept all tests green.
+        XCTAssertFalse(Self.asksTheQuestion(
+            "        doSomething()  // ask mayStoreFetchedContent before storing"))
     }
 
     /// The whole lint, end to end, on a function that announces without
@@ -231,7 +304,7 @@ final class LoanStillHeldWriterLintTests: XCTestCase {
             "    }"
         ]
         XCTAssertTrue(Self.announcesACompletedDownload(lines[2]))
-        XCTAssertFalse(Self.enclosingFunctionAsksTheQuestion(lines: lines, index: 2),
+        XCTAssertFalse(Self.guardOnThePathAsksTheQuestion(lines: lines, index: 2),
                        "a comment naming the guard is not the guard")
     }
 }

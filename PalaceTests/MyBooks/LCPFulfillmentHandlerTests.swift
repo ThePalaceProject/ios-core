@@ -458,6 +458,22 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
             FileManager.default.fileExists(atPath: streamingLicenseURL.path),
             "no .lcpl may be left beside content the patron gave back"
         )
+        // Pins the guard's POSITION, not just its presence. `setFulfillmentId`
+        // persists through the registry's save, and a Return leaves the record
+        // present for it to stick to — so a guard moved below that write keeps
+        // every assertion above green while still writing for a returned book.
+        XCTAssertNil(
+            registry.fulfillmentId(forIdentifier: audiobook.identifier),
+            "no fulfillment ID may be recorded for a book the patron gave back"
+        )
+        // Separates a deliberate decline from an incidental one. A rename
+        // failure earlier in fulfillment returns through `failDownloadWithAlert`
+        // and produces exactly the three observations above, so without this the
+        // test could pass for a reason that has nothing to do with the guard.
+        XCTAssertTrue(
+            capturedErrors.isEmpty,
+            "declining a returned book is silent; an alert here means the test passed for the wrong reason"
+        )
     }
 
     /// The same arm with the loan still live, so the guard cannot pass by
