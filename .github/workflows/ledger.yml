@@ -101,7 +101,6 @@ jobs:
             echo "accesslint_available=false" >> $GITHUB_ENV
           fi
 
-          ./tools/bin/qaatlas --version 2>/dev/null || echo "qaatlas not present (qa domain is disabled)"
 
       - name: Run analysis
         env:
@@ -119,14 +118,23 @@ jobs:
           echo "Building model..."
           ./tools/bin/ledger update
           
-          # QAAtlas (qa domain) is disabled — the AI test-matching step cannot
-          # correlate our XCTest methods to production functions and emits
-          # self-contradictory metrics (e.g. `Functions with Tests: 0 / 2344`
-          # with a `Coverage Estimate: 44.9%` on the same panel). The
-          # instrumented line-coverage produced by scripts/coverage-report.py
-          # from xccov is ground truth and replaces the QAAtlas estimate.
-          # Re-add `qa` to DOMAINS if upstream QAAtlas matching improves.
-          DOMAINS="arch,reach,a11y"
+          # Two domains are deliberately absent.
+          #
+          # `qa` (QAAtlas): the AI test-matching step cannot correlate our
+          # XCTest methods to production functions and emits self-contradictory
+          # metrics (e.g. `Functions with Tests: 0 / 2344` beside a
+          # `Coverage Estimate: 44.9%`). The instrumented line coverage that
+          # scripts/coverage-report.py derives from xccov is ground truth and
+          # replaces the estimate. Re-add if upstream matching improves.
+          #
+          # `reach`: its analyzer reads a top-level `Sources/` directory. This
+          # repo has none — its roots are the `componentRoots` in
+          # tools/ledger/ledger-config.json — so it scanned 0 files on every
+          # run and reported dead code it had never looked for. The config
+          # exposes no source-root key, so it could not be pointed at the real
+          # tree from here. Re-add when the analyzer honours componentRoots, or
+          # when ledger grows a flag for the source root.
+          DOMAINS="arch,a11y"
           
           # Run ledger observe for CI-friendly JSON output
           echo "Running ledger observe with domains: $DOMAINS"
@@ -176,7 +184,6 @@ jobs:
           echo "hotspots=0" >> $GITHUB_OUTPUT
           echo "changed_files=0" >> $GITHUB_OUTPUT
           echo "arch_issues=0" >> $GITHUB_OUTPUT
-          echo "reach_issues=0" >> $GITHUB_OUTPUT
           echo "a11y_issues=0" >> $GITHUB_OUTPUT
           echo "a11y_blocker=0" >> $GITHUB_OUTPUT
           echo "a11y_major=0" >> $GITHUB_OUTPUT
@@ -185,17 +192,11 @@ jobs:
           # Whether AccessLint actually ran. Drives "not evaluated" vs a pass,
           # so a missing binary can never render as a clean bill of health.
           echo "a11y_available=${accesslint_available:-false}" >> $GITHUB_OUTPUT
-          echo "qa_coverage=" >> $GITHUB_OUTPUT
-          echo "qa_tested=0" >> $GITHUB_OUTPUT
-          echo "qa_total=0" >> $GITHUB_OUTPUT
-          echo "qa_high_gaps=0" >> $GITHUB_OUTPUT
-          echo "qa_tests_recommended=0" >> $GITHUB_OUTPUT
-          echo "qa_risk=" >> $GITHUB_OUTPUT
           
           OBSERVE_DIR="artifacts/ledger/observe/latest"
           
           # Parse from summary.json (primary source)
-          # v0.8.3 uses short keys: arch, reach, a11y, qa
+          # v0.8.3 uses short keys: arch, a11y
           if [[ -f "$OBSERVE_DIR/summary.json" ]]; then
             
             # Architecture metrics (v0.8.3 uses .arch)
@@ -212,10 +213,6 @@ jobs:
             echo "arch_issues=$ARCH_ISSUES" >> $GITHUB_OUTPUT
             echo "avg_coupling=$AVG_COUPLING" >> $GITHUB_OUTPUT
             
-            # Reachability metrics (v0.8.3 uses .reach)
-            REACH_ISSUES=$(jq -r '.reach.deadCodeCount // 0' "$OBSERVE_DIR/summary.json")
-            echo "reach_issues=$REACH_ISSUES" >> $GITHUB_OUTPUT
-            
             # Accessibility metrics (v0.8.3 uses .a11y with findings array)
             # Count from findings array since totalCount may not exist
             A11Y_TOTAL=$(jq -r '.a11y.findings | length // 0' "$OBSERVE_DIR/summary.json")
@@ -229,36 +226,7 @@ jobs:
             echo "a11y_minor=$A11Y_MINOR" >> $GITHUB_OUTPUT
             echo "a11y_info=$A11Y_INFO" >> $GITHUB_OUTPUT
             
-            # QAAtlas metrics - try summary.json first, fallback to gap-report.json
-            QA_COVERAGE=""
-            if jq -e '.qa != null and .qa.coverage != null' "$OBSERVE_DIR/summary.json" > /dev/null 2>&1; then
-              # QA data is in summary.json (v0.8.3 format)
-              QA_COVERAGE=$(jq -r '.qa.coverage // empty' "$OBSERVE_DIR/summary.json")
-              QA_TESTED=$(jq -r '.qa.testedCount // 0' "$OBSERVE_DIR/summary.json")
-              QA_TOTAL=$(jq -r '.qa.totalCount // 0' "$OBSERVE_DIR/summary.json")
-              QA_HIGH_GAPS=$(jq -r '.qa.highPriorityGaps // 0' "$OBSERVE_DIR/summary.json")
-              QA_TESTS_REC=$(jq -r '.qa.testsRecommended // 0' "$OBSERVE_DIR/summary.json")
-              QA_RISK=$(jq -r '.qa.risk // empty' "$OBSERVE_DIR/summary.json")
-            elif [[ -f "$OBSERVE_DIR/qa/gap-report.json" ]]; then
-              # Fallback: parse directly from gap-report.json
-              QA_COVERAGE=$(jq -r '.coverage // .coverageEstimate // empty' "$OBSERVE_DIR/qa/gap-report.json")
-              QA_TESTED=$(jq -r '.testedCount // .functionsWithTests // 0' "$OBSERVE_DIR/qa/gap-report.json")
-              QA_TOTAL=$(jq -r '.totalCount // .totalFunctions // 0' "$OBSERVE_DIR/qa/gap-report.json")
-              QA_HIGH_GAPS=$(jq -r '.highPriorityGaps // 0' "$OBSERVE_DIR/qa/gap-report.json")
-              QA_TESTS_REC=$(jq -r '.gaps | length' "$OBSERVE_DIR/qa/gap-report.json" 2>/dev/null || echo "0")
-              QA_RISK=$(jq -r '.risk // .riskLevel // empty' "$OBSERVE_DIR/qa/gap-report.json")
-            fi
-            
-            if [[ -n "$QA_COVERAGE" ]]; then
-              echo "qa_coverage=$QA_COVERAGE" >> $GITHUB_OUTPUT
-              echo "qa_tested=$QA_TESTED" >> $GITHUB_OUTPUT
-              echo "qa_total=$QA_TOTAL" >> $GITHUB_OUTPUT
-              echo "qa_high_gaps=$QA_HIGH_GAPS" >> $GITHUB_OUTPUT
-              echo "qa_tests_recommended=$QA_TESTS_REC" >> $GITHUB_OUTPUT
-              echo "qa_risk=$QA_RISK" >> $GITHUB_OUTPUT
-            fi
           fi
-          
           # Generate detailed markdown for expandable sections
           
           # Accessibility: All issues sorted by severity
@@ -269,39 +237,6 @@ jobs:
             # Full issue list for expandable section
             jq -r '.findings | sort_by({blocker:0,major:1,minor:2,info:3}[.severity] // 4)[] | "| " + ({blocker:"🚨",major:"🔴",minor:"🟡",info:"🔵"}[.severity] // "⚪") + " " + .severity + " | " + .title + " | `" + (.file | split("/")[-1]) + ":" + (.line|tostring) + "` | " + (.rule // "-") + " |"' \
               "$OBSERVE_DIR/a11y/findings.json" 2>/dev/null > /tmp/a11y_all_issues.md || true
-          fi
-          
-          # Reachability: All dead symbols
-          if [[ -f "$OBSERVE_DIR/reach/analysis.json" ]]; then
-            jq -r '.findings[:5][] | "- `" + .symbol + "` in `" + (.file | split("/")[-1]) + "`"' \
-              "$OBSERVE_DIR/reach/analysis.json" 2>/dev/null > /tmp/reach_top_dead.md || true
-            
-            # Full list for expandable section
-            jq -r '.findings[] | "| `" + .symbol + "` | `" + (.file | split("/")[-1]) + "` | " + (.type // "unknown") + " |"' \
-              "$OBSERVE_DIR/reach/analysis.json" 2>/dev/null > /tmp/reach_all_dead.md || true
-          fi
-          
-          # QAAtlas: Coverage gaps
-          if [[ -f "$OBSERVE_DIR/qa/gap-report.json" ]]; then
-            # Top 10 gaps for expandable section
-            jq -r '.gaps[:10][] | "| " + ({high:"🔴",medium:"🟡",low:"🟢"}[.priority] // "⚪") + " " + (.priority | ascii_upcase) + " | `" + .symbol[:45] + "` | `" + (.file | split("/")[-1]) + "` |"' \
-              "$OBSERVE_DIR/qa/gap-report.json" 2>/dev/null > /tmp/qa_top_gaps.md || true
-          fi
-          
-          # QAAtlas: Test recommendations (testplan)
-          if [[ -f "$OBSERVE_DIR/qa/testplan.md" ]]; then
-            head -80 "$OBSERVE_DIR/qa/testplan.md" > /tmp/qa_testplan.md 2>/dev/null || true
-          fi
-          
-          # QAAtlas: PR-specific analysis (what changed)
-          if [[ -f "$OBSERVE_DIR/qa/pr-comment.md" ]]; then
-            cat "$OBSERVE_DIR/qa/pr-comment.md" > /tmp/qa_pr_comment.md 2>/dev/null || true
-          fi
-          
-          # QAAtlas: Test matching (existing coverage)
-          if [[ -f "$OBSERVE_DIR/qa/test-matches.json" ]]; then
-            jq -r '.[] | "| " + (.title[:40] + if (.title | length) > 40 then "..." else "" end) + " | `" + (.test_file | split("/")[-1]) + "` | " + (if .match_type | contains("mapped") then "✅ Direct" else "🔍 Keyword" end) + " |"' \
-              "$OBSERVE_DIR/qa/test-matches.json" 2>/dev/null > /tmp/qa_test_matches.md || true
           fi
           
           # Architecture: Cycle details.
@@ -393,7 +328,6 @@ jobs:
             const avgCouplingRaw = '${{ steps.parse.outputs.avg_coupling }}' || '0';
             const avgCoupling = round2(avgCouplingRaw);
             const archIssues = '${{ steps.parse.outputs.arch_issues }}' || '0';
-            const reachIssues = '${{ steps.parse.outputs.reach_issues }}' || '0';
             
             // AccessLint detailed metrics
             const a11yIssues = '${{ steps.parse.outputs.a11y_issues }}' || '0';
@@ -403,16 +337,7 @@ jobs:
             const a11yInfo = '${{ steps.parse.outputs.a11y_info }}' || '0';
             const a11yAvailable = '${{ steps.parse.outputs.a11y_available }}' === 'true';
             
-            // QAAtlas metrics (if qa domain enabled)
-            const qaCoverageRaw = '${{ steps.parse.outputs.qa_coverage }}';
-            const qaCoverage = qaCoverageRaw ? round2(qaCoverageRaw) : '';
-            const qaTested = '${{ steps.parse.outputs.qa_tested }}' || '0';
-            const qaTotal = '${{ steps.parse.outputs.qa_total }}' || '0';
-            const qaHighGaps = '${{ steps.parse.outputs.qa_high_gaps }}' || '0';
-            const qaTestsRec = '${{ steps.parse.outputs.qa_tests_recommended }}' || '0';
-            const qaRisk = '${{ steps.parse.outputs.qa_risk }}';
-            
-            const totalIssues = parseInt(archIssues) + parseInt(reachIssues) + parseInt(a11yIssues);
+            const totalIssues = parseInt(archIssues) + parseInt(a11yIssues);
             const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
             
             let body = '## 🏗️ Architecture and Accessibility\n\n';
@@ -504,105 +429,6 @@ jobs:
             }
             
             // ═══════════════════════════════════════════════════════════════
-            // TEST COVERAGE SECTION (QAAtlas) - only if qa domain enabled
-            // ═══════════════════════════════════════════════════════════════
-            // TEST COVERAGE (QAAtlas): the `qa` domain is disabled
-            // (DOMAINS="arch,reach,a11y" at the top of this file), so this
-            // section stays SILENT rather than posting a standing "set
-            // OPENAI_API_KEY" banner on every PR — a constant banner is noise
-            // that trains readers to skim past warnings
-            // (pr-report-contract.md §2, delta-or-silent).
-            const hasQAData = qaCoverage && parseFloat(qaCoverage) > 0 || (parseInt(qaTested) > 0 || parseInt(qaTotal) > 0);
-            if (hasQAData) {
-              body += '---\n';
-              body += '### 🧪 Test Coverage (via QAAtlas)\n\n';
-              const coverageNum = parseFloat(qaCoverage);
-              const coverageIcon = coverageNum >= 50 ? '🟢' : coverageNum >= 30 ? '🟡' : '🔴';
-              body += `**Coverage Estimate:** ${coverageIcon} **${qaCoverage}%**\n\n`;
-              body += `> 💡 *AI analysis of which functions/classes have corresponding unit tests.*\n\n`;
-              
-              // Metrics table with help tooltips
-              body += '| Metric | Value | ℹ️ What This Means |\n';
-              body += '|--------|-------|-------------------|\n';
-              body += `| Functions with Tests | ${qaTested} / ${qaTotal} | Number of methods that appear to have test coverage out of total detected |\n`;
-              body += `| High-Priority Gaps | ${qaHighGaps} | Critical functions (public APIs, error handlers) that lack tests |\n`;
-              if (qaTestsRec && qaTestsRec !== '0') {
-                body += `| Suggested Tests | ${qaTestsRec} | AI-recommended tests based on code complexity and risk |\n`;
-              }
-              body += '\n';
-              
-              // Risk assessment with description
-              if (qaRisk) {
-                const riskIcon = {low: '🟢', medium: '🟡', high: '🔴'}[qaRisk.toLowerCase()] || '⚪';
-                const riskDesc = {
-                  low: 'Changes are low-risk or well-covered by existing tests',
-                  medium: 'Some changes may benefit from additional testing',
-                  high: 'Changes touch critical code paths - careful review recommended'
-                }[qaRisk.toLowerCase()] || '';
-                body += `**Risk Assessment:** ${riskIcon} **${qaRisk.toUpperCase()}** - ${riskDesc}\n\n`;
-              }
-              
-              // What Changed in This PR (PR-specific analysis)
-              try {
-                const prComment = fs.readFileSync('/tmp/qa_pr_comment.md', 'utf8');
-                if (prComment.trim()) {
-                  body += '#### 🔍 What Changed in This PR\n\n';
-                  body += prComment + '\n\n';
-                }
-              } catch (e) {
-                // No PR comment available
-              }
-              
-              // Existing Test Coverage (test matching)
-              try {
-                const testMatches = fs.readFileSync('/tmp/qa_test_matches.md', 'utf8');
-                if (testMatches.trim()) {
-                  body += '<details>\n<summary><strong>✅ Existing Test Coverage</strong></summary>\n\n';
-                  body += '| Recommendation | Covered By | Match Type |\n';
-                  body += '|----------------|------------|------------|\n';
-                  body += testMatches;
-                  body += '\n</details>\n\n';
-                }
-              } catch (e) {
-                // No test matches available
-              }
-              
-              // Expandable: Top Coverage Gaps
-              if (parseInt(qaHighGaps) > 0) {
-                body += '<details>\n<summary><strong>🔍 Top 10 Coverage Gaps</strong></summary>\n\n';
-                body += '| Priority | Symbol | File |\n';
-                body += '|----------|--------|------|\n';
-                try {
-                  const topGaps = fs.readFileSync('/tmp/qa_top_gaps.md', 'utf8');
-                  if (topGaps.trim()) {
-                    body += topGaps;
-                  } else {
-                    body += '| - | See full report | - |\n';
-                  }
-                } catch (e) {
-                  body += '| - | See full report | - |\n';
-                }
-                body += '\n</details>\n\n';
-              }
-              
-              // Expandable: Recommended Tests
-              body += '<details>\n<summary><strong>📋 Recommended Tests</strong></summary>\n\n';
-              try {
-                const testplan = fs.readFileSync('/tmp/qa_testplan.md', 'utf8');
-                if (testplan.trim()) {
-                  body += testplan;
-                } else {
-                  body += 'No specific test recommendations for this PR.\n';
-                }
-              } catch (e) {
-                body += 'See full report artifact for test recommendations.\n';
-              }
-              body += '\n</details>\n\n';
-              
-              body += '*⚠️ AI recommendations are advisory only - review before implementing*\n\n';
-            } // end hasQAData
-            
-            // ═══════════════════════════════════════════════════════════════
             // ARCHITECTURE SECTION
             // ═══════════════════════════════════════════════════════════════
             body += '---\n';
@@ -692,68 +518,15 @@ jobs:
             }
             
             // ═══════════════════════════════════════════════════════════════
-            // REACHABILITY SECTION
-            // ═══════════════════════════════════════════════════════════════
-            body += '---\n';
-            body += '### 🔍 Reachability Analysis\n\n';
-            body += '> 💡 *Detects code that cannot be reached from entry points (dead code).*\n\n';
-            
-            if (parseInt(reachIssues) === 0) {
-              // Don't present a vacuous truth as a green check: "no dead code"
-              // over ZERO analyzed files is meaningless, and a fake ✅ trains
-              // readers to trust the real ones less (pr-report-contract.md §2).
-              if (changedFiles === '0') {
-                body += 'ℹ️ Reachability not evaluated. Its analyzer reads a top-level `Sources/` directory that this repo does not have, so it scans 0 files.\n\n';
-              } else {
-                body += '✅ **No dead code detected**\n\n';
-              }
-            } else {
-              body += `Found **${reachIssues}** potentially unreachable symbol(s).\n`;
-              body += `> These functions/classes may be unused and could be candidates for removal.\n\n`;
-              
-              body += '**Top Unreachable Symbols:**\n';
-              try {
-                const topDead = fs.readFileSync('/tmp/reach_top_dead.md', 'utf8');
-                if (topDead.trim()) {
-                  body += topDead + '\n';
-                } else {
-                  body += 'See details below.\n';
-                }
-              } catch (e) {
-                body += 'See details below.\n';
-              }
-              
-              // Expandable: All dead code
-              body += '\n<details>\n<summary><strong>📋 All Unreachable Symbols</strong></summary>\n\n';
-              body += '| Symbol | File | Type |\n';
-              body += '|--------|------|------|\n';
-              try {
-                const allDead = fs.readFileSync('/tmp/reach_all_dead.md', 'utf8');
-                if (allDead.trim()) {
-                  body += allDead;
-                } else {
-                  body += '| - | See full report | - |\n';
-                }
-              } catch (e) {
-                body += '| - | See full report | - |\n';
-              }
-              body += '\n</details>\n\n';
-            }
-            
-            // ═══════════════════════════════════════════════════════════════
             // FOOTER
             // ═══════════════════════════════════════════════════════════════
             body += '---\n';
             body += `**Scanned:** whole repo at \`${process.env.GITHUB_SHA ? process.env.GITHUB_SHA.substring(0,9) : 'head'}\` · `;
             body += `**Accessibility:** ${a11yAvailable ? 'ran' : '**did not run**'} · `;
-            body += `**Dead code:** not evaluated · `;
-            body += `**Test coverage:** not evaluated (QAAtlas disabled)\n\n`;
+            body += `**Dead code / test coverage:** not analysed — see DOMAINS in this workflow\n\n`;
             body += `[Download the full report](${runUrl})\n\n`;
             body += '*Powered by [CodeAtlas Ledger](https://github.com/mauricecarrier7/ledger-dist)*\n';
             body += '*• Accessibility: [AccessLint](https://github.com/mauricecarrier7/AccessLint-Distribution)*';
-            if (qaCoverage) {
-              body += '\n*• Test Coverage: [QAAtlas](https://github.com/mauricecarrier7/qaatlas-dist)*';
-            }
             
             // Find/update existing comment
             const { data: comments } = await github.rest.issues.listComments({
