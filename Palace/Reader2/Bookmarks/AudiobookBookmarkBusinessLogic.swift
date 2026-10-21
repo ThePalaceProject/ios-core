@@ -122,6 +122,14 @@ import PalaceUtilities
         // Save to the local registry before any async work, so a crash or
         // background mid-flight never loses position state.
         guard let tppLocation = audioBookmark.toTPPBookLocation() else {
+            // This exit precedes the registry write, so the position is kept
+            // neither locally nor on the server. The track and offset identify
+            // the reading-order entry that would not encode.
+            //
+            // Unreachable today: `AudioBookmark.encode(to:)` writes only String
+            // and Int, so `JSONEncoder` cannot throw. A Double field would make
+            // it reachable, and on the 15-second autosave path.
+            Log.error(#file, "Could not encode the listening position for \(self.book.identifier) into a stored location; the position was kept neither locally nor on the server: track=\(position.track.key), index=\(position.track.index), time=\(position.timestamp), offsetMilliseconds=\(audioBookmark.readingOrderItemOffsetMilliseconds?.description ?? "nil")")
             completion?(nil)
             return
         }
@@ -220,6 +228,12 @@ import PalaceUtilities
                 Log.debug(#file, "☁️ Synced position to server: track=\(sentTrackKey), annotationId=\(audioBookmark.annotationId)")
                 await complete(serverID)
             } catch {
+                // Deliberately not `.error`: `postReadingPosition` reports a
+                // deferred write, a sync-disabled account and a refusal through
+                // one content-free error, and the 15-second autosave interval
+                // would turn a persisted line per deferral into the PP-4965
+                // volume again. A refusal is persisted with the book and
+                // motivation by `TPPAnnotations.postAnnotation`.
                 Log.warn(#file, "⚠️ Server sync failed, but local position was already saved: \(error)")
                 await complete(nil)
             }
@@ -263,9 +277,22 @@ import PalaceUtilities
                     return
                 }
 
-                if let annotationResponse = try? await self.annotationsManager.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: locationString) {
-                    location.annotationId = annotationResponse.serverId ?? ""
-                    location.lastSavedTimeStamp = annotationResponse.timeStamp ?? ""
+                do {
+                    if let annotationResponse = try await self.annotationsManager.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: locationString) {
+                        location.annotationId = annotationResponse.serverId ?? ""
+                        location.lastSavedTimeStamp = annotationResponse.timeStamp ?? ""
+                    }
+                } catch {
+                    // The `defer` above stores the bookmark locally either way.
+                    //
+                    // Below `.error`, so it does not reach the log a patron
+                    // exports: `postAudiobookBookmark` throws one content-free
+                    // error whether the server refused the post, the post was
+                    // queued for delivery while offline, or sync is off, and a
+                    // refusal is already persisted with the book and motivation
+                    // by `TPPAnnotations.postAnnotation`. Reporting a queued
+                    // write as a failure was the bulk of the PP-4965 volume.
+                    Log.warn(#file, "Bookmark post returned no server id for \(self.book.identifier) at \(location.uniqueIdentifier); the bookmark is stored locally and not yet confirmed on the server: \(error)")
                 }
             }
         }
@@ -543,6 +570,13 @@ import PalaceUtilities
             do {
                 try await uploadBookmark(candidate)
             } catch {
+                // Left at `.debug`, the one level `Log` does not forward to the
+                // crash reporter. This loop re-posts every stored unsynced
+                // bookmark on each sync pass, and a library that does not offer
+                // sync leaves them all unsynced, so any higher level lets one
+                // patron's bookmarks evict the rolling breadcrumb buffer. A
+                // refusal here is persisted with the book and motivation by
+                // `TPPAnnotations.postAnnotation`.
                 Log.debug(#file, "Failed to save annotation with error: \(error.localizedDescription)")
             }
         }
