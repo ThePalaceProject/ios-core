@@ -90,11 +90,13 @@ final class AudiobookCloseMidLoadJourneyTests: JourneyTestCase {
     /// Test artefact, not the behaviour under test: AVPlayer cannot fetch the
     /// fixture audio, so the bound player fails. That ends in zero or more
     /// "Audiobook Unavailable" alerts, depending on whether AVPlayer reported
-    /// playing first; only that alert is dismissed here.
+    /// playing first; only that alert is dismissed here. A first-play failure
+    /// re-opens the book once before the alert (PP-4973), so it can arrive
+    /// several seconds after the loading player clears; the wait covers that.
     private func dismissAudiobookUnavailableAlerts() {
         let unavailable = app.alerts["Audiobook Unavailable"]
         var dismissed = 0
-        while dismissed < 5, unavailable.waitForExistence(timeout: 3) {
+        while dismissed < 5, unavailable.waitForExistence(timeout: 15) {
             unavailable.buttons["OK"].tap()
             dismissed += 1
             // A queued copy can replace it at once, so this wait may time out.

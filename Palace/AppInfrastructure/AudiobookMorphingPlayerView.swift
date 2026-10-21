@@ -13,6 +13,7 @@
 
 import AVKit
 import PalaceAudiobookToolkit
+import PalaceLogging
 import SwiftUI
 import UIKit
 import PalaceUtilities
@@ -871,10 +872,10 @@ struct AudiobookMorphingPlayerView: View {
         loadingTimedOut = false
         loadTimeoutWorkItem?.cancel()
         let work = DispatchWorkItem {
-            if Self.shouldSurfaceLoadTimeout(
-                isLoaded: audiobookSession.isLoaded,
-                isDownloading: presenter.isDownloading
-            ) {
+            let (isLoaded, isDownloading) = (audiobookSession.isLoaded, presenter.isDownloading)
+            let surfaces = Self.shouldSurfaceLoadTimeout(isLoaded: isLoaded, isDownloading: isDownloading)
+            Log.info(#file, "Player load timer fired (isLoaded: \(isLoaded), isDownloading: \(isDownloading)) — \(surfaces ? "showing the load error" : "no error shown")")
+            if surfaces {
                 loadingTimedOut = true
             }
         }

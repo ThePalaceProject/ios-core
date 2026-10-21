@@ -190,6 +190,11 @@ private let nullString = "null"
     /// is corroborating detail about how choppy the session was; this code is
     /// the key.
     case audiobookPositionClockRegressed = 407
+    /// PP-4973 — an audiobook open was still running when the router released
+    /// its open lock. iOS reports no hang, so this is the only count of opens
+    /// that never finish. It does not count a session parked at `.loading`
+    /// between opens.
+    case audiobookOpenStalled = 408
 
     // ereader
     case nilCFI = 500

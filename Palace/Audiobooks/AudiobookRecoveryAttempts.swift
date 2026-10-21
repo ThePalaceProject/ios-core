@@ -29,14 +29,6 @@ struct AudiobookRecoveryAttempts {
     private var bearerTokenRefulfilled = Set<String>()
     private var coldLoadReopened = Set<String>()
 
-    /// True only for an open the patron started. Every automatic re-open
-    /// passes one of these flags; if such a re-open re-armed the bounds, a
-    /// book that fails again after recovering would recover again, without
-    /// end. PP-5241's media-services-reset episode uses the same rule.
-    static func isPatronOpen(forceRefulfill: Bool, isColdLoadRecovery: Bool, isRecoveryReopen: Bool) -> Bool {
-        !forceRefulfill && !isColdLoadRecovery && !isRecoveryReopen
-    }
-
     /// Re-arms every recovery for `bookId`: a patron tapping the book again is
     /// a fresh attempt.
     mutating func notePatronOpen(of bookId: String) {

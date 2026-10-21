@@ -59,10 +59,9 @@ extension AudiobookSessionManager {
         guard currentBook?.identifier == id else { return }
         if landed {
             Log.info(#file, "OverDrive re-fulfillment landed a fresh manifest — re-opening '\(book.title)'")
-            // isRecoveryReopen bypasses openAudiobook's `.alreadyLoading` guard —
-            // `state` is still `.loading` from the anti-flash handler. forceRefulfill
-            // stays false so the re-open reads the freshly-refreshed LOCAL manifest.
-            _ = await openAudiobook(book, startPlaying: true, forceRefulfill: false, isRecoveryReopen: true)
+            // A recovery re-open, not a fresh-manifest one: the download centre
+            // has just refreshed the LOCAL manifest, so the loader reads it.
+            await reopen(book, because: .recovery)
         } else {
             Log.info(#file, "OverDrive re-fulfillment did not complete — surfacing the link-renewal message for '\(book.title)'")
             await dismissAndPresentOverdriveLinkRenewalFailed()

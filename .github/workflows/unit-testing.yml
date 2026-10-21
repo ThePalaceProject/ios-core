@@ -431,10 +431,24 @@ jobs:
 
           PATTERN="\\b($(IFS='|'; echo "${TYPES[*]}"))\\b|isLCPAudiobookStreamingEnabled|lcpStreamingEnabledProvider|lcpAudiobookStreamingLocalOverrideKey|LCPStreamingTestPin"
           CLASSES=$({ grep -rlE "$PATTERN" PalaceTests --include='*.swift' || true; } \
-            | { xargs grep -hE '^[[:space:]]*(@MainActor[[:space:]]+)?((final|private|fileprivate|internal)[[:space:]]+)*class[[:space:]]+[A-Za-z0-9_]+[[:space:]]*:[[:space:]]*(XCTestCase|PalaceTestCase|PalaceWiringTestCase)\b' || true; } \
-            | sed -E 's/.*class[[:space:]]+([A-Za-z0-9_]+).*/\1/' | LC_ALL=C sort -u)
+            | { xargs awk '
+                # A base class with no test methods of its own never appears as a suite
+                # in the result bundle, so list a top-level class only once a test method
+                # follows it; a nested test-case class must not take over the outer name.
+                FNR == 1 { cls = "" }
+                /^((@MainActor|final|private|fileprivate|internal|open|public)[[:space:]]+)*(class|struct|enum|actor)[[:space:]]/ { cls = "" }
+                /^(@MainActor[[:space:]]+)?((final|private|fileprivate|internal)[[:space:]]+)*class[[:space:]]+[A-Za-z0-9_]+[[:space:]]*:[[:space:]]*(XCTestCase|PalaceTestCase|PalaceWiringTestCase)([^A-Za-z0-9_]|$)/ {
+                  cls = $0; sub(/.*class[[:space:]]+/, "", cls); sub(/[^A-Za-z0-9_].*/, "", cls)
+                }
+                cls != "" && /func[[:space:]]+test/ { print cls; cls = "" }' || true; } \
+            | LC_ALL=C sort -u)
           echo "$CLASSES" | grep -qx 'LCPStreamingTestPinTests' || { echo "::error::derived class list lacks LCPStreamingTestPinTests"; exit 1; }
-          echo "ON leg: $(echo "$CLASSES" | wc -l | tr -d ' ') classes"
+          CLASS_COUNT=$(echo "$CLASSES" | wc -l | tr -d ' ')
+          # A one-name canary passes on a list of one. The derivation has stood
+          # at ~180 classes; a collapse to a handful means the awk stopped
+          # matching, which would otherwise read as a fast green leg.
+          [ "$CLASS_COUNT" -ge 120 ] || { echo "::error::ON leg derived only $CLASS_COUNT classes; the derivation is broken or the flag's test surface shrank — update this floor deliberately"; exit 1; }
+          echo "ON leg: $CLASS_COUNT classes"
           ONLY_ARGS=()
           for c in $CLASSES; do ONLY_ARGS+=("-only-testing:PalaceTests/$c"); done
           ON_SKIP_ARGS=(

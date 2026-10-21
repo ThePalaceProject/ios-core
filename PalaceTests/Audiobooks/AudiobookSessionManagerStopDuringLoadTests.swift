@@ -14,19 +14,6 @@ import XCTest
 @testable import Palace
 import PalaceBookModel
 
-/// Hands each `openAudiobook` its own parked adapter, in open order.
-@MainActor
-private final class ParkedLoaderFactory {
-    private(set) var adapters: [DeferredAudiobookVendorAdapter] = []
-
-    func makeLoader() -> AudiobookLoader {
-        let adapter = DeferredAudiobookVendorAdapter()
-        adapters.append(adapter)
-        let userAccount = TPPUserAccountMock()
-        return AudiobookLoader(adapters: [adapter], currentUserAccount: { userAccount })
-    }
-}
-
 @MainActor
 final class AudiobookSessionManagerStopDuringLoadTests: PalaceWiringTestCase {
 
@@ -35,7 +22,7 @@ final class AudiobookSessionManagerStopDuringLoadTests: PalaceWiringTestCase {
     private var loadedDetails: AccountDetails!
     private var removeSeededAccount: (() -> Void)?
     private var sut: AudiobookSessionManager!
-    private var loaders: ParkedLoaderFactory!
+    private var loaders: ParkedAudiobookLoaderFactory!
     private var adapters: [DeferredAudiobookVendorAdapter] { loaders.adapters }
     /// `openAudiobook` results by book identifier, once each open returns.
     private var openResults: [String: Result<Void, AudiobookSessionError>] = [:]
@@ -58,12 +45,12 @@ final class AudiobookSessionManagerStopDuringLoadTests: PalaceWiringTestCase {
         account._setState(.detailsLoaded(loadedDetails))
 
         registry = TPPBookRegistryMock()
-        let loaders = ParkedLoaderFactory()
+        let loaders = ParkedAudiobookLoaderFactory()
         self.loaders = loaders
         sut = AudiobookSessionManager(
             appContainer: makeTestAppContainer(accountsManager: accountsManager, bookRegistry: registry),
             inAppPlaybackNavEnabledProvider: { false },
-            makeLoader: { _ in loaders.makeLoader() }
+            makeLoader: { loaders.makeLoader(fetchesFreshManifest: $0) }
         )
         sut.errorPublisher
             .sink { [unowned self] in self.publishedErrors.append($0) }

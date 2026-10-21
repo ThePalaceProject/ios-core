@@ -38,6 +38,12 @@ extension AudiobookSessionManager {
         !hasEverStartedPlayback && hasCurrentBook && !alreadyAttempted
     }
 
+    /// A bounded wait for a book's content to land on disk, with optional
+    /// progress. The open's content gate and the first-play recovery both wait
+    /// through one injected value, so tests drive either without the
+    /// production download centre.
+    typealias ContentLandingWait = @MainActor (String, (@MainActor @Sendable (Float) -> Void)?) async -> Bool
+
     /// True once the LCP audiobook's content package is on disk. Both writers
     /// move the `.lcpa` into place with a rename
     /// (`BackgroundDownloadHandler.replaceBook`, `LocalBookContentService`), so
