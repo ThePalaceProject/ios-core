@@ -66,9 +66,12 @@ extension Strings {
             "UnsupportedURL",
             value: "The link could not be opened. Please report an issue from the Settings tab.",
             comment: "Alert message for NSURLErrorUnsupportedURL, where retrying cannot help because the address itself is unusable")
+        // Names no barcode or PIN: this path authorizes with the licensor
+        // client token (TPPSignInBusinessLogic+DRM.swift), so the patron
+        // entered no such credential and has none to correct.
         static let invalidDRMCredentials = NSLocalizedString(
             "SettingsAccountViewControllerInvalidCredentials",
-            value: "Your barcode and pin combination was not valid. Please try again.",
+            value: "This device could not be authorized with the DRM server. Please try again, or contact your library if it keeps happening.",
             comment: "Alert message for Adobe NYPLADEPTError.authenticationFailed")
         static let tooManyDRMActivations = NSLocalizedString(
             "SettingsAccountViewControllerMessageTooManyActivations",

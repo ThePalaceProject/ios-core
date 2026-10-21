@@ -95,7 +95,7 @@ read -r -d '' ALLOWLIST <<'EOF'
 1172 Palace/MyBooks/MyBooksDownloadCenter.swift
 1019 Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift
 867  Palace/Book/UI/BookDetail/BookDetailViewModel.swift
-871  Palace/Utilities/Localization/Strings.swift
+834  Palace/Utilities/Localization/Strings.swift
 # AccountsManager is 363 under this metric: it was pinned at 367 after #1520
 # landed `_ = registryLoader` in init, then lowered when #1624 moved the DEBUG
 # disk-cache preload flag into AccountsManager+TestingSupport.swift. Measured

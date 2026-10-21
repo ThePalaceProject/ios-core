@@ -172,7 +172,7 @@ final class AlertTextLocalizationTests: XCTestCase {
                            code: NYPLADEPTError.authenticationFailed.rawValue))
 
         assertPatronReadable(alert.message,
-                             equals: "Your barcode and pin combination was not valid. Please try again.",
+                             equals: "This device could not be authorized with the DRM server. Please try again, or contact your library if it keeps happening.",
                              "Adobe authentication-failed message")
     }
 
@@ -238,18 +238,19 @@ final class AlertTextLocalizationTests: XCTestCase {
         XCTAssertEqual(alert.message, prose, "the builder's lookup altered resolved prose")
     }
 
-    /// The builder still localizes, so callers that pass an English-prose key —
-    /// the convention in all four shipped tables — keep working. Removing the
-    /// lookup to fix the identifier keys would have broken every one of them.
+    /// The builder must keep localizing its arguments: all four shipped tables
+    /// are keyed by English prose, so removing the lookup would un-translate
+    /// every prose-passing caller. The key is a `.stringsdict` entry because a
+    /// key that resolves nowhere makes both sides equal either way.
     func testAlertBuilder_StillLooksUpItsArguments() {
-        let bundle = Bundle(for: TPPAppDelegate.self)
-        let key = "OK"
+        let key = "day_suffix_long"
+        let resolved = NSLocalizedString(key, comment: "")
+        XCTAssertNotEqual(resolved, key,
+                          "fixture precondition: the key must resolve, or this cannot discriminate")
+
         let alert = TPPAlertUtils.alert(title: key, message: key)
 
-        XCTAssertEqual(alert.title,
-                       bundle.localizedString(forKey: key, value: nil, table: nil),
-                       "the builder stopped looking its arguments up")
-        XCTAssertEqual(alert.message,
-                       bundle.localizedString(forKey: key, value: nil, table: nil))
+        XCTAssertEqual(alert.title, resolved, "the builder stopped looking its arguments up")
+        XCTAssertEqual(alert.message, resolved, "the builder stopped looking its arguments up")
     }
 }
