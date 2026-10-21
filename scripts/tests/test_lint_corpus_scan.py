@@ -40,8 +40,12 @@ _needs_swift = pytest.mark.skipif(
     _SWIFT is None,
     reason=(
         "no `swift` on PATH, so the behavioural suite for lint-corpus-scan.swift "
-        "(planted violation, guarded pass, lexing, empty-corpus refusal) did NOT run. "
-        "Install the Xcode Command Line Tools to exercise it."
+        "(planted violation, guarded pass, lexing, empty-corpus refusal) did not run "
+        "here. Its enforcer is scripts/pre-push-test-gate.sh, which runs this whole "
+        "suite on every push whose diff touches scripts/ — and the tool under test "
+        "is scripts/lint-corpus-scan.swift, so a change to it always does. That gate "
+        "runs on a developer machine with a toolchain; CI installs none, because an "
+        "install per run buys nothing the push gate has not already proved."
     ),
 )
 
