@@ -349,15 +349,34 @@ TIMEOUT_SECS="${PRE_PUSH_TESTS_TIMEOUT_SECS:-180}"
 # Output format: "    iPhone 16 Pro (DF4A2A27-...-...) (Booted)" — the UDID
 # is the parenthesized 36-char hex-and-dash field. `$NF` returns `(Booted)`,
 # not the UDID; pull it out by regex match against the line.
-SIM_ID="$(xcrun simctl list devices iPhone 2>/dev/null \
-          | awk '/Booted/ { if (match($0, /[0-9A-F-]{36}/)) { print substr($0, RSTART, RLENGTH); exit } }')"
+# A booted iPhone sim if there is one, else any AVAILABLE one, newest runtime
+# first. Always by UDID resolved at run time -- never a UDID written down
+# (parallel agents collide) and never a device NAME: a bare `name=` destination
+# inherits `OS:latest`, so a runtime installed with no devices on it makes every
+# such destination unresolvable. iOS 26.4 arrived that way on 2026-10-20 and
+# this gate could not run, while `xcrun simctl list` showed 51 usable sims.
+# `simctl list devices` prints runtimes in ascending order, so the last
+# available line is the newest one that actually has a device.
+# scripts/pre-push-both-target-build.sh carries the same block; keep them in step.
+_sim_udid() {  # $1 = state to match, or empty for any available
+  xcrun simctl list devices iPhone available 2>/dev/null | awk -v want="$1" '
+    /^--/ { next }
+    want != "" && index($0, "(" want ")") == 0 { next }
+    { if (match($0, /[0-9A-F-]{36}/)) last = substr($0, RSTART, RLENGTH) }
+    END { print last }'
+}
+SIM_ID="$(_sim_udid Booted)"
+[[ -n "$SIM_ID" ]] || SIM_ID="$(_sim_udid "")"
 
-declare -a DEST_ARGS
-if [[ -n "$SIM_ID" ]]; then
-  DEST_ARGS=(-destination "id=$SIM_ID")
-else
-  DEST_ARGS=(-destination 'platform=iOS Simulator,name=iPhone 16 Pro')
+if [[ -z "$SIM_ID" ]]; then
+  echo "[pre-push-test-gate] no available iPhone simulator — cannot pick a destination." >&2
+  echo "[pre-push-test-gate] create one: xcrun simctl create 'iPhone 16 Pro' \\" >&2
+  echo "[pre-push-test-gate]   com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro <runtime id>" >&2
+  echo "[pre-push-test-gate] runtimes: xcrun simctl list runtimes available" >&2
+  exit 1
 fi
+declare -a DEST_ARGS
+DEST_ARGS=(-destination "id=$SIM_ID")
 
 # When the push originates from a LINKED git worktree, the shared default
 # DerivedData was resolved against a different checkout root, so xcodebuild's

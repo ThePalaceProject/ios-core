@@ -225,12 +225,26 @@ def _run_gate(repo: Path, tmp_path: Path, log: str, rc: int = 0,
     stub.write_text('#!/bin/bash\nprintf "%s\\n" "$@" > "$FAKE_XCODEBUILD_ARGS"\n'
                     'cat "$FAKE_XCODEBUILD_OUTPUT"\nexit "$FAKE_XCODEBUILD_RC"\n')
     xcrun = bin_dir / "xcrun"
-    xcrun.write_text("#!/bin/bash\nexit 0\n")
+    # Replays a `simctl list devices` listing from FAKE_SIMCTL_DEVICES when the
+    # test supplies one, so the destination-picking tests can present a device
+    # set. Empty output means "no simulators", the gate's refusal case.
+    xcrun.write_text('#!/bin/bash\n'
+                     '[ -n "${FAKE_SIMCTL_DEVICES:-}" ] && [ -f "$FAKE_SIMCTL_DEVICES" ] '
+                     '&& cat "$FAKE_SIMCTL_DEVICES"\nexit 0\n')
     stub.chmod(0o755)
     xcrun.chmod(0o755)
 
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
     env.pop("SKIP_PRE_PUSH_TESTS", None)
+    # A machine with one simulator is the default, because the gate now refuses
+    # to invent a destination and every test below is about test SELECTION, not
+    # about which device it picks. The stub previously printed nothing, which
+    # under the refusal reads as "no simulators" and failed 20 of these.
+    default_devices = tmp_path / "simctl-devices-default"
+    if not default_devices.exists():
+        default_devices.write_text(
+            "== Devices ==\n-- iOS 26.0 --\n"
+            "    iPhone 16 Pro (DEFA0000-0000-0000-0000-000000000000) (Shutdown)\n")
     env.update({
         "PATH": f"{bin_dir}:{env['PATH']}",
         "FILE_SIZE_ALLOWLIST_FILE": str(tmp_path / "allowlist"),
@@ -238,6 +252,7 @@ def _run_gate(repo: Path, tmp_path: Path, log: str, rc: int = 0,
         "FAKE_XCODEBUILD_ARGS": str(tmp_path / "xcodebuild-args"),
         "FAKE_XCODEBUILD_OUTPUT": str(GATE_FIXTURES / log),
         "FAKE_XCODEBUILD_RC": str(rc),
+        "FAKE_SIMCTL_DEVICES": str(default_devices),
     })
     env.pop("PRE_PUSH_TESTS_ALLOW_TIMEOUT", None)
     env.update(extra_env or {})
@@ -630,3 +645,91 @@ def test_the_worktree_derived_data_folder_is_gitignored():
                             "check-ignore", "-q", ".dd-prepush/probe"],
                            cwd=root, capture_output=True)
     assert probe.returncode == 0
+
+
+# --- Destination selection ----------------------------------------------------
+#
+# The gate used to fall back to `-destination platform=iOS Simulator,name=iPhone
+# 16 Pro`, which inherits `OS:latest`. On 2026-10-20 iOS 26.4 was installed with
+# zero simulators on it, so `OS:latest` resolved to a runtime with no devices and
+# the gate could not run at all while 51 usable sims existed.
+
+DEVICES_TWO_RUNTIMES = """\
+== Devices ==
+-- iOS 26.0 --
+    iPhone 16 Pro (11111111-1111-1111-1111-111111111111) (Shutdown)
+-- iOS 26.2 --
+    iPhone 16 Pro (22222222-2222-2222-2222-222222222222) (Shutdown)
+    iPhone 17 Pro (33333333-3333-3333-3333-333333333333) (Shutdown)
+"""
+
+
+def _dest(tmp_path: Path) -> list[str]:
+    args = (tmp_path / "xcodebuild-args").read_text().split("\n")
+    return [args[i + 1] for i, a in enumerate(args) if a == "-destination"]
+
+
+def _with_devices(tmp_path: Path, listing: str) -> dict:
+    f = tmp_path / "simctl-devices"
+    f.write_text(listing)
+    return {"FAKE_SIMCTL_DEVICES": str(f)}
+
+
+def test_destination_is_a_udid_from_the_newest_runtime_with_a_device(tmp_path):
+    repo = _gate_repo(tmp_path)
+    _commit(repo, "Palace/Widget.swift", _swift(4))
+
+    result = _run_gate(repo, tmp_path, "two-classes-passed.log",
+                       extra_env=_with_devices(tmp_path, DEVICES_TWO_RUNTIMES))
+
+    assert result.returncode == 0, result.stderr
+    assert _dest(tmp_path) == ["id=33333333-3333-3333-3333-333333333333"]
+
+
+def test_destination_never_names_a_device(tmp_path):
+    """A `name=` destination inherits OS:latest, which is the defect. Pinned
+    separately from the id assertion so a future rewrite cannot reintroduce the
+    name form while still passing some id somewhere."""
+    repo = _gate_repo(tmp_path)
+    _commit(repo, "Palace/Widget.swift", _swift(4))
+
+    _run_gate(repo, tmp_path, "two-classes-passed.log",
+              extra_env=_with_devices(tmp_path, DEVICES_TWO_RUNTIMES))
+
+    args = (tmp_path / "xcodebuild-args").read_text()
+    assert "name=" not in args, args
+
+
+def test_a_booted_simulator_wins_over_a_newer_shutdown_one(tmp_path):
+    repo = _gate_repo(tmp_path)
+    _commit(repo, "Palace/Widget.swift", _swift(4))
+    listing = """\
+== Devices ==
+-- iOS 26.0 --
+    iPhone 16 Pro (AAAAAAAA-1111-1111-1111-111111111111) (Booted)
+-- iOS 26.2 --
+    iPhone 17 Pro (BBBBBBBB-2222-2222-2222-222222222222) (Shutdown)
+"""
+
+    result = _run_gate(repo, tmp_path, "two-classes-passed.log",
+                       extra_env=_with_devices(tmp_path, listing))
+
+    assert result.returncode == 0, result.stderr
+    assert _dest(tmp_path) == ["id=AAAAAAAA-1111-1111-1111-111111111111"], (
+        "a booted sim avoids a cold boot, so it wins even on an older runtime")
+
+
+def test_no_simulator_at_all_refuses_instead_of_guessing(tmp_path):
+    """The old fallback handed xcodebuild an unresolvable specifier and the
+    failure read as a test failure. It has to name its own cause."""
+    repo = _gate_repo(tmp_path)
+    _commit(repo, "Palace/Widget.swift", _swift(4))
+
+    result = _run_gate(repo, tmp_path, "two-classes-passed.log",
+                       extra_env=_with_devices(tmp_path, "== Devices ==\n"))
+
+    assert result.returncode != 0
+    assert "no available iPhone simulator" in result.stderr
+    assert "simctl create" in result.stderr
+    assert not (tmp_path / "xcodebuild-args").exists(), (
+        "it must refuse before running xcodebuild, not after")
