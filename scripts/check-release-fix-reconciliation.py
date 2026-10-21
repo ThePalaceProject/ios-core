@@ -25,6 +25,18 @@ HOW
   keep the ones that (a) touch a critical-path file OR (b) read as a crash/bug
   fix from the subject line, and fail on any that are not explicitly waived.
 
+REVERSE DIRECTION (the PP-5389 retro)
+  A fix can also land on the release branch and never reach develop: #1717
+  (e84eb80ae) defaulted LCP streaming on for release/3.4.0 only, its ticket
+  was closed, and develop kept the old default. So the gate also runs
+  `git cherry <develop-ref> <release-ref>` and flags every non-merge release
+  commit with no patch-equivalent on develop. No subject or path filter
+  applies here: #1717 had no fix wording, and on recent releases this set is
+  small (3.2.0: 0, 3.3.0: 0, 3.4.0: 1). A forward-port whose patch differs
+  (conflict resolution) still counts when a develop commit since the merge
+  base names the release commit's `#<pr>` or full SHA (`cherry-pick -x`).
+  Release-only commits such as build bumps are waived like any other.
+
 WAIVERS
   A waiver file (default `config/ci/release-waivers/<release>.txt`, override with
   --waiver-file) lists, one per line, `<sha-or-pr> <reason>`. A candidate is
@@ -38,8 +50,8 @@ USAGE
 
 EXIT CODES
   0  every crash/critical-path fix on develop is either present on the release
-     or explicitly waived.
-  1  one or more unreconciled crash/critical-path fixes (printed).
+     or explicitly waived, and every release commit is on develop or waived.
+  1  one or more unreconciled commits in either direction (printed).
   2  usage / git error (bad ref, not a repo).
 """
 
@@ -194,6 +206,41 @@ def evaluate(
     return unreconciled, waived
 
 
+def _port_references(release_ref: str, develop_ref: str) -> tuple[set[str], set[str]]:
+    """PR numbers and full SHAs named in develop commit messages since the merge base."""
+    base = _run_git(["merge-base", release_ref, develop_ref]).strip()
+    messages = _run_git(["log", "--format=%B", f"{base}..{develop_ref}"])
+    prs = set(re.findall(r"#(\d+)", messages))
+    shas = set(re.findall(r"\b[0-9a-f]{40}\b", messages))
+    return prs, shas
+
+
+def evaluate_reverse(
+    release_ref: str,
+    develop_ref: str,
+    waiver_file: str | None,
+) -> tuple[list[dict], list[dict]]:
+    """Return (unported, waived): release commits with no equivalent on develop."""
+    waivers = _load_waivers(waiver_file, release_ref)
+    port_prs, port_shas = _port_references(release_ref, develop_ref)
+
+    unported: list[dict] = []
+    waived: list[dict] = []
+
+    # `git cherry` skips merge commits, so only commits with a patch are listed.
+    for sha in _cherry_candidates(develop_ref, release_ref):
+        pr = _commit_pr_number(sha)
+        if sha in port_shas or (pr is not None and pr in port_prs):
+            continue
+        record = {"sha": sha[:9], "pr": pr, "subject": _commit_subject(sha)}
+        if _is_waived(sha, pr, waivers):
+            waived.append(record)
+        else:
+            unported.append(record)
+
+    return unported, waived
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         description="Block a release missing crash/critical-path fixes present on develop."
@@ -217,6 +264,9 @@ def main(argv: list[str]) -> int:
             args.fix_subject_regex,
             args.waiver_file,
         )
+        unported, waived_reverse = evaluate_reverse(
+            args.release_ref, args.develop_ref, args.waiver_file,
+        )
     except RuntimeError as exc:
         print(f"[release-fix-reconciliation] ERROR: {exc}", file=sys.stderr)
         return 2
@@ -226,6 +276,25 @@ def main(argv: list[str]) -> int:
               f"(explicitly excluded from {args.release_ref}):", file=sys.stderr)
         for r in waived:
             print(f"  ~ {r['sha']} {r['subject']}", file=sys.stderr)
+
+    if not args.quiet and waived_reverse:
+        print(f"[release-fix-reconciliation] {len(waived_reverse)} waived release-only "
+              f"commit(s) (explicitly not ported to {args.develop_ref}):", file=sys.stderr)
+        for r in waived_reverse:
+            print(f"  ~ {r['sha']} {r['subject']}", file=sys.stderr)
+
+    if unported:
+        print(f"[release-fix-reconciliation] BLOCK: {len(unported)} commit(s) on "
+              f"{args.release_ref} are not on develop ({args.develop_ref}) and are "
+              f"not waived:", file=sys.stderr)
+        for r in unported:
+            pr = f" (#{r['pr']})" if r["pr"] and f"#{r['pr']}" not in r["subject"] else ""
+            print(f"  - {r['sha']}{pr} {r['subject']}", file=sys.stderr)
+        print("", file=sys.stderr)
+        print("  Forward-port each to develop (name the release PR or use", file=sys.stderr)
+        print("  `cherry-pick -x`), OR waive it with a reason in the waiver file.", file=sys.stderr)
+        if not unreconciled:
+            return 1
 
     if unreconciled:
         print(f"[release-fix-reconciliation] BLOCK: {len(unreconciled)} crash/"
@@ -243,7 +312,8 @@ def main(argv: list[str]) -> int:
 
     if not args.quiet:
         print(f"[release-fix-reconciliation] ok — {args.release_ref} is reconciled "
-              f"with {args.develop_ref} (no unwaived crash/critical-path fixes).",
+              f"with {args.develop_ref} (no unwaived crash/critical-path fixes, "
+              f"no unported release commits).",
               file=sys.stderr)
     return 0
 
