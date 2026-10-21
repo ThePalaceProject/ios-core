@@ -3,10 +3,15 @@
 //  PalaceTests
 //
 //  PP-4973: a recovery that re-opened through the patron entry point was
-//  refused by the duplicate-open guard, because the session already holds
-//  `.loading` while the recovery runs. The patron then sat on the loading
-//  shell with no error. Re-opens must name their origin; the two patron
-//  overloads are the only callers that may leave it to the default.
+//  refused by the duplicate-open guard, since the session holds `.loading`
+//  while the recovery runs, and the patron sat on the loading shell with no
+//  error. Re-opens must name their origin; only the two patron overloads may
+//  leave it to the default.
+//
+//  The census is `AudiobookSessionManager.swift` alone: its six `+` extensions
+//  re-open through `reopen(_:because:)` and call the witness nowhere, and the
+//  patron entry points in CarPlay, `BookOpenRouter` and `BookDetailViewModel`
+//  may omit `origin:`. Not "every site that could".
 //
 
 import XCTest
