@@ -26,6 +26,12 @@ class PalaceTestSetup: NSObject {
     /// `addTestObserver(_:)` returns and `testCaseDidFinish(_:)` never
     /// fires. This `static var` retain is load-bearing.
     private static let _observer = LockIsolated<PalaceSingletonResetObserver?>(nil)
+
+    /// What this device held for the LCP-streaming override before the run
+    /// pinned it, so `testBundleDidFinish` can put it back. `nil` means there
+    /// was no override, and restoring that removes the key rather than
+    /// writing a value the device never had.
+    static let streamingOverrideAtLaunch = LockIsolated<Bool?>(nil)
     private static var observer: PalaceSingletonResetObserver? {
         get { _observer.value }
         set { _observer.value = newValue }
@@ -87,6 +93,11 @@ class PalaceTestSetup: NSObject {
         // The value comes from `PALACE_TEST_LCP_STREAMING` (`on`|`off`, default
         // `off`). Production runs the flag ON; CI runs the flag consumers' suites a
         // second time with `on` so an ON-only regression is not hidden by the pin.
+        // Read BEFORE the first pin, so the run can put the device back when
+        // the bundle finishes: on a simulator `.standard` is the Palace app's
+        // own container, and a pin left behind decides the flag for whoever
+        // drives that device next.
+        streamingOverrideAtLaunch.value = LCPStreamingTestPin.currentOverride(in: .standard)
         LCPStreamingTestPin.apply(LCPStreamingTestPin.selected, to: .standard)
 
         let obs = PalaceSingletonResetObserver()
@@ -288,6 +299,12 @@ class PalaceSingletonResetObserver: NSObject, XCTestObservation {
     /// sample).
     internal var lastObservedDeltaForTesting: Int?
 
+    /// The run is over, so stop imposing its flag choice on this device.
+    func testBundleDidFinish(_ testBundle: Bundle) {
+        // MISSING-001-OK: XCTestObservation callback, not a test method.
+        LCPStreamingTestPin.restore(PalaceTestSetup.streamingOverrideAtLaunch.value, to: .standard)
+    }
+
     func testCaseWillStart(_ testCase: XCTestCase) {
         // MISSING-001-OK: XCTestObservation callback, not a test method.
         preCount = Self.sampleObserverCount()
@@ -443,5 +460,29 @@ enum LCPStreamingTestPin {
 
     static func apply(_ enabled: Bool, to defaults: UserDefaults) {
         defaults.set(enabled, forKey: RemoteFeatureFlags.lcpAudiobookStreamingLocalOverrideKey)
+    }
+
+    /// Whatever `defaults` holds for the override right now — `nil` when the
+    /// key is absent, which is a different state from `false` and has to stay
+    /// that way through a restore.
+    static func currentOverride(in defaults: UserDefaults) -> Bool? {
+        defaults.object(forKey: RemoteFeatureFlags.lcpAudiobookStreamingLocalOverrideKey) as? Bool
+    }
+
+    /// Put `original` back, removing the key when there was none.
+    ///
+    /// On a simulator, `.standard` for the test host IS the Palace app's own
+    /// container, so an override left behind pins the APP — every later
+    /// simdrive session or manual pass on that device silently exercises the
+    /// path the tests chose rather than the one patrons get. Found on
+    /// 2026-10-21, when a regression simulator still read
+    /// `lcpAudiobookStreamingLocalOverride = false` hours after the run that
+    /// wrote it, while production serves that flag ON at 100%.
+    static func restore(_ original: Bool?, to defaults: UserDefaults) {
+        if let original {
+            defaults.set(original, forKey: RemoteFeatureFlags.lcpAudiobookStreamingLocalOverrideKey)
+        } else {
+            defaults.removeObject(forKey: RemoteFeatureFlags.lcpAudiobookStreamingLocalOverrideKey)
+        }
     }
 }

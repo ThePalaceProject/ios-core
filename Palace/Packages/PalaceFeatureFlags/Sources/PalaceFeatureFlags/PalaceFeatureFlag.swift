@@ -62,10 +62,11 @@ public enum PalaceFeatureFlag: String, Sendable {
     /// audiobook becomes playable on the `.lcpl` license alone and the player
     /// streams the encrypted audio on demand via the pinned swift-toolkit fork
     /// (3.11.0 + fix-issue-579); when OFF, the app downloads the full `.lcpa`
-    /// before playback (today's behavior). **Default OFF — Firebase-gated;**
-    /// the default flip to streaming is a product decision. Precedence is
-    /// UserDefaults local override (dev-menu toggle / QA) > Firebase remote
-    /// (default false) — see `isLCPAudiobookStreamingEnabled`.
+    /// before playback. **Default ON**, matching the 100% Remote Config
+    /// rollout: an environment Firebase does not reach must not take the
+    /// opposite path from production. Precedence is UserDefaults local
+    /// override (dev-menu toggle / QA) > Firebase remote > this default —
+    /// see `isLCPAudiobookStreamingEnabled`.
     case lcpAudiobookStreamingEnabled = "lcp_audiobook_streaming_enabled"
 
     /// In-app fallback when Remote Config has no value. Kept in the package:
@@ -82,6 +83,14 @@ public enum PalaceFeatureFlag: String, Sendable {
         case .opds2Enabled:
             return true
         case .appRatingPromptEnabled:
+            return true
+        case .lcpAudiobookStreamingEnabled:
+            // Remote Config has this at 100% in production, so the in-app
+            // fallback matched the rollout only where Firebase answered.
+            // Everywhere it does not — a simulator, CI, a unit test, the first
+            // launch before Remote Config returns — the app took the opposite
+            // path from every patron. Defaulting ON makes the unconfigured
+            // case agree with the configured one.
             return true
         default:
             // Includes `.inAppPlaybackNavEnabled`: default OFF in-app —
