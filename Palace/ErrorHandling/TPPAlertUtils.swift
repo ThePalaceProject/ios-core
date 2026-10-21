@@ -64,26 +64,33 @@ import PalaceUtilities
         let domain = error?.domain ?? ""
         let code = error?.code ?? 0
 
-        // handle common iOS networking errors
+        // Each arm resolves its own copy here rather than handing a key to
+        // `alert(title:message:style:)`. That method localizes a variable, so
+        // it cannot supply a `value:` fallback for a key it never sees as a
+        // literal, and these keys exist in no shipped table — they reached the
+        // alert as identifiers. Resolved English passes through that second
+        // lookup unchanged, because it is not itself a key.
         if domain == NSURLErrorDomain {
             if code == NSURLErrorNotConnectedToInternet {
-                message = "NotConnected"
+                message = Strings.Error.notConnected
             } else if code == NSURLErrorCancelled {
                 message = "Cancelled"
             } else if code == NSURLErrorTimedOut {
-                message = "TimedOut"
+                message = Strings.Error.timedOut
             } else if code == NSURLErrorUnsupportedURL {
-                message = "UnsupportedURL"
+                message = Strings.Error.unsupportedURL
             } else {
-                message = "UnknownRequestError"
+                // The English of the former `UnknownRequestError` key verbatim,
+                // via the prose-keyed constant that all four tables translate.
+                message = Strings.Error.unknownRequestError
             }
         }
         #if FEATURE_DRM_CONNECTOR
         if domain == NYPLADEPTErrorDomain {
             if code == NYPLADEPTError.authenticationFailed.rawValue {
-                message = "SettingsAccountViewControllerInvalidCredentials"
+                message = Strings.Error.invalidDRMCredentials
             } else if code == NYPLADEPTError.tooManyActivations.rawValue {
-                message = "SettingsAccountViewControllerMessageTooManyActivations"
+                message = Strings.Error.tooManyDRMActivations
             } else {
                 message = "DRM error: \(error?.localizedDescriptionWithRecovery ?? "Please try again.")"
             }

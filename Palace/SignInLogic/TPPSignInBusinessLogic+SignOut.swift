@@ -205,8 +205,8 @@ extension TPPSignInBusinessLogic {
         // compiles this arm, which is why the DRM scheme builds without it.
         if bookRegistry.isSyncing {
             let alert = TPPAlertUtils.alert(
-                title: "SettingsAccountViewControllerCannotLogOutTitle",
-                message: "SettingsAccountViewControllerCannotLogOutMessage")
+                title: Strings.Error.cannotSignOutTitle,
+                message: Strings.Error.cannotSignOutMessage)
             uiDelegate?.present(alert, animated: true, completion: nil)
             isSignOutInProgress = false
         } else {

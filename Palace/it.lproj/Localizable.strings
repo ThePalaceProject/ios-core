@@ -140,6 +140,7 @@
 /* Error message used when a low-level error occured while opening a publication */
 "An error was encountered while trying to open this book." = "Si è verificato un errore durante il tentativo di aprire questo libro.";
 
+/* Alert message when sign-out fails and the server supplied no error */
 "An unknown error occurred while trying to sign out." = "Si è verificato un errore sconosciuto durante il tentativo di disconnessione.";
 
 /* A generic error message for when a network request fails */
@@ -185,7 +186,7 @@
 /* Book detail metadata label for the target reader audience (Adult, Young Adult, Children, etc.) */
 "Audience" = "Pubblico";
 
-/* Audiobook badge accessibility */
+/* VoiceOver: Indicates the book is an audiobook */
 "Audiobook" = "Audiolibro";
 
 /* Title when a cold-load playback failure dismisses the player */
@@ -816,6 +817,9 @@
 /* Sentiment-gate button; a negative response that leads to a feedback option instead of the App Store. */
 "Not really" = "Non proprio";
 
+/* Alert message for NSURLErrorNotConnectedToInternet */
+"NotConnected" = "Non è connesso a Internet. Si connetta e riprovi.";
+
 /* Title of the catalog empty state shown when a feed returns no books */
 "Nothing here yet" = "Qui non c'è ancora nulla";
 
@@ -941,7 +945,7 @@
 
 "Please force-quit and reopen Palace, then try again. If the problem persists, email support@thepalaceproject.org." = "Chiuda completamente Palace, lo riapra e riprovi. Se il problema persiste, scriva a support@thepalaceproject.org.";
 
-/* Error message to please try again. */
+/* Message shown when maximum retry attempts have been exceeded */
 "Please try again later." = "Riprova più tardi.";
 
 /* Message shown when the audiobook fails to load, prompting a retry */
@@ -1141,6 +1145,21 @@
 "Session Expired" = "Sessione scaduta";
 
 "Settings" = "Impostazioni";
+
+/* Message of the alert shown when sign-out is refused because the book registry is still syncing */
+"SettingsAccountViewControllerCannotLogOutMessage" = "Attenda il completamento di alcune operazioni di download prima di disconnettersi.";
+
+/* Title of the alert shown when sign-out is refused because the book registry is still syncing */
+"SettingsAccountViewControllerCannotLogOutTitle" = "Disconnessione non riuscita";
+
+/* Alert message for Adobe NYPLADEPTError.authenticationFailed */
+"SettingsAccountViewControllerInvalidCredentials" = "Non è stato possibile autorizzare questo dispositivo sul server DRM. Riprovi o contatti la sua biblioteca se il problema persiste.";
+
+/* Title of the alert shown when a sign-out request fails */
+"SettingsAccountViewControllerLogoutFailed" = "Disconnessione non riuscita";
+
+/* Alert message for Adobe NYPLADEPTError.tooManyActivations */
+"SettingsAccountViewControllerMessageTooManyActivations" = "Sono stati autorizzati troppi dispositivi con questa tessera della biblioteca.";
 
 /* Feedback follow-up button; opens a pre-composed support email. */
 "Share feedback" = "Invia un feedback";
@@ -1386,6 +1405,9 @@
 /* VoiceOver: audiobook chapter remaining time, %@ is a spoken duration */
 "Time remaining: %@" = "Tempo rimanente: %@";
 
+/* Alert message for NSURLErrorTimedOut */
+"TimedOut" = "Il server non ha risposto. Verifichi la connessione o riprovi più tardi.";
+
 "Title" = "Titolo";
 
 /* Sign in prompt */
@@ -1425,11 +1447,17 @@
 
 "Unable to open book" = "Impossibile aprire il libro";
 
+/* Title of the alert shown when a sign-out request returns 401 */
+"Unexpected Credentials" = "Credenziali inattese";
+
 /* Error message shown to user when an unknown location error occurs. */
 "Unknown error occurred. Please try again." = "Si è verificato un errore sconosciuto. Riprovi.";
 
 /* Unsupported format */
 "Unsupported format" = "Formato non supportato";
+
+/* Alert message for NSURLErrorUnsupportedURL, where retrying cannot help because the address itself is unusable */
+"UnsupportedURL" = "Non è stato possibile aprire il link. Segnali il problema dalla scheda Impostazioni.";
 
 /* Title for User Agreement section */
 "User Agreement" = "Accordo per gli utenti";
@@ -1555,6 +1583,9 @@
 
 /* Title of the My Books empty state shown when the patron has no books */
 "Your shelf is empty" = "Il suo scaffale è vuoto";
+
+/* Alert message shown when a sign-out request returns 401, meaning the card's credentials changed server-side */
+"Your username or password may have changed since the last time you logged in.\n\nIf you believe this is an error, please contact your library." = "Il suo nome utente o la sua password potrebbero essere cambiati dall'ultimo accesso.\n\nSe ritiene che si tratti di un errore, contatti la sua biblioteca.";
 
 /* VoiceOver fragment '%@' is an author name — used in Continue Listening / Continue Reading card labels. */
 "by %@" = "di %@";

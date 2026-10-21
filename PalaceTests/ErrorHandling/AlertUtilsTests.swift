@@ -86,11 +86,13 @@ final class AlertUtilsTests: XCTestCase {
         }
     }
 
-    /// Specific NSLocalizedString keys must surface in the message for the
-    /// codes the production code special-cases. UnsupportedURL and any
-    /// non-special code (CannotFindHost) hit distinct branches in
-    /// `messageForError`. Lock both keys at once so swapping them fails
-    /// here.
+    /// UnsupportedURL and any non-special code (CannotFindHost) hit distinct
+    /// branches in the URL-error mapping, and each must surface its own copy.
+    ///
+    /// This used to assert that the message CONTAINED "UnsupportedURL" and
+    /// "UnknownRequestError" — the keys themselves, which is what a patron
+    /// read, since Palace ships no `en.lproj/Localizable.strings`. The branches
+    /// are now pinned by the English they resolve to instead.
     func testAlert_nsurlErrors_keyedMessages_areDistinguishable() {
         let unsupported = TPPAlertUtils.alert(
             title: "Error",
@@ -99,10 +101,10 @@ final class AlertUtilsTests: XCTestCase {
             title: "Error",
             error: NSError(domain: NSURLErrorDomain, code: NSURLErrorCannotFindHost))
 
-        XCTAssertTrue(unsupported.message?.contains("UnsupportedURL") == true,
-                      "UnsupportedURL must surface its specific key — guards against fallthrough mutant")
-        XCTAssertTrue(unknown.message?.contains("UnknownRequestError") == true,
-                      "Non-special URL errors must hit the UnknownRequestError fallback")
+        XCTAssertEqual(unsupported.message, Strings.Error.unsupportedURL,
+                       "UnsupportedURL must surface its own copy — guards against fallthrough mutant")
+        XCTAssertEqual(unknown.message, Strings.Error.unknownRequestError,
+                       "Non-special URL errors must hit the unknown-request fallback")
         XCTAssertNotEqual(unsupported.message, unknown.message,
                           "Distinct branches must yield distinct messages — guards against constant-string mutant")
     }

@@ -803,18 +803,24 @@ extension AccountDetailViewModel: @preconcurrency TPPSignInOutBusinessLogicUIDel
         let title: String
         let message: String
 
+        // Each arm resolves its own copy. The title used to be a bare
+        // identifier localized below, after the arm was chosen; with no `en`
+        // table that lookup returned the identifier, and a lookup on a
+        // variable has no literal call site to carry a `value:` fallback. The
+        // error arm also localized `error.localizedDescription`, which would
+        // translate a system message that happened to match a table key.
         if httpStatusCode == 401 {
-            title = "Unexpected Credentials"
-            message = "Your username or password may have changed since the last time you logged in.\n\nIf you believe this is an error, please contact your library."
+            title = Strings.Error.signOutUnexpectedCredentialsTitle
+            message = Strings.Error.signOutUnexpectedCredentialsMessage
         } else if let error {
-            title = "SettingsAccountViewControllerLogoutFailed"
+            title = Strings.Error.signOutFailedTitle
             message = error.localizedDescription
         } else {
-            title = "SettingsAccountViewControllerLogoutFailed"
-            message = NSLocalizedString("An unknown error occurred while trying to sign out.", comment: "")
+            title = Strings.Error.signOutFailedTitle
+            message = Strings.Error.signOutUnknownError
         }
 
-        showError(title: NSLocalizedString(title, comment: ""), message: NSLocalizedString(message, comment: ""))
+        showError(title: title, message: message)
     }
 
     func businessLogicDidFinishDeauthorizing(_ logic: TPPSignInBusinessLogic) {
