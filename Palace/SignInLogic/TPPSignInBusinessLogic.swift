@@ -435,7 +435,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
 
         let authTypeStr = (authType == .signOut ? "signing out" : "signing in")
 
-        let loadedDetails = loadedAccountDetails
+        let loadedDetails = signInTargetDetails
         guard
             let urlStr = loadedDetails?.userProfileUrl,
             let url = URL(string: urlStr) else {
@@ -1143,40 +1143,6 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         // On `.detailsFailed` this returns `false`, matching the legacy
         // nil-semantic — the migration does NOT crash on `.detailsFailed`.
         loadedAccountDetails?.auths.contains { $0.isSaml } ?? false
-    }
-
-    /// Auto-select a WebView-based authentication (SAML, then OIDC) when
-    /// the library advertises multiple auth methods and none is explicitly
-    /// chosen. Fixes the regression where multi-auth SAML libraries rendered
-    /// the basic-auth credential fields instead of the SAML sign-in prompt.
-    ///
-    /// Also auto-selects the sole SAML IdP when the chosen SAML auth
-    /// advertises exactly one — without this, tapping "Sign in" on a
-    /// single-IdP SAML library is a silent no-op because
-    /// `samlHelper.logIn()` guards on `selectedIDP?.url`.
-    ///
-    /// Idempotent: only sets `selectedAuthentication` / `selectedIDP` when
-    /// they are currently nil.
-    @objc func selectPreferredAuthIfNeeded() {
-        if selectedAuthentication == nil,
-           let auths = loadedAccountDetails?.auths, auths.count > 1 {
-            if let saml = auths.first(where: { $0.isSaml }) {
-                selectedAuthentication = saml
-            } else if let oidc = auths.first(where: { $0.isOidc }) {
-                selectedAuthentication = oidc
-            }
-        }
-
-        // Auto-select the sole SAML IdP so Sign In opens the WebView
-        // immediately instead of silently no-op'ing. Multi-IdP libraries
-        // still require the user to pick via the IdP list UI.
-        if selectedIDP == nil,
-           let samlAuth = selectedAuthentication,
-           samlAuth.isSaml,
-           let idps = samlAuth.samlIdps,
-           idps.count == 1 {
-            selectedIDP = idps.first
-        }
     }
 
     @objc func shouldShowEULALink() -> Bool {
