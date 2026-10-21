@@ -23,7 +23,10 @@ final class AlertTextLocalizationTests: XCTestCase {
     ///
     /// A single word is prose. `Cancelled` reads correctly with no table at
     /// all, which is why the house idiom uses the English string as the key.
-    static func isIdentifierShaped(_ text: String) -> Bool {
+    /// `nonisolated` so `AlertIdentifierKeyLintTests`, which is not
+    /// `@MainActor`, can share this one copy instead of keeping its own. It is
+    /// a pure function of its argument.
+    nonisolated static func isIdentifierShaped(_ text: String) -> Bool {
         guard text.count >= 3, !text.contains(where: { $0.isWhitespace }) else { return false }
         guard text.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "." || $0 == "_" }),
               let first = text.first, first.isLetter else { return false }

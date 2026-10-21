@@ -52,9 +52,10 @@ extension Strings {
         // the key, and each of these was written as a bare literal that
         // `TPPAlertUtils.alert(title:message:style:)` localizes at runtime --
         // a variable lookup, with no literal call site for a fallback to sit
-        // on. Eight values are the app's own, restored byte-for-byte from the
-        // `en` table the Transifex integration removed. The other two are not:
-        // `UnsupportedURL` was never in that table, and
+        // on. Measured against the `en` table the Transifex integration
+        // removed (`git show d58bb873e^`): of the nine values below, six are
+        // that table's own text byte-for-byte. Three are not —
+        // `UnsupportedURL` and `Unexpected Credentials` were never in it, and
         // `SettingsAccountViewControllerInvalidCredentials` deliberately
         // replaces its old wording (see the note above it). Same class as
         // PP-5094.
