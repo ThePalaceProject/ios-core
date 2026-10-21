@@ -52,8 +52,12 @@ extension Strings {
         // the key, and each of these was written as a bare literal that
         // `TPPAlertUtils.alert(title:message:style:)` localizes at runtime --
         // a variable lookup, with no literal call site for a fallback to sit
-        // on. The English is the app's own, restored from the `en` table that
-        // the Transifex integration removed. Same class as PP-5094.
+        // on. Eight values are the app's own, restored byte-for-byte from the
+        // `en` table the Transifex integration removed. The other two are not:
+        // `UnsupportedURL` was never in that table, and
+        // `SettingsAccountViewControllerInvalidCredentials` deliberately
+        // replaces its old wording (see the note above it). Same class as
+        // PP-5094.
         static let notConnected = NSLocalizedString(
             "NotConnected",
             value: "You are not connected to the internet. Please connect and try again.",
@@ -66,9 +70,20 @@ extension Strings {
             "UnsupportedURL",
             value: "The link could not be opened. Please report an issue from the Settings tab.",
             comment: "Alert message for NSURLErrorUnsupportedURL, where retrying cannot help because the address itself is unusable")
-        // Names no barcode or PIN: this path authorizes with the licensor
-        // client token (TPPSignInBusinessLogic+DRM.swift), so the patron
-        // entered no such credential and has none to correct.
+        // These two name no barcode or PIN: the path that reaches them
+        // authorizes with the licensor client token
+        // (TPPSignInBusinessLogic+DRM.swift), so the patron entered no such
+        // credential and has none to correct.
+        //
+        // The same two Adobe codes also reach the patron through
+        // `DRMError` (PalaceError.swift), whose copy says "Please sign out and
+        // sign in again" / "deauthorize a device". That advice fits the
+        // borrow-time path and not the sign-in one, where the patron is already
+        // signing in. So the wording differs by entry point, which is what
+        // PP-3649 set out to stop for the error MAPPING. Reconciling the two
+        // surfaces is a copy decision, not a localization one; until it is
+        // made, these are the sign-in strings and `DRMError` keeps the
+        // borrow-time ones.
         static let invalidDRMCredentials = NSLocalizedString(
             "SettingsAccountViewControllerInvalidCredentials",
             value: "This device could not be authorized with the DRM server. Please try again, or contact your library if it keeps happening.",

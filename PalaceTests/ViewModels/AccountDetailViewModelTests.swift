@@ -824,15 +824,6 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
     // `value:` reaches the alert as an identifier in every language. These pin
     // each of the three arms' title as English a patron can read.
 
-    /// True when a patron would read `text` as an identifier rather than as
-    /// English. Mirrors the predicate in `AlertTextLocalizationTests`; kept
-    /// local so this suite does not depend on that one.
-    private func readsAsIdentifier(_ text: String) -> Bool {
-        guard text.count >= 3, !text.contains(where: { $0.isWhitespace }) else { return false }
-        guard text.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }) else { return false }
-        return zip(text, text.dropFirst()).contains { $0.isLowercase && $1.isUppercase }
-    }
-
     func testSignOutError_WithError_ShowsReadableTitleAndTheErrorDescription() async {
         let vm = AccountDetailViewModel(libraryAccountID: seededLibraryID, appContainer: .production())
         vm.isLoading = true
@@ -845,8 +836,6 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
         XCTAssertFalse(vm.isLoading)
         XCTAssertFalse(vm.isSigningOut)
         XCTAssertTrue(vm.showingAlert)
-        XCTAssertFalse(readsAsIdentifier(vm.alertTitle),
-                       "a patron reads the identifier \"\(vm.alertTitle)\"")
         XCTAssertEqual(vm.alertTitle, "Sign Out Failed")
         XCTAssertEqual(vm.alertMessage, "The server refused the request.",
                        "the error's own description must reach the patron intact")
@@ -862,8 +851,6 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
         XCTAssertFalse(vm.isLoading)
         XCTAssertFalse(vm.isSigningOut)
         XCTAssertTrue(vm.showingAlert)
-        XCTAssertFalse(readsAsIdentifier(vm.alertTitle),
-                       "a patron reads the identifier \"\(vm.alertTitle)\"")
         XCTAssertEqual(vm.alertTitle, "Sign Out Failed")
         XCTAssertEqual(vm.alertMessage, "An unknown error occurred while trying to sign out.")
     }

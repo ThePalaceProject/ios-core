@@ -205,11 +205,14 @@ final class AlertTextLocalizationTests: XCTestCase {
     // MARK: - Sign-out blocked while the registry syncs
     //
     // `TPPSignInBusinessLogic.performLogOut()` builds this alert inside the
-    // `#else` (noDRM) arm, which the DRM test target does not compile. The two
-    // strings it passes live in `Strings` outside any `#if`, so the copy and
-    // its trip through the alert builder are assertable from either target.
+    // `#else` (noDRM) arm, which the DRM test target does not compile, and
+    // there is no noDRM test target. So this pins the COPY and its trip
+    // through the builder, not the call site: reverting those two arguments to
+    // literals leaves it green. The substitution itself is pinned by
+    // `AlertIdentifierKeyLintTests`, which reads the source and so sees the
+    // `#else` arm from this target.
 
-    func testAlert_SignOutBlockedWhileSyncing_PresentsProse() {
+    func testBlockedSignOutCopy_SurvivesTheAlertBuilder() {
         let alert = TPPAlertUtils.alert(title: Strings.Error.cannotSignOutTitle,
                                         message: Strings.Error.cannotSignOutMessage)
 
