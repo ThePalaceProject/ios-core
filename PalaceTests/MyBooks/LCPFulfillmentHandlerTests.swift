@@ -63,7 +63,7 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
         )
         backgroundHandler = BackgroundDownloadHandler()
         lcpService = SpyLCPLibraryService()
-        spyDelegate = SpyDelegate()
+        spyDelegate = SpyDelegate(bookRegistry: registry)
 
         capturedErrors = []
         subscription = reporter.downloadErrorPublisher.sink { [weak self] info in
@@ -420,6 +420,82 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
                        "the fulfillment ID (used by return/revoke) must be recorded from the parsed license on the streaming path")
         XCTAssertFalse(reporter.isLCPContentTransferActive(for: audiobook.identifier),
                        "no content transfer starts, so no 'downloading' cue may be left active — an un-cleared cue pins the book at .downloading forever")
+    }
+
+    /// Streaming ON and the loan ended while fulfilment was in flight.
+    ///
+    /// The streaming arm short-circuits before `storeBook`, so the
+    /// `.discardedNotHeld` outcome that guards the download-first path never
+    /// reaches it. Without a guard of its own it copies a `.lcpl` next to
+    /// content the patron no longer holds and takes `.unregistered` to
+    /// `.downloadSuccessful` — the same illegal transition
+    /// `testFulfill_audiobook_afterTheBookIsReturned_doesNotMarkSuccessful`
+    /// pins on the other path.
+    ///
+    /// A Return leaves the record in the registry at `.unregistered` rather
+    /// than removing it, so every lookup this arm makes still succeeds.
+    func testFulfill_streamingEnabled_afterTheBookIsReturned_doesNotMarkSuccessfulOrCopyTheLicense() async throws {
+        let audiobook = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        registry.addBook(audiobook, state: .unregistered)
+        let sourceURL = try writeValidLicenseSource(id: "urn:uuid:returned-before-streaming-landed")
+        let downloadTask = FakeDownloadTask(state: .completed, identifier: 1)
+
+        let contentURL = try XCTUnwrap(bookFileManager.fileUrl(for: audiobook.identifier))
+        let streamingLicenseURL = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
+
+        makeStreamingHandler().fulfillLCPLicense(fileUrl: sourceURL, forBook: audiobook, downloadTask: downloadTask)
+
+        XCTAssertTrue(
+            spyDelegate.markSuccessfulCalls.isEmpty,
+            "a returned book must not be marked downloaded — that is the illegal transition this guards"
+        )
+        XCTAssertEqual(
+            registry.state(for: audiobook.identifier),
+            .unregistered,
+            "the returned book must stay returned"
+        )
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: streamingLicenseURL.path),
+            "no .lcpl may be left beside content the patron gave back"
+        )
+        // Pins the guard's POSITION, not just its presence. `setFulfillmentId`
+        // persists through the registry's save, and a Return leaves the record
+        // present for it to stick to — so a guard moved below that write keeps
+        // every assertion above green while still writing for a returned book.
+        XCTAssertNil(
+            registry.fulfillmentId(forIdentifier: audiobook.identifier),
+            "no fulfillment ID may be recorded for a book the patron gave back"
+        )
+        // Separates a deliberate decline from an incidental one. A rename
+        // failure earlier in fulfillment returns through `failDownloadWithAlert`
+        // and produces exactly the three observations above, so without this the
+        // test could pass for a reason that has nothing to do with the guard.
+        XCTAssertTrue(
+            capturedErrors.isEmpty,
+            "declining a returned book is silent; an alert here means the test passed for the wrong reason"
+        )
+    }
+
+    /// The same arm with the loan still live, so the guard cannot pass by
+    /// refusing everything. Without this, deleting the streaming branch
+    /// entirely would satisfy the test above.
+    func testFulfill_streamingEnabled_whileTheLoanIsLive_stillCopiesTheLicenseAndMarksSuccessful() async throws {
+        let audiobook = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        registry.addBook(audiobook, state: .downloading)
+        let sourceURL = try writeValidLicenseSource(id: "urn:uuid:live-loan-streaming")
+        let downloadTask = FakeDownloadTask(state: .completed, identifier: 1)
+
+        let contentURL = try XCTUnwrap(bookFileManager.fileUrl(for: audiobook.identifier))
+        let streamingLicenseURL = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
+
+        makeStreamingHandler().fulfillLCPLicense(fileUrl: sourceURL, forBook: audiobook, downloadTask: downloadTask)
+
+        XCTAssertEqual(spyDelegate.markSuccessfulCalls, [audiobook.identifier],
+                       "a live loan still streams on the license alone")
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: streamingLicenseURL.path),
+            "the streaming license must land for a book the patron still holds"
+        )
     }
 
     /// Defensive arm: streaming ON but the license bytes don't parse. The book is
@@ -784,8 +860,18 @@ private final class FakeDownloadTask: URLSessionDownloadTask, @unchecked Sendabl
 private final class SpyDelegate: LCPFulfillmentHandlerDelegate {
     var markSuccessfulCalls: [String] = []
 
+    /// Mirrors `MyBooksDownloadCenter.markDownloadSuccessful`, which writes the
+    /// state as well as announcing. Recording the call alone cannot show the
+    /// `.unregistered` to `.downloadSuccessful` move this handler must not make.
+    private let bookRegistry: TPPBookRegistryMock?
+
+    init(bookRegistry: TPPBookRegistryMock? = nil) {
+        self.bookRegistry = bookRegistry
+    }
+
     func markDownloadSuccessful(for book: TPPBook) {
         markSuccessfulCalls.append(book.identifier)
+        bookRegistry?.setState(.downloadSuccessful, for: book.identifier)
     }
 }
 

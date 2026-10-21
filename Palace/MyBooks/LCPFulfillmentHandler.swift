@@ -127,6 +127,31 @@ final class LCPFulfillmentHandler: @unchecked Sendable {
         // through to the unchanged download-first path below (behavior identical
         // to today, which is what keeps this mergeable ahead of the product flip).
         if streamingEnabledProvider(), book.defaultBookContentType == .audiobook {
+            // This arm short-circuits before `storeBook`, so the
+            // `.discardedNotHeld` outcome that guards the download-first path
+            // below never reaches it. Asked here, before the fulfilment ID and
+            // the license copy, because both write for a book the patron may
+            // already have given back: a Return leaves the record at
+            // `.unregistered` rather than removing it, so every lookup in this
+            // arm still succeeds and `markDownloadSuccessful` would take
+            // `.unregistered` to `.downloadSuccessful`.
+            //
+            // `accountUnchanged: true` because this handler carries no record
+            // of the account fulfilment started under. The residual is the one
+            // named on the predicate: a library switch mid-fulfilment reads as
+            // a discard and costs a re-borrow to stream.
+            let registryState = bookRegistry.state(for: book.identifier)
+            guard LocalBookContentService.mayStoreFetchedContent(
+                registryState: registryState,
+                accountUnchanged: true
+            ) else {
+                // Nothing to clean up: the short-circuit happens before the
+                // progress cue and the content-transfer registration, so no
+                // cue is left un-cleared and no transfer is left open.
+                Log.info(#file, "License arrived after the loan ended (state: \(registryState.stringValue())) — not streaming or marking successful: \(book.identifier)")
+                return
+            }
+
             if let license = TPPLCPLicense(url: licenseUrl) {
                 bookRegistry.setFulfillmentId(license.identifier, for: book.identifier)
             } else {
