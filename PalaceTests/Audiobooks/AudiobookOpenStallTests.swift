@@ -50,6 +50,18 @@ final class AudiobookOpenStallTests: AudiobookSessionOpenTestCase {
         XCTAssertEqual(stallChecks.reported, [])
     }
 
+    /// The check is armed at the deadline, not immediately: a zero delay would
+    /// report every open the moment it started.
+    func testEachOpen_armsItsCheckAtTheStallDeadline() async throws {
+        let book = downloadedBook("book-a")
+        await startParkedOpen(book)
+
+        XCTAssertEqual(stallChecks.delays, [AudiobookOpenTrace.stallDeadline])
+        XCTAssertGreaterThan(AudiobookOpenTrace.stallDeadline, 0,
+                             "a zero deadline reports an open that has not begun")
+        await finishOpens()
+    }
+
     /// A recovery re-open replaces the open it recovers; only the current one
     /// can be reported.
     func testRecoveryReopen_reportsOnlyTheCurrentOpen() async throws {

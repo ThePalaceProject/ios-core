@@ -30,9 +30,11 @@ struct AudiobookOpenStall: Equatable {
 /// The open in progress. A newer open replaces it, so a superseded open can
 /// neither move the step nor be reported as stalled.
 struct AudiobookOpenTrace {
-    /// Equal to the router's open-lock release, after which a repeated tap
-    /// starts a new open.
-    static let stallDeadline: TimeInterval = 30
+    /// The router's open-lock release, after which a repeated tap starts a new
+    /// open. Read from the router rather than copied, so the two cannot drift:
+    /// a deadline shorter than the lock reports opens that are still allowed to
+    /// finish, and a longer one leaves the window after the lock unreported.
+    static let stallDeadline: TimeInterval = BookOpenRouter.openLockSafetyRelease
 
     private(set) var openId: UUID?
     private var book: (id: String, distributor: String?)?
@@ -86,7 +88,7 @@ final class AudiobookOpenMonitor {
     private let report: @MainActor (AudiobookOpenStall) -> Void
 
     init(schedule: @escaping Scheduler = AudiobookOpenMonitor.scheduleOnMainQueue,
-         report: @escaping @MainActor (AudiobookOpenStall) -> Void = AudiobookOpenMonitor.record) {
+         report: @escaping @MainActor (AudiobookOpenStall) -> Void = { AudiobookOpenMonitor.record($0) }) {
         self.schedule = schedule
         self.report = report
     }
@@ -110,14 +112,35 @@ final class AudiobookOpenMonitor {
         trace.finish(openId)
     }
 
-    /// Records a stalled open. A hang leaves no crash report on iOS, so this is
-    /// the only count of patrons left on the loading spinner.
-    static func record(_ stall: AudiobookOpenStall) {
+    /// Records an open still in flight at the deadline. A hang leaves no crash
+    /// report on iOS, so this is the only count of opens that never finish. It
+    /// does not count a session parked at `.loading` between opens.
+    ///
+    /// `emit` is injected so a test can assert that the event is sent at all;
+    /// the payload itself is pinned through `stallReportPayload`.
+    static func record(
+        _ stall: AudiobookOpenStall,
+        emit: FleetEventEmitting = { code, summary, metadata in
+            TPPErrorLogger.logError(withCode: code, summary: summary, metadata: metadata)
+        }
+    ) {
         Log.error(#file, "Audiobook open \(stall.bookId) (\(stall.origin)) still \(stall.step.rawValue) after \(Int(AudiobookOpenTrace.stallDeadline))s")
-        TPPErrorLogger.logError(
-            withCode: .audiobookOpenStalled,
-            summary: "Audiobook open stalled: \(stall.step.rawValue)",
-            metadata: [
+        let payload = stallReportPayload(for: stall)
+        emit(payload.code, payload.summary, payload.metadata)
+    }
+
+    /// The exact event a stalled open puts on the wire.
+    ///
+    /// Separate from the emit so `AudiobookOpenTraceTests` can pin the code and
+    /// the key set: these reports are the only signal that an open hung, so a
+    /// renamed key empties a Crashlytics view that nothing else refills.
+    static func stallReportPayload(
+        for stall: AudiobookOpenStall
+    ) -> (code: TPPErrorCode, summary: String, metadata: [String: Any]) {
+        (
+            .audiobookOpenStalled,
+            "Audiobook open stalled: \(stall.step.rawValue)",
+            [
                 "bookId": stall.bookId,
                 "distributor": stall.distributor ?? "unknown",
                 "origin": stall.origin.description,

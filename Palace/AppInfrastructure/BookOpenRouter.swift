@@ -60,7 +60,10 @@ enum BookOpenRouter {
     /// Safety cap: if the open pipeline never reports completion (hang, timeout,
     /// unhandled throw inside a Task), releasing after this window prevents the
     /// lock from latching permanently and silently swallowing every retry.
-    private static let openLockSafetyRelease: TimeInterval = 30
+    /// `internal` and `nonisolated`, not private: `AudiobookOpenTrace.stallDeadline`
+    /// reads it from outside the main actor so the stall report fires exactly
+    /// when the lock lets a new open through.
+    nonisolated static let openLockSafetyRelease: TimeInterval = 30
 
     // Main-actor-confined: every mutation already happens on the main thread
     // (callers are `@MainActor` view models; the safety-release and dispatch

@@ -14,7 +14,10 @@ final class ParkedAudiobookLoaderFactory {
     /// Whether each open asked for a fresh manifest instead of the one on disk.
     private(set) var fetchesFreshManifest: [Bool] = []
 
-    func makeLoader(fetchesFreshManifest: Bool = false) -> AudiobookLoader {
+    /// No default: every caller threads the value production passes, so an
+    /// assertion on `fetchesFreshManifest` cannot pass against a hard-coded
+    /// `false` the open never sent.
+    func makeLoader(fetchesFreshManifest: Bool) -> AudiobookLoader {
         self.fetchesFreshManifest.append(fetchesFreshManifest)
         let adapter = DeferredAudiobookVendorAdapter()
         adapters.append(adapter)

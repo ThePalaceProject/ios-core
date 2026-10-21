@@ -443,7 +443,12 @@ jobs:
                 cls != "" && /func[[:space:]]+test/ { print cls; cls = "" }' || true; } \
             | LC_ALL=C sort -u)
           echo "$CLASSES" | grep -qx 'LCPStreamingTestPinTests' || { echo "::error::derived class list lacks LCPStreamingTestPinTests"; exit 1; }
-          echo "ON leg: $(echo "$CLASSES" | wc -l | tr -d ' ') classes"
+          CLASS_COUNT=$(echo "$CLASSES" | wc -l | tr -d ' ')
+          # A one-name canary passes on a list of one. The derivation has stood
+          # at ~180 classes; a collapse to a handful means the awk stopped
+          # matching, which would otherwise read as a fast green leg.
+          [ "$CLASS_COUNT" -ge 120 ] || { echo "::error::ON leg derived only $CLASS_COUNT classes; the derivation is broken or the flag's test surface shrank — update this floor deliberately"; exit 1; }
+          echo "ON leg: $CLASS_COUNT classes"
           ONLY_ARGS=()
           for c in $CLASSES; do ONLY_ARGS+=("-only-testing:PalaceTests/$c"); done
           ON_SKIP_ARGS=(

@@ -50,7 +50,7 @@ final class AudiobookSessionManagerStopDuringLoadTests: PalaceWiringTestCase {
         sut = AudiobookSessionManager(
             appContainer: makeTestAppContainer(accountsManager: accountsManager, bookRegistry: registry),
             inAppPlaybackNavEnabledProvider: { false },
-            makeLoader: { _ in loaders.makeLoader() }
+            makeLoader: { loaders.makeLoader(fetchesFreshManifest: $0) }
         )
         sut.errorPublisher
             .sink { [unowned self] in self.publishedErrors.append($0) }
