@@ -108,6 +108,49 @@ def test_non_swift_push_skips_the_ceiling(tmp_path):
     assert "[file-size]" not in result.stderr
 
 
+# --- The scripts/tests/ tooling suite on a mixed push -------------------------
+#
+# The suite leg used to sit inside the zero-.swift branch alone, so a diff that
+# carried a .swift file alongside the tooling skipped it here while CI, which
+# installs no Swift toolchain, skipped the behavioural tests that need one.
+
+def _plant_tooling_suite(repo: Path, passing: bool) -> None:
+    """Add the suite and advance origin/main onto it, so planting it is not
+    itself a scripts/ change inside the pushed range the hook measures."""
+    (repo / "scripts" / "tests").mkdir(parents=True, exist_ok=True)
+    body = "def test_planted():\n    assert %s\n" % ("True" if passing else "False")
+    (repo / "scripts" / "tests" / "test_planted.py").write_text(body)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "plant tooling suite")
+    _git(repo, "push", "-q", "origin", "main")
+
+
+def test_a_failing_tooling_suite_blocks_a_push_that_also_changes_swift(tmp_path):
+    repo = _repo(tmp_path, hub_cap=5, hub_lines=5)
+    _plant_tooling_suite(repo, passing=False)
+    _commit(repo, "Palace/Small.swift", _swift(4))
+    _commit(repo, "scripts/helper.sh", "echo hi\n")
+
+    result = _run_hook(repo, tmp_path)
+
+    assert result.returncode != 0, result.stderr
+    assert "scripts/ changed alongside Swift" in result.stderr
+    assert "scripts/tests FAIL" in result.stderr
+
+
+def test_a_swift_only_push_does_not_run_the_tooling_suite(tmp_path):
+    # Control for the test above: the planted suite FAILS, so reaching it would
+    # block. A diff touching no scripts/ file cannot affect that tooling.
+    repo = _repo(tmp_path, hub_cap=5, hub_lines=5)
+    _plant_tooling_suite(repo, passing=False)
+    _commit(repo, "Palace/Small.swift", _swift(4))
+
+    result = _run_hook(repo, tmp_path)
+
+    assert result.returncode == 0, result.stderr
+    assert "scripts/tests FAIL" not in result.stderr
+
+
 # --- Test selection and the executed-count check ------------------------------
 #
 # These fixtures add PalaceTests/ and a project file, so the hook reaches

@@ -132,34 +132,63 @@ fi
 ALL_CHANGED="$(git diff --name-only "$RANGE" 2>/dev/null || true)"
 SWIFT_CHANGED="$(printf '%s\n' "$ALL_CHANGED" | grep -E '\.swift$' || true)"
 
+SCRIPTS_CHANGED="$(printf '%s\n' "$ALL_CHANGED" | grep -E '^scripts/' || true)"
+
+# run_scripts_tests_suite — the scripts/tests/ pytest suite, or 2 when it cannot
+# run here. Separated from its first caller because it is the ONLY place several
+# of those tests execute: test_lint_corpus_scan.py drives
+# scripts/lint-corpus-scan.swift as a real process and skips without a Swift
+# toolchain, which CI deliberately does not install. While this ran only on the
+# zero-.swift branch below, a push that touched that Swift tool skipped the
+# suite here (Swift files present) AND skipped the behavioural tests in CI (no
+# toolchain) — so the one diff most able to break it was the one nothing ran.
+run_scripts_tests_suite() {
+  [[ -d "$REPO_DIR/scripts/tests" ]] || return 2
+  command -v python3 >/dev/null 2>&1 || return 2
+  python3 -c 'import pytest' >/dev/null 2>&1 || return 2
+
+  echo "[pre-push-test-gate] Running scripts/tests/ suite (python -m pytest)…" >&2
+  # Scrub the git hook env (GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE/…) before pytest —
+  # inherited, it makes the tests' throwaway-repo git commands operate on the real
+  # repo being pushed and corrupt the branch (same cause as the xcodebuild scrub below).
+  local rc=0
+  (cd "$REPO_DIR" && env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_PREFIX -u GIT_EXEC_PATH python3 -m pytest scripts/tests -q) >/tmp/pre-push-scripts-tests.log 2>&1 || rc=$?
+  if [[ $rc -eq 0 ]]; then
+    echo "[pre-push-test-gate] scripts/tests PASS — tooling suite green." >&2
+    return 0
+  fi
+  echo "" >&2
+  echo "[pre-push-test-gate] scripts/tests FAIL (exit $rc) — push blocked." >&2
+  echo "[pre-push-test-gate] Last 40 lines of /tmp/pre-push-scripts-tests.log:" >&2
+  tail -n 40 /tmp/pre-push-scripts-tests.log >&2 || true
+  echo "[pre-push-test-gate] To bypass: SKIP_PRE_PUSH_TESTS=1 git push ..." >&2
+  return 1
+}
+
 if [[ -z "$SWIFT_CHANGED" ]]; then
   echo "[pre-push-test-gate] Zero .swift files in $RANGE — tooling-only push (scripts/.simdrive/docs)." >&2
   echo "[pre-push-test-gate] Skipping iOS xcodebuild test gate (cannot be affected by a non-Swift diff)." >&2
 
-  # Run the scripts/tests/ python suite instead, if present. Failure here DOES
-  # block the push — it's the correct gate for tooling changes.
-  if [[ -d "$REPO_DIR/scripts/tests" ]] && command -v python3 >/dev/null 2>&1 \
-     && python3 -c 'import pytest' >/dev/null 2>&1; then
-    echo "[pre-push-test-gate] Running scripts/tests/ suite (python -m pytest)…" >&2
-    # Scrub the git hook env (GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE/…) before pytest —
-    # inherited, it makes the tests' throwaway-repo git commands operate on the real
-    # repo being pushed and corrupt the branch (same cause as the xcodebuild scrub below).
-    if (cd "$REPO_DIR" && env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE -u GIT_PREFIX -u GIT_EXEC_PATH python3 -m pytest scripts/tests -q) >/tmp/pre-push-scripts-tests.log 2>&1; then
-      echo "[pre-push-test-gate] scripts/tests PASS — tooling suite green." >&2
-      exit 0
-    else
-      rc=$?
-      echo "" >&2
-      echo "[pre-push-test-gate] scripts/tests FAIL (exit $rc) — push blocked." >&2
-      echo "[pre-push-test-gate] Last 40 lines of /tmp/pre-push-scripts-tests.log:" >&2
-      tail -n 40 /tmp/pre-push-scripts-tests.log >&2 || true
-      echo "[pre-push-test-gate] To bypass: SKIP_PRE_PUSH_TESTS=1 git push ..." >&2
-      exit 1
-    fi
-  fi
+  # Failure here DOES block the push — it's the correct gate for tooling changes.
+  suite_rc=0
+  run_scripts_tests_suite || suite_rc=$?
+  case $suite_rc in
+    0) exit 0 ;;
+    1) exit 1 ;;
+  esac
 
   echo "[pre-push-test-gate] No runnable scripts/tests/ suite (pytest absent or dir missing) — allowing push." >&2
   exit 0
+fi
+
+# A mixed push — Swift files AND scripts/ — runs the tooling suite too, then
+# falls through to the iOS path. Without this the suite is unreachable for every
+# diff that happens to carry a .swift file alongside the tooling it tests.
+if [[ -n "$SCRIPTS_CHANGED" ]]; then
+  echo "[pre-push-test-gate] scripts/ changed alongside Swift — running the tooling suite first." >&2
+  suite_rc=0
+  run_scripts_tests_suite || suite_rc=$?
+  [[ $suite_rc -eq 1 ]] && exit 1
 fi
 
 CHANGED_FILES="$(git diff --name-only "$RANGE" -- 'Palace/*.swift' 2>/dev/null | sort -u)"

@@ -29,16 +29,6 @@ jobs:
         with:
           python-version: '3.12'
 
-      # The Swift toolchain is for scripts/tests/test_lint_corpus_scan.py, which
-      # drives scripts/lint-corpus-scan.swift as a real process. Without it the
-      # suite reports "1 passed, 18 skipped" — a green run that exercised one
-      # file-exists check. Measured on this runner's shape by hiding `swift`
-      # from PATH locally: 19 passed with it, 1 passed / 18 skipped without.
-      - name: Set up Swift
-        uses: swift-actions/setup-swift@v2
-        with:
-          swift-version: '6.0'
-
       - name: Install test deps
         # PyYAML: test_every_bash_test_is_invoked.py parses the workflows as
         # YAML rather than scanning them as text, because a character-window
