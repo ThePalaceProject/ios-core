@@ -172,7 +172,13 @@ private final class NoAuthorizationDelegateSpy: AdobeDRMHandlerDelegate {
 
     func fileUrl(for identifier: String) -> URL? { calls.append("fileUrl"); return nil }
     func failDownloadWithAlert(for book: TPPBook, withMessage message: String?) { calls.append("failDownloadWithAlert") }
-    func markDownloadSuccessful(for book: TPPBook) { calls.append("markDownloadSuccessful") }
+    /// Mirrors `MyBooksDownloadCenter.markDownloadSuccessful`, which writes the
+    /// state as well as announcing. Recording the call alone cannot show the
+    /// `.unregistered` to `.downloadSuccessful` move the handler must not make.
+    func markDownloadSuccessful(for book: TPPBook) {
+        calls.append("markDownloadSuccessful")
+        bookRegistry.setState(.downloadSuccessful, for: book.identifier)
+    }
     func broadcastUpdate() { calls.append("broadcastUpdate") }
     func handleAdobeDownloadProgress(_ progress: Double, for tag: String) { calls.append("handleAdobeDownloadProgress") }
 }
