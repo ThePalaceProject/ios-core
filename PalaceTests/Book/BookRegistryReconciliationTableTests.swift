@@ -319,4 +319,35 @@ final class BookRegistryReconciliationTableTests: XCTestCase {
         XCTAssertEqual(outcome(entry: .downloading, disk: .absent, inFlight: false).state, .downloadFailed,
                        "with nothing in flight and nothing on disk the download really did fail")
     }
+
+    // MARK: - Agreement with the enforced transition table
+
+    /// Every state reconciliation writes must also be a legal move out of the
+    /// state it replaced.
+    ///
+    /// The two tables are independent: `load()` assigns `record.state` straight
+    /// onto the record, so a reconciliation never consults
+    /// `TPPBookState.allowedTransitions` and nothing reports it when the two
+    /// disagree. They did disagree. Reconciliation parks a license-only book at
+    /// `.downloadNeeded` and promotes it to `.downloadSuccessful` once real
+    /// content lands, while `allowedTransitions` carried no such pair — so the
+    /// fulfilment caller that performs that same promotion through `setState`
+    /// tripped the violation handler.
+    ///
+    /// Enumerated over every state, disk condition and in-flight value rather
+    /// than the pinned cells above, so a newly added arm is covered the day it
+    /// lands.
+    func testEveryReconciliationOutcomeIsALegalTransition() {
+        for entry in TPPBookState.allCases {
+            for disk in Disk.allCases {
+                for inFlight in [false, true] {
+                    let got = outcome(entry: entry, disk: disk, inFlight: inFlight)
+                    XCTAssertTrue(
+                        TPPBookState.canTransition(from: entry, to: got.state),
+                        "reconcile(\(entry), \(disk.rawValue), inFlight: \(inFlight)) writes \(got.state), which is not in TPPBookState.allowedTransitions"
+                    )
+                }
+            }
+        }
+    }
 }

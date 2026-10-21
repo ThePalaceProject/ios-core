@@ -112,6 +112,21 @@ public extension TPPBookState {
         // A loan that is not downloaded yet becomes a hold again when the
         // loans feed reports it as reserved or ready (sync merge, PP-5360).
         .init(from: .downloadNeeded, to: .holding),
+        // Content arriving for a record that load-time reconciliation parked
+        // here. `BookRegistrySync.armDecision` sends a book holding only its
+        // `.lcpl` license to `.downloadNeeded` and schedules the `.lcpa` fetch,
+        // and its own `.downloadNeeded` + content-present cell then reconciles
+        // to `.downloadSuccessful`. Two callers perform that promotion through
+        // this seam once the content is on disk:
+        // `LCPFulfillmentHandler.fulfillLCPLicense`'s audiobook completion arm
+        // (via `markDownloadSuccessful`, only when `storeBook` reports
+        // `.stored`) and `LocalBookContentService`'s re-download, which guards
+        // on the state already being `.downloadNeeded`.
+        //
+        // Reconciliation reaches `record.state` directly rather than through
+        // `setState`, so it never consulted this table and nothing reported the
+        // disagreement; the callers above did, and asserted in DEBUG.
+        .init(from: .downloadNeeded, to: .downloadSuccessful),
         // From .downloading
         .init(from: .downloading, to: .downloadSuccessful),
         .init(from: .downloading, to: .downloadFailed),
