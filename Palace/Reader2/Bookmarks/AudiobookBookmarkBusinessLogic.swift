@@ -26,13 +26,20 @@ import PalaceUtilities
     /// Identifies execution already on `queue` so `onStateQueue` runs inline
     /// instead of a nested `queue.sync` (which would deadlock).
     private let queueKey = DispatchSpecificKey<Void>()
-    private let debounceInterval: TimeInterval = 1.0
+    /// Collapses a burst of bookmark taps into one write. `nil` runs the write
+    /// on the work queue with no timer, which is how a test reaches it without
+    /// a wall-clock wait; production always takes the default. Optional rather
+    /// than a sentinel interval, so there is no boundary to get wrong.
+    private let debounceInterval: TimeInterval?
     private var debounceWorkItem: DispatchWorkItem?  // Access only on `queue`
 
     // MARK: - Test join seam
     // Retains the most recent `saveListeningPosition` write `Task` so tests can
     // join it instead of polling a deadline. Access is confined to `queue`.
     private var _positionWriteTaskForTesting: Task<Void, Never>?
+    /// Sibling of the above for `saveBookmark`, whose write also runs in a
+    /// detached `Task`. Access is confined to `queue`.
+    private var _bookmarkWriteTaskForTesting: Task<Void, Never>?
 
     // MARK: - Serialized sync state
     // `isSyncing`, `completionHandlersQueue`, and `deletedBookmarkIds` are
@@ -66,8 +73,10 @@ import PalaceUtilities
         registry: TPPBookRegistryProvider,
         annotationsManager: AnnotationsManager,
         positionWriter: PositionWriter? = nil,
-        positionTrace: AudiobookPositionTraceRecorder? = nil
+        positionTrace: AudiobookPositionTraceRecorder? = nil,
+        debounceInterval: TimeInterval? = 1.0
     ) {
+        self.debounceInterval = debounceInterval
         self.positionTrace = positionTrace
         self.book = book
         self.registry = registry
@@ -252,8 +261,8 @@ import PalaceUtilities
     public func saveBookmark(at position: TrackPosition, completion: ((_ position: TrackPosition?) -> Void)? = nil) {
         // Boxed for the `@Sendable` debounce Task; invoked only on the main queue.
         let completionBox = TrackPositionCompletionBox(completion)
-        debounce {
-            Task { [weak self] in
+        debounce { [weak self] in
+            let writeTask = Task { [weak self] in
                 guard let self else { return }
                 let location = position.toAudioBookmark()
                 var updatedPosition = position
@@ -295,7 +304,18 @@ import PalaceUtilities
                     Log.warn(#file, "Bookmark post returned no server id for \(self.book.identifier) at \(location.uniqueIdentifier); the bookmark is stored locally and not yet confirmed on the server: \(error)")
                 }
             }
+            self?.onStateQueue { self?._bookmarkWriteTaskForTesting = writeTask }
         }
+    }
+
+    /// Test-only join seam: awaits the most recent `saveBookmark` write `Task`.
+    /// Returns false when no write has been scheduled yet, so a caller cannot
+    /// mistake "nothing to await" for "the write finished".
+    @discardableResult
+    func _awaitBookmarkWriteForTesting() async -> Bool {
+        guard let handle = onStateQueue({ self._bookmarkWriteTaskForTesting }) else { return false }
+        await handle.value
+        return true
     }
 
     public func fetchBookmarks(for tracks: Tracks, toc: [Chapter], completion: @escaping ([TrackPosition]) -> Void) {
@@ -743,6 +763,16 @@ import PalaceUtilities
 
     // `action` is `@Sendable` because `DispatchWorkItem(block:)` requires it.
     private func debounce(action: @escaping @Sendable () -> Void) {
+        guard let debounceInterval else {
+            // `onStateQueue`, not a bare `queue.sync`: this runs inline when
+            // already on `queue`, which a nested `sync` would deadlock on.
+            onStateQueue {
+                debounceWorkItem?.cancel()
+                debounceWorkItem = nil
+                action()
+            }
+            return
+        }
         queue.async { [weak self] in
             guard let self else { return }
             self.debounceWorkItem?.cancel()
@@ -750,7 +780,7 @@ import PalaceUtilities
             let workItem = DispatchWorkItem(block: action)
             self.debounceWorkItem = workItem
             DispatchQueue.global(qos: .userInitiated).asyncAfter(
-                deadline: .now() + self.debounceInterval,
+                deadline: .now() + debounceInterval,
                 execute: workItem
             )
         }

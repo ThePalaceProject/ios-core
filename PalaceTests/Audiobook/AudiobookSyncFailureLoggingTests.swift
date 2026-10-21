@@ -144,12 +144,16 @@ final class AudiobookSyncFailureLoggingTests: XCTestCase {
 
     // MARK: - Helpers
 
+    /// A nil debounce interval runs the bookmark write on the work queue instead
+    /// of behind a one-second timer, so `_awaitBookmarkWriteForTesting()` has a
+    /// handle to join the moment `saveBookmark` returns.
     private func makeSUT(annotations: AnnotationsManager, positionWriter: PositionWriter? = nil) {
         sut = AudiobookBookmarkBusinessLogic(
             book: book,
             registry: registry,
             annotationsManager: annotations,
-            positionWriter: positionWriter
+            positionWriter: positionWriter,
+            debounceInterval: nil
         )
     }
 
@@ -215,6 +219,25 @@ final class AudiobookSyncFailureLoggingTests: XCTestCase {
 
     // MARK: - Bookmark
 
+    /// The other tests pass a nil interval to reach the write with no timer,
+    /// which is only safe while a non-nil interval still defers it. An hour,
+    /// not the production second, so the margin cannot expire under load.
+    func testSaveBookmark_withATimedInterval_doesNotScheduleTheWriteYet() async {
+        sut = AudiobookBookmarkBusinessLogic(
+            book: book,
+            registry: registry,
+            annotationsManager: FailingAnnotationsStub(error: syncError),
+            debounceInterval: 3600
+        )
+
+        sut.saveBookmark(at: TrackPosition(track: tracks.tracks[1], timestamp: 42.0, tracks: tracks))
+
+        let joined = await sut._awaitBookmarkWriteForTesting()
+        XCTAssertFalse(joined,
+                       "A timed interval must leave the write behind the timer; a write "
+                       + "scheduled by now means the interval was ignored")
+    }
+
     /// A bookmark post that came back without a server id must NOT reach the
     /// exportable log. `postAudiobookBookmark` throws the same content-free
     /// error for a refusal, for a write queued while offline, and for sync being
@@ -225,11 +248,9 @@ final class AudiobookSyncFailureLoggingTests: XCTestCase {
     func testSaveBookmark_whenThePostReturnsNoServerID_staysOutOfTheExportableLog() async {
         let unattributedBook = book.identifier
         makeSUT(annotations: FailingAnnotationsStub(error: syncError))
-        let saved = expectation(description: "saveBookmark completion")
-        sut.saveBookmark(at: TrackPosition(track: tracks.tracks[1], timestamp: 42.0, tracks: tracks)) { _ in
-            saved.fulfill()
-        }
-        await fulfillment(of: [saved], timeout: 10.0)
+        sut.saveBookmark(at: TrackPosition(track: tracks.tracks[1], timestamp: 42.0, tracks: tracks))
+        let joined = await sut._awaitBookmarkWriteForTesting()
+        XCTAssertTrue(joined, "The bookmark write must have been scheduled, or nothing was driven")
 
         XCTAssertFalse(registry.genericBookmarksForIdentifier(book.identifier).isEmpty,
                        "The bookmark must still be stored locally")
@@ -244,7 +265,7 @@ final class AudiobookSyncFailureLoggingTests: XCTestCase {
         TPPAnnotations.postReadingPosition(forBook: barrierBookID,
                                           selectorValue: "{\"k\":\"v\"}",
                                           motivation: .readingProgress) { _ in posted.fulfill() }
-        await fulfillment(of: [posted], timeout: 10.0)
+        await fulfillment(of: [posted], timeout: 10.0)  // STARVE-001-OK: synchronous — `RefusingExecutorStub.POST` calls its completion inline and no step from `postReadingPosition`/`postBookmark` through `postAnnotation` hops a queue, so the expectation is fulfilled before this line runs. The `postCallCount` assertion below witnesses it.
         XCTAssertEqual(executor.postCallCount, 1, "The barrier POST must have gone out")
         await assertRefusalPersisted(naming: barrierBookID,
                                      motivation: .readingProgress,
@@ -279,7 +300,7 @@ final class AudiobookSyncFailureLoggingTests: XCTestCase {
         TPPAnnotations.postReadingPosition(forBook: barrierBookID,
                                           selectorValue: "{\"k\":\"v\"}",
                                           motivation: .readingProgress) { _ in posted.fulfill() }
-        await fulfillment(of: [posted], timeout: 10.0)
+        await fulfillment(of: [posted], timeout: 10.0)  // STARVE-001-OK: synchronous — `RefusingExecutorStub.POST` calls its completion inline and no step from `postReadingPosition`/`postBookmark` through `postAnnotation` hops a queue, so the expectation is fulfilled before this line runs. The `postCallCount` assertion below witnesses it.
         XCTAssertEqual(executor.postCallCount, 1, "The barrier POST must have gone out")
         await assertRefusalPersisted(naming: barrierBookID,
                                      motivation: .readingProgress,
@@ -305,7 +326,7 @@ final class AudiobookSyncFailureLoggingTests: XCTestCase {
         TPPAnnotations.postReadingPosition(forBook: attributedBookID,
                                           selectorValue: "{\"k\":\"v\"}",
                                           motivation: .readingProgress) { _ in posted.fulfill() }
-        await fulfillment(of: [posted], timeout: 10.0)
+        await fulfillment(of: [posted], timeout: 10.0)  // STARVE-001-OK: synchronous — `RefusingExecutorStub.POST` calls its completion inline and no step from `postReadingPosition`/`postBookmark` through `postAnnotation` hops a queue, so the expectation is fulfilled before this line runs. The `postCallCount` assertion below witnesses it.
 
         // Without this the sync gate could have closed and logged nothing,
         // which is indistinguishable from the behaviour being asserted.
@@ -358,7 +379,7 @@ final class AudiobookSyncFailureLoggingTests: XCTestCase {
 
         let posted = expectation(description: "postBookmark completion")
         TPPAnnotations.postBookmark(bookmark, forBookID: attributedBookID) { _ in posted.fulfill() }
-        await fulfillment(of: [posted], timeout: 10.0)
+        await fulfillment(of: [posted], timeout: 10.0)  // STARVE-001-OK: synchronous — `RefusingExecutorStub.POST` calls its completion inline and no step from `postReadingPosition`/`postBookmark` through `postAnnotation` hops a queue, so the expectation is fulfilled before this line runs. The `postCallCount` assertion below witnesses it.
 
         XCTAssertEqual(executor.postCallCount, 1, "The POST must have gone out")
 
@@ -430,7 +451,7 @@ final class AudiobookSyncFailureLoggingTests: XCTestCase {
         TPPAnnotations.postReadingPosition(forBook: attributedBookID,
                                           selectorValue: "{\"k\":\"v\"}",
                                           motivation: .bookmark) { _ in posted.fulfill() }
-        await fulfillment(of: [posted], timeout: 10.0)
+        await fulfillment(of: [posted], timeout: 10.0)  // STARVE-001-OK: synchronous — no POST runs here at all. `postReadingPosition`'s missing-annotations-URL guard calls `completion?(nil)` inline and returns, so the expectation is fulfilled before this line runs.
 
         XCTAssertEqual(executor.postCallCount, 0,
                        "The guard must short-circuit before any POST goes out")
