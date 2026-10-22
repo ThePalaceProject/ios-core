@@ -27,9 +27,11 @@ has no equivalent on develop. That is how #1717 stayed on `release/3.4.0` only
 
 ## Waiver file format
 
-One file per release: `<release>.txt` where `<release>` is the release ref with
-`/` replaced by `-` (e.g. `release-3.2.1.txt`, `hotfix-3.2.1.txt`). One entry
-per line:
+One file per release: `<release>.txt` where `<release>` is the release branch
+name with `/` replaced by `-` (e.g. `release-3.2.1.txt`, `hotfix-3.2.1.txt`). A
+remote prefix is dropped, so `origin/release/3.2.1` also resolves to
+`release-3.2.1.txt`. If the file is missing, the script warns and loads no
+waivers. One entry per line:
 
 ```
 <sha-or-#pr>   <reason>

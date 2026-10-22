@@ -210,6 +210,35 @@ def test_release_merge_commit_is_not_flagged(repo: Path):
     assert res.returncode == 0, res.stderr
 
 
+def _fetch_self_as_origin(repo: Path) -> None:
+    _git(repo, "remote", "add", "origin", str(repo))
+    _git(repo, "fetch", "-q", "origin")
+
+
+def test_default_waiver_path_drops_the_remote_prefix(repo: Path):
+    # A hand run names the remote-tracking ref; the waiver file is named after
+    # the branch, as the workflow derives it from the PR head branch.
+    sha = _commit_on_release(repo, "Palace.xcodeproj/project.pbxproj",
+                             "CURRENT_PROJECT_VERSION = 2;\n", "Bump build number")
+    _fetch_self_as_origin(repo)
+    waiver = repo / "config" / "ci" / "release-waivers" / "release.txt"
+    waiver.parent.mkdir(parents=True)
+    waiver.write_text(f"{sha[:9]} release-only build bump\n")
+    res = subprocess.run(
+        [sys.executable, str(SCRIPT),
+         "--release-ref", "origin/release", "--develop-ref", "develop"],
+        cwd=repo, capture_output=True, text=True,
+    )
+    assert res.returncode == 0, res.stderr
+    assert "waived" in res.stderr.lower()
+
+
+def test_missing_waiver_file_warns_once(repo: Path):
+    res = _run_gate(repo, "--quiet", "--waiver-file", str(repo / "absent.txt"))
+    assert res.returncode == 0, res.stderr
+    assert res.stderr.count("absent.txt not found") == 1, res.stderr
+
+
 def test_bad_ref_errors(repo: Path):
     res = subprocess.run(
         [sys.executable, str(SCRIPT),
