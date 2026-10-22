@@ -92,37 +92,50 @@ final class DRMAdversarialTests: XCTestCase {
         // rather than silently succeeding — proving the activation gate is
         // wired and that callers can react to the failure.
 
-        // Precondition: production user account exposed via the singleton
-        // has no Adobe licensor credentials in a test bundle.
+        // `AdobeDRMService.shared` resolves its credentials through the
+        // singleton, so there is no seam to pass a stub account through and
+        // the live keychain decides whether "not activated" holds. On a
+        // simulator that has signed in to an Adobe library it does not, so
+        // asserting these credentials are nil asserts a property of the
+        // machine rather than of the code. Read the activation state instead
+        // and use it only to tell a legitimately activated device from a
+        // regression in the gate.
         let liveAccount = AppContainer.production().accountsManager.currentUserAccount
-        XCTAssertNil(liveAccount.userID, "Precondition: live account has no Adobe userID")
-        XCTAssertNil(liveAccount.deviceID, "Precondition: live account has no Adobe deviceID")
-        XCTAssertNil(liveAccount.licensor, "Precondition: live account has no Adobe licensor")
+        let deviceIsActivated = liveAccount.licensor != nil && liveAccount.userID != nil
 
         // Direct await — replaces the prior fire-and-forget Task whose
-        // assertions never reached XCTest. The call MUST throw because
-        // either the Adobe certificate is unavailable in the test bundle
-        // OR no licensor is stored on the live account; both surface as
-        // `PalaceError.drm` (specifically `.noActivation`).
+        // assertions never reached XCTest. The outcome is captured rather
+        // than asserted inside the `catch`, so that skipping an activated
+        // device cannot be swallowed by this method's own error handling.
+        var thrownError: Error?
         do {
             try await AdobeDRMService.shared.ensureDeviceActivated()
-            XCTFail("ensureDeviceActivated must throw when no licensor / no DRM cert is available")
-        } catch let error as PalaceError {
-            guard case .drm(let drmError) = error else {
-                XCTFail("Expected PalaceError.drm(...), got PalaceError.\(error)")
-                return
-            }
-            // `.noActivation` is the contracted failure when licensor or
-            // certificate is missing; `.authenticationFailed` is the
-            // RMSDK callback failure if a partial cert path completes.
-            // Either is acceptable evidence that the activation gate ran.
-            XCTAssertTrue(
-                drmError == .noActivation || drmError == .authenticationFailed,
-                "Expected DRMError.noActivation or .authenticationFailed; got \(drmError)"
-            )
         } catch {
-            XCTFail("Expected PalaceError.drm; got \(type(of: error)): \(error)")
+            thrownError = error
         }
+
+        guard let error = thrownError else {
+            // Succeeding is correct on an already-activated device, and a
+            // failure of the activation gate on any other.
+            if deviceIsActivated {
+                throw XCTSkip("Live account is Adobe-activated; the no-activation contract cannot be exercised here.")
+            }
+            XCTFail("ensureDeviceActivated must throw when no licensor / no DRM cert is available")
+            return
+        }
+
+        guard let palaceError = error as? PalaceError, case .drm(let drmError) = palaceError else {
+            XCTFail("Expected PalaceError.drm; got \(type(of: error)): \(error)")
+            return
+        }
+        // `.noActivation` is the contracted failure when licensor or
+        // certificate is missing; `.authenticationFailed` is the RMSDK
+        // callback failure if a partial cert path completes. Either is
+        // acceptable evidence that the activation gate ran.
+        XCTAssertTrue(
+            drmError == .noActivation || drmError == .authenticationFailed,
+            "Expected DRMError.noActivation or .authenticationFailed; got \(drmError)"
+        )
         #else
         throw XCTSkip("FEATURE_DRM_CONNECTOR disabled — Adobe DRM not linkable in this build.")
         #endif

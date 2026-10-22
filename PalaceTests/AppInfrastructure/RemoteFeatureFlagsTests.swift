@@ -84,6 +84,38 @@ final class RemoteFeatureFlagsTests: XCTestCase {
                        "Without Firebase, downloadRetry must equal the flag's defaultValue")
     }
 
+    // MARK: - LCP audiobook streaming
+
+    /// The in-app fallback has to agree with the shipped rollout. Remote Config
+    /// carries this at 100%, so a `false` fallback meant every environment
+    /// Firebase does not reach — a simulator, CI, this test bundle, the first
+    /// launch before Remote Config answers — exercised download-first while
+    /// every patron streamed, and a regression pass on such a build would
+    /// qualify a path nobody is on.
+    func testLCPAudiobookStreaming_defaultMatchesTheProductionRollout() {
+        XCTAssertTrue(RemoteFeatureFlags.FeatureFlag.lcpAudiobookStreamingEnabled.defaultValue,
+                      "Remote Config has LCP audiobook streaming at 100%; an unconfigured "
+                      + "environment must resolve the same way patrons do")
+    }
+
+    /// The dev-menu override is the seam QA uses to reach the download-first
+    /// path, and it must still win over the new default in both directions.
+    func testLCPAudiobookStreaming_localOverrideStillWinsBothWays() {
+        let defaults = Self.testUserDefaults()
+        let flags = RemoteFeatureFlags(defaults: defaults)
+
+        defaults.set(false, forKey: RemoteFeatureFlags.lcpAudiobookStreamingLocalOverrideKey)
+        XCTAssertFalse(flags.isLCPAudiobookStreamingEnabled,
+                       "an override of false must still reach the download-first path")
+
+        defaults.set(true, forKey: RemoteFeatureFlags.lcpAudiobookStreamingLocalOverrideKey)
+        XCTAssertTrue(flags.isLCPAudiobookStreamingEnabled)
+
+        defaults.removeObject(forKey: RemoteFeatureFlags.lcpAudiobookStreamingLocalOverrideKey)
+        XCTAssertTrue(flags.isLCPAudiobookStreamingEnabled,
+                      "with no override the flag falls through to the default, which is now ON")
+    }
+
     // MARK: - CarPlay
 
     func testIsCarPlayEnabledCached_returnsBool() {

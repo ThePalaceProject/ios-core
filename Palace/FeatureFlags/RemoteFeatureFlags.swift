@@ -451,14 +451,16 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     /// fork (3.11.0 + fix-issue-579); when OFF, the app downloads the full
     /// `.lcpa` before playback (today's behavior).
     ///
-    /// **Default OFF — Firebase-gated.** The default flip to streaming is a
-    /// product decision; production users stay on download-first until Firebase
-    /// Remote Config sets `lcp_audiobook_streaming_enabled = true` (global or
-    /// staged), which the team can roll out and back without shipping a build.
+    /// **Default ON.** Remote Config has carried this at 100% in production
+    /// since the rollout completed, and the in-app fallback now says the same,
+    /// so an environment Firebase does not reach — a simulator, CI, a unit
+    /// test, the first launch before Remote Config returns — resolves the way
+    /// patrons do instead of the opposite way. Firebase can still roll it back
+    /// without shipping a build.
     ///
     /// Override precedence:
-    ///   1. UserDefaults local override (dev-menu toggle / QA) — wins.
-    ///   2. Firebase Remote Config (`isFeatureEnabled`, default `false`).
+    ///   1. UserDefaults local override (dev-menu toggle / QA) — wins, both ways.
+    ///   2. Firebase Remote Config (`isFeatureEnabled`, default `true`).
     var isLCPAudiobookStreamingEnabled: Bool {
         if let override = defaults.object(forKey: Self.lcpAudiobookStreamingLocalOverrideKey) as? Bool {
             return override

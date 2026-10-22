@@ -38,6 +38,56 @@ final class LCPStreamingTestPinTests: XCTestCase {
         }
     }
 
+    // MARK: - Leaving the device as we found it
+    //
+    // On a simulator `.standard` for the test host IS the Palace app's own
+    // container, so a pin left behind outlives the run and decides the flag
+    // for whoever drives that device next.
+
+    func testRestore_WhenThereWasNoOverride_RemovesTheKeyRatherThanWritingFalse() {
+        let defaults = Self.testUserDefaults()
+        let key = RemoteFeatureFlags.lcpAudiobookStreamingLocalOverrideKey
+        let atLaunch = LCPStreamingTestPin.currentOverride(in: defaults)
+        XCTAssertNil(atLaunch, "fixture precondition: no override to begin with")
+
+        LCPStreamingTestPin.apply(true, to: defaults)
+        XCTAssertNotNil(defaults.object(forKey: key), "precondition: the pin took effect")
+
+        LCPStreamingTestPin.restore(atLaunch, to: defaults)
+
+        XCTAssertNil(defaults.object(forKey: key),
+                     "a device that had no override must end with none; writing false would "
+                     + "pin the app to the download-first path after the run")
+    }
+
+    func testRestore_PutsBackAnOverrideTheDeviceAlreadyHad() {
+        let defaults = Self.testUserDefaults()
+        let key = RemoteFeatureFlags.lcpAudiobookStreamingLocalOverrideKey
+        defaults.set(true, forKey: key)
+        let atLaunch = LCPStreamingTestPin.currentOverride(in: defaults)
+
+        LCPStreamingTestPin.apply(false, to: defaults)
+        XCTAssertEqual(defaults.object(forKey: key) as? Bool, false, "precondition: the pin took effect")
+
+        LCPStreamingTestPin.restore(atLaunch, to: defaults)
+
+        XCTAssertEqual(defaults.object(forKey: key) as? Bool, true,
+                       "the device's own override must survive the run")
+    }
+
+    /// `nil` and `false` are different device states, and reading the override
+    /// must not collapse them — that collapse is what made a left-behind
+    /// `false` look like a device that simply had no preference.
+    func testCurrentOverride_DistinguishesAbsentFromFalse() {
+        let defaults = Self.testUserDefaults()
+        XCTAssertNil(LCPStreamingTestPin.currentOverride(in: defaults))
+
+        LCPStreamingTestPin.apply(false, to: defaults)
+
+        XCTAssertEqual(LCPStreamingTestPin.currentOverride(in: defaults), false,
+                       "an explicit false must read as false, not as absent")
+    }
+
     // MARK: - Applying the pin
 
     func testApply_On_MakesTheFlagReadOn_AndOffMakesItReadOffAgain() {
