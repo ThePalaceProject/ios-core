@@ -38,7 +38,8 @@ REVERSE DIRECTION (the PP-5389 retro)
   Release-only commits such as build bumps are waived like any other.
 
 WAIVERS
-  A waiver file (default `config/ci/release-waivers/<release>.txt`, override with
+  A waiver file (default `config/ci/release-waivers/<branch>.txt`, where a
+  remote prefix such as `origin/` is dropped from the release ref; override with
   --waiver-file) lists, one per line, `<sha-or-pr> <reason>`. A candidate is
   reconciled if its abbreviated SHA, full SHA, or `#<pr>` appears as the first
   token of a waiver line. Blank lines and `#`-comments are ignored. Waiving
@@ -58,6 +59,7 @@ EXIT CODES
 from __future__ import annotations
 
 import argparse
+import functools
 import os
 import re
 import subprocess
@@ -127,14 +129,39 @@ def _commit_pr_number(sha: str) -> str | None:
     return m.group(1) if m else None
 
 
-def _load_waivers(path: str | None, release_ref: str) -> set[str]:
+def _default_waiver_path(release_ref: str) -> str:
+    """`config/ci/release-waivers/<branch>.txt`, named after the branch alone.
+
+    The workflow names the file after the PR head branch, so a hand run that
+    passes `origin/release/3.4.0` must resolve to `release-3.4.0.txt` too.
+    """
+    branch = release_ref
+    for prefix in ("refs/heads/", "refs/remotes/"):
+        if branch.startswith(prefix):
+            branch = branch[len(prefix):]
+    try:
+        remotes = _run_git(["remote"]).split()
+    except RuntimeError:
+        remotes = []
+    head, _, rest = branch.partition("/")
+    if rest and head in remotes:
+        branch = rest
+    safe = branch.replace("/", "-")
+    return os.path.join("config", "ci", "release-waivers", f"{safe}.txt")
+
+
+@functools.lru_cache(maxsize=None)
+def _load_waivers(path: str | None, release_ref: str) -> frozenset[str]:
     """First token of each non-comment line: an SHA (any length) or `#<pr>`."""
     if path is None:
-        safe = release_ref.replace("/", "-")
-        path = os.path.join("config", "ci", "release-waivers", f"{safe}.txt")
+        path = _default_waiver_path(release_ref)
     tokens: set[str] = set()
     if not os.path.exists(path):
-        return tokens
+        # Not an error, since most releases need no waivers, but a mistyped path
+        # would otherwise read exactly like an empty list.
+        print(f"[release-fix-reconciliation] WARNING: waiver file {path} not found; "
+              f"no waivers loaded.", file=sys.stderr)
+        return frozenset()
     with open(path, encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
@@ -146,10 +173,10 @@ def _load_waivers(path: str | None, release_ref: str) -> set[str]:
             if line.startswith("#") and not line[1:2].isdigit():
                 continue
             tokens.add(line.split()[0])
-    return tokens
+    return frozenset(tokens)
 
 
-def _is_waived(sha: str, pr: str | None, waivers: set[str]) -> bool:
+def _is_waived(sha: str, pr: str | None, waivers: frozenset[str]) -> bool:
     if not waivers:
         return False
     # Match on full sha, any abbreviation that is a prefix, or #<pr>.
