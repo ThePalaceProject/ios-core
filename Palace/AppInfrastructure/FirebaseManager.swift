@@ -150,7 +150,7 @@ final class FirebaseManager: @unchecked Sendable {
             RemoteConfigKey.continuationCardsEnabled.rawValue: NSNumber(value: false),
             RemoteConfigKey.sideLoadingEnabled.rawValue: NSNumber(value: false),
             RemoteConfigKey.managedLibraryConfigurationEnabled.rawValue: NSNumber(value: false),
-            RemoteConfigKey.lcpAudiobookStreamingEnabled.rawValue: NSNumber(value: false),
+            RemoteConfigKey.lcpAudiobookStreamingEnabled.rawValue: NSNumber(value: true),
             RemoteConfigKey.appRatingPromptEnabled.rawValue: NSNumber(value: true),
             RemoteConfigKey.appRatingMinSessions.rawValue: NSNumber(value: RatingConfig.fallback.minSessions),
             RemoteConfigKey.appRatingMinBooksCompleted.rawValue: NSNumber(value: RatingConfig.fallback.minBooksCompleted),
