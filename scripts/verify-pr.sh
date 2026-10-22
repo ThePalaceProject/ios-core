@@ -860,10 +860,26 @@ elif [ -f scripts/lint-test-quality.py ]; then
     FILE_VIOLATIONS=$(echo "$LINT_PER_FILE" | grep -E "^$test_file:[0-9]+:(FLAKE|FLUFF|MISSING|TIMEOUT)-" | wc -l | tr -d ' ')
     NEW_VIOLATIONS=$((NEW_VIOLATIONS + FILE_VIOLATIONS))
   done <<< "$CHANGED_TEST_SWIFT"
-  if [ "$NEW_VIOLATIONS" -eq 0 ]; then
-    record "test_quality" "pass" "0 blocking violations in changed test files (SHALLOW advisory)"
-  else
+  # `--per-file` never evaluates STARVE-001. That rule lives behind the script's
+  # separate `--changed` entry point, which tooling-checks.yml runs and GitHub
+  # reports as the `flake-lint` check, and it signals by EXIT STATUS rather than
+  # by a line the grep above would match. Running only `--per-file` here made a
+  # clean local run unable to predict that leg: on 2026-10-21 a branch passed
+  # this script six times and arrived red on a rule no local run had evaluated.
+  # Parity is pinned by scripts/tests/test_verify_pr_lint_mode_parity.py.
+  STARVE_OUT=$(python3 scripts/lint-test-quality.py --changed "$BASE" 2>&1)
+  STARVE_RC=$?
+  if [ "$STARVE_RC" -ne 0 ]; then
+    echo "$STARVE_OUT"
+  fi
+  if [ "$NEW_VIOLATIONS" -eq 0 ] && [ "$STARVE_RC" -eq 0 ]; then
+    record "test_quality" "pass" "0 blocking violations in changed test files; STARVE-001 clean (SHALLOW advisory)"
+  elif [ "$NEW_VIOLATIONS" -eq 0 ]; then
+    record "test_quality" "fail" "STARVE-001: new deadline-poll wait(s) in changed test files"
+  elif [ "$STARVE_RC" -eq 0 ]; then
     record "test_quality" "fail" "$NEW_VIOLATIONS blocking violations in changed test files"
+  else
+    record "test_quality" "fail" "$NEW_VIOLATIONS blocking violations in changed test files; STARVE-001 also flagged new deadline-poll wait(s)"
   fi
 else
   record "test_quality" "skip" "Lint script not found"

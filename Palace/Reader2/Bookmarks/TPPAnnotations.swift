@@ -235,7 +235,7 @@ protocol AnnotationsManager {
         }
 
         guard let annotationsURL = TPPAnnotations.annotationsURL else {
-            Log.error(#file, "Annotations URL was nil while updating reading position")
+            Log.error(#file, "Annotations URL was nil, so nothing was posted for book=\(bookID), motivation=\(String(describing: motivation))")
             completion?(nil)
             return
         }
@@ -315,7 +315,7 @@ protocol AnnotationsManager {
         // nil, like the sync-off path: nothing was sent, so there is no server ID.
         guard let annotationsURL = annotationsURL ?? TPPAnnotations.annotationsURL,
               let selectorValue = page.bookmarkSelector else {
-            Log.error(#file, "Annotations URL or bookmark selector was nil while posting bookmark")
+            Log.error(#file, "Annotations URL or bookmark selector was nil, so nothing was posted for book=\(bookID), motivation=bookmark")
             completion(nil)
             return
         }
@@ -351,7 +351,7 @@ protocol AnnotationsManager {
         }
 
         guard let annotationsURL = TPPAnnotations.annotationsURL else {
-            Log.error(#file, "Annotations URL was nil while posting bookmark")
+            Log.error(#file, "Annotations URL was nil, so nothing was posted for book=\(bookID), motivation=bookmark")
             completion(nil)
             return
         }
@@ -411,13 +411,24 @@ protocol AnnotationsManager {
                               queueOffline: Bool,
                               queueKey: String? = nil,
                               _ completionHandler: @escaping (_ result: AnnotationPostResult) -> Void) {
+        // One POST carries reading positions and bookmarks for every format, so
+        // the failure lines below name which write this was and for which book;
+        // without that an exported log cannot say what failed. The motivation is
+        // read off the payload rather than passed in, so it cannot disagree with
+        // the bytes that were sent.
+        // The case name rather than the raw value: `readingProgress`'s URI is 52
+        // characters, and these lines can repeat for the life of an outage.
+        let motivation = (parameters[TPPBookmarkSpec.Motivation.key] as? String)
+            .flatMap(TPPBookmarkSpec.Motivation.init(rawValue:))
+            .map(String.init(describing:)) ?? "unspecified"
+        let posted = "book=\(bookID), motivation=\(motivation)"
 
         // `isValidJSONObject` first: `data(withJSONObject:)` raises an ObjC
         // exception for unsupported types, which `try?` does not catch.
         guard JSONSerialization.isValidJSONObject(parameters),
               let jsonData = try? JSONSerialization.data(withJSONObject: parameters,
                                                          options: [.prettyPrinted]) else {
-            Log.error(#file, "Network request abandoned. Could not create JSON from given parameters.")
+            Log.error(#file, "Annotation POST abandoned for \(posted): could not create JSON from the given parameters.")
             completionHandler(.failed(underlying: nil, response: nil))
             return
         }
@@ -433,7 +444,7 @@ protocol AnnotationsManager {
                 let willQueueOffline = (NetworkQueue.StatusCodes.contains(error.code)) && (queueOffline == true)
 
                 // Always log error details for investigation
-                Log.error(#file, "Annotation POST error (code: \(error.code)): \(error.localizedDescription)")
+                Log.error(#file, "Annotation POST error for \(posted) (code: \(error.code)): \(error.localizedDescription)")
 
                 if willQueueOffline {
                     Log.debug(#file, "Queued for offline retry")
@@ -450,7 +461,7 @@ protocol AnnotationsManager {
                 return
             }
             guard let statusCode = (response as? HTTPURLResponse)?.statusCode else {
-                Log.error(#file, "Annotation POST error: No response received from server")
+                Log.error(#file, "Annotation POST error for \(posted): no response received from the server")
                 completionHandler(.failed(underlying: nil, response: nil))
                 return
             }
@@ -461,7 +472,7 @@ protocol AnnotationsManager {
                 let timeStamp = timeStamp(fromNetworkData: data)
                 completionHandler(.succeeded(annotationID: serverAnnotationID, timeStamp: timeStamp))
             } else {
-                Log.error(#file, "Annotation POST: Response Error. Status Code: \(statusCode)")
+                Log.error(#file, "Annotation POST refused for \(posted). Status code: \(statusCode)")
                 completionHandler(.failed(underlying: nil, response: response as? HTTPURLResponse))
             }
         }
