@@ -349,7 +349,16 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
         if let selectedAuth = businessLogic.selectedAuthentication, isSignedIn {
             workingSection = cellsForAuthMethod(selectedAuth)
-        } else if !isSignedIn && selectedUserAccount.needsAuth {
+        } else if !isSignedIn && businessLogic.libraryCollectsCredentials {
+            // Whether to offer credential fields is a question about the
+            // LIBRARY this page is bound to, which Settings opens for any
+            // library the patron taps. `TPPUserAccount.needsAuth` answered it
+            // from the auth definition stored at sign-in, so it was false for
+            // exactly the libraries the form exists for: the ones the patron
+            // has not signed into yet (PP-5390). A library the patron HAS
+            // signed into already took this arm, so the rows below — the
+            // method list, the password-reset link — are what that page has
+            // always shown; they now appear on a first sign-in too.
             if businessLogic.isSamlPossible() {
                 workingSection.append(.infoHeader(Strings.AccountDetail.signInMessage(libraryName: libraryName)))
             }
