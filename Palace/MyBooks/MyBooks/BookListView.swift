@@ -167,9 +167,10 @@ struct BookListView: View {
     /// This used to read `UIScreen.main.bounds` and compare width to height,
     /// refreshed on appear and on `UIDevice.orientationDidChangeNotification`.
     /// iOS delivers that notification only after
-    /// `beginGeneratingDeviceOrientationNotifications()`, which this app never
-    /// calls, so the count was pinned to whatever the screen was when the view
-    /// first appeared. An iPad Pro 12.9 in portrait rendered the landscape
+    /// `beginGeneratingDeviceOrientationNotifications()`, which this app does not
+    /// call, so the count was pinned to whatever the screen was when the view
+    /// first appeared. The container's own width needs no notification at all,
+    /// and is also right in Split View, which no screen-level signal reports. An iPad Pro 12.9 in portrait rendered the landscape
     /// count, leaving each cell 341pt: due dates wrapped onto four lines and
     /// titles truncated.
     ///
