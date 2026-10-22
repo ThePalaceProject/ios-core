@@ -14,8 +14,10 @@ import XCTest
 /// The grid used to pick its columns from `UIScreen.main.bounds`, refreshed
 /// only on appear and on `UIDevice.orientationDidChangeNotification` — a
 /// notification iOS delivers only after `beginGeneratingDeviceOrientationNotifications()`,
-/// which this app never calls. So the count was fixed at whatever the screen
-/// was when the view first appeared. Observed on an iPad Pro 12.9 in portrait:
+/// which this app does not call. So the count was fixed at whatever the screen
+/// was when the view first appeared. The container's own width needs no
+/// notification at all, and is also right in Split View, which no screen-level
+/// signal reports. Observed on an iPad Pro 12.9 in portrait:
 /// three columns instead of two, which left each cell ~341pt and wrapped
 /// "Due October 23, 2026" onto four lines with the titles truncated.
 ///
