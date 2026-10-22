@@ -33,7 +33,6 @@ struct BookListView: View {
     var isLoadingMore: Bool = false
     var previewEnabled: Bool = true
     @State private var containerWidth: CGFloat = UIScreen.main.bounds.width
-    @State private var screenSize: CGSize = UIScreen.main.bounds.size
 
     /// Shared model cache for performance - reuses BookCellModel instances
     @Environment(\.appContainer) private var appContainer
@@ -85,16 +84,12 @@ struct BookListView: View {
                 Color.clear
                     .onAppear {
                         containerWidth = geometry.size.width
-                        screenSize = UIScreen.main.bounds.size
                     }
                     .onChange(of: geometry.size.width) { _, newWidth in
                         containerWidth = newWidth
                     }
             }
         )
-        .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
-            screenSize = UIScreen.main.bounds.size
-        }
     }
 
     // MARK: - Cell Appearance Handler
@@ -160,15 +155,37 @@ struct BookListView: View {
     }
 
     private var gridLayout: [GridItem] {
-        let isLandscape = screenSize.width > screenSize.height
-        let isIPad = UIDevice.current.userInterfaceIdiom == .pad
+        let count = Self.columnCount(
+            forContainerWidth: containerWidth,
+            isIPad: UIDevice.current.userInterfaceIdiom == .pad
+        )
+        return Array(repeating: GridItem(.flexible(), spacing: 0), count: count)
+    }
 
-        if isIPad {
-            let columnCount = isLandscape ? 3 : 2
-            return Array(repeating: GridItem(.flexible(), spacing: 0), count: columnCount)
-        } else {
-            return [GridItem(.flexible(), spacing: 0)]
-        }
+    /// Columns for the width the grid is actually given.
+    ///
+    /// This used to read `UIScreen.main.bounds` and compare width to height,
+    /// refreshed on appear and on `UIDevice.orientationDidChangeNotification`.
+    /// iOS delivers that notification only after
+    /// `beginGeneratingDeviceOrientationNotifications()`, which this app never
+    /// calls, so the count was pinned to whatever the screen was when the view
+    /// first appeared. An iPad Pro 12.9 in portrait rendered the landscape
+    /// count, leaving each cell 341pt: due dates wrapped onto four lines and
+    /// titles truncated.
+    ///
+    /// The container's own width is right on rotation and also right in Split
+    /// View, Slide Over and Stage Manager, where the screen's bounds describe
+    /// a window the grid does not have.
+    ///
+    /// 360pt is the floor per column. The defect rendered at 341pt, and 360 is
+    /// the first value above it that still yields the counts every shipping
+    /// iPad already used — 2 up to the 12.9's 1024pt portrait, 3 from the
+    /// 10.2's 1080pt landscape. The cap keeps an external display or a wider
+    /// future iPad from shredding the cells.
+    static func columnCount(forContainerWidth width: CGFloat, isIPad: Bool) -> Int {
+        guard isIPad else { return 1 }
+        let fits = Int((width / 360).rounded(.down))
+        return min(max(fits, 1), 3)
     }
 }
 
