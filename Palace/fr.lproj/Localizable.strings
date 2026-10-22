@@ -1608,3 +1608,10 @@
 
 /* Abbreviations for seconds */
 "sec" = "s";
+
+/* Catalog format selector */
+"All" = "Tous";
+/* Catalog format selector */
+"Ebooks" = "Livres numériques";
+/* Catalog format selector */
+"Audiobooks" = "Livres audio";
