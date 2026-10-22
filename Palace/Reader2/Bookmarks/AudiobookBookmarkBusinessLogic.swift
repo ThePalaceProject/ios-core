@@ -26,13 +26,20 @@ import PalaceUtilities
     /// Identifies execution already on `queue` so `onStateQueue` runs inline
     /// instead of a nested `queue.sync` (which would deadlock).
     private let queueKey = DispatchSpecificKey<Void>()
-    private let debounceInterval: TimeInterval = 1.0
+    /// Collapses a burst of bookmark taps into one write. `nil` runs the write
+    /// on the work queue with no timer, which is how a test reaches it without
+    /// a wall-clock wait; production always takes the default. Optional rather
+    /// than a sentinel interval, so there is no boundary to get wrong.
+    private let debounceInterval: TimeInterval?
     private var debounceWorkItem: DispatchWorkItem?  // Access only on `queue`
 
     // MARK: - Test join seam
     // Retains the most recent `saveListeningPosition` write `Task` so tests can
     // join it instead of polling a deadline. Access is confined to `queue`.
     private var _positionWriteTaskForTesting: Task<Void, Never>?
+    /// Sibling of the above for `saveBookmark`, whose write also runs in a
+    /// detached `Task`. Access is confined to `queue`.
+    private var _bookmarkWriteTaskForTesting: Task<Void, Never>?
 
     // MARK: - Serialized sync state
     // `isSyncing`, `completionHandlersQueue`, and `deletedBookmarkIds` are
@@ -66,8 +73,10 @@ import PalaceUtilities
         registry: TPPBookRegistryProvider,
         annotationsManager: AnnotationsManager,
         positionWriter: PositionWriter? = nil,
-        positionTrace: AudiobookPositionTraceRecorder? = nil
+        positionTrace: AudiobookPositionTraceRecorder? = nil,
+        debounceInterval: TimeInterval? = 1.0
     ) {
+        self.debounceInterval = debounceInterval
         self.positionTrace = positionTrace
         self.book = book
         self.registry = registry
@@ -122,6 +131,14 @@ import PalaceUtilities
         // Save to the local registry before any async work, so a crash or
         // background mid-flight never loses position state.
         guard let tppLocation = audioBookmark.toTPPBookLocation() else {
+            // This exit precedes the registry write, so the position is kept
+            // neither locally nor on the server. The track and offset identify
+            // the reading-order entry that would not encode.
+            //
+            // Unreachable today: `AudioBookmark.encode(to:)` writes only String
+            // and Int, so `JSONEncoder` cannot throw. A Double field would make
+            // it reachable, and on the 15-second autosave path.
+            Log.error(#file, "Could not encode the listening position for \(self.book.identifier) into a stored location; the position was kept neither locally nor on the server: track=\(position.track.key), index=\(position.track.index), time=\(position.timestamp), offsetMilliseconds=\(audioBookmark.readingOrderItemOffsetMilliseconds?.description ?? "nil")")
             completion?(nil)
             return
         }
@@ -220,6 +237,12 @@ import PalaceUtilities
                 Log.debug(#file, "☁️ Synced position to server: track=\(sentTrackKey), annotationId=\(audioBookmark.annotationId)")
                 await complete(serverID)
             } catch {
+                // Deliberately not `.error`: `postReadingPosition` reports a
+                // deferred write, a sync-disabled account and a refusal through
+                // one content-free error, and the 15-second autosave interval
+                // would turn a persisted line per deferral into the PP-4965
+                // volume again. A refusal is persisted with the book and
+                // motivation by `TPPAnnotations.postAnnotation`.
                 Log.warn(#file, "⚠️ Server sync failed, but local position was already saved: \(error)")
                 await complete(nil)
             }
@@ -238,8 +261,8 @@ import PalaceUtilities
     public func saveBookmark(at position: TrackPosition, completion: ((_ position: TrackPosition?) -> Void)? = nil) {
         // Boxed for the `@Sendable` debounce Task; invoked only on the main queue.
         let completionBox = TrackPositionCompletionBox(completion)
-        debounce {
-            Task { [weak self] in
+        debounce { [weak self] in
+            let writeTask = Task { [weak self] in
                 guard let self else { return }
                 let location = position.toAudioBookmark()
                 var updatedPosition = position
@@ -263,12 +286,36 @@ import PalaceUtilities
                     return
                 }
 
-                if let annotationResponse = try? await self.annotationsManager.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: locationString) {
-                    location.annotationId = annotationResponse.serverId ?? ""
-                    location.lastSavedTimeStamp = annotationResponse.timeStamp ?? ""
+                do {
+                    if let annotationResponse = try await self.annotationsManager.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: locationString) {
+                        location.annotationId = annotationResponse.serverId ?? ""
+                        location.lastSavedTimeStamp = annotationResponse.timeStamp ?? ""
+                    }
+                } catch {
+                    // The `defer` above stores the bookmark locally either way.
+                    //
+                    // Below `.error`, so it does not reach the log a patron
+                    // exports: `postAudiobookBookmark` throws one content-free
+                    // error whether the server refused the post, the post was
+                    // queued for delivery while offline, or sync is off, and a
+                    // refusal is already persisted with the book and motivation
+                    // by `TPPAnnotations.postAnnotation`. Reporting a queued
+                    // write as a failure was the bulk of the PP-4965 volume.
+                    Log.warn(#file, "Bookmark post returned no server id for \(self.book.identifier) at \(location.uniqueIdentifier); the bookmark is stored locally and not yet confirmed on the server: \(error)")
                 }
             }
+            self?.onStateQueue { self?._bookmarkWriteTaskForTesting = writeTask }
         }
+    }
+
+    /// Test-only join seam: awaits the most recent `saveBookmark` write `Task`.
+    /// Returns false when no write has been scheduled yet, so a caller cannot
+    /// mistake "nothing to await" for "the write finished".
+    @discardableResult
+    func _awaitBookmarkWriteForTesting() async -> Bool {
+        guard let handle = onStateQueue({ self._bookmarkWriteTaskForTesting }) else { return false }
+        await handle.value
+        return true
     }
 
     public func fetchBookmarks(for tracks: Tracks, toc: [Chapter], completion: @escaping ([TrackPosition]) -> Void) {
@@ -543,6 +590,13 @@ import PalaceUtilities
             do {
                 try await uploadBookmark(candidate)
             } catch {
+                // Left at `.debug`, the one level `Log` does not forward to the
+                // crash reporter. This loop re-posts every stored unsynced
+                // bookmark on each sync pass, and a library that does not offer
+                // sync leaves them all unsynced, so any higher level lets one
+                // patron's bookmarks evict the rolling breadcrumb buffer. A
+                // refusal here is persisted with the book and motivation by
+                // `TPPAnnotations.postAnnotation`.
                 Log.debug(#file, "Failed to save annotation with error: \(error.localizedDescription)")
             }
         }
@@ -709,6 +763,16 @@ import PalaceUtilities
 
     // `action` is `@Sendable` because `DispatchWorkItem(block:)` requires it.
     private func debounce(action: @escaping @Sendable () -> Void) {
+        guard let debounceInterval else {
+            // `onStateQueue`, not a bare `queue.sync`: this runs inline when
+            // already on `queue`, which a nested `sync` would deadlock on.
+            onStateQueue {
+                debounceWorkItem?.cancel()
+                debounceWorkItem = nil
+                action()
+            }
+            return
+        }
         queue.async { [weak self] in
             guard let self else { return }
             self.debounceWorkItem?.cancel()
@@ -716,7 +780,7 @@ import PalaceUtilities
             let workItem = DispatchWorkItem(block: action)
             self.debounceWorkItem = workItem
             DispatchQueue.global(qos: .userInitiated).asyncAfter(
-                deadline: .now() + self.debounceInterval,
+                deadline: .now() + debounceInterval,
                 execute: workItem
             )
         }
