@@ -16,6 +16,15 @@ as a fix, that is NOT on the release you're promoting. For each one, decide:
 - **Waive it** — it is intentionally held for a later release. Record it here so
   the exclusion is a deliberate, audited decision, not silence.
 
+It also checks the other direction: every non-merge commit on the release that
+has no equivalent on develop. That is how #1717 stayed on `release/3.4.0` only
+(PP-5389). For each one:
+
+- **Forward-port it to develop.** A port whose patch differs counts when its
+  commit message names the release PR (`#1717`) or the release commit's full
+  SHA (`git cherry-pick -x` adds it).
+- **Waive it** if it belongs to the release only, such as a build bump.
+
 ## Waiver file format
 
 One file per release: `<release>.txt` where `<release>` is the release ref with
