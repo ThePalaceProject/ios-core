@@ -46,4 +46,17 @@ extension AudiobookMorphingPlayerView {
         guard let elapsed, elapsed >= audioWaitBusyThreshold else { return .none }
         return elapsed >= audioWaitSlowThreshold ? .slow : .busy
     }
+
+    /// One sample of the wait: when it began, and the phase to show. A wait
+    /// keeps the start it already has, so the phase can grow, and ends the
+    /// moment the player stops waiting, so nothing is left on screen after it.
+    nonisolated static func nextAudioWait(
+        startedAt: Date?,
+        waiting: Bool,
+        now: Date
+    ) -> (startedAt: Date?, phase: AudioWaitPhase) {
+        guard waiting else { return (nil, .none) }
+        let start = startedAt ?? now
+        return (start, audioWaitPhase(waitingFor: now.timeIntervalSince(start)))
+    }
 }

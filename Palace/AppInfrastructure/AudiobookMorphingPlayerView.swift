@@ -216,17 +216,13 @@ struct AudiobookMorphingPlayerView: View {
             isLoaded: audiobookSession.isLoaded,
             transportIsWaitingForData: audiobookSession.transportIsWaitingForData
         )
-        if !waiting {
-            if audioWaitStartedAt != nil { audioWaitStartedAt = nil }
-        } else if audioWaitStartedAt == nil {
-            audioWaitStartedAt = now
-        }
-        let phase = Self.audioWaitPhase(waitingFor: audioWaitStartedAt.map { now.timeIntervalSince($0) })
-        guard phase != audioWaitPhase else { return }
-        if phase == .slow {
+        let next = Self.nextAudioWait(startedAt: audioWaitStartedAt, waiting: waiting, now: now)
+        if next.startedAt != audioWaitStartedAt { audioWaitStartedAt = next.startedAt }
+        guard next.phase != audioWaitPhase else { return }
+        if next.phase == .slow {
             UIAccessibility.post(notification: .announcement, argument: Strings.Generic.audiobookLoading)
         }
-        audioWaitPhase = phase
+        audioWaitPhase = next.phase
     }
 
     /// The play/pause glyph, or a spinner while the player waits for audio, so
@@ -240,9 +236,14 @@ struct AudiobookMorphingPlayerView: View {
         }
     }
 
+    /// The button still plays and pauses during a wait, so its label keeps
+    /// saying which; the wait is its value.
     private var playPauseAccessibilityLabel: String {
-        if audioWaitPhase != .none { return Strings.Generic.audiobookLoading }
-        return presenter.isPlaying ? Strings.Generic.pauseAudiobook : Strings.Generic.playAudiobook
+        presenter.isPlaying ? Strings.Generic.pauseAudiobook : Strings.Generic.playAudiobook
+    }
+
+    private var playPauseAccessibilityValue: String {
+        audioWaitPhase == .none ? "" : Strings.Generic.audiobookLoading
     }
 
     /// Total vertical offset of the card, composing three independent effects:
@@ -674,6 +675,7 @@ struct AudiobookMorphingPlayerView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(playPauseAccessibilityLabel)
+            .accessibilityValue(playPauseAccessibilityValue)
             skipCircleButton(asset: Self.icSkipForward, interval: skipForwardInterval,
                              label: Strings.Generic.skipForwardSeconds(skipForwardInterval),
                              glyph: metrics.skipGlyph, diameter: skipButton) {
@@ -1363,6 +1365,7 @@ struct AudiobookMorphingPlayerView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(playPauseAccessibilityLabel)
+            .accessibilityValue(playPauseAccessibilityValue)
 
             Button { audiobookSession.skipForward() } label: { miniSkipGlyph(asset: Self.icSkipForward, interval: skipForwardInterval) }
             .buttonStyle(.plain).tint(.primary)
