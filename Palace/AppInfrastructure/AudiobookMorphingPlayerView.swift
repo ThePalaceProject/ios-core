@@ -81,6 +81,9 @@ struct AudiobookMorphingPlayerView: View {
     /// anywhere in this file. That prose is what sent PP-5205's first analysis down the
     /// wrong path, so it is corrected rather than deleted.
     @State private var loadingTimedOut = false
+    /// When the current wait for audio began, and how it is shown (PP-5399).
+    @State private var audioWaitStartedAt: Date?
+    @State private var audioWaitPhase: AudioWaitPhase = .none
     /// Latched once a download has been observed; the one-way rule and why it
     /// must be one-way live in `hasSeenDownloading(previous:isDownloading:)`.
     @State private var hasSeenDownloading = false
@@ -200,6 +203,47 @@ struct AudiobookMorphingPlayerView: View {
                 }
         }
         .ignoresSafeArea()
+        .onReceive(Self.audioWaitTicker) { sampleAudioWait(at: $0) }
+    }
+
+    /// Samples the wait for audio. Polled rather than observed: `isLoaded` and
+    /// the transport's waiting state are read off the player and not published.
+    private static let audioWaitTicker = Timer.publish(every: 0.2, on: .main, in: .common).autoconnect()
+
+    private func sampleAudioWait(at now: Date) {
+        let waiting = Self.isAwaitingAudio(
+            hasStartedPlayback: presenter.hasStartedPlayback,
+            isLoaded: audiobookSession.isLoaded,
+            transportIsWaitingForData: audiobookSession.transportIsWaitingForData
+        )
+        let next = Self.nextAudioWait(startedAt: audioWaitStartedAt, waiting: waiting, now: now)
+        if next.startedAt != audioWaitStartedAt { audioWaitStartedAt = next.startedAt }
+        guard next.phase != audioWaitPhase else { return }
+        if next.phase == .slow {
+            UIAccessibility.post(notification: .announcement, argument: Strings.Generic.audiobookLoading)
+        }
+        audioWaitPhase = next.phase
+    }
+
+    /// The play/pause glyph, or a spinner while the player waits for audio, so
+    /// the control the patron touched shows the tap was taken.
+    @ViewBuilder
+    private func playPauseContent(glyphSize: CGFloat) -> some View {
+        if audioWaitPhase == .none {
+            abGlyph(presenter.isPlaying ? Self.icPause : Self.icPlay, size: glyphSize)
+        } else {
+            ProgressView().tint(Color(.systemBackground))
+        }
+    }
+
+    /// The button still plays and pauses during a wait, so its label keeps
+    /// saying which; the wait is its value.
+    private var playPauseAccessibilityLabel: String {
+        presenter.isPlaying ? Strings.Generic.pauseAudiobook : Strings.Generic.playAudiobook
+    }
+
+    private var playPauseAccessibilityValue: String {
+        audioWaitPhase == .none ? "" : Strings.Generic.audiobookLoading
     }
 
     /// Total vertical offset of the card, composing three independent effects:
@@ -549,10 +593,13 @@ struct AudiobookMorphingPlayerView: View {
             // edges; the title (subheadline) defines the row height as before, and
             // its horizontal padding keeps it clear of the times.
             ZStack {
-                Text(chapterDisplayTitle)
+                // Dimmed while the chapter it names is not yet playing; on a long
+                // wait it says so instead (PP-5399).
+                Text(audioWaitPhase == .slow ? Strings.Generic.audiobookLoading : chapterDisplayTitle)
                     .font(.subheadline).fontWeight(.semibold)
                     .lineLimit(1).truncationMode(.tail)
                     .padding(.horizontal, 64)
+                    .opacity(audioWaitPhase == .none ? 1 : 0.5)
                 HStack(spacing: 8) {
                     Text(chapterElapsedString)
                         .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
@@ -621,13 +668,14 @@ struct AudiobookMorphingPlayerView: View {
             Button(action: { audiobookSession.togglePlayPause() }) {
                 ZStack {
                     Circle().fill(Color.primary)
-                    abGlyph(presenter.isPlaying ? Self.icPause : Self.icPlay, size: metrics.playGlyph * 0.82)
+                    playPauseContent(glyphSize: metrics.playGlyph * 0.82)
                         .foregroundStyle(Color(.systemBackground))
                 }
                 .frame(width: metrics.playButton, height: metrics.playButton)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(presenter.isPlaying ? Strings.Generic.pauseAudiobook : Strings.Generic.playAudiobook)
+            .accessibilityLabel(playPauseAccessibilityLabel)
+            .accessibilityValue(playPauseAccessibilityValue)
             skipCircleButton(asset: Self.icSkipForward, interval: skipForwardInterval,
                              label: Strings.Generic.skipForwardSeconds(skipForwardInterval),
                              glyph: metrics.skipGlyph, diameter: skipButton) {
@@ -899,38 +947,6 @@ struct AudiobookMorphingPlayerView: View {
     /// the view's buffering-window timer.
     nonisolated static func shouldSurfaceLoadTimeout(isLoaded: Bool, isDownloading: Bool) -> Bool {
         !isLoaded && !isDownloading
-    }
-
-    /// VoiceOver label for the determinate download overlay. The overlay
-    /// visually shows cover + title + author + progress, but
-    /// `.accessibilityElement(children: .ignore)` collapses those children — so
-    /// the label must carry the title/author itself, or a blind patron hears
-    /// only a bare percentage for the up-to-180s download. Progress is clamped
-    /// so a transiently out-of-range value never announces "-4%" / "142%".
-    nonisolated static func downloadingAccessibilityLabel(
-        title: String?,
-        authors: String?,
-        progress: Double
-    ) -> String {
-        let pct = Int((min(max(progress, 0), 1)) * 100)
-        var parts = ["\(Strings.Generic.audiobookDownloading), \(pct)%"]
-        if let title, !title.isEmpty { parts.append(title) }
-        if let authors, !authors.isEmpty { parts.append(authors) }
-        return parts.joined(separator: ". ")
-    }
-
-    /// Resolves the rate the speed chip should display. Only adopts the session's
-    /// rate once a manager is bound — pre-bind, `currentPlaybackRate` returns the
-    /// default 1.0× (no player yet), which must NOT overwrite the chip, or a
-    /// freshly-reopened book (whose persisted rate the toolkit restores on bind)
-    /// would show 1.0× while playing faster. When bound, the session rate is the
-    /// source of truth. Pure so the sync decision is unit-tested for both phases.
-    nonisolated static func displayRate(
-        sessionRate: PlaybackRate,
-        isBound: Bool,
-        fallback: PlaybackRate
-    ) -> PlaybackRate {
-        isBound ? sessionRate : fallback
     }
 
     /// PP-5205 (A1): the state is bound ONCE and arming is keyed on it via
@@ -1342,13 +1358,14 @@ struct AudiobookMorphingPlayerView: View {
             Button(action: { audiobookSession.togglePlayPause() }) {
                 ZStack {
                     Circle().fill(Color.primary)
-                    abGlyph(presenter.isPlaying ? Self.icPause : Self.icPlay, size: 25)
+                    playPauseContent(glyphSize: 25)
                         .foregroundStyle(Color(.systemBackground))
                 }
                 .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(presenter.isPlaying ? Strings.Generic.pauseAudiobook : Strings.Generic.playAudiobook)
+            .accessibilityLabel(playPauseAccessibilityLabel)
+            .accessibilityValue(playPauseAccessibilityValue)
 
             Button { audiobookSession.skipForward() } label: { miniSkipGlyph(asset: Self.icSkipForward, interval: skipForwardInterval) }
             .buttonStyle(.plain).tint(.primary)
@@ -1507,35 +1524,6 @@ struct AudiobookMorphingPlayerView: View {
         }
     }
 
-    /// Maps a bookmark-add failure to an app-side localized toast string. The
-    /// toolkit's `BookmarkError` is public but its `localizedDescription` is
-    /// module-internal (unreachable here), so the raw `Error.localizedDescription`
-    /// would surface the useless "operation couldn't be completed" text. Match
-    /// the two known cases to faithful app-side copy; anything else falls back to
-    /// the generic add-failed string. Static + pure so it's unit-testable.
-    static func bookmarkErrorMessage(for error: Error) -> String {
-        switch error {
-        case BookmarkError.bookmarkAlreadyExists:
-            return Strings.Generic.bookmarkAlreadyExists
-        case BookmarkError.bookmarkFailedToSave:
-            return Strings.Generic.bookmarkFailedToSave
-        default:
-            return Strings.Generic.bookmarkAddFailed
-        }
-    }
-
-    /// Whether a toast string represents a failure (error icon) vs. a success
-    /// (bookmark icon). Success is only the bookmark-added string; every failure
-    /// copy — the generic add-failed plus the two mapped `BookmarkError` cases —
-    /// shows the error glyph. Static + pure so it's unit-testable.
-    static func toastIsError(_ text: String) -> Bool {
-        text != Strings.Generic.bookmarkAdded
-            && (text.localizedCaseInsensitiveContains("error")
-                || text == Strings.Generic.bookmarkAddFailed
-                || text == Strings.Generic.bookmarkAlreadyExists
-                || text == Strings.Generic.bookmarkFailedToSave)
-    }
-
     private func presentToast(_ text: String) {
         toastText = text
         withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) { showToast = true }
@@ -1668,30 +1656,6 @@ struct AudiobookMorphingPlayerView: View {
         return Self.wholeBookRemainingText(bookTimeRemaining: bookTimeRemaining, rate: currentRate)
     }
 
-    /// PP-4971: phrase the whole-book figure in wall-clock time at the speed the
-    /// patron is listening at, not in book time.
-    ///
-    /// This is the "how much longer will this take me" number, so it has to
-    /// answer that question — a 2× listener was previously told hours remained
-    /// on a book they were about to finish. The chapter timecode beside the
-    /// scrubber deliberately does NOT get this treatment: it has to keep
-    /// agreeing with the scrubber position and the chapter length.
-    ///
-    /// The rate division itself is `AudiobookPlaybackModel.remainingWallClock`,
-    /// shared with the toolkit player so the two cannot drift apart again.
-    nonisolated static func wholeBookRemainingText(
-        bookTimeRemaining: TimeInterval,
-        rate: PlaybackRate
-    ) -> String {
-        let remaining = AudiobookPlaybackModel.remainingWallClock(
-            bookTimeRemaining: bookTimeRemaining,
-            rate: rate
-        )
-        let hrs = Int(remaining) / 3600
-        let mins = (Int(remaining) % 3600) / 60
-        if hrs > 0 { return String(format: "%d hr %02d min remaining", hrs, mins) }
-        return String(format: "%d min remaining", mins)
-    }
 }
 
 /// SwiftUI wrapper for the system AirPlay/route picker, matching the original
