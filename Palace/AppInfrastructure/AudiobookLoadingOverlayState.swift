@@ -41,12 +41,10 @@ extension AudiobookMorphingPlayerView {
         /// the player underneath keeps its transport controls live. The load timer is
         /// still armed, so a genuine stall reaches `.loadError`.
         ///
-        /// No spinner, deliberately. One was tried on-device and read as unexplained
-        /// chrome beside working controls — it cannot say what it is waiting for, and
-        /// for a downloaded book the honest answer ("re-queueing this track from
-        /// streaming to local") is not something to put in front of a patron. If the
-        /// wait is long enough to need explaining, that is the toolkit's lazy requeue
-        /// to fix, not a spinner to add.
+        /// No overlay spinner, deliberately. One was tried on-device and read as
+        /// unexplained chrome beside working controls. The wait is shown on the play
+        /// control instead, and only past a short threshold (`AudioWaitPhase`,
+        /// PP-5399).
         case awaitingReload
     }
 
