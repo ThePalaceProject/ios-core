@@ -411,7 +411,7 @@ def test_live_allowlist_pins_the_critical_paths(tmp_path):
     expected = {
         "Palace/Audiobooks/AudiobookSessionManager.swift": 1142,
         "Palace/MyBooks/MyBooksDownloadCenter.swift": 1172,
-        "Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift": 1019,
+        "Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift": 1006,
         "Palace/Book/UI/BookDetail/BookDetailViewModel.swift": 867,
         "Palace/Utilities/Localization/Strings.swift": 834,
         "Palace/Accounts/Library/AccountsManager.swift": 363,
