@@ -373,12 +373,18 @@ final class BookRegistryStore: @unchecked Sendable {
       // blank author line, and the visible "flicker" we're chasing would
       // return on the next reload.
       //
-      // `mergingPreservingMetadata(from:)` takes the fresh state-carrying
-      // fields (acquisitions, updated) from the catalog entry but prefers
-      // self's metadata wherever the incoming one is empty. Catalog-enriched
-      // fields still flow through when they're present; previously-enriched
-      // fields are retained when they're not.
-      let updatedBook = bookRecord.book.mergingPreservingMetadata(from: book)
+      // `mergingMetadataOnly(from:)` prefers self's metadata wherever the
+      // incoming one is empty, so catalog-enriched fields still flow through
+      // when present and previously-enriched fields are retained when not.
+      //
+      // It deliberately does NOT adopt the catalog entry's acquisitions. A
+      // catalog entry describes the work, not the loan: for a book on loan it
+      // advertises a borrow link while the loans feed supplied the fulfillment
+      // links the app needs. Taking the catalog's set dropped them, and for an
+      // LCP audiobook that erased the license MIME the shelf uses to tell it is
+      // a streamable audiobook, so it offered Download instead of Listen
+      // (PP-5400). The loans sync remains authoritative for acquisitions.
+      let updatedBook = bookRecord.book.mergingMetadataOnly(from: book)
       self.registry[book.identifier]?.book = updatedBook
       result = updatedBook
     }
