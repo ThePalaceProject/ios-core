@@ -81,6 +81,9 @@ struct AudiobookMorphingPlayerView: View {
     /// anywhere in this file. That prose is what sent PP-5205's first analysis down the
     /// wrong path, so it is corrected rather than deleted.
     @State private var loadingTimedOut = false
+    /// When the current wait for audio began, and how it is shown (PP-5399).
+    @State private var audioWaitStartedAt: Date?
+    @State private var audioWaitPhase: AudioWaitPhase = .none
     /// Latched once a download has been observed; the one-way rule and why it
     /// must be one-way live in `hasSeenDownloading(previous:isDownloading:)`.
     @State private var hasSeenDownloading = false
@@ -200,6 +203,46 @@ struct AudiobookMorphingPlayerView: View {
                 }
         }
         .ignoresSafeArea()
+        .onReceive(Self.audioWaitTicker) { sampleAudioWait(at: $0) }
+    }
+
+    /// Samples the wait for audio. Polled rather than observed: `isLoaded` and
+    /// the transport's waiting state are read off the player and not published.
+    private static let audioWaitTicker = Timer.publish(every: 0.2, on: .main, in: .common).autoconnect()
+
+    private func sampleAudioWait(at now: Date) {
+        let waiting = Self.isAwaitingAudio(
+            hasStartedPlayback: presenter.hasStartedPlayback,
+            isLoaded: audiobookSession.isLoaded,
+            transportIsWaitingForData: audiobookSession.transportIsWaitingForData
+        )
+        if !waiting {
+            if audioWaitStartedAt != nil { audioWaitStartedAt = nil }
+        } else if audioWaitStartedAt == nil {
+            audioWaitStartedAt = now
+        }
+        let phase = Self.audioWaitPhase(waitingFor: audioWaitStartedAt.map { now.timeIntervalSince($0) })
+        guard phase != audioWaitPhase else { return }
+        if phase == .slow {
+            UIAccessibility.post(notification: .announcement, argument: Strings.Generic.audiobookLoading)
+        }
+        audioWaitPhase = phase
+    }
+
+    /// The play/pause glyph, or a spinner while the player waits for audio, so
+    /// the control the patron touched shows the tap was taken.
+    @ViewBuilder
+    private func playPauseContent(glyphSize: CGFloat) -> some View {
+        if audioWaitPhase == .none {
+            abGlyph(presenter.isPlaying ? Self.icPause : Self.icPlay, size: glyphSize)
+        } else {
+            ProgressView().tint(Color(.systemBackground))
+        }
+    }
+
+    private var playPauseAccessibilityLabel: String {
+        if audioWaitPhase != .none { return Strings.Generic.audiobookLoading }
+        return presenter.isPlaying ? Strings.Generic.pauseAudiobook : Strings.Generic.playAudiobook
     }
 
     /// Total vertical offset of the card, composing three independent effects:
@@ -549,10 +592,13 @@ struct AudiobookMorphingPlayerView: View {
             // edges; the title (subheadline) defines the row height as before, and
             // its horizontal padding keeps it clear of the times.
             ZStack {
-                Text(chapterDisplayTitle)
+                // Dimmed while the chapter it names is not yet playing; on a long
+                // wait it says so instead (PP-5399).
+                Text(audioWaitPhase == .slow ? Strings.Generic.audiobookLoading : chapterDisplayTitle)
                     .font(.subheadline).fontWeight(.semibold)
                     .lineLimit(1).truncationMode(.tail)
                     .padding(.horizontal, 64)
+                    .opacity(audioWaitPhase == .none ? 1 : 0.5)
                 HStack(spacing: 8) {
                     Text(chapterElapsedString)
                         .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
@@ -621,13 +667,13 @@ struct AudiobookMorphingPlayerView: View {
             Button(action: { audiobookSession.togglePlayPause() }) {
                 ZStack {
                     Circle().fill(Color.primary)
-                    abGlyph(presenter.isPlaying ? Self.icPause : Self.icPlay, size: metrics.playGlyph * 0.82)
+                    playPauseContent(glyphSize: metrics.playGlyph * 0.82)
                         .foregroundStyle(Color(.systemBackground))
                 }
                 .frame(width: metrics.playButton, height: metrics.playButton)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(presenter.isPlaying ? Strings.Generic.pauseAudiobook : Strings.Generic.playAudiobook)
+            .accessibilityLabel(playPauseAccessibilityLabel)
             skipCircleButton(asset: Self.icSkipForward, interval: skipForwardInterval,
                              label: Strings.Generic.skipForwardSeconds(skipForwardInterval),
                              glyph: metrics.skipGlyph, diameter: skipButton) {
@@ -1342,13 +1388,13 @@ struct AudiobookMorphingPlayerView: View {
             Button(action: { audiobookSession.togglePlayPause() }) {
                 ZStack {
                     Circle().fill(Color.primary)
-                    abGlyph(presenter.isPlaying ? Self.icPause : Self.icPlay, size: 25)
+                    playPauseContent(glyphSize: 25)
                         .foregroundStyle(Color(.systemBackground))
                 }
                 .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(presenter.isPlaying ? Strings.Generic.pauseAudiobook : Strings.Generic.playAudiobook)
+            .accessibilityLabel(playPauseAccessibilityLabel)
 
             Button { audiobookSession.skipForward() } label: { miniSkipGlyph(asset: Self.icSkipForward, interval: skipForwardInterval) }
             .buttonStyle(.plain).tint(.primary)
