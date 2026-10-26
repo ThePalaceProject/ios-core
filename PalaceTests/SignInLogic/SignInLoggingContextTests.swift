@@ -54,3 +54,21 @@ final class SignInLoggingContextTests: XCTestCase {
         XCTAssertTrue(requestLine.contains("application/json"))
     }
 }
+
+final class OAuthRedirectLoggingTests: XCTestCase {
+
+    /// The redirect's fragment carries the access token and patron info; the logged form must drop both.
+    func testLoggableRedirectURL_WithTokenAndPatronInFragment_KeepsOnlyHostAndPath() throws {
+        let patron = #"{"name":"Ada Patron","barcode":"23333012345678"}"#
+            .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let url = try XCTUnwrap(URL(string:
+            "https://example.com/universal-link-redirect?state=abc#access_token=secret-token-value&patron_info=\(patron)"))
+
+        let logged = TPPSignInBusinessLogic.loggableRedirectURL(url)
+
+        XCTAssertEqual(logged, "https://example.com/universal-link-redirect")
+        for needle in ["secret-token-value", "Ada", "23333012345678", "state=abc"] {
+            XCTAssertFalse(logged.contains(needle), "the logged redirect URL carries \(needle)")
+        }
+    }
+}
