@@ -407,7 +407,6 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
             // dedupes against any concurrent fetch from refresh-in-background.
             driveCurrentAccountAuthDocIfNeeded()
 
-            TPPErrorLogger.setUserID(self.currentUserAccount.barcode)
             // isAccountSwitching is reset asynchronously by cleanupActiveContentBeforeAccountSwitch
             // after navigation cleanup completes — NOT here, to avoid premature reset (F-032).
             if Self.shouldFinishSwitchingImmediately(previousAccountId: previousAccountId, newAccountId: newAccountId) {

@@ -243,10 +243,6 @@ private enum StorageKey: String {
             // for auth.
             sessionIdentifier = UUID().uuidString
 
-            if case let .barcodeAndPin(barcode: userBarcode, pin: _) = newValue {
-                TPPErrorLogger.setUserID(userBarcode)
-            }
-
             notifyAccountDidChange()
         }
     }
