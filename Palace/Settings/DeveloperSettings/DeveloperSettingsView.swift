@@ -4,7 +4,8 @@
 //
 //  Copyright © 2025 The Palace Project. All rights reserved.
 //
-//  The "Testing" screen: engineering-tier sections only. Support-tier content
+//  The "Testing" screen: engineering-tier sections, plus the hidden-libraries
+//  toggle that App Store builds also show (PP-5382). Support-tier content
 //  (Send Error Logs, Data & Reset) is in `AppAdvancedSettingsView` (PP-4788);
 //  both share `DeveloperSettingsViewModel`.
 //
@@ -23,11 +24,12 @@ struct DeveloperSettingsView: View {
 
     var body: some View {
         List {
-            // Hidden on App Store builds so a patron who trips the version
-            // long-press cannot flip behavior-changing flags. Patron functions
-            // live in the always-visible Advanced screen.
+            // App Store builds show only the hidden-libraries toggle
+            // (PP-5382), so a patron who trips the version long-press cannot
+            // flip behavior-changing flags. Patron functions live in the
+            // always-visible Advanced screen.
+            librarySettingsSection
             if viewModel.showEngineeringTools {
-                librarySettingsSection
                 triageBotSection
                 featureFlagsSection
                 libraryRegistryDebuggingSection
@@ -88,8 +90,14 @@ struct DeveloperSettingsView: View {
 
     @ViewBuilder private var librarySettingsSection: some View {
         Section(header: Text("Library Settings")) {
-            DevToggleRow(title: "Enable Hidden Libraries", isOn: $viewModel.useBetaLibraries)
-            DevToggleRow(title: "Enter LCP Passphrase Manually", isOn: $viewModel.enterLCPPassphraseManually)
+            ForEach(viewModel.librarySettingsRows, id: \.self) { row in
+                switch row {
+                case .hiddenLibraries:
+                    DevToggleRow(title: "Enable Hidden Libraries", isOn: $viewModel.useBetaLibraries)
+                case .lcpPassphraseManually:
+                    DevToggleRow(title: "Enter LCP Passphrase Manually", isOn: $viewModel.enterLCPPassphraseManually)
+                }
+            }
         }
     }
 
