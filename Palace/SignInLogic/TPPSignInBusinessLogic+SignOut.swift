@@ -129,7 +129,6 @@ extension TPPSignInBusinessLogic {
 
         request.timeoutInterval = 45
 
-        let barcode = userAccount.barcode
         // PP-4986: built for `libraryAccountID`, not necessarily the current library.
         // enableTokenRefresh stays FALSE here.
         //
@@ -181,8 +180,7 @@ extension TPPSignInBusinessLogic {
             case .success(let data, let response):
                 processLogOut(data: data,
                               response: response,
-                              for: request,
-                              barcode: barcode)
+                              for: request)
             case .failure(let errorWithProblemDoc, let response):
                 // Do NOT call removeAll() here. Credential cleanup
                 // is handled by completeLogOutProcess() after device
@@ -192,8 +190,7 @@ extension TPPSignInBusinessLogic {
                 // 3. Race condition with re-authentication
                 processLogOutError(errorWithProblemDoc,
                                    response: response,
-                                   for: request,
-                                   barcode: barcode)
+                                   for: request)
             }
         }
 
@@ -218,8 +215,7 @@ extension TPPSignInBusinessLogic {
     #if FEATURE_DRM_CONNECTOR
     private func processLogOut(data: Data,
                                response: URLResponse?,
-                               for request: URLRequest,
-                               barcode: String?) {
+                               for request: URLRequest) {
         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
 
         let profileDoc: UserProfileDocument
@@ -230,7 +226,6 @@ extension TPPSignInBusinessLogic {
             TPPErrorLogger.logUserProfileDocumentAuthError(
                 error as NSError,
                 summary: "SignOut: unable to parse user profile doc",
-                barcode: barcode,
                 metadata: [
                     "Request": request.loggableString,
                     "Response": response ?? "N/A",
@@ -265,8 +260,7 @@ extension TPPSignInBusinessLogic {
 
     private func processLogOutError(_ errorWithProblemDoc: TPPUserFriendlyError,
                                     response: URLResponse?,
-                                    for request: URLRequest,
-                                    barcode: String?) {
+                                    for request: URLRequest) {
         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
 
         if statusCode == 401 {
@@ -283,7 +277,6 @@ extension TPPSignInBusinessLogic {
                 response: response,
                 metadata: [
                     "AuthMethod": self.selectedAuthentication?.methodDescription ?? "N/A",
-                    "Hashed barcode": barcode?.md5hex() ?? "N/A",
                     "HTTP status code": statusCode])
 
             self.uiDelegate?.businessLogic(self,

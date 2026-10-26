@@ -117,9 +117,8 @@ final class AdobeActivationWriteLintTests: XCTestCase {
                              "expected to walk the production sources, found \(files.count)")
 
         var violators: [String] = []
-        // No file is exempt. Exempting TPPUserAccount.swift bought nothing — its
-        // only matching line is TPPErrorLogger.setUserID, which the predicate
-        // already skips, and declarations do not match — while hiding a future
+        // No file is exempt. Exempting TPPUserAccount.swift bought nothing —
+        // declarations do not match — while hiding a future
         // `self.setUserID(...)` added in the one file where those setters live.
         for url in files {
             guard let src = try? String(contentsOf: url, encoding: .utf8) else { continue }

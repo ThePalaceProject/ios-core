@@ -412,8 +412,6 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
-        TPPErrorLogger.setUserID(AppContainer.production().accountsManager.currentUserAccount.barcode)
-
         // Resume Firebase operations when app becomes active
         FirebaseManager.shared.applicationDidBecomeActive()
 

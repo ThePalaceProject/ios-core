@@ -396,19 +396,6 @@ final class FirebaseManager: @unchecked Sendable {
         #endif
     }
 
-    /// Sets the user ID for Crashlytics (hashed for privacy).
-    func setCrashlyticsUserID(_ userID: String?) {
-        guard Bundle.main.applicationEnvironment == .production else { return }
-
-        #if FEATURE_CRASH_REPORTING
-        if let userIDmd5 = userID?.md5hex() {
-            Crashlytics.crashlytics().setUserID(userIDmd5)
-        } else {
-            Crashlytics.crashlytics().setUserID("SIGNED_OUT_USER")
-        }
-        #endif
-    }
-
     /// Logs an error to Crashlytics with enhanced metadata if enabled.
     func logError(_ error: NSError) {
         guard Bundle.main.applicationEnvironment == .production else {
