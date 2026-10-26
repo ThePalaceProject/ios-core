@@ -67,6 +67,19 @@ extension TPPSignInBusinessLogic {
     }
 
     // ----------------------------------------------------------------------------
+    /// The redirect URL as logged. Info logs reach Crashlytics on device, and
+    /// the fragment carries the access token and patron info (PP-5381).
+    nonisolated static func loggableRedirectURL(_ url: URL) -> String {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return "<unparseable URL>"
+        }
+        components.user = nil
+        components.password = nil
+        components.query = nil
+        components.fragment = nil
+        return components.string ?? "<unparseable URL>"
+    }
+
     private func universalLinkRedirectURLContainsPayload(_ urlStr: String) -> Bool {
         return urlStr.contains("error")
             || (urlStr.contains("access_token") && urlStr.contains("patron_info"))
@@ -115,7 +128,7 @@ extension TPPSignInBusinessLogic {
         }
 
         let urlStr = url.absoluteString
-        Log.info(#file, "🔐 [REDIRECT] Received URL: \(urlStr.prefix(100))...")
+        Log.info(#file, "🔐 [REDIRECT] Received URL: \(Self.loggableRedirectURL(url))")
 
         guard urlStr.hasPrefix(urlSettingsProvider.universalLinksURL.absoluteString),
               universalLinkRedirectURLContainsPayload(urlStr) else {
@@ -235,9 +248,6 @@ extension TPPSignInBusinessLogic {
         Log.info(#file, "🔐 [REDIRECT] ✅ Successfully extracted auth data:")
         Log.info(#file, "🔐 [REDIRECT]   Auth token length: \(authToken.count) characters")
         Log.info(#file, "🔐 [REDIRECT]   Patron keys: \(parsedPatron.keys.sorted().joined(separator: ", "))")
-        if let patronName = parsedPatron["name"] as? String {
-            Log.info(#file, "🔐 [REDIRECT]   Patron name: \(patronName)")
-        }
 
         self.dispatch(.bearerTokenReceived(token: authToken, expiration: nil))
         self.patron = parsedPatron
