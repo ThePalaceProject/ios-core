@@ -826,7 +826,8 @@ private final class RedirectCompletionBox: @unchecked Sendable {
         // BorrowOperation owns the complete borrow lifecycle. Closures
         // wrap the production OPDS fetch (with DownloadErrorRecovery
         // retries), the TPPAlertUtils error-presentation path, the
-        // SignInModalPresenter, and the OIDC silent-reauth web session.
+        // download-error publisher, the SignInModalPresenter, and the OIDC
+        // silent-reauth web session.
         // Tests substitute simpler stubs.
         // Resolver path (intentional): BorrowOperation owns the complete
         // borrow lifecycle including OIDC silent reauth. The bearer-auth
@@ -850,22 +851,13 @@ private final class RedirectCompletionBox: @unchecked Sendable {
                 )
             }
         }
-        let presentBorrowErrorAlertClosure: @MainActor (String, String, NSError?, TPPProblemDocument?, TPPBook, (() -> Void)?) -> Void = { title, message, originalError, problemDoc, book, retryAction in
-            let alert = TPPAlertUtils.alertWithDetails(
-                title: title,
-                message: message,
-                error: originalError,
-                problemDocument: problemDoc,
-                bookIdentifier: book.identifier,
-                bookTitle: book.title,
-                retryAction: retryAction
-            )
-            TPPAlertUtils.presentFromViewControllerOrNil(
-                alertController: alert,
-                viewController: nil,
-                animated: true,
-                completion: nil
-            )
+        let presentBorrowErrorAlertClosure: BorrowErrorAlertPresenting = BorrowErrorAlert.present
+        // The alert above cannot tell the half-sheet that the borrow failed, so
+        // a failure from the book detail page left `BookDetailViewModel`'s
+        // optimistic `.downloading` state — and its Cancel-only button — in
+        // place indefinitely. The publish is what unsticks it (PP-5407).
+        let publishBorrowErrorClosure: @MainActor (DownloadErrorInfo) -> Void = { errorInfo in
+            reporter.publishAndAnnounceError(errorInfo)
         }
         let presentSignInModalClosure: @MainActor (@escaping () -> Void) -> Void = { completion in
             AppContainer.production().signInModalSheetPresenter
@@ -885,6 +877,7 @@ private final class RedirectCompletionBox: @unchecked Sendable {
             adobeDRMService: .shared,
             fetchBook: fetchBookClosure,
             presentBorrowErrorAlert: presentBorrowErrorAlertClosure,
+            publishBorrowError: publishBorrowErrorClosure,
             presentSignInModal: presentSignInModalClosure,
             attemptOIDCReauth: attemptOIDCReauthClosure,
             authCoordinator: authCoordinator,
@@ -900,6 +893,7 @@ private final class RedirectCompletionBox: @unchecked Sendable {
             userAccountProvider: resolveAccountForBorrowOp,
             fetchBook: fetchBookClosure,
             presentBorrowErrorAlert: presentBorrowErrorAlertClosure,
+            publishBorrowError: publishBorrowErrorClosure,
             presentSignInModal: presentSignInModalClosure,
             attemptOIDCReauth: attemptOIDCReauthClosure,
             authCoordinator: authCoordinator,

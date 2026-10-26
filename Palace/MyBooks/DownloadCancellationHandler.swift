@@ -118,7 +118,14 @@ final class DownloadCancellationHandler: @unchecked Sendable {
                 return
             }
 
-            NSLog("Ignoring nonsensical cancellation request for state: \(state.stringValue())")
+            // `Log.warn`, not `NSLog`: NSLog reaches only the system log, while
+            // the app's own `Documents/Logs/palace_error.log` is what support
+            // collects from patrons.
+            // The decline itself stands — with no task and a state that is not
+            // in flight there is nothing to cancel. Resolving a caller's
+            // optimistic UI belongs to that caller; see
+            // `BookDetailViewModel.didSelectCancel()`.
+            Log.warn(#file, "Ignoring nonsensical cancellation request for '\(identifier)' (state: \(state.stringValue()))")
             return
         }
 

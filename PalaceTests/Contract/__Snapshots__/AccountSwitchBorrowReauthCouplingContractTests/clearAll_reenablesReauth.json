@@ -15,6 +15,12 @@
     "args" : {
       "book" : "reauth-coupling-C2"
     },
+    "method" : "publishBorrowError"
+  },
+  {
+    "args" : {
+      "book" : "reauth-coupling-C2"
+    },
     "method" : "presentSignInModal"
   }
 ]

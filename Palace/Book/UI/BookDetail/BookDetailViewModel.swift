@@ -407,34 +407,29 @@ final class BookDetailViewModel: ObservableObject {
 
         // Subscribe to download errors so we can present them via SwiftUI .alert
         // instead of UIKit (which can fail when a SwiftUI sheet is topmost).
-        // Filter by error kind so borrow errors only show when the user initiated
-        // a borrow (Get), and download errors only show for downloads/retries.
+        // The per-kind admission rules live in `BookDetailErrorAdmission`.
         downloadCenter.downloadErrorPublisher
             .filter { [weak self] in $0.bookId == self?.book.identifier }
             .filter { [weak self] errorInfo in
                 guard let self else { return true }
-                switch errorInfo.kind {
-                case .borrow:
-                    return self.processingButtons.contains(.get) || self.bookState == .unregistered
-                case .download:
-                    return self.processingButtons.contains(.download) || self.processingButtons.contains(.retry)
-                        || self.bookState == .downloading || self.bookState == .downloadFailed || self.bookState == .downloadNeeded
-                case .general:
-                    return true
-                }
+                return BookDetailErrorAdmission.admits(
+                    kind: errorInfo.kind,
+                    bookState: self.bookState,
+                    processingButtons: self.processingButtons
+                )
             }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] errorInfo in
                 guard let self else { return }
 
-                if let retryAction = errorInfo.retryAction {
-                    self.downloadErrorAlert = .retryable(
-                        title: errorInfo.title,
-                        message: errorInfo.message,
-                        retryAction: retryAction
-                    )
-                } else {
-                    self.downloadErrorAlert = AlertModel(title: errorInfo.title, message: errorInfo.message)
+                // The resync below runs for every admitted error; only the
+                // alert is conditional. A producer that already put the failure
+                // in front of the patron publishes `presentsAlert: false`, and
+                // alerting again would stack a second dialog on the first.
+                if errorInfo.presentsAlert {
+                    self.downloadErrorAlert = errorInfo.retryAction.map {
+                        .retryable(title: errorInfo.title, message: errorInfo.message, retryAction: $0)
+                    } ?? AlertModel(title: errorInfo.title, message: errorInfo.message)
                 }
 
                 // startDownloadAfterAuth sets bookState = .downloading before
@@ -827,7 +822,19 @@ final class BookDetailViewModel: ObservableObject {
 
     func didSelectCancel() {
         downloadCenter.cancelDownload(for: book.identifier)
-        self.downloadProgress = 0
+
+        // Resolve the UI against the registry. `startDownloadAfterAuth`
+        // sets `bookState = .downloading` before the request runs, and a borrow
+        // that never reaches the registry leaves that optimistic state in place
+        // — `BookButtonMapper` pins the half-sheet to Cancel only, while
+        // `DownloadCancellationHandler` reads the registry, finds nothing in
+        // flight and declines. Taking the registry's answer here means Cancel
+        // always resolves: a live download is still `.downloading` so the sheet
+        // stays open, and a borrow that failed is `.unregistered` so the sheet
+        // closes instead of offering a button that does nothing (PP-5407).
+        var snapshot = snapshotBorrowState()
+        _ = BorrowReducer.reduce(&snapshot, .cancelTapped(registryState: registry.state(for: book.identifier)))
+        applyBorrowState(snapshot)
     }
 
     // `completion` is `@Sendable` so the closure handed to

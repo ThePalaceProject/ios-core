@@ -14,5 +14,12 @@
       "title" : "Borrow Failed"
     },
     "method" : "presentBorrowErrorAlert"
+  },
+  {
+    "args" : {
+      "bookId" : "AUTH-ERR",
+      "presentsAlert" : "false"
+    },
+    "method" : "publishBorrowError"
   }
 ]

@@ -64,6 +64,7 @@ final class BorrowOperationStreamingHTMLTests: XCTestCase {
                 }
             },
             presentBorrowErrorAlert: { _, _, _, _, _, _ in },
+            publishBorrowError: { _ in },
             presentSignInModal: { _ in },
             attemptOIDCReauth: { false }
         )

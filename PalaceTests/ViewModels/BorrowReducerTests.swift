@@ -304,13 +304,56 @@ final class BorrowReducerTests: XCTestCase {
     }
 
     func testCancelTapped_resetsDownloadProgressAndIsIdempotent() {
-        var state = makeState(progress: 0.7)
-        _ = BorrowReducer.reduce(&state, .cancelTapped)
+        var state = makeState(progress: 0.7, halfSheet: true)
+        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .downloading))
         XCTAssertEqual(state.downloadProgress, 0.0, accuracy: 0.0001)
         // Calling again from zero must remain at zero — guards against
         // the legacy `didSelectCancel` callsite being invoked twice.
-        _ = BorrowReducer.reduce(&state, .cancelTapped)
+        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .downloading))
         XCTAssertEqual(state.downloadProgress, 0.0, accuracy: 0.0001)
+    }
+
+    /// PP-5407. `startDownloadAfterAuth` writes `.downloading` optimistically
+    /// and a borrow that fails before the registry is touched leaves it there,
+    /// which pins the half-sheet to a Cancel button the cancellation handler
+    /// then declines. Cancel must resolve the sheet against the registry.
+    func testCancelTapped_whenRegistrySaysNothingIsInFlight_clearsOptimisticStateAndClosesSheet() {
+        var state = makeState(
+            bookState: .downloading,
+            progress: 0.0,
+            processing: [.get],
+            halfSheet: true
+        )
+
+        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .unregistered))
+
+        XCTAssertEqual(state.bookState, .unregistered,
+                       "Cancel must take the registry's answer, not the optimistic .downloading")
+        XCTAssertFalse(state.processingButtons.contains(.get),
+                       "A .get spinner with nothing in flight keeps BookButtonMapper on Cancel only")
+        XCTAssertFalse(state.showHalfSheet,
+                       "With no loan and nothing downloading the sheet has nothing to show")
+    }
+
+    /// The other arm: a cancel during a real download must not tear the sheet
+    /// down — the registry still reports `.downloading`, and the transition to
+    /// `.downloadNeeded` arrives separately from the cancellation handler.
+    func testCancelTapped_duringALiveDownload_keepsTheSheetOpen() {
+        var state = makeState(
+            bookState: .downloading,
+            progress: 0.4,
+            processing: [.download],
+            halfSheet: true
+        )
+
+        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .downloading))
+
+        XCTAssertEqual(state.bookState, .downloading,
+                       "A live download is still downloading until the handler reports otherwise")
+        XCTAssertTrue(state.showHalfSheet,
+                      "Cancelling a running download must leave the sheet up for the result")
+        XCTAssertEqual(state.downloadProgress, 0.0, accuracy: 0.0001,
+                       "The bar resets so a resumed download does not inherit the old fill")
     }
 
     func testManageHoldTapped_setsHoldingStateAndManagingFlag() {

@@ -61,9 +61,14 @@ enum BorrowAction {
     /// processing immediately for instant feedback; the network call follows.
     case returnStartConfirmed
 
-    /// User chose Cancel — clear progress (the cancel side effect is fired
-    /// by the VM since it holds the download center reference).
-    case cancelTapped
+    /// User chose Cancel. The cancel side effect is fired by the VM (it holds
+    /// the download center reference); `registryState` is the registry's
+    /// authoritative truth at the time of the tap. `DownloadCancellationHandler`
+    /// declines a cancel for a book with no download task whose state is not in
+    /// flight, so an optimistic `.downloading` set by `startDownloadAfterAuth`
+    /// has to be resolved from the registry here or Cancel resolves nothing
+    /// (PP-5407).
+    case cancelTapped(registryState: TPPBookState)
 
     /// User chose Manage Hold — flip to managing-hold UI.
     case manageHoldTapped
@@ -199,8 +204,18 @@ enum BorrowReducer {
             state.processingButtons.insert(.returning)
             return .none
 
-        case .cancelTapped:
+        case .cancelTapped(let registryState):
             state.downloadProgress = 0.0
+            state.bookState = registryState
+            state.processingButtons.subtract(downloadRelatedButtons)
+            // `.unregistered` is the declined-cancel case: the borrow never
+            // reached the registry, so there is no loan to show and nothing to
+            // cancel. Close the sheet rather than leave it on a dead button.
+            // Every other state still has something to render (a running
+            // download, a failed one, a loan), so the sheet stays open.
+            if registryState == .unregistered {
+                state.showHalfSheet = false
+            }
             return .none
 
         case .manageHoldTapped:
