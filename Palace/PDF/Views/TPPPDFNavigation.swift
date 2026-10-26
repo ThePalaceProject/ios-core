@@ -82,6 +82,12 @@ struct TPPPDFNavigation<Content>: View where Content: View {
             ZStack(alignment: .leading) {
                 TPPPDFToolbarButton(icon: "list.bullet") {
                     readerMode = Self.tableOfContentsButtonDestination
+                    // Keep the picker in step. It replaces this button once a
+                    // mode is showing, and leaving it at its initial value made
+                    // it highlight and announce Page Previews over table-of-
+                    // contents content — a divergence the old code could not
+                    // produce, because both read the same state.
+                    pickerSelection = TPPPDFReaderModeValues.toc.rawValue
                     metadata.fetchBookmarks()
                 }
                 .accessibilityLabel(Strings.Generic.tableOfContents)
