@@ -359,48 +359,47 @@ final class BorrowReducerTests: XCTestCase {
         }
     }
 
-    /// A Cancel tap landing while a return is in flight must not rewrite the
-    /// state the "Returning…" UI is built on — the same override the registry
-    /// transition honours.
-    func testCancelTapped_whileAReturnIsArmed_leavesTheReturningUIAlone() {
+    /// A stale `.returning` override must NOT stop Cancel resolving. The flag
+    /// is cleared only when `bookState` is written to `.unregistered`, so it
+    /// outlives every other direct write; gating on it left Cancel dead on the
+    /// `.downloading` sheet this case exists to rescue — PP-5407 reintroduced
+    /// by its own fix.
+    func testCancelTapped_withAStaleReturningOverride_stillResolves() {
         var state = makeState(
-            bookState: .returning,
+            bookState: .downloading,
             override: .returning,
-            progress: 0.5,
-            processing: [.returning],
+            progress: 0.4,
+            processing: [.get],
             halfSheet: true
         )
 
-        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .downloadSuccessful))
+        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .unregistered))
 
-        XCTAssertEqual(state.bookState, .returning,
-                       "a cancel must not stomp the state the Returning UI renders from")
-        XCTAssertTrue(state.processingButtons.contains(.returning),
-                      "the returning spinner belongs to the return, not to this cancel")
-        XCTAssertTrue(state.showHalfSheet,
-                      "the sheet must stay up until the server confirms the return")
+        XCTAssertEqual(state.bookState, .unregistered,
+                       "a stale override must not outrank the registry's answer")
+        XCTAssertFalse(state.processingButtons.contains(.get),
+                       "the acquire spinner is what pins the sheet to Cancel")
+        XCTAssertFalse(state.showHalfSheet,
+                       "nothing left to show, so the sheet must close rather than keep a dead button")
+        XCTAssertEqual(state.downloadProgress, 0.0, accuracy: 0.0001)
     }
 
-    /// The terminal arm of that override: `.unregistered` IS the return
-    /// completing, so it must still resolve.
-    func testCancelTapped_whileAReturnIsArmed_stillResolvesOnUnregistered() {
+    /// The return-side flags must not outlive a cancel that closes the sheet,
+    /// or the next open reopens onto them.
+    func testCancelTapped_closingTheSheet_clearsTheReturnSideFlags() {
         var state = makeState(
-            bookState: .returning,
-            override: .returning,
-            processing: [.returning],
+            bookState: .downloading,
+            processing: [.get, .returning, .cancelHold, .return, .remove],
             managingHold: true,
             halfSheet: true
         )
 
         _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .unregistered))
 
-        XCTAssertEqual(state.bookState, .unregistered)
-        XCTAssertFalse(state.showHalfSheet,
-                       "the return completed, so the sheet has nothing left to show")
         XCTAssertFalse(state.isManagingHold,
-                       "a sheet that closes must not leave the manage-hold UI armed for its next open")
-        XCTAssertFalse(state.processingButtons.contains(.returning),
-                       "the returning spinner must not outlive the return")
+                       "a closed sheet must not reopen into the manage-hold UI")
+        XCTAssertTrue(state.processingButtons.isEmpty,
+                      "no spinner may outlive the sheet that showed it")
     }
 
     /// The other arm: a cancel during a real download must not tear the sheet

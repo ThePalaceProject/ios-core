@@ -831,9 +831,12 @@ final class BookDetailViewModel: ObservableObject {
         // `DownloadCancellationHandler` reads the registry, finds nothing in
         // flight and declines. Taking the registry's answer means Cancel always
         // resolves: a cancelled transfer has just been moved to
-        // `.downloadNeeded` so the sheet stays open on Download, and a borrow
-        // that failed is still `.unregistered` so the sheet closes instead of
-        // offering a button that does nothing (PP-5407).
+        // `.downloadNeeded` so the sheet stays open on Download — except the
+        // Adobe branch, which hands off to `cancelFulfillment` and writes no
+        // state, so that one reads back `.downloading` and the sheet likewise
+        // stays open. A borrow that failed is still `.unregistered`, so there
+        // the sheet closes instead of offering a button that does nothing
+        // (PP-5407).
         var snapshot = snapshotBorrowState()
         _ = BorrowReducer.reduce(&snapshot, .cancelTapped(registryState: registry.state(for: book.identifier)))
         applyBorrowState(snapshot)

@@ -85,7 +85,7 @@ final class BookCellModelProcessingStateTests: XCTestCase {
     /// `presentsAlert: false`. The cell must not raise a second one on top of
     /// it — the shape a patron reads as dismissing an alert and finding
     /// another behind it (PP-5407).
-    func test_whenTheProducerAlreadyAlerted_theCellDoesNotRaiseASecondOne() {
+    func test_whenTheProducerAlreadyAlerted_theCellDoesNotRaiseASecondOne() async {
         let book = makeBook(id: "already-alerted")
         mockRegistry.setState(.unregistered, for: book.identifier)
         let model = makeModel(book: book)
@@ -100,7 +100,9 @@ final class BookCellModelProcessingStateTests: XCTestCase {
                 presentsAlert: false
             )
         )
-        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        await drainMainQueueAsync()
+        await Task.yield()
+        await drainMainQueueAsync()
 
         XCTAssertNil(model.showAlert,
                      "the producer already put this failure in front of the patron")
@@ -110,7 +112,7 @@ final class BookCellModelProcessingStateTests: XCTestCase {
 
     /// The other arm, so the guard above can still be false: an error nobody
     /// has shown yet must reach the patron.
-    func test_whenNoOneHasAlertedYet_theCellRaisesTheAlert() {
+    func test_whenNoOneHasAlertedYet_theCellRaisesTheAlert() async {
         let book = makeBook(id: "not-yet-alerted")
         mockRegistry.setState(.unregistered, for: book.identifier)
         let model = makeModel(book: book)
@@ -123,7 +125,7 @@ final class BookCellModelProcessingStateTests: XCTestCase {
                 kind: .borrow
             )
         )
-        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        await awaitConditionAsync { (model.showAlert ?? model.downloadErrorAlert) != nil }
 
         XCTAssertNotNil(model.showAlert ?? model.downloadErrorAlert,
                         "a borrow failure nobody has reported must still reach the patron")

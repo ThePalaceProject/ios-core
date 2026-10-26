@@ -206,13 +206,14 @@ enum BorrowReducer {
 
         case .cancelTapped(let registryState):
             state.downloadProgress = 0.0
-            // Same override the registry path honours: while `.returning` is
-            // armed the "Returning…" UI must stick, so a Cancel tap landing in
-            // that window may not rewrite the state underneath it.
-            if state.localBookStateOverride == .returning,
-               registryState != .unregistered {
-                return .none
-            }
+            // Deliberately NOT gated on `localBookStateOverride`, unlike the
+            // registry path above. That flag is cleared only when `bookState`
+            // is written to `.unregistered`, so it survives every other direct
+            // write and goes stale; gating on it stranded Cancel on exactly the
+            // `.downloading` sheet this case exists to resolve. The window it
+            // would have protected renders no Cancel anyway — `isProcessingDownload`
+            // reads `bookState` and the acquire buttons, neither of which a
+            // return raises.
             state.bookState = registryState
             state.processingButtons.subtract(downloadRelatedButtons)
             // Exhaustive (no `default:`) for the same reason the registry

@@ -111,8 +111,8 @@ final class BookDetailBorrowFailureRecoveryTests: XCTestCase {
     }
 
     /// End to end over the chain the defect broke: a real `BorrowOperation`
-    /// whose failure reporting is wired exactly as `MyBooksDownloadCenter`
-    /// wires it, and a real view model subscribed to that download centre. The
+    /// reporting through the same publisher call `MyBooksDownloadCenter` uses,
+    /// and a real view model subscribed to that download centre. The
     /// registry is never told about a failed borrow, so if the operation does
     /// not publish, nothing in this chain can clear the sheet.
     func testBorrowOperationFailure_recoversTheSheetThroughTheDownloadCentre() async {
@@ -131,7 +131,11 @@ final class BookDetailBorrowFailureRecoveryTests: XCTestCase {
             adobeDRMService: AdobeDRMService.shared,
             fetchBook: { _, _, _ in throw PalaceError.network(.serverError) },
             presentBorrowErrorAlert: { _, _, _, _, _, _ in },
-            publishBorrowError: { errorInfo in reporter.publishAndAnnounceError(errorInfo) },
+            // `send`, as MyBooksDownloadCenter wires it — NOT
+            // `publishAndAnnounceError`. Wiring the announcing variant here
+            // modelled the pre-fix shape and let the duplicate announcement
+            // return without failing anything.
+            publishBorrowError: { errorInfo in reporter.downloadErrorPublisher.send(errorInfo) },
             presentSignInModal: { _ in },
             attemptOIDCReauth: { false }
         )
