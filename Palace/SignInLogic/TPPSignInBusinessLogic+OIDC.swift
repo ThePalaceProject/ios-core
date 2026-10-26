@@ -296,17 +296,14 @@ extension TPPSignInBusinessLogic {
     /// authentication completes. Extracts `access_token` and `patron_info`
     /// from query parameters or fragment, then validates credentials.
     func handleOIDCCallback(_ url: URL) {
-        let urlStr = url.absoluteString
-        Log.info(#file, "OIDC callback received: \(urlStr.prefix(120))...")
+        Log.info(#file, "OIDC callback received: \(Self.loggableRedirectURL(url))")
 
         guard let payload = url.query ?? url.fragment else {
             TPPErrorLogger.logError(
                 withCode: .unrecognizedUniversalLink,
                 summary: "OIDC callback has no query or fragment",
-                metadata: [
-                    "callbackURL": urlStr,
-                    "context": uiDelegate?.context ?? "N/A"
-                ])
+                metadata: Self.redirectFailureMetadata(
+                    url: url, payloadKeys: nil, context: uiDelegate?.context ?? "N/A"))
             return
         }
 
@@ -365,11 +362,8 @@ extension TPPSignInBusinessLogic {
             TPPErrorLogger.logError(
                 withCode: .authDataParseFail,
                 summary: "OIDC callback missing access_token or patron_info",
-                metadata: [
-                    "callbackURL": urlStr,
-                    "keysPresent": kvpairs.keys.sorted().joined(separator: ", "),
-                    "context": uiDelegate?.context ?? "N/A"
-                ])
+                metadata: Self.redirectFailureMetadata(
+                    url: url, payloadKeys: Array(kvpairs.keys), context: uiDelegate?.context ?? "N/A"))
             return
         }
 

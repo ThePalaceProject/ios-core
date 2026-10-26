@@ -190,6 +190,13 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         return uiDelegate?.context ?? "Unknown"
     }
 
+    /// Metadata reported to Crashlytics when sign-in fails. PP-5381: it carries
+    /// no patron identifier, raw or hashed; `loggableString` drops the
+    /// Authorization header.
+    nonisolated static func signInLoggingContext(request: URLRequest, uiContext: String) -> [String: Any] {
+        ["Request": request.loggableString, "Context": uiContext]
+    }
+
     // MARK: - Auth state machine
 
     /// In-flight auth state managed by `AuthReducer`. The legacy `@objc`
@@ -520,10 +527,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
             let result = await networker.execute(
                 req, enableTokenRefresh: false, accountId: libraryAccountID)
 
-            let loggingContext: [String: Any] = [
-                "Request": req.loggableString,
-                "Attempted Barcode": uiDelegate?.username?.md5hex() ?? "N/A",
-                "Context": uiContext]
+            let loggingContext = Self.signInLoggingContext(request: req, uiContext: uiContext)
 
             switch result {
             case .success(let responseData, _):
@@ -1003,10 +1007,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
                     TPPErrorLogger.logError(
                         withCode: .appLogicInconsistency,
                         summary: "uiDelegate missing while refreshing basic auth",
-                        metadata: [
-                            "usingExistingCredentials": usingExistingCredentials,
-                            "hashedBarcode": userAccount.barcode?.md5hex() ?? "N/A"
-                        ])
+                        metadata: ["usingExistingCredentials": usingExistingCredentials])
                     #endif
                 }
                 // `UITextField.text`/`becomeFirstResponder()` are
