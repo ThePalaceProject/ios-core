@@ -994,7 +994,9 @@ final class OfflineQueueLibraryScopeTests: XCTestCase {
     private func joinReturnTasks(_ service: BookReturnService) async {
         for _ in 0..<8 {
             let pending = service.inFlightTasksSnapshotForTesting()
-            if pending.isEmpty { return }
+            // Both halves of the ledger: a slot claimed by a body that never
+            // stored a handle is invisible to the snapshot.
+            if pending.isEmpty, service.outstandingSlotCount == 0 { return }
             for task in pending { await task.value }
         }
         XCTFail("return tasks did not settle")

@@ -216,10 +216,22 @@ final class BookReturnService: @unchecked Sendable {
     /// (tests verify the set is populated when a return-flow Task is
     /// running and drained once it completes or is cancelled).
     ///
-    /// Counts outstanding bodies rather than retained handles: the two differ
-    /// for the few instructions between a launch claiming its slot and storing
-    /// its handle, and outstanding work is what the contract is about.
+    /// Counts retained handles, which is what "retained" means in the four
+    /// assertions that read it, and the same meaning the accessor of this name
+    /// carries on `DownloadAuthRetryHandler`. `outstandingSlotCount` is the
+    /// other half of the ledger.
     var inFlightTaskCount: Int {
+        inFlightLock.lock()
+        defer { inFlightLock.unlock() }
+        return inFlightTasks.count
+    }
+
+    /// Test/audit hook: slots claimed by a launched body that has not finished.
+    ///
+    /// Differs from `inFlightTaskCount` for the few instructions between a
+    /// launch claiming its slot and storing its handle, and after a teardown
+    /// has refused a handle. A drain is complete only when both are zero.
+    var outstandingSlotCount: Int {
         inFlightLock.lock()
         defer { inFlightLock.unlock() }
         return outstandingTaskIDs.count
@@ -237,22 +249,29 @@ final class BookReturnService: @unchecked Sendable {
     /// Reserves a slot for a body that is about to be launched.
     ///
     /// Called before `Task.init` so the slot exists no matter which runs first,
-    /// the body or the caller's next line.
+    /// the body or the caller's next line. Launcher-internal rather than
+    /// private so a test can drive an ordering the scheduler otherwise picks.
     func claimTrackedSlot() -> UUID {
         let id = UUID()
         inFlightLock.withLock { outstandingTaskIDs.insert(id) }
         return id
     }
 
-    /// Stores a launched Task's handle, unless its body has already finished.
+    /// Stores a launched Task's handle, unless its slot is already gone, and
+    /// reports whether it was stored.
     ///
     /// The guard is the point: a body that completed first has released its
     /// slot, and an unconditional insert here would resurrect a finished Task
-    /// into a set that nothing ever drains again (PP-5408).
-    func retainTracked(_ id: UUID, _ task: Task<Void, Never>) {
+    /// into a set that nothing ever drains again (PP-5408). The return value
+    /// matters for the other way a slot disappears: when teardown ran during
+    /// the launch, the refused handle is the caller's to cancel, because no
+    /// later `cancelAllInFlightTasks()` can reach a body it never retained.
+    @discardableResult
+    func retainTracked(_ id: UUID, _ task: Task<Void, Never>) -> Bool {
         inFlightLock.withLock {
-            guard outstandingTaskIDs.contains(id) else { return }
+            guard outstandingTaskIDs.contains(id) else { return false }
             inFlightTasks[id] = task
+            return true
         }
     }
 
@@ -274,7 +293,11 @@ final class BookReturnService: @unchecked Sendable {
             await body()
             self?.releaseTracked(id)
         }
-        retainTracked(id, task)
+        if !retainTracked(id, task) {
+            // Teardown ran between the claim and here, so the handle was
+            // refused: cancel the body directly or nothing ever will.
+            task.cancel()
+        }
         return task
     }
 
@@ -288,7 +311,11 @@ final class BookReturnService: @unchecked Sendable {
             await body()
             self?.releaseTracked(id)
         }
-        retainTracked(id, task)
+        if !retainTracked(id, task) {
+            // Teardown ran between the claim and here, so the handle was
+            // refused: cancel the body directly or nothing ever will.
+            task.cancel()
+        }
         return task
     }
 
