@@ -37,6 +37,12 @@ import PalaceBookRegistry
 ///   - networkExecutor: Optional explicit override, e.g. an executor whose
 ///     session routes through a test `URLProtocol`. When `nil` the factory
 ///     constructs a fresh `.fallback` executor.
+///   - defaults: backing store for the manager the factory builds when
+///     `accountsManager` is `nil`. `.standard` by default, which on a simulator
+///     is the app's own container: a test that then seeds a current account, or
+///     sets `currentAccount`, writes `TPPCurrentAccountIdentifier` there. Pass
+///     `Self.testUserDefaults()` to keep that write off the device. Ignored when
+///     `accountsManager` is supplied, since that manager carries its own store.
 ///
 /// - Returns: A fully wired `AppContainer` distinct from
 ///   `AppContainer.production()`. Does NOT mutate `_cached`.
@@ -51,7 +57,8 @@ import PalaceBookRegistry
 func makeTestAppContainer(
   accountsManager: AccountsManager? = nil,
   bookRegistry: TPPBookRegistryProvider? = nil,
-  networkExecutor: TPPNetworkExecutor? = nil
+  networkExecutor: TPPNetworkExecutor? = nil,
+  defaults: UserDefaults = .standard
 ) -> AppContainer {
   // Pin the opt-out flag BEFORE constructing AccountsManager so its init
   // skips the background `loadCatalogs` Task. This mirrors the bootstrap
@@ -69,7 +76,7 @@ func makeTestAppContainer(
   // first. Same here.
   let executor = networkExecutor ?? TPPNetworkExecutor(cachingStrategy: .fallback)
   let reachability = Reachability()
-  let resolvedAccountsManager = accountsManager ?? AccountsManager()
+  let resolvedAccountsManager = accountsManager ?? AccountsManager(defaults: defaults)
   let imageCache: ImageCacheType = ImageCache.shared
   let imageLoader: ImageLoading = ImageLoader(imageCache: imageCache)
   let resolvedBookRegistry = bookRegistry ?? TPPBookRegistry(

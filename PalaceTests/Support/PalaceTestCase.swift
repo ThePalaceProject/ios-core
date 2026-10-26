@@ -27,9 +27,19 @@ class PalaceTestCase: XCTestCase {
     /// nonisolated hooks without sending `self` across an actor boundary.
     nonisolated(unsafe) private var preObserverCount: Int?
 
+    /// `UserDefaults.standard`'s `TPPCurrentAccountIdentifier` as it stood before
+    /// the test ran, with `.none` meaning the key was absent.
+    ///
+    /// On a simulator `.standard` is the Palace app's own container, so a test
+    /// that leaves this key changed decides which library the app opens next for
+    /// whoever drives that device. Same single-threaded lifecycle as
+    /// `preObserverCount`, so the unsafe opt-out is race-free.
+    nonisolated(unsafe) private var preSelectedLibrary: String??
+
     override func setUpWithError() throws {
         try super.setUpWithError()
         preObserverCount = PalaceSingletonResetObserver.sampleObserverCount()
+        preSelectedLibrary = .some(UserDefaults.standard.string(forKey: currentAccountIdentifierKey))
     }
 
     override func tearDownWithError() throws {
@@ -41,6 +51,7 @@ class PalaceTestCase: XCTestCase {
         // check ran before the restore. Verified by the WS-0 ordering proof.
         try super.tearDownWithError()
         assertRuntimeQuiescent()
+        assertSelectedLibraryUnchanged()
         warnOnObserverLeak()
         // Class-4 (accumulation pool-starvation) HARD gate — OPT-IN. Runs only
         // for classes that override `enforcesPoolResponsiveness` to `true`
@@ -86,6 +97,48 @@ class PalaceTestCase: XCTestCase {
             NSLog("[WS0-OBSERVER-DIAG] %@ left net observer adds (%d→%d) [%@] — see PalaceTestCase.warnOnObserverLeak (warn-only pending FP audit).",
                   self.name, pre, post, violation.invariant)
         }
+    }
+
+    /// Fail the current test if it left a different library selected in
+    /// `UserDefaults.standard` than it found, then put the old value back so one
+    /// leak reddens its own test rather than every test after it.
+    ///
+    /// The write usually comes from `AccountsManager._seedAccountForTesting` or
+    /// the `currentAccount` setter on a manager built without an explicit
+    /// defaults suite, which binds `.standard`. On a simulator that is the app's
+    /// own container: a seeded fixture uuid survives the run, the app resolves it
+    /// to no account, reports "No library", and every borrow fails 401. Build the
+    /// manager with `makeFreshAccountsManager(defaults: Self.testUserDefaults())`
+    /// and run the closure `_seedAccountForTesting` returns.
+    ///
+    /// `nonisolated`: called from the `nonisolated` `tearDownWithError` override.
+    /// Touches only `nonisolated(unsafe)` `preSelectedLibrary`, `UserDefaults` and
+    /// `XCTFail` — no `@MainActor` state, so `self` is never sent.
+    private nonisolated func assertSelectedLibraryUnchanged(
+        file: StaticString = #file,
+        line: UInt = #line
+    ) {
+        guard let before = preSelectedLibrary else { return }
+        preSelectedLibrary = nil
+        let after = UserDefaults.standard.string(forKey: currentAccountIdentifierKey)
+        guard after != before else { return }
+        if let before {
+            UserDefaults.standard.set(before, forKey: currentAccountIdentifierKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: currentAccountIdentifierKey)
+        }
+        XCTFail(
+            """
+            Selected-library gate [\(currentAccountIdentifierKey)]: this test left \
+            UserDefaults.standard pointing at \(after ?? "no library") instead of \
+            \(before ?? "no library"). On a simulator those are the app's own \
+            defaults. Build the AccountsManager with \
+            makeFreshAccountsManager(defaults: Self.testUserDefaults()) and run the \
+            closure _seedAccountForTesting returns.
+            """,
+            file: file,
+            line: line
+        )
     }
 
     /// Fail the current test if it left the suite non-quiescent (currently: the
