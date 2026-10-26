@@ -27,7 +27,7 @@
       "output.downloadProgress" : "0.0",
       "output.isManagingHold" : "false",
       "output.localBookStateOverride" : "nil",
-      "output.processingButtons" : "returning",
+      "output.processingButtons" : "",
       "output.showHalfSheet" : "false"
     },
     "method" : "cancelTapped.unregistered"

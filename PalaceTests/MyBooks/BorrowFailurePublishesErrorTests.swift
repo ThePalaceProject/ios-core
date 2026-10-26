@@ -96,8 +96,10 @@ final class BorrowFailurePublishesErrorTests: XCTestCase {
                        "The borrow path presents its own alert; a second one from a subscriber would stack on it")
     }
 
-    /// A timeout is retryable, so the published error has to carry the retry
-    /// closure or the alert loses its Retry button.
+    /// A timeout is retryable. The alert the patron sees takes its Retry button
+    /// from `presentBorrowErrorAlert`, not from here, so this pins the payload
+    /// the publish carries for any subscriber that later presents it itself —
+    /// today both skip it on `presentsAlert: false`.
     func testRetryableBorrowFailure_publishesARetryAction() async {
         fetchError.value = PalaceError.network(.timeout)
 

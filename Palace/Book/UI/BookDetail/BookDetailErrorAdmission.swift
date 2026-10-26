@@ -19,8 +19,11 @@ enum BookDetailErrorAdmission {
     /// `.unregistered`: the PP-4178 Loan→Hold race registers the hold and only
     /// then throws, so by the time the error arrives `BorrowReducer` has
     /// cleared `.get` and moved the state to `.holding`. Place Hold is the same
-    /// shape with `.reserve`. `BookCellModel` admits `.unregistered` and
-    /// `.holding` for the same reason.
+    /// shape with `.reserve`. `BookCellModel` reaches the same conclusion for
+    /// `.unregistered` and `.holding` through its own inline switch, which
+    /// keys on registry state alone and does not consult `processingButtons`;
+    /// the two are deliberately not shared while the cell has no optimistic
+    /// state to recover from.
     static func admits(
         kind: DownloadErrorInfo.ErrorKind,
         bookState: TPPBookState,

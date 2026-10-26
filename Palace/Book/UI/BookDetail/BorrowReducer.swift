@@ -206,15 +206,37 @@ enum BorrowReducer {
 
         case .cancelTapped(let registryState):
             state.downloadProgress = 0.0
+            // Same override the registry path honours: while `.returning` is
+            // armed the "Returning…" UI must stick, so a Cancel tap landing in
+            // that window may not rewrite the state underneath it.
+            if state.localBookStateOverride == .returning,
+               registryState != .unregistered {
+                return .none
+            }
             state.bookState = registryState
             state.processingButtons.subtract(downloadRelatedButtons)
-            // `.unregistered` is the declined-cancel case: the borrow never
-            // reached the registry, so there is no loan to show and nothing to
-            // cancel. Close the sheet rather than leave it on a dead button.
-            // Every other state still has something to render (a running
-            // download, a failed one, a loan), so the sheet stays open.
-            if registryState == .unregistered {
+            // Exhaustive (no `default:`) for the same reason the registry
+            // transition above is: a new TPPBookState must not pick an arm by
+            // falling off the end. That silent default is what let F-011 strand
+            // the half-sheet, and an `if registryState == .unregistered` here
+            // would be the same shape wearing an if.
+            switch registryState {
+            case .unregistered:
+                // The declined-cancel case: the borrow never reached the
+                // registry, so there is no loan to show and nothing to cancel.
+                // Close the sheet rather than leave it on a dead button, and
+                // drop the return-side flags the sheet would otherwise reopen
+                // onto.
+                state.isManagingHold = false
                 state.showHalfSheet = false
+                state.processingButtons.subtract([.returning, .cancelHold, .return, .remove])
+
+            // Everything else still has something to render — a transfer in
+            // flight, a failed one, or a loan — so the sheet stays open and
+            // the registry's own transition drives what it shows next.
+            case .downloading, .downloadFailed, .downloadNeeded, .downloadSuccessful,
+                 .used, .holding, .returning, .unsupported, .SAMLStarted:
+                break
             }
             return .none
 

@@ -856,8 +856,15 @@ private final class RedirectCompletionBox: @unchecked Sendable {
         // a failure from the book detail page left `BookDetailViewModel`'s
         // optimistic `.downloading` state — and its Cancel-only button — in
         // place indefinitely. The publish is what unsticks it (PP-5407).
+        //
+        // `send`, not `publishAndAnnounceError`: the alert path above already
+        // posted this failure to VoiceOver. `presentFromViewControllerOrNil`
+        // posts `[title, message].joined(separator: ". ")` and
+        // `announceStatus` posts `"\(title). \(message)"` — the same string,
+        // and the announcer's dedup never sees the direct post, so announcing
+        // here would read the failure to the patron twice.
         let publishBorrowErrorClosure: @MainActor (DownloadErrorInfo) -> Void = { errorInfo in
-            reporter.publishAndAnnounceError(errorInfo)
+            reporter.downloadErrorPublisher.send(errorInfo)
         }
         let presentSignInModalClosure: @MainActor (@escaping () -> Void) -> Void = { completion in
             AppContainer.production().signInModalSheetPresenter

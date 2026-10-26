@@ -86,6 +86,34 @@ final class BookDetailErrorAdmissionTests: XCTestCase {
         ])
     }
 
+    /// Every state for the borrow kind, not only the cells above. `TPPBookState`
+    /// is closed and `CaseIterable`, and the predicate picks its answer by
+    /// equality with an implicit "else false" — the shape that stranded the
+    /// half-sheet in F-011. A state added later must fail here rather than fall
+    /// silently into the reject arm.
+    func testBorrowErrorAdmission_withNothingProcessing_acrossEveryState() {
+        let admitting: Set<TPPBookState> = [.unregistered, .holding]
+        for state in TPPBookState.allCases {
+            XCTAssertEqual(
+                BookDetailErrorAdmission.admits(kind: .borrow, bookState: state, processingButtons: []),
+                admitting.contains(state),
+                "\(state.stringValue()): a borrow error is this sheet's only when there is no loan, or a hold the Loan→Hold race just made"
+            )
+        }
+    }
+
+    /// Same closed-enum guarantee for the download kind.
+    func testDownloadErrorAdmission_withNothingProcessing_acrossEveryState() {
+        let admitting: Set<TPPBookState> = [.downloading, .downloadFailed, .downloadNeeded]
+        for state in TPPBookState.allCases {
+            XCTAssertEqual(
+                BookDetailErrorAdmission.admits(kind: .download, bookState: state, processingButtons: []),
+                admitting.contains(state),
+                "\(state.stringValue()): a download error belongs to a sheet with a transfer or a downloadable loan"
+            )
+        }
+    }
+
     /// Wi-Fi-only refusals and the like are not tied to a phase, so they always
     /// reach the patron.
     func testGeneralErrorAdmission_isAdmittedWhateverTheState() {

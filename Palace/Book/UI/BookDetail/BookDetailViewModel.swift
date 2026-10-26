@@ -823,15 +823,17 @@ final class BookDetailViewModel: ObservableObject {
     func didSelectCancel() {
         downloadCenter.cancelDownload(for: book.identifier)
 
-        // Resolve the UI against the registry. `startDownloadAfterAuth`
+        // Resolve the UI against the registry, which is read AFTER the cancel
+        // above so it carries that call's own effect. `startDownloadAfterAuth`
         // sets `bookState = .downloading` before the request runs, and a borrow
         // that never reaches the registry leaves that optimistic state in place
         // — `BookButtonMapper` pins the half-sheet to Cancel only, while
         // `DownloadCancellationHandler` reads the registry, finds nothing in
-        // flight and declines. Taking the registry's answer here means Cancel
-        // always resolves: a live download is still `.downloading` so the sheet
-        // stays open, and a borrow that failed is `.unregistered` so the sheet
-        // closes instead of offering a button that does nothing (PP-5407).
+        // flight and declines. Taking the registry's answer means Cancel always
+        // resolves: a cancelled transfer has just been moved to
+        // `.downloadNeeded` so the sheet stays open on Download, and a borrow
+        // that failed is still `.unregistered` so the sheet closes instead of
+        // offering a button that does nothing (PP-5407).
         var snapshot = snapshotBorrowState()
         _ = BorrowReducer.reduce(&snapshot, .cancelTapped(registryState: registry.state(for: book.identifier)))
         applyBorrowState(snapshot)
