@@ -110,6 +110,16 @@ final class BookReturnService: @unchecked Sendable {
     /// launch-site `var task: Task!` from inside the body raced the assignment
     /// and crashed on the implicit unwrap.
     private var inFlightTasks: [UUID: Task<Void, Never>] = [:]
+
+    /// Ids of launched bodies that have not finished yet.
+    ///
+    /// A handle can only be stored after `Task.init` returns, and this launcher
+    /// is not actor-isolated, so the body can already have run to completion on
+    /// a pool thread by then. Claiming the id first makes the retention insert
+    /// conditional, so a finished Task is never put back into the set it has
+    /// already left; without it such an entry stayed for the process lifetime
+    /// and the set never drained (PP-5408).
+    private var outstandingTaskIDs: Set<UUID> = []
     private let inFlightLock = NSLock()
 
     #if FEATURE_DRM_CONNECTOR
@@ -192,6 +202,9 @@ final class BookReturnService: @unchecked Sendable {
         inFlightLock.lock()
         snapshot = Array(inFlightTasks.values)
         inFlightTasks.removeAll()
+        // Dropping the ids as well as the handles is what stops a body that is
+        // mid-flight from re-retaining itself after this cancellation.
+        outstandingTaskIDs.removeAll()
         inFlightLock.unlock()
         for task in snapshot {
             task.cancel()
@@ -202,10 +215,14 @@ final class BookReturnService: @unchecked Sendable {
     /// Internal because the count is part of the cancellation contract
     /// (tests verify the set is populated when a return-flow Task is
     /// running and drained once it completes or is cancelled).
+    ///
+    /// Counts outstanding bodies rather than retained handles: the two differ
+    /// for the few instructions between a launch claiming its slot and storing
+    /// its handle, and outstanding work is what the contract is about.
     var inFlightTaskCount: Int {
         inFlightLock.lock()
         defer { inFlightLock.unlock() }
-        return inFlightTasks.count
+        return outstandingTaskIDs.count
     }
 
     /// Test-only snapshot of the retained Tasks so a test can prove
@@ -217,20 +234,47 @@ final class BookReturnService: @unchecked Sendable {
         return Set(inFlightTasks.values)
     }
 
+    /// Reserves a slot for a body that is about to be launched.
+    ///
+    /// Called before `Task.init` so the slot exists no matter which runs first,
+    /// the body or the caller's next line.
+    func claimTrackedSlot() -> UUID {
+        let id = UUID()
+        inFlightLock.withLock { outstandingTaskIDs.insert(id) }
+        return id
+    }
+
+    /// Stores a launched Task's handle, unless its body has already finished.
+    ///
+    /// The guard is the point: a body that completed first has released its
+    /// slot, and an unconditional insert here would resurrect a finished Task
+    /// into a set that nothing ever drains again (PP-5408).
+    func retainTracked(_ id: UUID, _ task: Task<Void, Never>) {
+        inFlightLock.withLock {
+            guard outstandingTaskIDs.contains(id) else { return }
+            inFlightTasks[id] = task
+        }
+    }
+
+    /// Releases a slot and drops any handle stored for it.
+    func releaseTracked(_ id: UUID) {
+        inFlightLock.withLock {
+            outstandingTaskIDs.remove(id)
+            inFlightTasks.removeValue(forKey: id)
+        }
+    }
+
     /// Launches a Task retained in `inFlightTasks` until its body returns.
     @discardableResult
     private func launchTrackedTask(
         _ body: @escaping @Sendable () async -> Void
     ) -> Task<Void, Never> {
-        let id = UUID()
+        let id = claimTrackedSlot()
         let task = Task { [weak self] in
             await body()
-            guard let self else { return }
-            self.inFlightLock.withLock { self.inFlightTasks.removeValue(forKey: id) }
+            self?.releaseTracked(id)
         }
-        inFlightLock.lock()
-        inFlightTasks[id] = task
-        inFlightLock.unlock()
+        retainTracked(id, task)
         return task
     }
 
@@ -239,15 +283,12 @@ final class BookReturnService: @unchecked Sendable {
     private func launchTrackedMainActorTask(
         _ body: @escaping @MainActor @Sendable () async -> Void
     ) -> Task<Void, Never> {
-        let id = UUID()
+        let id = claimTrackedSlot()
         let task = Task { @MainActor [weak self] in
             await body()
-            guard let self else { return }
-            self.inFlightLock.withLock { self.inFlightTasks.removeValue(forKey: id) }
+            self?.releaseTracked(id)
         }
-        inFlightLock.lock()
-        inFlightTasks[id] = task
-        inFlightLock.unlock()
+        retainTracked(id, task)
         return task
     }
 

@@ -130,6 +130,78 @@ final class BookReturnServiceTests: XCTestCase {
         }
     }
 
+    // MARK: - Tracked-task retention
+
+    /// A body that finishes before its handle is stored must not be retained.
+    ///
+    /// The launcher cannot store a handle until `Task.init` returns, and it is
+    /// not actor-isolated, so under load the body ran to completion first. An
+    /// unconditional insert then put a finished Task back into the set it had
+    /// already left, nothing ever removed it again, and the drain helpers above
+    /// reported work that would never settle (PP-5408).
+    func test_whenABodyFinishesBeforeItsHandleIsStored_theTaskIsNotRetained() {
+        let id = service.claimTrackedSlot()
+        service.releaseTracked(id)
+
+        service.retainTracked(id, Task {})
+
+        XCTAssertTrue(
+            service.inFlightTasksSnapshotForTesting().isEmpty,
+            "a Task whose body already finished must not be resurrected into the retention set"
+        )
+        XCTAssertEqual(service.inFlightTaskCount, 0,
+                       "nothing is outstanding once the body has completed")
+    }
+
+    /// Work counts as in flight from the claim, not from the handle.
+    ///
+    /// This is what closes the window: the slot exists before the Task does, so
+    /// there is no ordering in which the body can outrun its own bookkeeping.
+    func test_aClaimedSlot_countsAsInFlightBeforeAnyHandleIsStored() {
+        XCTAssertEqual(service.inFlightTaskCount, 0, "precondition: nothing in flight")
+
+        let id = service.claimTrackedSlot()
+
+        XCTAssertEqual(service.inFlightTaskCount, 1,
+                       "a claimed slot is outstanding work even before its handle is stored")
+
+        service.releaseTracked(id)
+    }
+
+    /// Releasing a slot drops the handle retained for it.
+    func test_releasingASlot_dropsTheRetainedHandle() {
+        let id = service.claimTrackedSlot()
+        service.retainTracked(id, Task {})
+        XCTAssertFalse(service.inFlightTasksSnapshotForTesting().isEmpty,
+                       "precondition: the handle is retained")
+
+        service.releaseTracked(id)
+
+        XCTAssertTrue(service.inFlightTasksSnapshotForTesting().isEmpty,
+                      "completion must drop the handle")
+        XCTAssertEqual(service.inFlightTaskCount, 0, "and release the slot")
+    }
+
+    /// Cancelling everything also clears claimed slots.
+    ///
+    /// Without this a body cancelled mid-flight would store its handle after
+    /// the teardown that was meant to drop it, which is the same permanent
+    /// entry by another route.
+    func test_cancelAllInFlightTasks_releasesClaimedSlotsAndRefusesALateRetain() {
+        let id = service.claimTrackedSlot()
+
+        service.cancelAllInFlightTasks()
+
+        XCTAssertEqual(service.inFlightTaskCount, 0, "cancellation must clear claimed slots")
+
+        service.retainTracked(id, Task {})
+
+        XCTAssertTrue(
+            service.inFlightTasksSnapshotForTesting().isEmpty,
+            "a body cancelled mid-flight must not re-enter the retention set afterwards"
+        )
+    }
+
     // MARK: - Branch 1: book not in registry
 
     func testReturnBook_bookNotInRegistry_callsCompletionAndDoesNothing() async throws {
