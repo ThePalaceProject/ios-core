@@ -80,6 +80,17 @@ extension TPPSignInBusinessLogic {
         return components.string ?? "<unparseable URL>"
     }
 
+    /// Error metadata for a sign-in redirect that could not be used. It names
+    /// the payload's keys but not their values, which hold the access token
+    /// and patron info (PP-5381).
+    nonisolated static func redirectFailureMetadata(url: URL, payloadKeys: [String]?, context: String) -> [String: Any] {
+        var metadata: [String: Any] = ["redirectURL": loggableRedirectURL(url), "context": context]
+        if let payloadKeys {
+            metadata["payloadKeys"] = payloadKeys.sorted().joined(separator: ", ")
+        }
+        return metadata
+    }
+
     private func universalLinkRedirectURLContainsPayload(_ urlStr: String) -> Bool {
         return urlStr.contains("error")
             || (urlStr.contains("access_token") && urlStr.contains("patron_info"))
@@ -140,9 +151,8 @@ extension TPPSignInBusinessLogic {
 
             TPPErrorLogger.logError(withCode: .unrecognizedUniversalLink,
                                     summary: "Sign-in redirection error: missing payload",
-                                    metadata: [
-                                        "loginURL": urlStr,
-                                        "context": uiDelegate?.context ?? "N/A"])
+                                    metadata: Self.redirectFailureMetadata(
+                                        url: url, payloadKeys: nil, context: uiDelegate?.context ?? "N/A"))
             // HelpSpot 17870 — synthesise an Error so TPPSAMLHelper's guard fires.
             let error = NSError(
                 domain: "OAuth.SignIn",
@@ -162,9 +172,8 @@ extension TPPSignInBusinessLogic {
             Log.error(#file, "🔐 [REDIRECT] ❌ ERROR: No fragment or query in URL")
             TPPErrorLogger.logError(withCode: .unrecognizedUniversalLink,
                                     summary: "Sign-in redirection error: payload not in fragment nor query params",
-                                    metadata: [
-                                        "loginURL": urlStr,
-                                        "context": uiDelegate?.context ?? "N/A"])
+                                    metadata: Self.redirectFailureMetadata(
+                                        url: url, payloadKeys: nil, context: uiDelegate?.context ?? "N/A"))
             // HelpSpot 17870 — synthesise an Error so TPPSAMLHelper's guard fires.
             let error = NSError(
                 domain: "OAuth.SignIn",
@@ -226,10 +235,8 @@ extension TPPSignInBusinessLogic {
 
             TPPErrorLogger.logError(withCode: .authDataParseFail,
                                     summary: "Sign-in redirection error: Unable to parse auth info",
-                                    metadata: [
-                                        "payloadDictionary": kvpairs,
-                                        "redirectURL": url,
-                                        "context": uiDelegate?.context ?? "N/A"])
+                                    metadata: Self.redirectFailureMetadata(
+                                        url: url, payloadKeys: Array(kvpairs.keys), context: uiDelegate?.context ?? "N/A"))
             // HelpSpot 17870 — this is the literal silent-failure shape from
             // the ticket: SAML responded but the patron payload was malformed,
             // and the patron saw nothing because `error` was nil and the

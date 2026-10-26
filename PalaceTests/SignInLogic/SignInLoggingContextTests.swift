@@ -62,13 +62,42 @@ final class OAuthRedirectLoggingTests: XCTestCase {
         let patron = #"{"name":"Ada Patron","barcode":"23333012345678"}"#
             .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
         let url = try XCTUnwrap(URL(string:
-            "https://example.com/universal-link-redirect?state=abc#access_token=secret-token-value&patron_info=\(patron)"))
+            "https://user:pass@example.com/universal-link-redirect?state=abc#access_token=secret-token-value&patron_info=\(patron)"))
 
         let logged = TPPSignInBusinessLogic.loggableRedirectURL(url)
 
         XCTAssertEqual(logged, "https://example.com/universal-link-redirect")
-        for needle in ["secret-token-value", "Ada", "23333012345678", "state=abc"] {
+        for needle in ["secret-token-value", "Ada", "23333012345678", "state=abc", "user", "pass"] {
             XCTAssertFalse(logged.contains(needle), "the logged redirect URL carries \(needle)")
         }
+    }
+
+    /// A failed redirect reports the URL's safe form and the payload's key names, never its values.
+    func testRedirectFailureMetadata_WithTokenAndPatronPayload_CarriesNoPayloadValues() throws {
+        let url = try XCTUnwrap(URL(string:
+            "https://example.com/universal-link-redirect#access_token=secret-token-value&patron_info=Ada%20Patron"))
+
+        let metadata = TPPSignInBusinessLogic.redirectFailureMetadata(
+            url: url, payloadKeys: ["patron_info", "access_token"], context: "Settings")
+
+        XCTAssertEqual(Set(metadata.keys), ["redirectURL", "payloadKeys", "context"])
+        XCTAssertEqual(metadata["redirectURL"] as? String, "https://example.com/universal-link-redirect")
+        XCTAssertEqual(metadata["payloadKeys"] as? String, "access_token, patron_info")
+        XCTAssertEqual(metadata["context"] as? String, "Settings")
+        for (key, value) in metadata {
+            for needle in ["secret-token-value", "Ada"] {
+                XCTAssertFalse("\(value)".contains(needle), "\(key) carries \(needle)")
+            }
+        }
+    }
+
+    /// With no parsed payload yet, the report has no payloadKeys entry.
+    func testRedirectFailureMetadata_WithoutPayloadKeys_OmitsTheEntry() throws {
+        let url = try XCTUnwrap(URL(string: "https://example.com/other#access_token=secret-token-value"))
+
+        let metadata = TPPSignInBusinessLogic.redirectFailureMetadata(url: url, payloadKeys: nil, context: "N/A")
+
+        XCTAssertEqual(Set(metadata.keys), ["redirectURL", "context"])
+        XCTAssertEqual(metadata["redirectURL"] as? String, "https://example.com/other")
     }
 }
