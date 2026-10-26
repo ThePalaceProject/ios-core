@@ -30,7 +30,6 @@ extension TPPSignInBusinessLogic {
             TPPErrorLogger.logUserProfileDocumentAuthError(
                 NSError(domain: "ProfileDoc", code: -1),
                 summary: "SignIn: unable to parse user profile doc (non-fatal)",
-                barcode: uiDelegate?.username,
                 metadata: loggingContext)
             finalizeSignIn(forDRMAuthorization: true)
             return
@@ -69,7 +68,6 @@ extension TPPSignInBusinessLogic {
         } catch {
             TPPErrorLogger.logUserProfileDocumentAuthError(error as NSError,
                                                            summary: "SignIn: unable to parse user profile doc",
-                                                           barcode: nil,
                                                            metadata: loggingContext)
             finalizeSignIn(forDRMAuthorization: false,
                            errorMessage: "Error parsing user profile document")

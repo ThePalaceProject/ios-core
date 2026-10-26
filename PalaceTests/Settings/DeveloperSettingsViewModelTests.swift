@@ -50,6 +50,21 @@ final class DeveloperSettingsEngineeringTierTests: XCTestCase {
             DeveloperSettingsViewModel.shouldShowEngineeringTools(receiptURL: url, fileExists: { _ in false }),
             "A 'receipt'-named URL whose file is absent is a dev/sim build — tools must show")
     }
+
+    /// PP-5382: staff check test-mode libraries in the App Store build, so that
+    /// build keeps the hidden-libraries toggle and nothing else.
+    func testLibrarySettingsRows_AppStoreBuild_ShowsOnlyHiddenLibraries() {
+        XCTAssertEqual(
+            DeveloperSettingsViewModel.librarySettingsRows(showEngineeringTools: false),
+            [.hiddenLibraries])
+    }
+
+    /// TestFlight, simulator and debug builds keep every library setting.
+    func testLibrarySettingsRows_EngineeringBuild_ShowsEveryLibrarySetting() {
+        XCTAssertEqual(
+            DeveloperSettingsViewModel.librarySettingsRows(showEngineeringTools: true),
+            [.hiddenLibraries, .lcpPassphraseManually])
+    }
 }
 
 @MainActor
