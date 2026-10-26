@@ -300,11 +300,6 @@ private let nullString = "null"
         FirebaseManager.shared.configureCrashlytics()
     }
 
-    class func setUserID(_ userID: String?) {
-        // Delegate to FirebaseManager for thread-safe Firebase access
-        FirebaseManager.shared.setCrashlyticsUserID(userID)
-    }
-
     // ----------------------------------------------------------------------------
     // MARK: - Generic methods for error logging
 
@@ -465,18 +460,12 @@ private let nullString = "null"
     /// - Parameters:
     ///   - error: The parse error.
     ///   - summary: This will be the top line (searchable) in Crashlytics UI.
-    ///   - barcode: The clear-text barcode used to authenticate. This will be
-    ///   hashed.
     class func logUserProfileDocumentAuthError(_ error: NSError?,
                                                summary: String,
-                                               barcode: String?,
                                                metadata: [String: Any]? = nil) {
         var userInfo = metadata ?? [String: Any]()
         addAccountInfoToMetadata(&userInfo)
         userInfo = additionalInfo(severity: .error, metadata: userInfo)
-        if let barcode = barcode {
-            userInfo["hashedBarcode"] = barcode.md5hex()
-        }
         if let originalError = error {
             userInfo[NSUnderlyingErrorKey] = originalError
         }
