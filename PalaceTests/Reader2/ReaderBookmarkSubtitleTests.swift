@@ -24,6 +24,10 @@ final class ReaderBookmarkSubtitleTests: XCTestCase {
   /// takes well under a minute, and a minute-resolution timestamp collapses
   /// them.
   func test_twoBookmarksSecondsApart_doNotRenderTheSameSubtitle() {
+    // Same chapter, same book progress, same minute: only the seconds differ.
+    // Varying anything else would let the subtitles differ for a reason that
+    // has nothing to do with the formatter, which is how the first version of
+    // this test passed against a seconds-less one.
     let first = TPPReaderBookmarkCell.subtitle(
       forDate: date("2026-10-26T14:03:05Z"),
       percentInChapter: "12",
@@ -31,7 +35,7 @@ final class ReaderBookmarkSubtitleTests: XCTestCase {
     )
     let second = TPPReaderBookmarkCell.subtitle(
       forDate: date("2026-10-26T14:03:41Z"),
-      percentInChapter: "14",
+      percentInChapter: "12",
       percentInBook: "4"
     )
 
