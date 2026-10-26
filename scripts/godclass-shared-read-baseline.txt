@@ -43,4 +43,6 @@
 # 154 -> 151: LCPPDFDiskExtract.extract takes the progress reporter as an
 #   argument (production default `.shared`, uncounted as above) instead of
 #   reading LCPPDFOpenProgress.shared at three call sites.
-151
+# 151 -> 150: PP-5381 removed TPPErrorLogger.setUserID, which read
+#   FirebaseManager.shared to set the Crashlytics user ID.
+150

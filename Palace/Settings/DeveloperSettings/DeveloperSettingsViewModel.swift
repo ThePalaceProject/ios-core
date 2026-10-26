@@ -269,6 +269,21 @@ final class DeveloperSettingsViewModel: ObservableObject {
         )
     }
 
+    enum LibrarySettingsRow {
+        case hiddenLibraries
+        case lcpPassphraseManually
+    }
+
+    /// PP-5382: operations staff check test-mode libraries in the App Store
+    /// build before launch, so the hidden-libraries toggle stays on that build.
+    nonisolated static func librarySettingsRows(showEngineeringTools: Bool) -> [LibrarySettingsRow] {
+        showEngineeringTools ? [.hiddenLibraries, .lcpPassphraseManually] : [.hiddenLibraries]
+    }
+
+    var librarySettingsRows: [LibrarySettingsRow] {
+        Self.librarySettingsRows(showEngineeringTools: showEngineeringTools)
+    }
+
     // MARK: - Async refreshers
 
     /// Loads the current FCM token into `fcmToken`. Mirrors `cellForFCMToken`.
