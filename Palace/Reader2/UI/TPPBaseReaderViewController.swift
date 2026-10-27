@@ -259,6 +259,17 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
         setUpChapterScrubberIfEnabled()
 
+        // The navigator's web view owns every tap gesture the reader has, and
+        // it starts `fixedTopInset` below the container, so a tap in either
+        // letterbox reached no handler at all — including the top strip the
+        // toolbar occupies, which left the patron tapping a visible control
+        // with no effect (PP-5394). `shouldReceive` keeps this recognizer away
+        // from the web view and the scrubber, so neither has to arbitrate.
+        let letterboxTap = UITapGestureRecognizer(target: self,
+                                                  action: #selector(handleLetterboxTap))
+        letterboxTap.delegate = self
+        navigatorContainer.addGestureRecognizer(letterboxTap)
+
         // Book title label - positioned below status bar using safe area
         // Previously at 20px from container top, which overlapped the status bar
         // Using view's safe area (not container) so label moves with status bar but doesn't affect navigator
@@ -562,6 +573,10 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
             manualNavigationPending = true
             await navigator.go(to: locator, options: NavigatorGoOptions(animated: false))
         }
+    }
+
+    @objc private func handleLetterboxTap() {
+        toggleNavigationBar()
     }
 
     func toggleNavigationBar() {
@@ -1123,4 +1138,15 @@ extension TPPBaseReaderViewController: @preconcurrency TPPReaderPositionsDelegat
 extension TPPBaseReaderViewController {
     /// Allow this view controller to become first responder for keyboard input
     override var canBecomeFirstResponder: Bool { true }
+}
+
+extension TPPBaseReaderViewController: UIGestureRecognizerDelegate {
+
+    /// Only taps that reached the container itself are letterbox taps; a tap on
+    /// the web view or the chapter scrubber belongs to that child.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldReceive touch: UITouch) -> Bool {
+        ReaderLetterboxTapGate.isLetterboxTap(touchedView: touch.view,
+                                              container: navigatorContainer)
+    }
 }
