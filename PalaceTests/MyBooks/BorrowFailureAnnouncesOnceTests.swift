@@ -10,6 +10,7 @@
 //
 
 import XCTest
+import Combine
 import PalaceCatalog
 import PalaceBookModel
 import PalacePreferences
@@ -87,6 +88,13 @@ final class BorrowFailureAnnouncesOnceTests: XCTestCase {
             debugSettings: debugSettings
         )
 
+        // Also pin that the closure still PUBLISHES. Counting announcements
+        // alone passes just as well if the body is emptied to `{ _ in }`, which
+        // the compiler cannot catch — the parameter would still be supplied.
+        var published: [DownloadErrorInfo] = []
+        let subscription = downloadCenter.downloadErrorPublisher.sink { published.append($0) }
+        defer { subscription.cancel() }
+
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         do {
             _ = try await downloadCenter.borrowAsync(book, attemptDownload: false)
@@ -99,6 +107,11 @@ final class BorrowFailureAnnouncesOnceTests: XCTestCase {
         // and wanted utterance; only the failure ones are counted here.
         await awaitConditionAsync { !recorder.failureAnnouncements.isEmpty }
 
+        XCTAssertEqual(published.count, 1,
+                       "the borrow failure must still reach downloadErrorPublisher — that publish is what unsticks the half-sheet")
+        XCTAssertEqual(published.first?.kind, .borrow)
+        XCTAssertEqual(published.first?.presentsAlert, false,
+                       "the alert is already on screen; a subscriber raising a second one is the defect this flag prevents")
         XCTAssertEqual(
             recorder.failureAnnouncements.count, 1,
             "one borrow failure, one announcement — got \(recorder.all). The alert path posts "
