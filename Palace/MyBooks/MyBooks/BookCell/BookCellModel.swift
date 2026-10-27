@@ -86,6 +86,13 @@ class BookCellModel: ObservableObject {
     private var didPrefetchLCPStreaming = false
     #endif
 
+    /// PP-5402: set by a Listen tap on a loan whose license is not on disk yet.
+    /// The registry sink opens the player once the fulfilment makes it playable.
+    private var pendingListen: StreamableLoanListen.Phase?
+
+    /// Starts a fulfilment. Tests replace it to observe the start without running one.
+    var downloadStarter: (TPPBook) -> Void
+
     var statePublisher = PassthroughSubject<Bool, Never>()
     @Published private(set) var state: BookCellState
 
@@ -149,7 +156,7 @@ class BookCellModel: ObservableObject {
 
     var buttonTypes: [BookButtonType] {
         if localBookStateOverride == .returning { return BookButtonState.returning.buttonTypes(book: book) }
-        return stableButtonState.buttonTypes(book: book)
+        return stableButtonState.buttonTypes(book: book, lcpStreamingEnabled: downloadCenter.lcpStreamingEnabledProvider())
     }
 
     // MARK: - Initializer
@@ -189,6 +196,7 @@ class BookCellModel: ObservableObject {
         self.readerService = readerService
         self.reachability = reachability
         self.injectedAudiobookSession = audiobookSession
+        self.downloadStarter = { [downloadCenter] book in downloadCenter.startDownload(for: book, withRequest: nil) }
         self.isLoading = bookRegistry.processing(forIdentifier: book.identifier)
         self.currentBookIdentifier = book.identifier
         self.imageCache = imageCache
@@ -318,6 +326,8 @@ class BookCellModel: ObservableObject {
                 case .downloadNeeded, .returning, .used, .unsupported, .SAMLStarted:
                     break
                 }
+
+                self.advancePendingListen(on: newState)
             }
             .store(in: &cancellables)
 
@@ -627,8 +637,16 @@ extension BookCellModel {
         // Exhaustive (no `default:`) — F-011 class-of-bug guard. Compiler
         // flags this site if BookButtonType gains a case, so a new
         // network-bound action can't silently skip the offline pre-flight.
+        // PP-5402: Listen on a loan with no license yet fetches it first, so it
+        // needs the network and the spinner like Download.
+        let listenFetchesLicense = action == .listen && listenNeedsLicenseFirst
         switch action {
         case .download, .retry, .get, .reserve:
+            if !reachability.isConnectedToNetwork() {
+                presentOfflineAlert()
+                return
+            }
+        case .listen where listenFetchesLicense:
             if !reachability.isConnectedToNetwork() {
                 presentOfflineAlert()
                 return
@@ -652,6 +670,8 @@ extension BookCellModel {
         // Exhaustive (no `default:`) — F-011 class-of-bug guard.
         switch action {
         case .download, .retry, .get, .reserve, .remove, .returning, .cancel:
+            isLoading = true
+        case .listen where listenFetchesLicense:
             isLoading = true
         case .read, .listen, .close, .sample, .audiobookSample,
              .cancelHold, .manageHold, .return, .readStreaming:
@@ -714,6 +734,8 @@ extension BookCellModel {
             }
         case .sample, .audiobookSample:
             didSelectSample()
+        case .listen where listenFetchesLicense:
+            requestDownload(openingPlayerWhenReady: true)
         case .read, .listen, .readStreaming:
             // PP-4161: all three terminal "open the content" actions funnel
             // through didSelectRead — the content-type switch inside picks
@@ -823,6 +845,30 @@ extension BookCellModel {
     }
 
     func didSelectDownload() {
+        requestDownload(openingPlayerWhenReady: false)
+    }
+
+    /// Whether Listen on this book must fetch the license before the player can open.
+    private var listenNeedsLicenseFirst: Bool {
+        registryState == .downloadNeeded
+            && StreamableLoanListen.offersListen(book: book, streamingEnabled: downloadCenter.lcpStreamingEnabledProvider())
+    }
+
+    private func advancePendingListen(on state: TPPBookState) {
+        guard let phase = pendingListen else { return }
+        switch StreamableLoanListen.step(phase, on: state) {
+        case .open:
+            pendingListen = nil
+            didSelectRead()
+        case .wait(let next):
+            pendingListen = next
+        case .abandon:
+            pendingListen = nil
+            isLoading = false
+        }
+    }
+
+    private func requestDownload(openingPlayerWhenReady: Bool) {
         let account = accountsManager.currentUserAccount
         if account.needsAuth && !account.hasCredentials() {
             // accountsManager is still read after dismissal for the
@@ -835,18 +881,21 @@ extension BookCellModel {
                         Log.info(#file, "Sign-in cancelled or failed, not starting download")
                         return
                     }
-                    self.startDownloadNow()
+                    self.startDownloadNow(openingPlayerWhenReady: openingPlayerWhenReady)
                 }
             return
         }
-        startDownloadNow()
+        startDownloadNow(openingPlayerWhenReady: openingPlayerWhenReady)
     }
 
-    private func startDownloadNow() {
+    private func startDownloadNow(openingPlayerWhenReady: Bool) {
         if case .canHold = state.buttonState {
             NotificationService.requestAuthorization()
         }
-        downloadCenter.startDownload(for: book, withRequest: nil)
+        if openingPlayerWhenReady {
+            pendingListen = .requested
+        }
+        downloadStarter(book)
     }
 
     func didSelectReserve() {

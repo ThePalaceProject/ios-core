@@ -144,6 +144,13 @@ final class BookDetailViewModel: ObservableObject {
     private let authGateOverride: ((@escaping () -> Void) -> Void)?
     private var cancellables = Set<AnyCancellable>()
 
+    /// PP-5402: set by a Listen tap on a loan whose license is not on disk yet.
+    /// The registry sink opens the player once the fulfilment makes it playable.
+    private var pendingListen: StreamableLoanListen.Phase?
+
+    /// Starts a fulfilment. Tests replace it to observe the start without running one.
+    var downloadStarter: (TPPBook) -> Void
+
     /// Retained spelling of `BookMetadataFetcher` so existing call sites and
     /// tests that name the view model's typealias keep compiling.
     typealias BookMetadataHydrator = BookMetadataFetcher
@@ -210,6 +217,7 @@ final class BookDetailViewModel: ObservableObject {
         // AppContainer session.
         self.injectedAudiobookSession = audiobookSession
         self.authGateOverride = authGateOverride
+        self.downloadStarter = { [downloadCenter] book in downloadCenter.startDownload(for: book, withRequest: nil) }
         // Default fetchers capture the injected services instead of reading
         // .shared singletons. Tests pass custom ones to short-circuit the
         // network and the Obj-C feed bridge.
@@ -297,6 +305,8 @@ final class BookDetailViewModel: ObservableObject {
                 var snapshot = self.snapshotBorrowState()
                 _ = BorrowReducer.reduce(&snapshot, .registryStateChanged(registryState))
                 self.applyBorrowState(snapshot)
+
+                self.advancePendingListen(on: registryState)
             }
             .store(in: &cancellables)
     }
@@ -654,25 +664,17 @@ final class BookDetailViewModel: ObservableObject {
             didSelectDownload(for: book)
         // Don't remove processing here - will be removed when state changes to .downloading or .downloadFailed
 
+        case .listen where listenNeedsLicenseFirst:
+            // PP-5402: fetch the license with the Download fulfilment, then open.
+            self.downloadProgress = 0
+            runAuthGate { [weak self] in
+                guard let self else { return }
+                self.pendingListen = .requested
+                self.startDownloadAfterAuth(book: self.book)
+            }
+
         case .read, .listen:
-            // PP-4633: dismiss the half-sheet so it does not linger over the
-            // reader/player (on iPad it is a floating form-sheet). Dismiss only
-            // AFTER the reader/player is presented: dismissing while the player
-            // is presenting races the two modal transitions on iPad and freezes
-            // the screen.
-            //
-            // Audiobooks dismiss early via `onLoadingShellPresented`, because the
-            // open completion waits for the content download (PP-4542). The
-            // completion dismissal stays as an idempotent backstop for EPUB and
-            // for opens that fail before a shell is shown.
-            didSelectRead(for: book, completion: {
-                self.removeProcessingButton(button)
-                self.showHalfSheet = false
-            }, onLoadingShellPresented: { [weak self] in
-                // Defer one runloop tick so the player's present commits first;
-                // same-tick dismissal is the PP-4633 iPad modal race.
-                DispatchQueue.main.async { self?.showHalfSheet = false }
-            })
+            openForReading(button)
 
         case .readStreaming:
             // PP-4161: streaming-HTML titles don't go through ensureAuthAndExecute
@@ -708,6 +710,47 @@ final class BookDetailViewModel: ObservableObject {
 
     func removeProcessingButton(_ button: BookButtonType) {
         self.processingButtons.remove(button)
+    }
+
+    private func openForReading(_ button: BookButtonType) {
+        // PP-4633: dismiss the half-sheet so it does not linger over the
+        // reader/player (on iPad it is a floating form-sheet). Dismiss only
+        // AFTER the reader/player is presented: dismissing while the player
+        // is presenting races the two modal transitions on iPad and freezes
+        // the screen.
+        //
+        // Audiobooks dismiss early via `onLoadingShellPresented`, because the
+        // open completion waits for the content download (PP-4542). The
+        // completion dismissal stays as an idempotent backstop for EPUB and
+        // for opens that fail before a shell is shown.
+        didSelectRead(for: book, completion: {
+            self.removeProcessingButton(button)
+            self.showHalfSheet = false
+        }, onLoadingShellPresented: { [weak self] in
+            // Defer one runloop tick so the player's present commits first;
+            // same-tick dismissal is the PP-4633 iPad modal race.
+            DispatchQueue.main.async { self?.showHalfSheet = false }
+        })
+    }
+
+    /// Whether Listen on this book must fetch the license before the player can open.
+    private var listenNeedsLicenseFirst: Bool {
+        registry.state(for: book.identifier) == .downloadNeeded
+            && StreamableLoanListen.offersListen(book: book, streamingEnabled: downloadCenter.lcpStreamingEnabledProvider())
+    }
+
+    private func advancePendingListen(on state: TPPBookState) {
+        guard let phase = pendingListen else { return }
+        switch StreamableLoanListen.step(phase, on: state) {
+        case .open:
+            pendingListen = nil
+            openForReading(.listen)
+        case .wait(let next):
+            pendingListen = next
+        case .abandon:
+            pendingListen = nil
+            removeProcessingButton(.listen)
+        }
     }
 
     func isProcessing(for button: BookButtonType) -> Bool {
@@ -803,7 +846,7 @@ final class BookDetailViewModel: ObservableObject {
     private func startDownloadAfterAuth(book: TPPBook) {
         bookState = .downloading
         showHalfSheet = true
-        downloadCenter.startDownload(for: book, withRequest: nil)
+        downloadStarter(book)
     }
 
     func didSelectReserve(for book: TPPBook, completion: (() -> Void)? = nil) {
@@ -1223,7 +1266,7 @@ extension BookDetailViewModel {
 // MARK: – BookButtonProvider
 extension BookDetailViewModel: BookButtonProvider {
     var buttonTypes: [BookButtonType] {
-        buttonState.buttonTypes(book: book)
+        buttonState.buttonTypes(book: book, lcpStreamingEnabled: downloadCenter.lcpStreamingEnabledProvider())
     }
 }
 
