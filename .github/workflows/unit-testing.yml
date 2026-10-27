@@ -1734,7 +1734,6 @@ jobs:
           # Copy reports
           cp test-report/test-report.html "$REPORT_DIR/" 2>/dev/null || true
           cp test-report/TEST_RESULTS.md "$REPORT_DIR/" 2>/dev/null || true
-          cp test-data.json "$REPORT_DIR/" 2>/dev/null || true
           cp coverage-data.json "$REPORT_DIR/" 2>/dev/null || true
           
           # Copy snapshot viewer if exists
@@ -1793,24 +1792,35 @@ jobs:
           
       # GitHub Pages refuses a site over 1 GB. Keeping every report made the
       # site 1.15 GB, and no deploy succeeded after 2026-10-01. Publish the
-      # newest KEEP_REPORTS reports, as a branch with no history, so neither
-      # the site nor the branch keeps growing. Publishing replaces the whole
-      # site, so a failed clone must stop the publish rather than wipe it.
+      # newest reports that fit both KEEP_REPORTS and PAGES_BUDGET_KB (a report
+      # is about 4 MB), as a branch with no history, so neither the site nor
+      # the branch keeps growing. test-data.json (about 10 MB a run) is not
+      # published: the HTML report does not read it, and it stays a CI
+      # artifact. Publishing replaces the whole site, so a failed clone must
+      # stop the publish rather than wipe it.
       - name: Assemble the site with the newest reports
         if: always()
         continue-on-error: true
         id: assemble
         env:
-          KEEP_REPORTS: 200
+          KEEP_REPORTS: 150
+          PAGES_BUDGET_KB: 800000
           PAGES_REMOTE: https://github.com/${{ github.repository }}.git
         run: |
           git clone --quiet --depth 1 --branch gh-pages "$PAGES_REMOTE" site
           rm -rf site/.git
           mkdir -p site/test-reports
           cp -R test-reports/. site/test-reports/
-          ls -1 site/test-reports | grep -E '^[0-9]+$' | sort -n \
-            | awk -v keep="$KEEP_REPORTS" '{ n[NR] = $0 } END { for (i = 1; i <= NR - keep; i++) print n[i] }' \
-            | while read -r old; do rm -rf "site/test-reports/$old"; done
+          rm -f site/test-reports/*/test-data.json
+          used=0; count=0
+          for d in $(ls -1 site/test-reports | grep -E '^[0-9]+$' | sort -rn); do
+            kb=$(du -sk "site/test-reports/$d" | cut -f1)
+            if [ "$count" -ge "$KEEP_REPORTS" ] || [ $((used + kb)) -gt "$PAGES_BUDGET_KB" ]; then
+              rm -rf "site/test-reports/$d"
+            else
+              used=$((used + kb)); count=$((count + 1))
+            fi
+          done
           echo "Publishing $(ls -1 site/test-reports | grep -cE '^[0-9]+$') reports, $(du -sh site | cut -f1)"
 
       - name: Publish to GitHub Pages
