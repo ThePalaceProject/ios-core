@@ -91,6 +91,11 @@ final class BorrowOperationContractTests: XCTestCase {
                                       "bookId": book.identifier,
                                       "hasRetryAction": "\(retryAction != nil)"])
             },
+            publishBorrowError: { errorInfo in
+                callLog.record("publishBorrowError",
+                               args: ["bookId": errorInfo.bookId,
+                                      "presentsAlert": "\(errorInfo.presentsAlert)"])
+            },
             presentSignInModal: { _ in
                 callLog.record("presentSignInModal", args: [:])
             },
@@ -178,7 +183,7 @@ final class BorrowOperationContractTests: XCTestCase {
             // expected
         }
 
-        await waitForLog(containing: "presentBorrowErrorAlert")
+        await waitForLog(containing: "publishBorrowError")
         ContractSnapshot.assert(log, named: "fetchTimeout_surfacesRetryableAlert")
     }
 
@@ -209,7 +214,7 @@ final class BorrowOperationContractTests: XCTestCase {
             // expected
         }
         // Auth-error → showBorrowError hops via @MainActor.run.
-        await waitForLog(containing: "presentBorrowErrorAlert")
+        await waitForLog(containing: "publishBorrowError")
         ContractSnapshot.assert(log, named: "authError_noAuthDef_fallsThroughToAlert")
     }
 

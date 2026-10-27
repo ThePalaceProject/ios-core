@@ -304,13 +304,182 @@ final class BorrowReducerTests: XCTestCase {
     }
 
     func testCancelTapped_resetsDownloadProgressAndIsIdempotent() {
-        var state = makeState(progress: 0.7)
-        _ = BorrowReducer.reduce(&state, .cancelTapped)
+        var state = makeState(progress: 0.7, halfSheet: true)
+        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .downloading, registryProcessing: false))
         XCTAssertEqual(state.downloadProgress, 0.0, accuracy: 0.0001)
         // Calling again from zero must remain at zero — guards against
         // the legacy `didSelectCancel` callsite being invoked twice.
-        _ = BorrowReducer.reduce(&state, .cancelTapped)
+        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .downloading, registryProcessing: false))
         XCTAssertEqual(state.downloadProgress, 0.0, accuracy: 0.0001)
+    }
+
+    /// PP-5407. `startDownloadAfterAuth` writes `.downloading` optimistically
+    /// and a borrow that fails before the registry is touched leaves it there,
+    /// which pins the half-sheet to a Cancel button the cancellation handler
+    /// then declines. Cancel must resolve the sheet against the registry.
+    func testCancelTapped_whenRegistrySaysNothingIsInFlight_clearsOptimisticStateAndClosesSheet() {
+        var state = makeState(
+            bookState: .downloading,
+            progress: 0.0,
+            processing: [.get],
+            halfSheet: true
+        )
+
+        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .unregistered, registryProcessing: false))
+
+        XCTAssertEqual(state.bookState, .unregistered,
+                       "Cancel must take the registry's answer, not the optimistic .downloading")
+        XCTAssertFalse(state.processingButtons.contains(.get),
+                       "A .get spinner with nothing in flight keeps BookButtonMapper on Cancel only")
+        XCTAssertFalse(state.showHalfSheet,
+                       "With no loan and nothing downloading the sheet has nothing to show")
+    }
+
+    /// A borrow in flight reads `.unregistered` too, because the registry only
+    /// learns of the loan when the request returns. Resolving from the state
+    /// alone would close the sheet and drop `.get`, re-arming Get so a second
+    /// tap could race the request still running.
+    func testCancelTapped_whileTheBorrowIsStillInFlight_leavesTheSheetOnCancel() {
+        var state = makeState(
+            bookState: .downloading,
+            // Deliberately non-zero: at 0.0 this test cannot tell a guard
+            // placed above the `downloadProgress` reset from one placed below
+            // it, which is the whole point of where the guard sits.
+            progress: 0.42,
+            processing: [.get],
+            halfSheet: true
+        )
+
+        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .unregistered, registryProcessing: true))
+
+        XCTAssertEqual(state.downloadProgress, 0.42,
+                       "The guard must return before the progress reset, leaving the sheet exactly as it was")
+        XCTAssertTrue(state.showHalfSheet,
+                      "The request is still running, so the sheet must not close out from under it")
+        XCTAssertTrue(state.processingButtons.contains(.get),
+                      "Dropping .get re-arms Get, which lets a second borrow race the one in flight")
+        XCTAssertEqual(state.bookState, .downloading,
+                       "The registry has not resolved yet; taking its .unregistered would show 'not borrowed' mid-borrow")
+    }
+
+    /// The same registry state with the flag down must still resolve, so the
+    /// guard above cannot be satisfied by declining every cancel.
+    func testCancelTapped_processingFlagAloneDecidesBetweenInFlightAndFailed() {
+        var inFlight = makeState(bookState: .downloading, processing: [.get], halfSheet: true)
+        var failed = makeState(bookState: .downloading, processing: [.get], halfSheet: true)
+
+        _ = BorrowReducer.reduce(&inFlight, .cancelTapped(registryState: .unregistered, registryProcessing: true))
+        _ = BorrowReducer.reduce(&failed, .cancelTapped(registryState: .unregistered, registryProcessing: false))
+
+        XCTAssertNotEqual(inFlight.showHalfSheet, failed.showHalfSheet,
+                          "The processing flag is the only difference; it must change the outcome")
+        XCTAssertTrue(inFlight.showHalfSheet)
+        XCTAssertFalse(failed.showHalfSheet)
+    }
+
+    /// Every state, not the two the fix happens to care about: `TPPBookState`
+    /// is closed and `CaseIterable`, and a silent `default:` in this file is
+    /// what stranded the half-sheet in F-011. Only `.unregistered` may close
+    /// the sheet; a new case added later must fail here rather than pick an
+    /// arm by falling off the end.
+    func testCancelTapped_closesTheSheetForUnregisteredOnly_acrossEveryState() {
+        // Both cells of the flag, not just the settled one: a re-borrow or a
+        // ready-hold fulfilment leaves the book registered while the fetch
+        // runs, so the guard is reachable with every state, not only
+        // `.unregistered`. Pinning one column would admit a guard narrowed to
+        // `!registryProcessing || registryState == .downloading`.
+        for registryProcessing in [false, true] {
+            for registryState in TPPBookState.allCases {
+                var state = makeState(
+                    bookState: .downloading,
+                    progress: 0.42,
+                    processing: [.get],
+                    halfSheet: true
+                )
+
+                _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: registryState,
+                                                               registryProcessing: registryProcessing))
+
+                let cell = "\(registryState.stringValue()) processing=\(registryProcessing)"
+                guard !registryProcessing else {
+                    XCTAssertEqual(state.bookState, .downloading, "\(cell): a request in flight must leave the state alone")
+                    XCTAssertTrue(state.processingButtons.contains(.get), "\(cell): dropping .get re-arms Get mid-request")
+                    XCTAssertTrue(state.showHalfSheet, "\(cell): the sheet must stay up while the request runs")
+                    XCTAssertEqual(state.downloadProgress, 0.42, "\(cell): nothing is reset while in flight")
+                    continue
+                }
+                XCTAssertEqual(state.bookState, registryState,
+                               "\(cell): cancel must take the registry's answer")
+                XCTAssertFalse(state.processingButtons.contains(.get),
+                               "\(cell): an acquire spinner with the cancel resolved pins the sheet to Cancel")
+                XCTAssertEqual(state.showHalfSheet, registryState != .unregistered,
+                               "\(cell): only a book with no loan and nothing in flight has nothing left to show")
+            }
+        }
+    }
+
+    /// A stale `.returning` override must NOT stop Cancel resolving. The flag
+    /// is not reliably cleared — `applyBorrowState` mirrors a stale value back
+    /// over the `didSet` that nils it — so gating on it left Cancel dead on the
+    /// `.downloading` sheet this case exists to rescue: PP-5407 reintroduced by
+    /// its own fix.
+    func testCancelTapped_withAStaleReturningOverride_stillResolves() {
+        var state = makeState(
+            bookState: .downloading,
+            override: .returning,
+            progress: 0.4,
+            processing: [.get],
+            halfSheet: true
+        )
+
+        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .unregistered, registryProcessing: false))
+
+        XCTAssertEqual(state.bookState, .unregistered,
+                       "a stale override must not outrank the registry's answer")
+        XCTAssertFalse(state.processingButtons.contains(.get),
+                       "the acquire spinner is what pins the sheet to Cancel")
+        XCTAssertFalse(state.showHalfSheet,
+                       "nothing left to show, so the sheet must close rather than keep a dead button")
+        XCTAssertEqual(state.downloadProgress, 0.0, accuracy: 0.0001)
+    }
+
+    /// The return-side flags must not outlive a cancel that closes the sheet,
+    /// or the next open reopens onto them.
+    func testCancelTapped_closingTheSheet_clearsTheReturnSideFlags() {
+        var state = makeState(
+            bookState: .downloading,
+            processing: [.get, .returning, .cancelHold, .return, .remove],
+            managingHold: true,
+            halfSheet: true
+        )
+
+        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .unregistered, registryProcessing: false))
+
+        XCTAssertFalse(state.isManagingHold,
+                       "a closed sheet must not reopen into the manage-hold UI")
+        XCTAssertTrue(state.processingButtons.isEmpty,
+                      "no spinner may outlive the sheet that showed it")
+    }
+
+    /// The other arm: a cancel during a real download must not tear the sheet
+    /// down — the registry still reports an in-flight or downloadable state,
+    /// and the transition arrives separately from the cancellation handler.
+    func testCancelTapped_duringALiveDownload_keepsTheSheetOpen() {
+        var state = makeState(
+            bookState: .downloading,
+            progress: 0.4,
+            processing: [.download],
+            halfSheet: true
+        )
+
+        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .downloading, registryProcessing: false))
+
+        XCTAssertEqual(state.bookState, .downloading,
+                       "A live download is still downloading until the handler reports otherwise")
+        XCTAssertTrue(state.showHalfSheet,
+                      "Cancelling a running download must leave the sheet up for the result")
+        XCTAssertEqual(state.downloadProgress, 0.0, accuracy: 0.0001,
+                       "The bar resets so a resumed download does not inherit the old fill")
     }
 
     func testManageHoldTapped_setsHoldingStateAndManagingFlag() {

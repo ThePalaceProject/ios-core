@@ -91,10 +91,13 @@ read -r -d '' ALLOWLIST <<'EOF'
 # when the open-failure alert moved to AudiobookOpenFailureAlert.
 1142 Palace/Audiobooks/AudiobookSessionManager.swift
 # 1213 -> 1172 when the mid-download network-loss handler moved to
-# DownloadNetworkLossMonitor.swift.
-1172 Palace/MyBooks/MyBooksDownloadCenter.swift
+# DownloadNetworkLossMonitor.swift; 1172 -> 1161 when the borrow-failed alert
+# moved to BorrowErrorAlert.swift.
+1161 Palace/MyBooks/MyBooksDownloadCenter.swift
 1006 Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift
-867  Palace/Book/UI/BookDetail/BookDetailViewModel.swift
+# 867 -> 861 when the download-error admission rules moved to
+# BookDetailErrorAdmission.swift.
+861  Palace/Book/UI/BookDetail/BookDetailViewModel.swift
 834  Palace/Utilities/Localization/Strings.swift
 # AccountsManager is 363 under this metric: it was pinned at 367 after #1520
 # landed `_ = registryLoader` in init, then lowered when #1624 moved the DEBUG

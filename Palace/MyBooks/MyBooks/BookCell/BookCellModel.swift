@@ -379,6 +379,11 @@ class BookCellModel: ObservableObject {
             .sink { [weak self] errorInfo in
                 guard let self else { return }
 
+                // A producer that already put the failure in front of the
+                // patron publishes `presentsAlert: false`; alerting again would
+                // stack a second dialog on the first.
+                guard errorInfo.presentsAlert else { return }
+
                 let alertModel: AlertModel
                 if let retryAction = errorInfo.retryAction {
                     alertModel = .retryable(

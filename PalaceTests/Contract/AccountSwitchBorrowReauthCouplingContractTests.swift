@@ -179,6 +179,9 @@ final class AccountSwitchBorrowReauthCouplingContractTests: XCTestCase {
             presentBorrowErrorAlert: { _, _, _, _, book, _ in
                 callLog.record("presentBorrowErrorAlert", args: ["book": book.identifier])
             },
+            publishBorrowError: { errorInfo in
+                callLog.record("publishBorrowError", args: ["book": errorInfo.bookId])
+            },
             presentSignInModal: { _ in
                 callLog.record("presentSignInModal", args: ["book": capturedBookId])
             },

@@ -30,7 +30,7 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
     private var book: TPPBook!
 
     private var fetchBookResult: Result<TPPBook, Error>!
-    private var alertCalls: [(title: String, message: String, book: TPPBook, hasRetryAction: Bool)] = []
+    private var alertCalls: [(title: String, message: String, bookId: String, hasRetryAction: Bool)] = []
     private var signInModalCompletions: [() -> Void] = []
     private var oidcReauthResult: Bool = false
 
@@ -82,8 +82,9 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
                 }
             },
             presentBorrowErrorAlert: { [weak self] title, message, _, _, b, retryAction in
-                self?.alertCalls.append((title, message, b, retryAction != nil))
+                self?.alertCalls.append((title, message, b.identifier, retryAction != nil))
             },
+            publishBorrowError: { _ in },
             presentSignInModal: { [weak self] completion in
                 self?.signInModalCompletions.append(completion)
             },
@@ -286,7 +287,7 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
                        "Per-book breaker must short-circuit second attempt — coordinator/modal MUST NOT be invoked again for the same book")
         XCTAssertFalse(alertCalls.isEmpty,
                        "Second attempt with breaker armed must fall through to showBorrowError alert path")
-        XCTAssertEqual(alertCalls.last?.book.identifier, book.identifier,
+        XCTAssertEqual(alertCalls.last?.bookId, book.identifier,
                        "Alert must target the same book that hit the breaker")
         XCTAssertTrue(signInModalCompletions.isEmpty,
                       "Legacy presentSignInModal closure must never fire — coordinator is wired and breaker gates the second attempt")
@@ -349,7 +350,7 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
         // coordinator dispatch (not the coordinator's own cooldown).
         XCTAssertFalse(alertCalls.isEmpty,
                        "Second attempt with armed breaker MUST fall through to showBorrowError — proving the breaker (NOT coordinator cooldown) gated the dispatch")
-        XCTAssertEqual(alertCalls.last?.book.identifier, book.identifier,
+        XCTAssertEqual(alertCalls.last?.bookId, book.identifier,
                        "Alert must target the same book whose breaker is armed")
     }
 }
