@@ -255,6 +255,9 @@ def _run_gate(repo: Path, tmp_path: Path, log: str, rc: int = 0,
         "FAKE_SIMCTL_DEVICES": str(default_devices),
     })
     env.pop("PRE_PUSH_TESTS_ALLOW_TIMEOUT", None)
+    # These tests run inside a real push, where a pre-push hook may already
+    # have reserved a simulator; that choice must not reach the gate under test.
+    env.pop("PRE_PUSH_TESTS_SIM_ID", None)
     env.update(extra_env or {})
     head = _git(repo, "rev-parse", "HEAD").strip()
     refs = f"refs/heads/main {head} refs/heads/main {'0' * 40}\n"
