@@ -397,6 +397,59 @@ final class NoActiveLoanReborrowTests: XCTestCase {
                      "a hold placed on a record that already read unavailable is the expected outcome")
     }
 
+    /// Unavailable entry + a granted loan is a plain success.
+    ///
+    /// The cell the fix exists for: the catalog read says the copy is gone, the
+    /// circulation manager grants the loan anyway, and the patron gets the book
+    /// with no alert. Drives the handler's own output through the real reducer.
+    func test_unavailableEntryAndAGrantedLoan_succeedsWithNoAlert() async throws {
+        let alternate = URL(string: "https://example.org/works/ISBN/123")!
+        let stored = book(with: [deadLoanAcquisition()], alternate: alternate)
+        let fromCatalog = book(with: [catalogBorrowAcquisition(availability: Self.copyTaken())],
+                               alternate: alternate)
+
+        let handler = makeHandler(catalogEntryFetcher: { _ in fromCatalog })
+        try await driveNoActiveLoan(on: handler, book: stored)
+
+        let preBorrow = try XCTUnwrap(spyDelegate.borrowedBooks.last)
+        let lent = book(with: [catalogBorrowAcquisition(
+            availability: TPPOPDSAcquisitionAvailabilityLimited(
+                copiesAvailable: 1, copiesTotal: 1, since: nil, until: nil)
+        )], alternate: alternate)
+
+        let mapping = BorrowReducerCore.responseState(for: lent, preBorrowBook: preBorrow)
+
+        XCTAssertEqual(mapping.state, .downloadNeeded, "a granted loan must leave the book downloadable")
+        XCTAssertNil(mapping.error, "a granted loan is not a failure")
+        XCTAssertEqual(
+            BorrowReducerCore.postResponseEffects(
+                state: mapping.state,
+                isStreamingHTML: false,
+                attemptDownload: true,
+                hasRaceError: mapping.error != nil
+            ),
+            [.announceBorrowSucceeded, .noteBorrowSucceeded, .startDownload],
+            "the retry must carry straight on into the download the patron asked for"
+        )
+    }
+
+    /// No alternate URL and no fetcher still attempts the borrow.
+    ///
+    /// Both halves of the re-read guard are absent at once, which is the cell
+    /// neither single-cause test reaches.
+    func test_withNeitherAnAlternateURLNorAFetcher_theRetryIsStillAttempted() async throws {
+        let stored = book(with: [deadLoanAcquisition()], alternate: nil)
+
+        let handler = makeHandler(catalogEntryFetcher: nil)
+        try await driveNoActiveLoan(on: handler, book: stored)
+
+        XCTAssertEqual(
+            spyDelegate.borrowedBooks.last?.defaultAcquisition?.hrefURL.absoluteString,
+            Self.fulfillmentHref,
+            "with nothing to re-read the stored link is all there is, and the attempt must still happen"
+        )
+    }
+
     /// With no fetcher wired, the retry proceeds with the stored book.
     ///
     /// The fifth cell of the retry table: the capability is absent, so the old
