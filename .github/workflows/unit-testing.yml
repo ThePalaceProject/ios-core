@@ -1791,15 +1791,36 @@ jobs:
           echo "report_url=$REPORT_URL" >> $GITHUB_OUTPUT
           echo "Report will be available at: $REPORT_URL"
           
-      - name: Publish to GitHub Pages
+      # GitHub Pages refuses a site over 1 GB. Keeping every report made the
+      # site 1.15 GB, and no deploy succeeded after 2026-10-01. Publish the
+      # newest KEEP_REPORTS reports, as a branch with no history, so neither
+      # the site nor the branch keeps growing. Publishing replaces the whole
+      # site, so a failed clone must stop the publish rather than wipe it.
+      - name: Assemble the site with the newest reports
         if: always()
+        continue-on-error: true
+        id: assemble
+        env:
+          KEEP_REPORTS: 200
+          PAGES_REMOTE: https://github.com/${{ github.repository }}.git
+        run: |
+          git clone --quiet --depth 1 --branch gh-pages "$PAGES_REMOTE" site
+          rm -rf site/.git
+          mkdir -p site/test-reports
+          cp -R test-reports/. site/test-reports/
+          ls -1 site/test-reports | grep -E '^[0-9]+$' | sort -n \
+            | awk -v keep="$KEEP_REPORTS" '{ n[NR] = $0 } END { for (i = 1; i <= NR - keep; i++) print n[i] }' \
+            | while read -r old; do rm -rf "site/test-reports/$old"; done
+          echo "Publishing $(ls -1 site/test-reports | grep -cE '^[0-9]+$') reports, $(du -sh site | cut -f1)"
+
+      - name: Publish to GitHub Pages
+        if: steps.assemble.outcome == 'success'
         continue-on-error: true
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./test-reports
-          destination_dir: test-reports
-          keep_files: true
+          publish_dir: ./site
+          force_orphan: true
           
       # Same principle as the artifact upload above: failing to POST a summary
       # comment is not a test failure. Seen reddening a board on

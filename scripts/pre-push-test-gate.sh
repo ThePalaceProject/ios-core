@@ -33,6 +33,7 @@
 # Bypass:
 #   SKIP_PRE_PUSH_TESTS=1 git push ...                # full opt-out (logged)
 #   PRE_PUSH_TESTS_TIMEOUT_SECS=360 git push ...      # raise cap (cold builds)
+#   PRE_PUSH_TESTS_SIM_ID=<udid> git push ...         # test on this simulator
 #   PRE_PUSH_TESTS_ALLOW_TIMEOUT=1 git push ...       # allow a capped run in
 #                                                     # which tests did not run
 #
@@ -365,7 +366,11 @@ _sim_udid() {  # $1 = state to match, or empty for any available
     { if (match($0, /[0-9A-F-]{36}/)) last = substr($0, RSTART, RLENGTH) }
     END { print last }'
 }
-SIM_ID="$(_sim_udid Booted)"
+# PRE_PUSH_TESTS_SIM_ID names a simulator the caller has reserved. Concurrent
+# pushes that each take "the booted sim" share one test host and kill each
+# other's run.
+SIM_ID="${PRE_PUSH_TESTS_SIM_ID:-}"
+[[ -n "$SIM_ID" ]] || SIM_ID="$(_sim_udid Booted)"
 [[ -n "$SIM_ID" ]] || SIM_ID="$(_sim_udid "")"
 
 if [[ -z "$SIM_ID" ]]; then
