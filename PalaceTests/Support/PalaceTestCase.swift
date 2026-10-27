@@ -34,12 +34,22 @@ class PalaceTestCase: XCTestCase {
     /// that leaves this key changed decides which library the app opens next for
     /// whoever drives that device. Same single-threaded lifecycle as
     /// `preObserverCount`, so the unsafe opt-out is race-free.
-    nonisolated(unsafe) private var preSelectedLibrary: String??
+    nonisolated(unsafe) private var preSelectedLibrary: Any?
+
+    /// Whether `setUpWithError` captured a baseline for `preSelectedLibrary`.
+    ///
+    /// Tracked separately from the value, because the value's own absence is
+    /// meaningful (the key was unset) and must not read as "not sampled". A
+    /// missing baseline fails the gate instead of skipping it: a check that
+    /// cannot fail reports a pass. Same single-threaded lifecycle as
+    /// `preObserverCount`.
+    nonisolated(unsafe) private var didSampleSelectedLibrary = false
 
     override func setUpWithError() throws {
         try super.setUpWithError()
         preObserverCount = PalaceSingletonResetObserver.sampleObserverCount()
-        preSelectedLibrary = .some(UserDefaults.standard.string(forKey: currentAccountIdentifierKey))
+        preSelectedLibrary = RuntimeQuiescenceAuditor.captureSelectedLibrary()
+        didSampleSelectedLibrary = true
     }
 
     override func tearDownWithError() throws {
@@ -118,27 +128,41 @@ class PalaceTestCase: XCTestCase {
         file: StaticString = #file,
         line: UInt = #line
     ) {
-        guard let before = preSelectedLibrary else { return }
+        guard didSampleSelectedLibrary else {
+            XCTFail(
+                """
+                Selected-library gate did not run: no baseline was captured, so \
+                this test's effect on UserDefaults.standard is unknown. A \
+                PalaceTestCase subclass that overrides setUpWithError must call \
+                super.setUpWithError() first.
+                """,
+                file: file,
+                line: line
+            )
+            return
+        }
+        didSampleSelectedLibrary = false
+        let before = preSelectedLibrary
         preSelectedLibrary = nil
-        let after = UserDefaults.standard.string(forKey: currentAccountIdentifierKey)
-        guard after != before else { return }
+
+        let violations = RuntimeQuiescenceAuditor.selectedLibraryViolations(
+            before: before,
+            after: RuntimeQuiescenceAuditor.captureSelectedLibrary()
+        )
+        guard violations.isEmpty == false else { return }
+
+        // Put the old value back BEFORE failing, so one leak reddens its own
+        // test rather than every test after it.
         if let before {
             UserDefaults.standard.set(before, forKey: currentAccountIdentifierKey)
         } else {
             UserDefaults.standard.removeObject(forKey: currentAccountIdentifierKey)
         }
-        XCTFail(
-            """
-            Selected-library gate [\(currentAccountIdentifierKey)]: this test left \
-            UserDefaults.standard pointing at \(after ?? "no library") instead of \
-            \(before ?? "no library"). On a simulator those are the app's own \
-            defaults. Build the AccountsManager with \
-            makeFreshAccountsManager(defaults: Self.testUserDefaults()) and run the \
-            closure _seedAccountForTesting returns.
-            """,
-            file: file,
-            line: line
-        )
+        for violation in violations {
+            XCTFail("Selected-library gate [\(violation.invariant)]: \(violation.detail)",
+                    file: file,
+                    line: line)
+        }
     }
 
     /// Fail the current test if it left the suite non-quiescent (currently: the
