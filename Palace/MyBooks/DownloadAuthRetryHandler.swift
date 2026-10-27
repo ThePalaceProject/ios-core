@@ -453,6 +453,12 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
     ///
     /// Measured from the dispatched retry, the interval is one download round
     /// trip, which is what the window was chosen to cover.
+    ///
+    /// Two of the three callers follow a completed re-authentication: the
+    /// coordinator's success arm and `reauthenticate`'s completion. The SAML
+    /// arm records where the SAML flow begins instead, because that flow has no
+    /// completion to wait for here. Production always takes the coordinator
+    /// arm, which `AppContainer` supplies non-optionally.
     @MainActor
     private func noteSessionExpiryRetryDispatched(for book: TPPBook) {
         // Drop lapsed entries so a book that recovered on its retry does not

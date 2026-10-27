@@ -97,13 +97,16 @@ final class BrowserAuthReborrowTests: XCTestCase {
         TPPOPDSAcquisitionAvailabilityUnavailable(copiesHeld: 1, copiesTotal: 1)
     }
 
-    private func book(with acquisitions: [TPPOPDSAcquisition]) -> TPPBook {
+    private func book(
+        with acquisitions: [TPPOPDSAcquisition],
+        identifier: String = "pp5397-browser-book"
+    ) -> TPPBook {
         TPPBook(
             acquisitions: acquisitions,
             authors: nil,
             categoryStrings: nil,
             distributor: nil,
-            identifier: "pp5397-browser-book",
+            identifier: identifier,
             imageURL: nil,
             imageThumbnailURL: nil,
             published: nil,
@@ -514,6 +517,9 @@ final class BrowserAuthReborrowTests: XCTestCase {
         // Moved off the state the session-expiry branch writes, so the second
         // pass returning to it is a positive signal that that branch ran and
         // the re-borrow branch — which writes `.unregistered` — did not.
+        // `driveNoActiveLoan` would also move it off `.SAMLStarted` by re-adding
+        // the book as `.downloading`; this is deliberate rather than redundant,
+        // so the barrier does not depend on that side effect.
         registry.setState(.downloadNeeded, for: stored.identifier)
 
         // Well inside the window, so only the missing episode can keep this
@@ -526,6 +532,45 @@ final class BrowserAuthReborrowTests: XCTestCase {
 
         XCTAssertEqual(spyDelegate.borrowedBooks.count, 0,
                        "a patron who dismissed sign-in must not have a borrow made on their next tap")
+    }
+
+    /// One book's dispatch does not discard another's open episode.
+    ///
+    /// Pruning lapsed entries runs on every dispatch, and the dispatching book
+    /// re-records itself on the next line, so with a single book the filter's
+    /// polarity cannot be observed at all. Inverted, it would drop other books'
+    /// still-open episodes and their next failure would read as a first one —
+    /// PP-5397 persisting for every book but the last one retried.
+    func test_aDispatchForOneBookKeepsAnotherBooksOpenEpisode() throws {
+        userAccount._authDefinition = makeAuth(typeRaw: Self.samlType)
+        let first = book(with: [deadLoanAcquisition()], identifier: "pp5397-book-a")
+        let second = book(with: [deadLoanAcquisition()], identifier: "pp5397-book-b")
+        let fromCatalog = book(with: [catalogBorrowAcquisition()])
+
+        let handler = makeHandler(catalogEntryFetcher: { _ in fromCatalog })
+
+        // A's episode opens.
+        try driveNoActiveLoan(on: handler, book: first)
+        awaitCondition(timeout: 10) { [spyDelegate] in
+            spyDelegate?.startedDownloads.contains { $0.identifier == first.identifier } == true
+        }
+
+        // B dispatches, which is what runs the prune while A's episode is open.
+        try driveNoActiveLoan(on: handler, book: second)
+        awaitCondition(timeout: 10) { [spyDelegate] in
+            spyDelegate?.startedDownloads.contains { $0.identifier == second.identifier } == true
+        }
+
+        // A's second failure must still be read as the same episode.
+        try driveNoActiveLoan(on: handler, book: first)
+        awaitCondition(timeout: 10) { [spyDelegate] in
+            !(spyDelegate?.borrowedBooks.isEmpty ?? true)
+        }
+
+        XCTAssertEqual(
+            spyDelegate.borrowedBooks.map(\.identifier), [first.identifier],
+            "B's dispatch discarded A's open episode, so A's second failure read as a first one"
+        )
     }
 
     // MARK: - The hold guard, on the browser path too
