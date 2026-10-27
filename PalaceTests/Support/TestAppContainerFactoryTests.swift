@@ -9,6 +9,7 @@
 import XCTest
 @testable import Palace
 import PalaceBookRegistry
+import PalaceCatalog
 
 // Subclasses `PalaceTestCase` (WS-0 / M0): `testMakeTestAppContainer_doesNot…`
 // sets `AccountsManager.deferInitialLoadCatalogsForTesting = false` (restored
@@ -116,6 +117,36 @@ final class TestAppContainerFactoryTests: PalaceTestCase {
       container.bookRegistry as AnyObject === explicitRegistry,
       "Factory MUST hand back the injected bookRegistry, not a freshly-minted one"
     )
+  }
+
+  /// An injected defaults suite must back the manager the factory builds, so a
+  /// test that seeds a current account through it writes
+  /// `TPPCurrentAccountIdentifier` into that suite and not into
+  /// `UserDefaults.standard` — which on a simulator is the app's own container,
+  /// where a leftover fixture uuid leaves the app with no resolvable library.
+  func testMakeTestAppContainer_injectedDefaults_backTheManagerItBuilds() {
+    let isolated = Self.testUserDefaults()
+    let manager = makeTestAppContainer(defaults: isolated).accountsManager
+    defer { manager.cancelBackgroundWork() }
+    let standardBefore = UserDefaults.standard.string(forKey: currentAccountIdentifierKey)
+    let uuid = "factory-defaults-\(UUID().uuidString)"
+
+    let restore = manager._seedAccountForTesting(stubAccount(uuid: uuid))
+    defer { restore() }
+
+    XCTAssertEqual(isolated.string(forKey: currentAccountIdentifierKey), uuid,
+                   "the seed must land in the injected suite")
+    XCTAssertEqual(UserDefaults.standard.string(forKey: currentAccountIdentifierKey), standardBefore,
+                   "the seed must not reach UserDefaults.standard")
+  }
+
+  private func stubAccount(uuid: String) -> Account {
+    let publication = OPDS2Publication(
+      links: [OPDS2Link(href: "https://example.com/catalog", rel: "http://opds-spec.org/catalog")],
+      metadata: OPDS2Publication.Metadata(id: uuid, title: "Factory Fixture"),
+      images: nil
+    )
+    return Account(publication: publication, imageCache: MockImageCache())
   }
 
   /// An injected executor must reach the container (and so the network
