@@ -360,10 +360,10 @@ final class BorrowReducerTests: XCTestCase {
     }
 
     /// A stale `.returning` override must NOT stop Cancel resolving. The flag
-    /// is cleared only when `bookState` is written to `.unregistered`, so it
-    /// outlives every other direct write; gating on it left Cancel dead on the
-    /// `.downloading` sheet this case exists to rescue — PP-5407 reintroduced
-    /// by its own fix.
+    /// is not reliably cleared — `applyBorrowState` mirrors a stale value back
+    /// over the `didSet` that nils it — so gating on it left Cancel dead on the
+    /// `.downloading` sheet this case exists to rescue: PP-5407 reintroduced by
+    /// its own fix.
     func testCancelTapped_withAStaleReturningOverride_stillResolves() {
         var state = makeState(
             bookState: .downloading,

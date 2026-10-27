@@ -207,13 +207,15 @@ enum BorrowReducer {
         case .cancelTapped(let registryState):
             state.downloadProgress = 0.0
             // Deliberately NOT gated on `localBookStateOverride`, unlike the
-            // registry path above. That flag is cleared only when `bookState`
-            // is written to `.unregistered`, so it survives every other direct
-            // write and goes stale; gating on it stranded Cancel on exactly the
-            // `.downloading` sheet this case exists to resolve. The window it
-            // would have protected renders no Cancel anyway — `isProcessingDownload`
-            // reads `bookState` and the acquire buttons, neither of which a
-            // return raises.
+            // registry path above. Two reasons, and the second is the load-bearing
+            // one. The flag is unreliable: `BookDetailViewModel.applyBorrowState`
+            // writes `bookState` first, whose `didSet` nils the override on
+            // `.unregistered`, then mirrors the snapshot's stale value straight
+            // back — so it can stay armed indefinitely. And the window it would
+            // protect renders no Cancel at all: `isProcessingDownload` reads
+            // `bookState == .downloading` and the acquire buttons, and a return
+            // raises neither. Gating on it stranded Cancel on exactly the
+            // `.downloading` sheet this case exists to resolve.
             state.bookState = registryState
             state.processingButtons.subtract(downloadRelatedButtons)
             // Exhaustive (no `default:`) for the same reason the registry

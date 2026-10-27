@@ -57,7 +57,7 @@ final class BorrowFailureAnnouncesOnceTests: XCTestCase {
     /// publish produced while it went through `publishAndAnnounceError`:
     /// `announceStatus` renders `"<title>. <message>"`, byte-identical to the
     /// string `TPPAlertUtils` posts directly for the same alert.
-    func testBorrowFailure_announcesOnce_throughTheRealDownloadCentreWiring() async {
+    func testBorrowFailure_announcesOnce_throughTheRealDownloadCentreWiring() async throws {
         let recorder = self.recorder!
         let announcer = TPPAccessibilityAnnouncementCenter(
             postHandler: { _, message in recorder.record(message) },
@@ -71,14 +71,14 @@ final class BorrowFailureAnnouncesOnceTests: XCTestCase {
         // Fires at the top of `borrowAsync`, before any network, and routes to
         // the same `showBorrowError` the real failures use.
         //
-        // This flag lives in the defaults domain every other borrow suite reads
-        // through `DebugSettings()`, and a `UserDefaults(suiteName:)` does NOT
-        // isolate it — leaving it set made ten sibling suites fail with a
-        // simulated 500. Restore it here rather than in tearDown so it is
-        // cleared even if an assertion below throws.
-        let debugSettings = DebugSettings()
-        let previous = debugSettings.simulatedBorrowError
-        defer { debugSettings.simulatedBorrowError = previous }
+        // Scoped to its own defaults suite, never `.standard`: this flag makes
+        // every borrow throw a simulated 500, and `MyBooksDownloadCenter` hands
+        // the instance straight to `BorrowOperation`, so the scope holds. The
+        // domain is removed even if an assertion below throws.
+        let suiteName = "pp5407.announceonce.\(UUID().uuidString)"
+        let scopedDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { scopedDefaults.removePersistentDomain(forName: suiteName) }
+        let debugSettings = DebugSettings(defaults: scopedDefaults)
         debugSettings.simulatedBorrowError = .genericServerError
 
         let downloadCenter = MyBooksDownloadCenter(
