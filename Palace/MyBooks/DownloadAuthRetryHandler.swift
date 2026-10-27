@@ -74,6 +74,25 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
     /// coordinator. `nil` disables the guard.
     private let currentAccountHostsProvider: (@Sendable () -> Set<String>?)?
     private let catalogEntryFetcher: CatalogEntryFetcher?
+    private let now: @Sendable () -> Date
+
+    /// When each book's `no-active-loan` was last treated as a browser-session
+    /// expiry.
+    ///
+    /// Browser auth cannot tell a timed-out session from a loan that ended: the
+    /// server answers 400 for both, which is why PP-3716 assumes the session.
+    /// The catalog cannot settle it either — an entry advertises a borrow link
+    /// for a book that IS on loan (PP-5400, `TPPBook.mergingMetadataOnly`). So
+    /// this asks the server again rather than inferring: re-authenticate and
+    /// retry as before, and if 400 comes back with fresh credentials the loan
+    /// itself has ended and the re-borrow applies (PP-5397).
+    @MainActor private var sessionExpiryAttempts: [String: Date] = [:]
+
+    /// How long a re-authentication and its retry count as one episode. A
+    /// browser re-auth resolves in seconds; past this a failure is a new
+    /// episode and gets the session-expiry treatment again, so a book that
+    /// recovered once is not permanently read as a lapsed loan.
+    private static let sessionExpiryEpisodeWindow: TimeInterval = 120
 
     /// Whether the no-active-loan retry can re-read a book's catalog entry
     /// before borrowing. False leaves it retrying the stored book, which is the
@@ -97,7 +116,8 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
         userAccountProvider: @escaping () -> TPPUserAccount,
         authCoordinator: AuthCoordinator? = nil,
         currentAccountHostsProvider: (@Sendable () -> Set<String>?)? = nil,
-        catalogEntryFetcher: CatalogEntryFetcher? = nil
+        catalogEntryFetcher: CatalogEntryFetcher? = nil,
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.stateManager = stateManager
         self.bookRegistry = bookRegistry
@@ -107,6 +127,7 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
         self.authCoordinator = authCoordinator
         self.currentAccountHostsProvider = currentAccountHostsProvider
         self.catalogEntryFetcher = catalogEntryFetcher
+        self.now = now
     }
 
     deinit {
@@ -245,18 +266,21 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
         if let problemDoc = problemDoc, problemDoc.type == TPPProblemDocument.TypeNoActiveLoan {
             // When browser-based auth expires, the server may return
             // "no-active-loan" (400) instead of 401. Treat as session expiry.
-            if reauthStrategy == .browser && hasCredentials {
+            // A second failure inside the same episode has already survived a
+            // re-authentication, so the session is not what is missing — the
+            // loan is, and the re-borrow path applies (PP-5397).
+            let withinEpisode = sessionExpiryAttempts[book.identifier]
+                .map { now().timeIntervalSince($0) < Self.sessionExpiryEpisodeWindow } ?? false
+            if reauthStrategy == .browser && hasCredentials && !withinEpisode {
+                sessionExpiryAttempts[book.identifier] = now()
                 userAccount.markCredentialsStale()
-                handleNoActiveLoanAsSessionExpiry(
-                    book: book,
-                    task: task,
-                    isSaml: userAccount.authDefinition?.isSaml == true,
-                    problemDoc: problemDoc,
-                    failureError: failureError
-                )
+                handleNoActiveLoanAsSessionExpiry(book: book, task: task, isSaml: userAccount.authDefinition?.isSaml == true)
                 return true
             }
 
+            // Consumed, so a later genuine expiry for this book is treated as
+            // one rather than as another lapsed loan.
+            sessionExpiryAttempts[book.identifier] = nil
             triggerAutoBorrow(book: book, problemDoc: problemDoc, failureError: failureError)
             return true
         }
@@ -340,13 +364,7 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
     /// server sometimes returns as 400 instead of 401 when the browser
     /// session has timed out).
     @MainActor
-    private func handleNoActiveLoanAsSessionExpiry(
-        book: TPPBook,
-        task: URLSessionTask,
-        isSaml: Bool,
-        problemDoc: TPPProblemDocument,
-        failureError: Error?
-    ) {
+    private func handleNoActiveLoanAsSessionExpiry(book: TPPBook, task: URLSessionTask, isSaml: Bool) {
         // Same routing as handleBrowserSessionExpired.
         if let coordinator = self.authCoordinator {
             let reason: ReauthReason = isSaml ? .samlSessionExpired : .invalidCredentials
@@ -356,38 +374,18 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
                 if Task.isCancelled { return }
                 let outcome = await coordinator.refreshCredentialsIfNeeded(reason: reason)
                 if Task.isCancelled { return }
-                // Read the catalog only once the patron has actually
-                // re-authenticated. A declined sign-in must retry nothing, and
-                // borrowing on their behalf would take the action they backed
-                // out of.
-                var reborrow: TPPBook?
-                if case .success = outcome {
-                    reborrow = await self.reborrowBookIfTheLoanEnded(for: book)
-                }
-                if Task.isCancelled { return }
                 await MainActor.run { [weak self] in
                     guard let self else { return }
+                    if isSaml {
+                        self.bookRegistry.setState(.SAMLStarted, for: book.identifier)
+                    } else {
+                        self.bookRegistry.setState(.downloadNeeded, for: book.identifier)
+                    }
                     switch outcome {
                     case .success:
-                        if let reborrow {
-                            self.startReborrowAfterReauth(of: reborrow, for: book,
-                                                          problemDoc: problemDoc,
-                                                          failureError: failureError)
-                            return
-                        }
-                        if isSaml {
-                            self.bookRegistry.setState(.SAMLStarted, for: book.identifier)
-                        } else {
-                            self.bookRegistry.setState(.downloadNeeded, for: book.identifier)
-                        }
                         Log.info(#file, "Coordinator refresh succeeded for no-active-loan path — retrying download for \(book.identifier)")
                         self.delegate?.startDownload(for: book, withRequest: nil)
                     case .failure(let cancellation):
-                        if isSaml {
-                            self.bookRegistry.setState(.SAMLStarted, for: book.identifier)
-                        } else {
-                            self.bookRegistry.setState(.downloadNeeded, for: book.identifier)
-                        }
                         Log.info(#file, "Coordinator declined to refresh for no-active-loan path on \(book.identifier) — \(cancellation)")
                     }
                 }
@@ -401,16 +399,8 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
                 guard let self else { return }
                 await self.cleanupTrackingState(book: book, task: task)
                 if Task.isCancelled { return }
-                let reborrow = await self.reborrowBookIfTheLoanEnded(for: book)
-                if Task.isCancelled { return }
                 await MainActor.run { [weak self] in
                     guard let self else { return }
-                    if let reborrow {
-                        self.startReborrowAfterReauth(of: reborrow, for: book,
-                                                      problemDoc: problemDoc,
-                                                      failureError: failureError)
-                        return
-                    }
                     self.bookRegistry.setState(.SAMLStarted, for: book.identifier)
                     Log.info(#file, "SAML: Cleared failed download, retrying with SAML re-auth for \(book.identifier)")
                     self.delegate?.startDownload(for: book, withRequest: nil)
@@ -422,16 +412,8 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
                 guard let self else { return }
                 await self.cleanupTrackingState(book: book, task: task)
                 if Task.isCancelled { return }
-                let reborrow = await self.reborrowBookIfTheLoanEnded(for: book)
-                if Task.isCancelled { return }
                 await MainActor.run { [weak self] in
                     guard let self else { return }
-                    if let reborrow {
-                        self.startReborrowAfterReauth(of: reborrow, for: book,
-                                                      problemDoc: problemDoc,
-                                                      failureError: failureError)
-                        return
-                    }
                     self.bookRegistry.setState(.downloadNeeded, for: book.identifier)
                     self.reauthenticate(retryWithFreshAuthState: book)
                 }
@@ -439,47 +421,6 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
         }
     }
 
-    /// The book to borrow when the catalog says this patron's loan has ended,
-    /// or nil to keep the session-expiry treatment.
-    ///
-    /// Browser-based auth answers a `no-active-loan` 400 by assuming the session
-    /// timed out (PP-3716), which is right when the loan is live — re-auth
-    /// restores it and the stored link works again. It is wrong when the loan
-    /// genuinely ended: no amount of re-authenticating revives a loan-scoped
-    /// link, so those patrons met PP-5397 too.
-    ///
-    /// A `.borrow` relation on the catalog entry is what separates the two
-    /// without asking about copies: the circulation manager offers it only when
-    /// a borrow is what this patron needs next. Availability is never consulted
-    /// — an entry whose copies are gone still goes to the borrow, and the
-    /// response decides.
-    @MainActor
-    private func reborrowBookIfTheLoanEnded(for book: TPPBook) async -> TPPBook? {
-        guard let catalogEntryFetcher, book.alternateURL != nil else { return nil }
-        guard let entry = await catalogEntryFetcher(book) else {
-            Log.warn(#file, "Could not re-read the catalog entry for \(book.identifier); keeping the session-expiry retry")
-            return nil
-        }
-        guard entry.defaultAcquisitionIfBorrow != nil else { return nil }
-        return Self.reborrowBook(stored: book, catalogEntry: entry)
-    }
-
-    /// Borrows the catalog's link after a browser-auth re-authentication.
-    ///
-    /// Shares `startAutoBorrow` with the barcode path so a borrow that does not
-    /// end in a download surfaces the same alert, and so the borrow runs through
-    /// `BorrowOperation` and its Loan→Hold race check (PP-4178).
-    @MainActor
-    private func startReborrowAfterReauth(
-        of reborrow: TPPBook,
-        for book: TPPBook,
-        problemDoc: TPPProblemDocument,
-        failureError: Error?
-    ) {
-        Log.info(#file, "Browser auth: the catalog offers a borrow link for \(book.identifier) — the loan ended rather than the session")
-        bookRegistry.setState(.unregistered, for: book.identifier)
-        startAutoBorrow(of: reborrow, problemDoc: problemDoc, failureError: failureError)
-    }
     // MARK: - No-active-loan auto-borrow
 
     /// Real `no-active-loan` (not session-expiry) — the user's loan

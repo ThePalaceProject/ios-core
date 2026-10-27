@@ -7,6 +7,11 @@
 //  book — whose links are scoped to the loan that ended. Re-auth cannot revive
 //  a dead link, so they met PP-5397 too.
 //
+//  The two causes are told apart by asking the server again, not by reading the
+//  catalog: a catalog entry advertises a borrow link for a book that IS on loan
+//  (PP-5400). So the first failure re-authenticates as before, and only a
+//  second failure with fresh credentials means the loan itself ended.
+//
 
 import PalaceAuth
 import PalaceBookModel
@@ -191,77 +196,128 @@ final class BrowserAuthReborrowTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    /// Drives the no-active-loan download failure a browser-auth patron met,
-    /// and waits for whichever retry the path chose to land.
-    private func driveNoActiveLoan(
-        on handler: DownloadAuthRetryHandler,
-        book: TPPBook,
-        expectingRetry: Bool = true
-    ) throws {
-        registry.addBook(book, location: nil, state: .downloading,
-                         fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
-        // A 200 keeps the 401-detection branch out of it: the browser
-        // no-active-loan branch fires off the problem-doc type alone.
-        let task = makeFakeTask(statusCode: 200)
+    /// Drives one no-active-loan download failure.
+    ///
+    /// Returns without waiting; callers wait on the specific outcome they are
+    /// asserting, so an absence is never read before the decision was made.
+    @discardableResult
+    private func driveNoActiveLoan(on handler: DownloadAuthRetryHandler, book: TPPBook) throws -> Bool {
+        if registry.state(for: book.identifier) != .downloading {
+            registry.addBook(book, location: nil, state: .downloading,
+                             fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+        }
         let handled = handler.handleAuthFailureIfApplicable(
             book: book,
-            task: task,
+            task: makeFakeTask(),
             problemDoc: try noActiveLoanProblemDocument(),
             failureError: nil
         )
-        XCTAssertTrue(handled, "the browser path must claim a no-active-loan failure")
-        guard expectingRetry else { return }
+        XCTAssertTrue(handled, "the handler must claim a no-active-loan failure")
+        return handled
+    }
+
+    /// Drives the first failure, waits for the session-expiry retry to land,
+    /// then drives the second — which is the one that means the loan ended.
+    ///
+    /// Asserts the first failure really took the browser arm.
+    /// `markCredentialsStale` runs only there, so this also fails if a fixture
+    /// typo routed the test down the barcode path.
+    private func driveFirstThenSecondFailure(
+        on handler: DownloadAuthRetryHandler,
+        book: TPPBook
+    ) throws {
+        try driveNoActiveLoan(on: handler, book: book)
         awaitCondition(timeout: 10) { [spyDelegate] in
-            guard let spyDelegate else { return false }
-            return !spyDelegate.borrowedBooks.isEmpty || !spyDelegate.startedDownloads.isEmpty
+            !(spyDelegate?.startedDownloads.isEmpty ?? true)
+        }
+        XCTAssertEqual(
+            userAccount.authState, .credentialsStale,
+            "the first failure must take the browser session-expiry arm; a fixture whose auth "
+            + "type does not resolve would route down the barcode path and borrow immediately"
+        )
+        XCTAssertEqual(spyDelegate.borrowedBooks.count, 0,
+                       "the first failure must not borrow — the loan may simply be behind a dead session")
+        try driveNoActiveLoan(on: handler, book: book)
+        awaitCondition(timeout: 10) { [spyDelegate] in
+            !(spyDelegate?.borrowedBooks.isEmpty ?? true)
         }
     }
 
-    private func makeFakeTask(statusCode: Int) -> URLSessionTask {
-        let task = URLSession.shared.downloadTask(with: URL(string: Self.fulfillmentHref)!)
-        return task
+    /// A task with no response, which is what the no-active-loan branch needs:
+    /// `task.response as? HTTPURLResponse` is nil, so the 401-detection branch
+    /// is never consulted and the problem-doc type alone decides.
+    private func makeFakeTask() -> URLSessionTask {
+        URLSession.shared.downloadTask(with: URL(string: Self.fulfillmentHref)!)
     }
 
-    // MARK: - The loan ended: re-auth cannot revive the link
+    // MARK: - The first failure: the session may simply have expired
 
-    /// A SAML patron whose loan ended borrows the catalog's link.
+    /// A SAML patron's first no-active-loan is still treated as a session expiry.
     ///
-    /// This is the defect: re-authenticating restores the session, then the
-    /// retry asked the fulfillment link scoped to the loan that ended and
-    /// failed the same way a barcode patron's did.
-    func test_samlPatron_whenTheLoanEnded_borrowsTheCatalogsLink() throws {
+    /// PP-3716's case, and the reason the catalog cannot decide this: a catalog
+    /// entry advertises a borrow link for a book that IS on loan (PP-5400), so
+    /// reading one here would divert every live loan into a borrow.
+    func test_samlPatron_firstFailure_isStillTreatedAsASessionExpiry() throws {
         userAccount._authDefinition = makeAuth(typeRaw: Self.samlType)
         let stored = book(with: [deadLoanAcquisition()])
         let fromCatalog = book(with: [catalogBorrowAcquisition()])
 
         let handler = makeHandler(catalogEntryFetcher: { _ in fromCatalog })
         try driveNoActiveLoan(on: handler, book: stored)
+        awaitCondition(timeout: 10) { [registry] in
+            registry?.state(for: stored.identifier) == .SAMLStarted
+        }
 
-        let borrowed = try XCTUnwrap(
-            spyDelegate.borrowedBooks.last,
-            "no borrow was attempted, so the patron is still asking the dead link"
-        )
-        XCTAssertEqual(borrowed.defaultAcquisition?.hrefURL.absoluteString, Self.catalogBorrowHref)
-        XCTAssertEqual(spyDelegate.startedDownloads.count, 0,
-                       "a borrow link cannot be downloaded; the download retry must not also fire")
+        XCTAssertEqual(spyDelegate.borrowedBooks.count, 0,
+                       "a borrow link in the catalog is not evidence the loan ended")
+        XCTAssertEqual(spyDelegate.startedDownloads.map(\.identifier), [stored.identifier],
+                       "the session-expiry retry must still download the stored book")
+        XCTAssertEqual(userAccount.authState, .credentialsStale)
     }
 
-    /// An OIDC patron whose loan ended borrows the catalog's link.
-    func test_oidcPatron_whenTheLoanEnded_borrowsTheCatalogsLink() throws {
+    /// A non-SAML browser patron's first failure re-authenticates as before.
+    func test_oidcPatron_firstFailure_isStillTreatedAsASessionExpiry() throws {
         userAccount._authDefinition = makeAuth(typeRaw: Self.oidcType)
         let stored = book(with: [deadLoanAcquisition()])
         let fromCatalog = book(with: [catalogBorrowAcquisition()])
 
         let handler = makeHandler(catalogEntryFetcher: { _ in fromCatalog })
         try driveNoActiveLoan(on: handler, book: stored)
+        awaitCondition(timeout: 10) { [reauthenticator] in
+            reauthenticator?.authenticateIfNeededCalled == true
+        }
 
-        let borrowed = try XCTUnwrap(spyDelegate.borrowedBooks.last)
-        XCTAssertEqual(borrowed.defaultAcquisition?.hrefURL.absoluteString, Self.catalogBorrowHref)
+        XCTAssertEqual(spyDelegate.borrowedBooks.count, 0)
+        XCTAssertEqual(userAccount.authState, .credentialsStale,
+                       "OIDC resolves to the browser strategy, so the session-expiry arm must run")
     }
 
-    /// A coordinator-routed patron whose loan ended borrows the catalog's link.
-    func test_coordinatorRouted_whenTheLoanEnded_borrowsTheCatalogsLink() throws {
-        let (coordinator, _, _, _, _) = SpyAuthCoordinatorFactory.make(
+    // MARK: - The second failure: the loan itself ended
+
+    /// A second failure with fresh credentials borrows the catalog's link.
+    ///
+    /// This is the defect for browser patrons: re-auth succeeded, the server
+    /// still says no active loan, so the loan ended rather than the session —
+    /// and no amount of authenticating revives a loan-scoped link.
+    func test_samlPatron_secondFailure_borrowsTheCatalogsLink() throws {
+        userAccount._authDefinition = makeAuth(typeRaw: Self.samlType)
+        let stored = book(with: [deadLoanAcquisition()])
+        let fromCatalog = book(with: [catalogBorrowAcquisition()])
+
+        let handler = makeHandler(catalogEntryFetcher: { _ in fromCatalog })
+        try driveFirstThenSecondFailure(on: handler, book: stored)
+
+        let borrowed = try XCTUnwrap(
+            spyDelegate.borrowedBooks.last,
+            "the second failure means the loan ended, so a borrow must be attempted"
+        )
+        XCTAssertEqual(borrowed.defaultAcquisition?.hrefURL.absoluteString, Self.catalogBorrowHref,
+                       "the borrow must go to the catalog's link, not the one that just failed twice")
+    }
+
+    /// The same, for a coordinator-routed patron.
+    func test_coordinatorRouted_secondFailure_borrowsTheCatalogsLink() throws {
+        let (coordinator, _, modal, _, _) = SpyAuthCoordinatorFactory.make(
             mechanism: .saml, stubModalResult: true
         )
         userAccount._authDefinition = makeAuth(typeRaw: Self.samlType)
@@ -270,65 +326,82 @@ final class BrowserAuthReborrowTests: XCTestCase {
 
         let handler = makeHandler(catalogEntryFetcher: { _ in fromCatalog },
                                   authCoordinator: coordinator)
-        try driveNoActiveLoan(on: handler, book: stored)
+        try driveFirstThenSecondFailure(on: handler, book: stored)
 
-        let borrowed = try XCTUnwrap(spyDelegate.borrowedBooks.last)
-        XCTAssertEqual(borrowed.defaultAcquisition?.hrefURL.absoluteString, Self.catalogBorrowHref)
+        XCTAssertEqual(modal.presentCallCount, 1,
+                       "the first failure must have gone through the coordinator, not the barcode path")
+        XCTAssertEqual(
+            spyDelegate.borrowedBooks.last?.defaultAcquisition?.hrefURL.absoluteString,
+            Self.catalogBorrowHref
+        )
     }
 
-    // MARK: - The session expired: today's treatment must survive
-
-    /// An entry still offering the loan keeps the session-expiry retry.
-    ///
-    /// PP-3716's case: the session timed out and the server answered 400. The
-    /// loan is live, so re-auth plus a download of the stored book is right and
-    /// must not become a borrow.
-    func test_whenTheCatalogStillOffersTheLoan_theSessionExpiryRetryIsKept() throws {
-        userAccount._authDefinition = makeAuth(typeRaw: Self.samlType)
-        let stored = book(with: [deadLoanAcquisition()])
-        let stillOnLoan = book(with: [catalogFulfillmentAcquisition()])
-
-        let handler = makeHandler(catalogEntryFetcher: { _ in stillOnLoan })
-        try driveNoActiveLoan(on: handler, book: stored)
-
-        XCTAssertEqual(spyDelegate.borrowedBooks.count, 0,
-                       "an entry with no borrow link is a live loan; borrowing it would be wrong")
-        XCTAssertEqual(spyDelegate.startedDownloads.map(\.identifier), [stored.identifier])
-        XCTAssertEqual(registry.state(for: stored.identifier), .SAMLStarted,
-                       "the SAML session-expiry state transition must be unchanged")
-    }
-
-    /// A failed catalog read keeps the session-expiry retry.
-    func test_whenTheCatalogCannotBeRead_theSessionExpiryRetryIsKept() throws {
-        userAccount._authDefinition = makeAuth(typeRaw: Self.samlType)
-        let stored = book(with: [deadLoanAcquisition()])
-
-        let handler = makeHandler(catalogEntryFetcher: { _ in nil })
-        try driveNoActiveLoan(on: handler, book: stored)
-
-        XCTAssertEqual(spyDelegate.borrowedBooks.count, 0)
-        XCTAssertEqual(spyDelegate.startedDownloads.map(\.identifier), [stored.identifier])
-    }
-
-    /// With no fetcher wired the browser path is exactly as it was.
-    func test_whenNoFetcherIsWired_theSessionExpiryRetryIsKept() throws {
+    /// A second failure with no fetcher wired still attempts the borrow.
+    func test_secondFailure_withNoFetcherWired_stillAttemptsTheBorrow() throws {
         userAccount._authDefinition = makeAuth(typeRaw: Self.samlType)
         let stored = book(with: [deadLoanAcquisition()])
 
         let handler = makeHandler(catalogEntryFetcher: nil)
-        try driveNoActiveLoan(on: handler, book: stored)
+        try driveFirstThenSecondFailure(on: handler, book: stored)
 
-        XCTAssertEqual(spyDelegate.borrowedBooks.count, 0)
-        XCTAssertEqual(spyDelegate.startedDownloads.map(\.identifier), [stored.identifier])
-        XCTAssertEqual(registry.state(for: stored.identifier), .SAMLStarted)
+        XCTAssertEqual(
+            spyDelegate.borrowedBooks.last?.defaultAcquisition?.hrefURL.absoluteString,
+            Self.fulfillmentHref,
+            "without a re-read the stored link is all there is, and the attempt must still happen"
+        )
     }
 
-    /// A declined re-authentication retries nothing at all.
+    /// A third failure is treated as a new session expiry.
     ///
-    /// The patron dismissed sign-in. Borrowing on their behalf after that would
-    /// take an action they just backed out of.
+    /// The episode is consumed by the borrow it triggers, so a later genuine
+    /// expiry for the same book is not misread as a lapsed loan.
+    func test_thirdFailure_isTreatedAsANewSessionExpiry() throws {
+        userAccount._authDefinition = makeAuth(typeRaw: Self.samlType)
+        let stored = book(with: [deadLoanAcquisition()])
+        let fromCatalog = book(with: [catalogBorrowAcquisition()])
+
+        let handler = makeHandler(catalogEntryFetcher: { _ in fromCatalog })
+        try driveFirstThenSecondFailure(on: handler, book: stored)
+        let downloadsAfterSecond = spyDelegate.startedDownloads.count
+
+        try driveNoActiveLoan(on: handler, book: stored)
+        awaitCondition(timeout: 10) { [spyDelegate] in
+            (spyDelegate?.startedDownloads.count ?? 0) > downloadsAfterSecond
+        }
+
+        XCTAssertEqual(spyDelegate.borrowedBooks.count, 1,
+                       "the episode was consumed, so the next failure re-authenticates rather than borrowing again")
+    }
+
+    // MARK: - The catalog read, on the second failure
+
+    /// The re-read's link is used whatever its relation.
+    ///
+    /// By the second failure the server has said twice that there is no loan,
+    /// so a borrow is what must happen and the response decides what it means.
+    func test_secondFailure_whenTheEntryOffersAFulfillmentLink_stillBorrows() throws {
+        userAccount._authDefinition = makeAuth(typeRaw: Self.samlType)
+        let stored = book(with: [deadLoanAcquisition()])
+        let freshFulfillment = book(with: [catalogFulfillmentAcquisition()])
+
+        let handler = makeHandler(catalogEntryFetcher: { _ in freshFulfillment })
+        try driveFirstThenSecondFailure(on: handler, book: stored)
+
+        XCTAssertEqual(
+            spyDelegate.borrowedBooks.last?.defaultAcquisition?.hrefURL.absoluteString,
+            "https://example.org/loan/fulfill/10",
+            "the re-read replaces the link that failed twice, whatever relation it carries"
+        )
+    }
+
+    // MARK: - A declined sign-in
+
+    /// A declined re-authentication retries nothing.
+    ///
+    /// Waits for the state transition the decline itself makes, so the absence
+    /// below is read after the decision rather than before it.
     func test_whenTheCoordinatorDeclinesToRefresh_nothingIsRetried() throws {
-        let (coordinator, _, _, _, _) = SpyAuthCoordinatorFactory.make(
+        let (coordinator, _, modal, _, _) = SpyAuthCoordinatorFactory.make(
             mechanism: .saml, stubReauthResult: false, stubModalResult: false
         )
         userAccount._authDefinition = makeAuth(typeRaw: Self.samlType)
@@ -337,29 +410,28 @@ final class BrowserAuthReborrowTests: XCTestCase {
 
         let handler = makeHandler(catalogEntryFetcher: { _ in fromCatalog },
                                   authCoordinator: coordinator)
-        try driveNoActiveLoan(on: handler, book: stored, expectingRetry: false)
-        // No retry is the expected outcome, so settle the path rather than wait
-        // for a signal that must never arrive.
-        drainMainQueue()
+        try driveNoActiveLoan(on: handler, book: stored)
+        awaitCondition(timeout: 10) { [registry] in
+            registry?.state(for: stored.identifier) == .SAMLStarted
+        }
 
+        XCTAssertEqual(modal.presentCallCount, 1, "the coordinator must have been consulted")
         XCTAssertEqual(spyDelegate.borrowedBooks.count, 0,
                        "a patron who dismissed sign-in must not have a borrow made for them")
-        XCTAssertEqual(spyDelegate.startedDownloads.count, 0)
+        XCTAssertEqual(spyDelegate.startedDownloads.count, 0,
+                       "a declined refresh must not retry the download either")
     }
 
     // MARK: - The hold guard, on the browser path too
 
     /// An unavailable entry plus a hold response still raises the PP-4178 alert.
-    ///
-    /// The same guarantee the barcode path has: the catalog reading never
-    /// decides, and a hold the patron did not ask for is not a success.
     func test_unavailableEntryAndAHoldResponse_stillRaisesTheHoldAlert() throws {
         userAccount._authDefinition = makeAuth(typeRaw: Self.samlType)
         let stored = book(with: [deadLoanAcquisition()])
         let fromCatalog = book(with: [catalogBorrowAcquisition(availability: Self.copyTaken())])
 
         let handler = makeHandler(catalogEntryFetcher: { _ in fromCatalog })
-        try driveNoActiveLoan(on: handler, book: stored)
+        try driveFirstThenSecondFailure(on: handler, book: stored)
 
         let preBorrow = try XCTUnwrap(
             spyDelegate.borrowedBooks.last,
@@ -385,12 +457,37 @@ final class BrowserAuthReborrowTests: XCTestCase {
         let fromCatalog = book(with: [catalogBorrowAcquisition(availability: Self.copyTaken())])
 
         let handler = makeHandler(catalogEntryFetcher: { _ in fromCatalog })
-        try driveNoActiveLoan(on: handler, book: stored)
+        try driveFirstThenSecondFailure(on: handler, book: stored)
 
         XCTAssertEqual(
             spyDelegate.borrowedBooks.last?.defaultAcquisition?.hrefURL.absoluteString,
             Self.catalogBorrowHref,
             "the borrow must be attempted whatever the entry says about copies"
         )
+    }
+
+    // MARK: - The barcode path is untouched
+
+    /// A barcode patron borrows on the first failure, as before.
+    ///
+    /// Control for the browser tests above: this is the path an unresolved auth
+    /// type silently falls down, so its distinct behaviour is worth pinning.
+    func test_barcodePatron_borrowsOnTheFirstFailure() throws {
+        userAccount._authDefinition = makeAuth(typeRaw: "http://opds-spec.org/auth/basic")
+        let stored = book(with: [deadLoanAcquisition()])
+        let fromCatalog = book(with: [catalogBorrowAcquisition()])
+
+        let handler = makeHandler(catalogEntryFetcher: { _ in fromCatalog })
+        try driveNoActiveLoan(on: handler, book: stored)
+        awaitCondition(timeout: 10) { [spyDelegate] in
+            !(spyDelegate?.borrowedBooks.isEmpty ?? true)
+        }
+
+        XCTAssertEqual(
+            spyDelegate.borrowedBooks.last?.defaultAcquisition?.hrefURL.absoluteString,
+            Self.catalogBorrowHref
+        )
+        XCTAssertNotEqual(userAccount.authState, .credentialsStale,
+                          "the barcode path does not mark credentials stale")
     }
 }
