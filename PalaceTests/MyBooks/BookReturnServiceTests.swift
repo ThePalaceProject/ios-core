@@ -120,7 +120,9 @@ final class BookReturnServiceTests: XCTestCase {
         var rounds = 0
         while true {
             let pending = service.inFlightTasksSnapshotForTesting()
-            if pending.isEmpty { return }
+            // Both halves of the ledger: a slot claimed by a body that never
+            // stored a handle is invisible to the snapshot.
+            if pending.isEmpty, service.outstandingSlotCount == 0 { return }
             if rounds >= maxRounds {
                 XCTFail("tracked Tasks still pending after \(rounds) join rounds")
                 throw TrackedTaskQuiescenceError.didNotQuiesce(rounds: rounds)
@@ -128,6 +130,162 @@ final class BookReturnServiceTests: XCTestCase {
             for task in pending { _ = await task.value }
             rounds += 1
         }
+    }
+
+    // MARK: - Tracked-task retention
+
+    /// A task that ends on cancellation, or on its own deadline either way.
+    ///
+    /// Bounded deliberately. An unbounded `while !Task.isCancelled` spinner
+    /// turns a cancellation that fails to arrive into a test that hangs rather
+    /// than one that fails, and a hang is reported as no result at all.
+    private func makeCancellableTask() -> Task<Void, Never> {
+        Task {
+            for _ in 0 ..< 200 {
+                if Task.isCancelled { return }
+                try? await Task.sleep(nanoseconds: 10_000_000)
+            }
+        }
+    }
+
+    /// A body that finishes before its handle is stored must not be retained.
+    ///
+    /// The launcher cannot store a handle until `Task.init` returns, and it is
+    /// not actor-isolated, so under load the body ran to completion first. An
+    /// unconditional insert then put a finished Task back into the set it had
+    /// already left, nothing ever removed it again, and the drain helpers above
+    /// reported work that would never settle (PP-5408).
+    func test_whenABodyFinishesBeforeItsHandleIsStored_theTaskIsNotRetained() {
+        let id = service.claimTrackedSlot()
+        service.releaseTracked(id)
+
+        service.retainTracked(id, Task {})
+
+        XCTAssertTrue(
+            service.inFlightTasksSnapshotForTesting().isEmpty,
+            "a Task whose body already finished must not be resurrected into the retention set"
+        )
+        XCTAssertEqual(service.inFlightTaskCount, 0,
+                       "nothing is outstanding once the body has completed")
+    }
+
+    /// A slot is outstanding from the claim, before any handle exists.
+    ///
+    /// This is what closes the window: the slot exists before the Task does, so
+    /// there is no ordering in which the body can outrun its own bookkeeping.
+    /// Asserted on the slot ledger, not `inFlightTaskCount`, which counts
+    /// retained handles and is deliberately still zero here.
+    func test_aClaimedSlot_isOutstandingBeforeAnyHandleIsStored() {
+        XCTAssertEqual(service.outstandingSlotCount, 0, "precondition: nothing outstanding")
+
+        let id = service.claimTrackedSlot()
+
+        XCTAssertEqual(service.outstandingSlotCount, 1,
+                       "a claimed slot is outstanding work even before its handle is stored")
+        XCTAssertEqual(service.inFlightTaskCount, 0,
+                       "no handle has been stored yet, so nothing is retained")
+
+        service.releaseTracked(id)
+    }
+
+    /// Releasing a slot drops the handle retained for it.
+    func test_releasingASlot_dropsTheRetainedHandle() {
+        let id = service.claimTrackedSlot()
+        service.retainTracked(id, Task {})
+        XCTAssertFalse(service.inFlightTasksSnapshotForTesting().isEmpty,
+                       "precondition: the handle is retained")
+
+        service.releaseTracked(id)
+
+        XCTAssertTrue(service.inFlightTasksSnapshotForTesting().isEmpty,
+                      "completion must drop the handle")
+        XCTAssertEqual(service.inFlightTaskCount, 0, "and release the slot")
+    }
+
+    /// Cancelling everything also clears claimed slots.
+    ///
+    /// A body still running when teardown fires is not cancelled in this
+    /// window — it holds no handle for `cancelAllInFlightTasks` to reach — so
+    /// what the ledger owes is to keep it out afterwards. The launchers cancel
+    /// such a body themselves on the refusal; that is pinned separately below.
+    func test_cancelAllInFlightTasks_releasesClaimedSlotsAndRefusesALateRetain() {
+        let id = service.claimTrackedSlot()
+
+        service.cancelAllInFlightTasks()
+
+        XCTAssertEqual(service.outstandingSlotCount, 0, "cancellation must clear claimed slots")
+
+        let stored = service.retainTracked(id, Task {})
+
+        XCTAssertFalse(stored, "a refused handle must be reported so the caller can cancel it")
+        XCTAssertTrue(
+            service.inFlightTasksSnapshotForTesting().isEmpty,
+            "a body whose slot teardown dropped must not re-enter the retention set"
+        )
+    }
+
+    /// One slot's completion must not drop another's.
+    ///
+    /// The ledger is keyed per launch because a tracked body can launch another
+    /// (`performPostReturnSyncThen` does), so the parent's slot is still
+    /// outstanding when the child claims. Were release to clear the whole
+    /// ledger, the parent finishing would drop the child's handle and the child
+    /// would escape `cancelAllInFlightTasks` — writing into the registry after
+    /// a sign-out, which is the thing the retention set exists to prevent.
+    func test_releasingOneSlot_leavesAnotherOutstandingAndRetained() {
+        let parent = service.claimTrackedSlot()
+        let child = service.claimTrackedSlot()
+        service.retainTracked(parent, Task {})
+        let childTask = makeCancellableTask()
+        service.retainTracked(child, childTask)
+        XCTAssertEqual(service.outstandingSlotCount, 2, "precondition: two launches outstanding")
+
+        service.releaseTracked(parent)
+
+        XCTAssertEqual(service.outstandingSlotCount, 1, "only the released slot is gone")
+        XCTAssertEqual(service.inFlightTaskCount, 1, "the other handle is still retained")
+        XCTAssertTrue(service.inFlightTasksSnapshotForTesting().contains(childTask),
+                      "the surviving handle must be the one that was not released")
+
+        service.releaseTracked(child)
+        childTask.cancel()
+    }
+
+    /// Teardown cancels every retained body, not just one.
+    func test_cancelAllInFlightTasks_cancelsEveryRetainedBody() async {
+        let first = service.claimTrackedSlot()
+        let second = service.claimTrackedSlot()
+        let firstTask = makeCancellableTask()
+        let secondTask = makeCancellableTask()
+        service.retainTracked(first, firstTask)
+        service.retainTracked(second, secondTask)
+
+        service.cancelAllInFlightTasks()
+
+        await firstTask.value
+        await secondTask.value
+        XCTAssertTrue(firstTask.isCancelled, "every retained body must be cancelled")
+        XCTAssertTrue(secondTask.isCancelled, "including the second, which a one-shot teardown would miss")
+        XCTAssertEqual(service.outstandingSlotCount, 0, "and both slots released")
+        XCTAssertEqual(service.inFlightTaskCount, 0, "and both handles dropped")
+    }
+
+    /// A body whose handle teardown refused is cancelled by the launcher.
+    ///
+    /// Nothing else can reach it: it is in no retention set, so a later
+    /// teardown has no handle to cancel.
+    func test_whenTeardownRefusesAHandle_theLauncherCancelsThatBody() async {
+        let id = service.claimTrackedSlot()
+        service.cancelAllInFlightTasks()
+        let orphan = makeCancellableTask()
+
+        if !service.retainTracked(id, orphan) {
+            orphan.cancel()
+        }
+
+        await orphan.value
+        XCTAssertTrue(orphan.isCancelled,
+                      "a body that can never be retained must be cancelled where the refusal is seen")
     }
 
     // MARK: - Branch 1: book not in registry
