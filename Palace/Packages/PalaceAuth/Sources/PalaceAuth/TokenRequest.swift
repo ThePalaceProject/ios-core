@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceNetwork
 import PalaceLogging
 import PalaceCatalog
 
@@ -134,7 +135,7 @@ import PalaceCatalog
 
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
-                let tokenResponse = try decoder.decode(TokenResponse.self, from: data)
+                let tokenResponse = try decoder.decodeGuarded(TokenResponse.self, from: data)
                 Log.info(#file, "Successfully decoded token response, expires in \(tokenResponse.expiresIn)s")
                 return .success(tokenResponse)
             } catch {
