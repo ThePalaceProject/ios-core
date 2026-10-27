@@ -595,22 +595,16 @@ private final class RedirectCompletionBox: @unchecked Sendable {
         let resolveAccount: () -> TPPUserAccount = {
             userAccount ?? accountsManager.currentUserAccount
         }
-        self.authRetryHandler = authRetryHandler ?? DownloadAuthRetryHandler(
+        // Composition in MyBooksDownloadCenter+AuthRetry.swift.
+        self.authRetryHandler = authRetryHandler ?? Self.makeAuthRetryHandler(
             stateManager: stateManager,
             bookRegistry: bookRegistry,
             reauthenticator: reauthenticator,
             alertPresenter: self.alertPresenter,
             userAccountProvider: resolveAccount,
             authCoordinator: authCoordinator,
-            // Foreign-host guard (PR #1018 cross-host logout).
-            currentAccountHostsProvider: {
-                resolvedAccountScope.currentAccountAuthSurfaceHosts
-            },
-            // PP-5397: a returned book's stored acquisitions are fulfillment
-            // links scoped to the loan that ended, so the no-active-loan retry
-            // asked the link that had just answered 400. This lets it re-read
-            // the catalog entry, whose links are not loan-scoped, first.
-            catalogEntryFetcher: CatalogEntryReborrowFetcher.make(feedFetcher: opdsFeedService)
+            accountScope: resolvedAccountScope,
+            opdsFeedService: opdsFeedService
         )
         // DownloadThrottlingService shares the same DownloadStateManager
         // MBDC owns so cap + suspend/resume policy stays coherent with the
