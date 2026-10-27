@@ -88,10 +88,10 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
     /// itself has ended and the re-borrow applies (PP-5397).
     @MainActor private var sessionExpiryAttempts: [String: Date] = [:]
 
-    /// How long a re-authentication and its retry count as one episode. A
-    /// browser re-auth resolves in seconds; past this a failure is a new
-    /// episode and gets the session-expiry treatment again, so a book that
-    /// recovered once is not permanently read as a lapsed loan.
+    /// How long a dispatched session-expiry retry and the failure that answers
+    /// it count as one episode: one download round trip. Past it a failure is a
+    /// new episode and gets the session-expiry treatment again, so a book that
+    /// recovered once is not later read as a lapsed loan.
     private static let sessionExpiryEpisodeWindow: TimeInterval = 120
 
     /// Whether the no-active-loan retry can re-read a book's catalog entry
@@ -266,13 +266,19 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
         if let problemDoc = problemDoc, problemDoc.type == TPPProblemDocument.TypeNoActiveLoan {
             // When browser-based auth expires, the server may return
             // "no-active-loan" (400) instead of 401. Treat as session expiry.
-            // A second failure inside the same episode has already survived a
-            // re-authentication, so the session is not what is missing — the
-            // loan is, and the re-borrow path applies (PP-5397).
+            // A second failure inside the same episode answers a retry that was
+            // dispatched after a completed re-authentication, so the session is
+            // not what is missing — the loan is, and the re-borrow path applies
+            // (PP-5397).
+            //
+            // `hasCredentials` stays true through `markCredentialsStale`, which
+            // flips `authState` but keeps the credentials so the Adobe
+            // activation survives. Were it ever state-based, the earlier
+            // no-credentials branch would claim the failure first and this gate
+            // would stop being reached — a silent no-op rather than a failure.
             let withinEpisode = sessionExpiryAttempts[book.identifier]
                 .map { now().timeIntervalSince($0) < Self.sessionExpiryEpisodeWindow } ?? false
             if reauthStrategy == .browser && hasCredentials && !withinEpisode {
-                sessionExpiryAttempts[book.identifier] = now()
                 userAccount.markCredentialsStale()
                 handleNoActiveLoanAsSessionExpiry(book: book, task: task, isSaml: userAccount.authDefinition?.isSaml == true)
                 return true
@@ -384,6 +390,7 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
                     switch outcome {
                     case .success:
                         Log.info(#file, "Coordinator refresh succeeded for no-active-loan path — retrying download for \(book.identifier)")
+                        self.noteSessionExpiryRetryDispatched(for: book)
                         self.delegate?.startDownload(for: book, withRequest: nil)
                     case .failure(let cancellation):
                         Log.info(#file, "Coordinator declined to refresh for no-active-loan path on \(book.identifier) — \(cancellation)")
@@ -403,6 +410,7 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
                     guard let self else { return }
                     self.bookRegistry.setState(.SAMLStarted, for: book.identifier)
                     Log.info(#file, "SAML: Cleared failed download, retrying with SAML re-auth for \(book.identifier)")
+                    self.noteSessionExpiryRetryDispatched(for: book)
                     self.delegate?.startDownload(for: book, withRequest: nil)
                 }
             }
@@ -415,10 +423,36 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
                 await MainActor.run { [weak self] in
                     guard let self else { return }
                     self.bookRegistry.setState(.downloadNeeded, for: book.identifier)
-                    self.reauthenticate(retryWithFreshAuthState: book)
+                    self.reauthenticate(retryWithFreshAuthState: book) { [weak self] in
+                        self?.noteSessionExpiryRetryDispatched(for: book)
+                    }
                 }
             }
         }
+    }
+
+    /// Records that a session-expiry retry has been dispatched for `book`.
+    ///
+    /// Written here rather than where the expiry is first detected, because the
+    /// two differ in both directions. A patron who dismisses sign-in has not
+    /// re-authenticated, and recording at detection would turn their next
+    /// attempt into a borrow they backed out of. And the interval the window
+    /// bounds would otherwise contain the whole re-authentication — a web
+    /// sheet, an identity provider, possibly a second factor, none of which
+    /// this code bounds — so a sign-in slower than the window would loop on
+    /// session expiry and never reach the re-borrow.
+    ///
+    /// Measured from the dispatched retry, the interval is one download round
+    /// trip, which is what the window was chosen to cover.
+    @MainActor
+    private func noteSessionExpiryRetryDispatched(for book: TPPBook) {
+        // Drop lapsed entries so a book that recovered on its retry does not
+        // keep one for the handler's lifetime.
+        let at = now()
+        sessionExpiryAttempts = sessionExpiryAttempts.filter {
+            at.timeIntervalSince($0.value) < Self.sessionExpiryEpisodeWindow
+        }
+        sessionExpiryAttempts[book.identifier] = at
     }
 
     // MARK: - No-active-loan auto-borrow
@@ -566,7 +600,10 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
     /// the re-auth flow keeps stale credentials around until a fresh
     /// login lands.
     @MainActor
-    private func reauthenticate(retryWithFreshAuthState book: TPPBook) {
+    private func reauthenticate(
+        retryWithFreshAuthState book: TPPBook,
+        onRetryDispatched: (@MainActor () -> Void)? = nil
+    ) {
         let userAccount = userAccountProvider()
         reauthenticator.authenticateIfNeeded(
             userAccount,
@@ -583,6 +620,7 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
                             return
                         }
                         Log.info(#file, "Re-auth completed, retrying download for \(book.identifier)")
+                        onRetryDispatched?()
                         strongSelf.delegate?.startDownload(for: book, withRequest: nil)
                     }
                 }

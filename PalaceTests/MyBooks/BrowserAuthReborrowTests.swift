@@ -485,6 +485,49 @@ final class BrowserAuthReborrowTests: XCTestCase {
                        "a declined refresh must not retry the download either")
     }
 
+    /// A declined sign-in does not become a borrow on the next attempt.
+    ///
+    /// The episode is recorded where the retry is dispatched, so a patron who
+    /// dismissed sign-in has no episode at all: their next failure takes the
+    /// session-expiry branch again rather than the re-borrow. Recording it when
+    /// the failure first arrived would have borrowed for them on this tap.
+    ///
+    /// The second pass is observed through the registry rather than the sign-in
+    /// sheet: `AuthCoordinator` keeps its own real-time failure cooldown, so a
+    /// declined refresh may answer the next request without presenting again.
+    func test_afterADeclinedSignIn_aSecondFailureIsStillASessionExpiry() throws {
+        let (coordinator, _, modal, _, _) = SpyAuthCoordinatorFactory.make(
+            mechanism: .saml, stubReauthResult: false, stubModalResult: false
+        )
+        userAccount._authDefinition = makeAuth(typeRaw: Self.samlType)
+        let stored = book(with: [deadLoanAcquisition()])
+        let fromCatalog = book(with: [catalogBorrowAcquisition()])
+
+        let handler = makeHandler(catalogEntryFetcher: { _ in fromCatalog },
+                                  authCoordinator: coordinator)
+        try driveNoActiveLoan(on: handler, book: stored)
+        awaitCondition(timeout: 10) { [registry] in
+            registry?.state(for: stored.identifier) == .SAMLStarted
+        }
+        XCTAssertEqual(modal.presentCallCount, 1, "the sign-in must have been offered and declined")
+
+        // Moved off the state the session-expiry branch writes, so the second
+        // pass returning to it is a positive signal that that branch ran and
+        // the re-borrow branch — which writes `.unregistered` — did not.
+        registry.setState(.downloadNeeded, for: stored.identifier)
+
+        // Well inside the window, so only the missing episode can keep this
+        // from being read as a lapsed loan.
+        clock.advance(by: 5)
+        try driveNoActiveLoan(on: handler, book: stored)
+        awaitCondition(timeout: 10) { [registry] in
+            registry?.state(for: stored.identifier) == .SAMLStarted
+        }
+
+        XCTAssertEqual(spyDelegate.borrowedBooks.count, 0,
+                       "a patron who dismissed sign-in must not have a borrow made on their next tap")
+    }
+
     // MARK: - The hold guard, on the browser path too
 
     /// An unavailable entry plus a hold response still raises the PP-4178 alert.
@@ -550,7 +593,7 @@ final class BrowserAuthReborrowTests: XCTestCase {
             spyDelegate.borrowedBooks.last?.defaultAcquisition?.hrefURL.absoluteString,
             Self.catalogBorrowHref
         )
-        XCTAssertNotEqual(userAccount.authState, .credentialsStale,
-                          "the barcode path does not mark credentials stale")
+        XCTAssertEqual(userAccount.authState, .loggedIn,
+                       "the barcode path does not mark credentials stale")
     }
 }
