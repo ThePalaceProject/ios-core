@@ -113,13 +113,17 @@ class PalaceTestCase: XCTestCase {
     /// `UserDefaults.standard` than it found, then put the old value back so one
     /// leak reddens its own test rather than every test after it.
     ///
-    /// The write usually comes from `AccountsManager._seedAccountForTesting` or
-    /// the `currentAccount` setter on a manager built without an explicit
-    /// defaults suite, which binds `.standard`. On a simulator that is the app's
-    /// own container: a seeded fixture uuid survives the run, the app resolves it
-    /// to no account, reports "No library", and every borrow fails 401. Build the
-    /// manager with `makeFreshAccountsManager(defaults: Self.testUserDefaults())`
-    /// and run the closure `_seedAccountForTesting` returns.
+    /// The write comes from `AccountsManager._seedAccountForTesting` or the
+    /// `currentAccount` setter on a manager bound to `.standard`. On a simulator
+    /// that is the app's own container: a seeded fixture uuid survives the run,
+    /// the app resolves it to no account, reports "No library", and every borrow
+    /// fails 401. Since PP-5411 `makeTestAppContainer()` builds its manager on an
+    /// isolated suite by default, so the remaining writers are the suites that
+    /// seed `AppContainer.production().accountsManager` on purpose; those undo
+    /// the write in `tearDown`, and this gate is what catches an undo that was
+    /// skipped. Otherwise build the manager with
+    /// `makeFreshAccountsManager(defaults: Self.testUserDefaults())` and run the
+    /// closure `_seedAccountForTesting` returns.
     ///
     /// `nonisolated`: called from the `nonisolated` `tearDownWithError` override.
     /// Touches only `nonisolated(unsafe)` `preSelectedLibrary`, `UserDefaults` and
