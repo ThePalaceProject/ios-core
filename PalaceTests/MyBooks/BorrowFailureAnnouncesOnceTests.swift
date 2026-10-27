@@ -68,23 +68,33 @@ final class BorrowFailureAnnouncesOnceTests: XCTestCase {
     override func tearDown() async throws {
         await drainMainQueueAsync()
 
-        // Wait out the alert's own present animation before dismissing it.
-        // `BorrowErrorAlert` presents animated, and UIKit's behaviour for a
-        // dismiss issued mid-presentation is undefined — commonly the dismiss
-        // is simply dropped, which would leave this teardown inert while still
-        // passing. A FIFO queue flush does not cover this: it returns in
-        // microseconds, well inside the animation.
-        await awaitConditionAsync(timeout: 3.0) {
-            Self.topMostController().map { !$0.isBeingPresented } ?? true
-        }
-
-        // Dismiss what landed on the shared hierarchy, then poll for it to be
-        // gone rather than awaiting a completion UIKit may never call — an
-        // unbounded continuation here would hang teardown instead of failing.
-        for _ in 0..<3 {
-            guard let top = Self.topMostController(), top is UIAlertController else { break }
-            top.presentingViewController?.dismiss(animated: false)
-            await awaitConditionAsync(timeout: 3.0) { Self.topMostController() !== top }
+        // A presentation attempt that finds the shared top mid-transition or
+        // already alerting schedules a retry at 0.4s, then 0.8s, then 1.6s
+        // (`TPPAlertUtils.retryPresentation`). So an alert can land on the
+        // shared hierarchy well after this teardown would otherwise have
+        // returned, and present itself during a sibling suite. Sampling once is
+        // not enough: when the first attempt has not landed yet there is
+        // nothing to see, and a single check passes while a retry is still
+        // pending.
+        //
+        // So drain across the whole retry window, dismissing whatever arrives.
+        // The sleep is this loop's poll interval under a deadline, the same
+        // shape `awaitConditionAsync` uses internally, not a wait standing in
+        // for synchronisation. `awaitConditionAsync` cannot serve here because
+        // it fails the test when its predicate never becomes true, and
+        // "no alert ever arrives" is the expected case.
+        let retryWindowEnd = Date().addingTimeInterval(3.0)
+        while Date() < retryWindowEnd {
+            if let top = Self.topMostController(), top is UIAlertController {
+                top.presentingViewController?.dismiss(animated: false)
+                // Poll rather than await a completion UIKit may never call. The
+                // predicate is "this one went away", so a second alert queued
+                // behind it is handled by the next turn of the loop.
+                await awaitConditionAsync(timeout: 3.0) { Self.topMostController() !== top }
+            } else {
+                try? await Task.sleep(nanoseconds: 50_000_000)
+                await Task.yield()
+            }
         }
 
         // Self-verifying, and deliberately here rather than in a test method:
@@ -127,7 +137,12 @@ final class BorrowFailureAnnouncesOnceTests: XCTestCase {
         let debugSettings = DebugSettings(defaults: scopedDefaults)
         debugSettings.simulatedBorrowError = .genericServerError
 
+        // A mock registry, so this suite reads no production object graph it
+        // does not need. The real alert and publish closures are the point of
+        // the suite and are unaffected: both are built from the instance, not
+        // from the registry.
         let downloadCenter = MyBooksDownloadCenter(
+            bookRegistry: TPPBookRegistryMock(),
             accessibilityAnnouncements: announcer,
             downloadAnnouncementService: DownloadAnnouncementService(announcer: announcer),
             debugSettings: debugSettings
@@ -162,5 +177,11 @@ final class BorrowFailureAnnouncesOnceTests: XCTestCase {
             "one borrow failure, one announcement — got \(recorder.all). The alert path posts "
             + "its own, so publishing through publishAndAnnounceError reads the failure twice."
         )
+
+        // Establish that an alert actually reached the shared hierarchy, rather
+        // than leaving teardown to infer it. Teardown's own check passes
+        // identically when nothing was ever presented, so on its own it cannot
+        // tell "dismissed it" from "there was nothing there".
+        await awaitConditionAsync(timeout: 5.0) { Self.topMostController() is UIAlertController }
     }
 }
