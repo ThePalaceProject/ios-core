@@ -639,14 +639,13 @@ extension BookCellModel {
         // network-bound action can't silently skip the offline pre-flight.
         // PP-5402: Listen on a loan with no license yet fetches it first, so it
         // needs the network and the spinner like Download.
-        let listenFetchesLicense = action == .listen && listenNeedsLicenseFirst
         switch action {
         case .download, .retry, .get, .reserve:
             if !reachability.isConnectedToNetwork() {
                 presentOfflineAlert()
                 return
             }
-        case .listen where listenFetchesLicense:
+        case .listen where listenNeedsLicenseFirst:
             if !reachability.isConnectedToNetwork() {
                 presentOfflineAlert()
                 return
@@ -671,7 +670,7 @@ extension BookCellModel {
         switch action {
         case .download, .retry, .get, .reserve, .remove, .returning, .cancel:
             isLoading = true
-        case .listen where listenFetchesLicense:
+        case .listen where listenNeedsLicenseFirst:
             isLoading = true
         case .read, .listen, .close, .sample, .audiobookSample,
              .cancelHold, .manageHold, .return, .readStreaming:
@@ -734,7 +733,7 @@ extension BookCellModel {
             }
         case .sample, .audiobookSample:
             didSelectSample()
-        case .listen where listenFetchesLicense:
+        case .listen where listenNeedsLicenseFirst:
             requestDownload(openingPlayerWhenReady: true)
         case .read, .listen, .readStreaming:
             // PP-4161: all three terminal "open the content" actions funnel

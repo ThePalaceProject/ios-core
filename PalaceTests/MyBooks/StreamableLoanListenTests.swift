@@ -213,6 +213,21 @@ final class StreamableLoanListenTests: XCTestCase {
         XCTAssertTrue(session.openedBooks.isEmpty)
     }
 
+    /// A book whose license is already on disk opens straight away; Listen does not fetch it again.
+    func testShelf_listenOnDownloadedStreamableBook_opensWithoutAFulfilment() async {
+        let book = lcpAudiobook()
+        let registry = TPPBookRegistryMock()
+        registry.addBook(book, state: .downloadSuccessful)
+        let session = HookRecordingSession(fireHook: false, result: .success(()))
+        var started = 0
+        let model = makeShelfModel(book: book, registry: registry, streaming: true, session: session) { _ in started += 1 }
+
+        model.callDelegate(for: .listen)
+        await awaitConditionAsync { session.openedBooks.count == 1 }
+
+        XCTAssertEqual(started, 0)
+    }
+
     /// Offline, Listen on a loan with no license shows the retryable alert and starts nothing.
     func testShelf_listenOnStreamableLoan_whenOffline_startsNothing() {
         let book = lcpAudiobook()
@@ -307,6 +322,21 @@ final class StreamableLoanListenTests: XCTestCase {
 
         XCTAssertEqual(session.openedBooks.first?.identifier, book.identifier)
         XCTAssertEqual(started.count, 1, "Opening does not start a second fulfilment")
+    }
+
+    /// A book whose license is already on disk opens straight away; Listen does not fetch it again.
+    func testDetail_listenOnDownloadedStreamableBook_opensWithoutAFulfilment() async {
+        let book = lcpAudiobook()
+        let registry = TPPBookRegistryMock()
+        registry.addBook(book, state: .downloadSuccessful)
+        let session = HookRecordingSession(fireHook: false, result: .success(()))
+        var started = 0
+        let model = makeDetailModel(book: book, registry: registry, streaming: true, session: session) { _ in started += 1 }
+
+        model.handleAction(for: .listen)
+        await awaitConditionAsync { session.openedBooks.count == 1 }
+
+        XCTAssertEqual(started, 0)
     }
 
     /// A failed fulfilment drops the request: Listen stops processing and a later success does not open.
