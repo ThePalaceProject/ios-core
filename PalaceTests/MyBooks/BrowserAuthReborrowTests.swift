@@ -149,6 +149,17 @@ final class BrowserAuthReborrowTests: XCTestCase {
         return try XCTUnwrap(TPPProblemDocument.fromProblemResponseData(data))
     }
 
+    /// Drives the handler's clock so the episode window has an exact boundary
+    /// to assert, rather than one that only wall-clock time could reach.
+    private let clock = TestClock()
+
+    final class TestClock: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _now = Date(timeIntervalSince1970: 1_700_000_000)
+        var now: Date { lock.withLock { _now } }
+        func advance(by seconds: TimeInterval) { lock.withLock { _now += seconds } }
+    }
+
     private func makeHandler(
         catalogEntryFetcher: CatalogEntryFetcher?,
         authCoordinator: AuthCoordinator? = nil
@@ -170,7 +181,8 @@ final class BrowserAuthReborrowTests: XCTestCase {
             alertPresenter: alertPresenter,
             userAccountProvider: { [unowned self] in self.userAccount },
             authCoordinator: authCoordinator,
-            catalogEntryFetcher: catalogEntryFetcher
+            catalogEntryFetcher: catalogEntryFetcher,
+            now: { [clock] in clock.now }
         )
         handler.delegate = spyDelegate
         return handler
@@ -371,6 +383,57 @@ final class BrowserAuthReborrowTests: XCTestCase {
 
         XCTAssertEqual(spyDelegate.borrowedBooks.count, 1,
                        "the episode was consumed, so the next failure re-authenticates rather than borrowing again")
+    }
+
+    /// A failure one second inside the window is the same episode.
+    func test_secondFailure_justInsideTheWindow_borrows() throws {
+        userAccount._authDefinition = makeAuth(typeRaw: Self.samlType)
+        let stored = book(with: [deadLoanAcquisition()])
+        let fromCatalog = book(with: [catalogBorrowAcquisition()])
+
+        let handler = makeHandler(catalogEntryFetcher: { _ in fromCatalog })
+        try driveNoActiveLoan(on: handler, book: stored)
+        awaitCondition(timeout: 10) { [spyDelegate] in
+            !(spyDelegate?.startedDownloads.isEmpty ?? true)
+        }
+
+        clock.advance(by: 119)
+        try driveNoActiveLoan(on: handler, book: stored)
+        awaitCondition(timeout: 10) { [spyDelegate] in
+            !(spyDelegate?.borrowedBooks.isEmpty ?? true)
+        }
+
+        XCTAssertEqual(
+            spyDelegate.borrowedBooks.last?.defaultAcquisition?.hrefURL.absoluteString,
+            Self.catalogBorrowHref
+        )
+    }
+
+    /// A failure at exactly the window length is a new episode.
+    ///
+    /// Pins the boundary itself: the window is elapsed-time strictly less than
+    /// its length, so the moment it is reached the next failure re-authenticates
+    /// rather than borrowing.
+    func test_secondFailure_exactlyAtTheWindow_isANewSessionExpiry() throws {
+        userAccount._authDefinition = makeAuth(typeRaw: Self.samlType)
+        let stored = book(with: [deadLoanAcquisition()])
+        let fromCatalog = book(with: [catalogBorrowAcquisition()])
+
+        let handler = makeHandler(catalogEntryFetcher: { _ in fromCatalog })
+        try driveNoActiveLoan(on: handler, book: stored)
+        awaitCondition(timeout: 10) { [spyDelegate] in
+            !(spyDelegate?.startedDownloads.isEmpty ?? true)
+        }
+        let downloadsAfterFirst = spyDelegate.startedDownloads.count
+
+        clock.advance(by: 120)
+        try driveNoActiveLoan(on: handler, book: stored)
+        awaitCondition(timeout: 10) { [spyDelegate] in
+            (spyDelegate?.startedDownloads.count ?? 0) > downloadsAfterFirst
+        }
+
+        XCTAssertEqual(spyDelegate.borrowedBooks.count, 0,
+                       "at the window's edge the episode is over, so this is a fresh session expiry")
     }
 
     // MARK: - The catalog read, on the second failure
