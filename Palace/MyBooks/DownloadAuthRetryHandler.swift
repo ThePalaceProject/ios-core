@@ -75,6 +75,11 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
     private let currentAccountHostsProvider: (@Sendable () -> Set<String>?)?
     private let catalogEntryFetcher: CatalogEntryFetcher?
 
+    /// Whether the no-active-loan retry can re-read a book's catalog entry
+    /// before borrowing. False leaves it retrying the stored book, which is the
+    /// dead-link path PP-5397 describes, so a test asserts production wires it.
+    var canReReadCatalogEntry: Bool { catalogEntryFetcher != nil }
+
     /// Retained handles for the reauth-dispatch Tasks, so
     /// `cancelAllInFlightTasks()` can drop them instead of letting them write
     /// into the registry after the owning context is gone. Tasks remove
@@ -413,13 +418,7 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
             guard let self else { return }
             let refreshed = await catalogEntryFetcher(book)
             if Task.isCancelled { return }
-            // `mergingPreservingMetadata` takes the incoming entry as
-            // authoritative for availability and acquisitions while keeping
-            // metadata the stored record may hold more of. That is the opposite
-            // authority from a catalog render, which must not touch a live
-            // loan's links (PP-5400) — here the loan is gone and the catalog is
-            // the only source of a usable one.
-            let toBorrow = refreshed.map { book.mergingPreservingMetadata(from: $0) } ?? book
+            let toBorrow = refreshed.map { Self.reborrowBook(stored: book, catalogEntry: $0) } ?? book
             if refreshed == nil {
                 // Offline, or a feed that errored. Retrying the stored book is
                 // no better than before this change, but it is no worse, and
@@ -430,6 +429,35 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
                 self?.startAutoBorrow(of: toBorrow, problemDoc: problemDoc, failureError: failureError)
             }
         }
+    }
+
+    /// Builds the book the no-active-loan retry borrows with: the catalog
+    /// entry's acquisition links, carried on the availability the patron was
+    /// acting on.
+    ///
+    /// Taking the entry's links is the point — the stored ones are scoped to the
+    /// loan that ended. Its availability must stay out, because
+    /// `BorrowReducerCore.responseState` reads the pre-borrow book's
+    /// availability to tell a deliberate Place Hold from a borrow the
+    /// circulation manager downgraded to a hold (PP-4178). The entry reads
+    /// `unavailable` whenever someone took the copy after the loan ended, and
+    /// that reading would pass as place-hold intent and silence the alert. The
+    /// patron reached this path from Download, so the loan-era availability is
+    /// the faithful record of what they acted on, and keeping it leaves the
+    /// discriminator deciding exactly what it decided before the re-read.
+    static func reborrowBook(stored: TPPBook, catalogEntry: TPPBook) -> TPPBook {
+        let merged = stored.mergingPreservingMetadata(from: catalogEntry)
+        guard let actedOn = stored.defaultAcquisition?.availability else { return merged }
+        merged.acquisitions = merged.acquisitions.map { acquisition in
+            TPPOPDSAcquisition(
+                relation: acquisition.relation,
+                type: acquisition.type,
+                hrefURL: acquisition.hrefURL,
+                indirectAcquisitions: acquisition.indirectAcquisitions,
+                availability: actedOn
+            )
+        }
+        return merged
     }
 
     private func startAutoBorrow(of book: TPPBook, problemDoc: TPPProblemDocument, failureError: Error?) {
