@@ -437,8 +437,14 @@ final class AudiobookPositionRestoreTests: XCTestCase {
     /// test). Keeps the SUT's `@MainActor` setUp wiring intact (this class
     /// can't inherit the nonisolated `PalaceWiringTestCase` seam) while
     /// satisfying the AccountsManager isolation lint.
+    ///
+    /// The defaults suite is isolated too. `seedCurrentAccount` and
+    /// `currentAccount = nil` below write `TPPCurrentAccountIdentifier`, and
+    /// against `.standard` that is the app's own container on the simulator this
+    /// runs on — the app would open afterwards with no library selected.
     private func makeIsolatedManager() -> AccountsManager {
-        makeTestAppContainer(bookRegistry: registryMock).accountsManager
+        makeTestAppContainer(bookRegistry: registryMock,
+                             defaults: Self.testUserDefaults()).accountsManager
     }
 
     private func makeAccount(uuid: String) -> Account {

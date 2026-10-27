@@ -41,6 +41,24 @@ final class UserDefaultsIsolationLintTests: XCTestCase {
         // The lint test itself references the string literally in
         // assertion bodies — that's a self-reference, not a violation.
         "MetaTests/UserDefaultsIsolationLintTests.swift",
+
+        // The selected-library gate and its self-test. Both must read and
+        // write `.standard` by definition: the gate exists because that suite
+        // is the app's own container on a simulator, and a gate pointed at an
+        // isolated suite would audit nothing.
+        "Support/PalaceTestCase.swift",
+        "Support/RuntimeQuiescenceAuditor.swift",
+        "MetaTests/SelectedLibraryGateTests.swift",
+
+        // Proves the factory's `defaults:` seam keeps the seed out of
+        // `.standard`, so it must name the suite it asserts absence from.
+        "Support/TestAppContainerFactoryTests.swift",
+
+        // The factory's isolated-defaults helper calls
+        // `UserDefaults.standard.removePersistentDomain(forName:)` to wipe each
+        // suite it hands out — the documented way to drop a whole suite, and the
+        // opposite of writing the app's own container (PP-5411).
+        "Support/TestAppContainerFactory.swift",
     ]
 
     /// PalaceTests directory root, resolved at runtime by walking up

@@ -11,7 +11,7 @@ import Combine
 @testable import Palace
 
 @MainActor
-final class AccountDetailViewModelTests: XCTestCase {
+final class AccountDetailViewModelTests: PalaceTestCase {
 
     private var cancellables: Set<AnyCancellable> = []
 
@@ -384,7 +384,7 @@ final class AccountDetailViewModelTests: XCTestCase {
 // - SAML: User appears logged out when credentials are stale (needs to re-auth via IDP)
 
 @MainActor
-final class AccountDetailCredentialStateTests: XCTestCase {
+final class AccountDetailCredentialStateTests: PalaceTestCase {
 
     private var userAccount: TPPUserAccountMock!
 
@@ -610,7 +610,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
 // MARK: - PIN Visibility Business Logic Tests
 
 @MainActor
-final class AccountDetailPINVisibilityTests: XCTestCase {
+final class AccountDetailPINVisibilityTests: PalaceTestCase {
 
     /// PP-5057. These tests used to guard on
     /// `accountsManager.currentAccountId` and bail when it was nil. The bail
@@ -1104,7 +1104,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
 // "Sign Out" action invokes the real sign-out flow.
 
 @MainActor
-final class AccountDetailSignOutConfirmationTests: XCTestCase {
+final class AccountDetailSignOutConfirmationTests: PalaceTestCase {
 
     /// PP-5057. These tests used to guard on
     /// `accountsManager.currentAccountId` and bail when it was nil. The bail
@@ -1220,7 +1220,7 @@ private final class SnapshotBox {
 ///     testable by injecting the credential snapshot instead of reading the
 ///     keychain.
 @MainActor
-final class AccountDetailViewModelSignedInDerivationTests: XCTestCase {
+final class AccountDetailViewModelSignedInDerivationTests: PalaceTestCase {
 
     private var cancellables: Set<AnyCancellable> = []
 

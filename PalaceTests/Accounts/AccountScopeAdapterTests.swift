@@ -21,6 +21,43 @@ import PalaceBookModel
 final class AccountScopeAdapterTests: PalaceWiringTestCase {
     // `cancellables` (and its teardown reset) are provided by PalaceWiringTestCase.
 
+    /// Undo closures from `_seedAccountForTesting`, run in reverse so the
+    /// earliest seed's previous value is the one finally restored.
+    ///
+    /// Single-threaded serial test lifecycle (test body + nonisolated
+    /// tearDownWithError run serially on one instance), so the unsafe opt-out is
+    /// race-free — mirrors `PalaceWiringTestCase.cancellables`.
+    nonisolated(unsafe) private var restoreSeededAccounts: [() -> Void] = []
+
+    override func tearDownWithError() throws {
+        for restore in restoreSeededAccounts.reversed() {
+            restore()
+        }
+        restoreSeededAccounts.removeAll()
+        try super.tearDownWithError()
+    }
+
+    /// A manager on its own `UserDefaults` suite, never `.standard`.
+    ///
+    /// `_seedAccountForTesting` writes `TPPCurrentAccountIdentifier`, and against
+    /// `.standard` that write lands in the app's own defaults on the simulator
+    /// this runs on. The app then launches with a current-account id that
+    /// resolves to no account, so it reports "No library" and every borrow fails
+    /// 401 — which is what a QA pass found on a shared simulator. The isolated
+    /// suite makes that unreachable rather than merely cleaned up.
+    private func makeIsolatedManager() -> AccountsManager {
+        makeFreshAccountsManager(defaults: Self.testUserDefaults())
+    }
+
+    /// Seed `account` as current and keep its restore closure for teardown.
+    ///
+    /// Discarding the closure left the seeded id in place for good; the isolated
+    /// suite contains the damage, and running the restore keeps the suite itself
+    /// clean between tests.
+    private func seedCurrent(_ account: Account, on manager: AccountsManager) {
+        restoreSeededAccounts.append(manager._seedAccountForTesting(account))
+    }
+
     private func makeAccount(uuid: String) -> Account {
         let pub = OPDS2Publication(
             links: [OPDS2Link(href: "https://example.com/catalog",
@@ -35,13 +72,13 @@ final class AccountScopeAdapterTests: PalaceWiringTestCase {
     /// manager's `currentAccount.uuid` — the exact value the facade captures
     /// synchronously at every mutation dispatch (PP-4129).
     func testCurrentAccountID_nilBeforeSelection_thenMirrorsSeededAccount() {
-        let manager = makeFreshAccountsManager()
+        let manager = makeIsolatedManager()
         let adapter = AccountsManagerAccountScopeAdapter(accountsManager: manager)
 
         XCTAssertNil(adapter.currentAccountID, "no account selected yet → nil")
 
         let uuid = "adapter-A-\(UUID().uuidString)"
-        _ = manager._seedAccountForTesting(makeAccount(uuid: uuid))
+        seedCurrent(makeAccount(uuid: uuid), on: manager)
 
         XCTAssertEqual(adapter.currentAccountID, uuid,
                        "adapter must mirror the manager's current-account uuid")
@@ -51,7 +88,7 @@ final class AccountScopeAdapterTests: PalaceWiringTestCase {
     /// the registry's account-change observer (empty-store invalidation + reload)
     /// subscribes to.
     func testAccountDidChangePublisher_firesOnCurrentAccountDidChangeNotification() {
-        let manager = makeFreshAccountsManager()
+        let manager = makeIsolatedManager()
         let adapter = AccountsManagerAccountScopeAdapter(accountsManager: manager)
 
         var fired = false
@@ -75,7 +112,7 @@ final class AccountScopeAdapterTests: PalaceWiringTestCase {
     /// the registry treats nil as "anonymous / no loans" and reverts to `.loaded`,
     /// the documented safe-revert divergence from the pre-inversion captured-object path.
     func testLoansURL_unknownAccount_returnsNil() async {
-        let manager = makeFreshAccountsManager()
+        let manager = makeIsolatedManager()
         let adapter = AccountsManagerAccountScopeAdapter(accountsManager: manager)
 
         let url = try? await adapter.loansURL(
@@ -101,10 +138,10 @@ final class AccountScopeAdapterTests: PalaceWiringTestCase {
     /// Kill case: revert the adapter to the unbounded `account.awaitReady()` and this
     /// test fails on XCTest's own timeout instead of the assertion — it cannot pass.
     func testLoansURL_accountWedgedAtDetailsLoading_throwsReadinessTimedOutWithinBound() async {
-        let manager = makeFreshAccountsManager()
+        let manager = makeIsolatedManager()
         let uuid = "adapter-wedged-\(UUID().uuidString)"
         let account = makeAccount(uuid: uuid)
-        _ = manager._seedAccountForTesting(account)
+        seedCurrent(account, on: manager)
         account._setState(.detailsLoading)   // wedged; no transition ever comes
 
         let adapter = AccountsManagerAccountScopeAdapter(accountsManager: manager)
@@ -134,7 +171,7 @@ final class AccountScopeAdapterTests: PalaceWiringTestCase {
     /// `BookRegistrySync.sync` skip the loans fetch (avoiding a guaranteed 401)
     /// during the unhydrated window (F-007 / PP-4164).
     func testHasCredentials_libraryWithNoStoredCredentials_isFalse() {
-        let manager = makeFreshAccountsManager()
+        let manager = makeIsolatedManager()
         let adapter = AccountsManagerAccountScopeAdapter(accountsManager: manager)
 
         XCTAssertFalse(adapter.hasCredentials(forAccount: "no-creds-\(UUID().uuidString)"),

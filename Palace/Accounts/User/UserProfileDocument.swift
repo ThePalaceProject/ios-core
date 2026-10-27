@@ -1,4 +1,5 @@
 import Foundation
+import PalaceNetwork
 
 @objcMembers public class UserProfileDocument: NSObject, Codable {
     static let parseErrorKey: String = "TPPParseProfileErrorKey"
@@ -116,12 +117,17 @@ import Foundation
         jsonDecoder.dateDecodingStrategy = .formatted(dateFormatter)
 
         do {
-            return try jsonDecoder.decode(UserProfileDocument.self, from: data)
+            return try jsonDecoder.decodeGuarded(UserProfileDocument.self, from: data)
         } catch let DecodingError.dataCorrupted(context) {
+            // Prefer the underlying parse error's text where there is one. The
+            // guarded decode's own description is a constant, so without this
+            // a screened-out document reports less than the decoder used to.
+            let description = (context.underlyingError as NSError?)?.localizedDescription
+                ?? context.debugDescription
             throw NSError(domain: NSCocoaErrorDomain,
                           code: NSCoderReadCorruptError,
                           userInfo: [parseErrorKey: TPPErrorCode.parseProfileDataCorrupted.rawValue,
-                                     parseErrorDescription: context.debugDescription,
+                                     parseErrorDescription: description,
                                      parseErrorCodingPath: context.codingPath])
         } catch let DecodingError.typeMismatch(_, context) {
             throw NSError(domain: NSCocoaErrorDomain,

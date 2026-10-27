@@ -378,7 +378,10 @@ extension OPDSFeedService {
             }
         }
 
-        // Try to create problem document
+        // Unguarded on purpose: these bytes are produced by the
+        // `JSONSerialization` call below, so the screen would be a re-parse of
+        // output that parser just wrote. A Swift String key cannot hold a lone
+        // surrogate, so no key here can reach the decoder's trap (PP-5412).
         guard let data = try? JSONSerialization.data(withJSONObject: stringDict),
               let problemDoc = try? JSONDecoder().decode(TPPProblemDocument.self, from: data) else {
             return nil

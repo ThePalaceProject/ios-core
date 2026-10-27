@@ -26,11 +26,13 @@ extension UserDefaults: @retroactive @unchecked Sendable {}
 ///  - Some tests want to model "fresh install" vs. "post-write" with two
 ///    disjoint stores in the same test body. Per-call isolation makes
 ///    that trivial.
-///  - The resetter dedupes registrations under the same name in
-///    `SingletonResetRegistry`, so a single test that calls
-///    `testUserDefaults()` 100 times does NOT register 100 resetters —
-///    only the most recent suite name is held by the closure, and the
-///    closure resets every suite the test owns when it runs.
+///  - One resetter is registered per call, because the resetter's name embeds
+///    the per-call suite name. `SingletonResetRegistry` dedupes by name and
+///    never drops entries, and every test boundary drives all of them, so a
+///    caller that needs many suites per test pays for them at every later
+///    boundary. That is fine for a helper a test invokes by hand; the
+///    `makeTestAppContainer` default needs a store on every call and so shares
+///    one resetter instead (PP-5411).
 ///
 /// Why we do NOT touch `.standard`:
 ///  - The helper exists to stop tests from polluting one another via

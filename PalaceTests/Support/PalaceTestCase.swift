@@ -27,9 +27,29 @@ class PalaceTestCase: XCTestCase {
     /// nonisolated hooks without sending `self` across an actor boundary.
     nonisolated(unsafe) private var preObserverCount: Int?
 
+    /// `UserDefaults.standard`'s `TPPCurrentAccountIdentifier` as it stood before
+    /// the test ran, with `.none` meaning the key was absent.
+    ///
+    /// On a simulator `.standard` is the Palace app's own container, so a test
+    /// that leaves this key changed decides which library the app opens next for
+    /// whoever drives that device. Same single-threaded lifecycle as
+    /// `preObserverCount`, so the unsafe opt-out is race-free.
+    nonisolated(unsafe) private var preSelectedLibrary: Any?
+
+    /// Whether `setUpWithError` captured a baseline for `preSelectedLibrary`.
+    ///
+    /// Tracked separately from the value, because the value's own absence is
+    /// meaningful (the key was unset) and must not read as "not sampled". A
+    /// missing baseline fails the gate instead of skipping it: a check that
+    /// cannot fail reports a pass. Same single-threaded lifecycle as
+    /// `preObserverCount`.
+    nonisolated(unsafe) private var didSampleSelectedLibrary = false
+
     override func setUpWithError() throws {
         try super.setUpWithError()
         preObserverCount = PalaceSingletonResetObserver.sampleObserverCount()
+        preSelectedLibrary = RuntimeQuiescenceAuditor.captureSelectedLibrary()
+        didSampleSelectedLibrary = true
     }
 
     override func tearDownWithError() throws {
@@ -41,6 +61,7 @@ class PalaceTestCase: XCTestCase {
         // check ran before the restore. Verified by the WS-0 ordering proof.
         try super.tearDownWithError()
         assertRuntimeQuiescent()
+        assertSelectedLibraryUnchanged()
         warnOnObserverLeak()
         // Class-4 (accumulation pool-starvation) HARD gate — OPT-IN. Runs only
         // for classes that override `enforcesPoolResponsiveness` to `true`
@@ -85,6 +106,66 @@ class PalaceTestCase: XCTestCase {
         for violation in RuntimeQuiescenceAuditor.observerLeakViolations(netObserverAdds: post - pre) {
             NSLog("[WS0-OBSERVER-DIAG] %@ left net observer adds (%d→%d) [%@] — see PalaceTestCase.warnOnObserverLeak (warn-only pending FP audit).",
                   self.name, pre, post, violation.invariant)
+        }
+    }
+
+    /// Fail the current test if it left a different library selected in
+    /// `UserDefaults.standard` than it found, then put the old value back so one
+    /// leak reddens its own test rather than every test after it.
+    ///
+    /// The write comes from `AccountsManager._seedAccountForTesting` or the
+    /// `currentAccount` setter on a manager bound to `.standard`. On a simulator
+    /// that is the app's own container: a seeded fixture uuid survives the run,
+    /// the app resolves it to no account, reports "No library", and every borrow
+    /// fails 401. Since PP-5411 `makeTestAppContainer()` builds its manager on an
+    /// isolated suite by default, so the remaining writers are the suites that
+    /// seed `AppContainer.production().accountsManager` on purpose; those undo
+    /// the write in `tearDown`, and this gate is what catches an undo that was
+    /// skipped. Otherwise build the manager with
+    /// `makeFreshAccountsManager(defaults: Self.testUserDefaults())` and run the
+    /// closure `_seedAccountForTesting` returns.
+    ///
+    /// `nonisolated`: called from the `nonisolated` `tearDownWithError` override.
+    /// Touches only `nonisolated(unsafe)` `preSelectedLibrary`, `UserDefaults` and
+    /// `XCTFail` — no `@MainActor` state, so `self` is never sent.
+    private nonisolated func assertSelectedLibraryUnchanged(
+        file: StaticString = #file,
+        line: UInt = #line
+    ) {
+        guard didSampleSelectedLibrary else {
+            XCTFail(
+                """
+                Selected-library gate did not run: no baseline was captured, so \
+                this test's effect on UserDefaults.standard is unknown. A \
+                PalaceTestCase subclass that overrides setUpWithError must call \
+                super.setUpWithError() first.
+                """,
+                file: file,
+                line: line
+            )
+            return
+        }
+        didSampleSelectedLibrary = false
+        let before = preSelectedLibrary
+        preSelectedLibrary = nil
+
+        let violations = RuntimeQuiescenceAuditor.selectedLibraryViolations(
+            before: before,
+            after: RuntimeQuiescenceAuditor.captureSelectedLibrary()
+        )
+        guard violations.isEmpty == false else { return }
+
+        // Put the old value back BEFORE failing, so one leak reddens its own
+        // test rather than every test after it.
+        if let before {
+            UserDefaults.standard.set(before, forKey: currentAccountIdentifierKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: currentAccountIdentifierKey)
+        }
+        for violation in violations {
+            XCTFail("Selected-library gate [\(violation.invariant)]: \(violation.detail)",
+                    file: file,
+                    line: line)
         }
     }
 
