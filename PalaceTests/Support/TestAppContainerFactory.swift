@@ -21,7 +21,7 @@ import PalaceNetwork
 import PalaceBookModel
 import PalaceBookRegistry
 
-/// Suite names handed out by `isolatedTestUserDefaults()` that have not been
+/// Suite names handed out by `TestContainerDefaults.make()` that have not been
 /// purged yet, drained by a single resetter.
 ///
 /// One registry entry, not one per call. `SingletonResetRegistry` never drops
@@ -77,36 +77,47 @@ private final class IsolatedDefaultsSuites: @unchecked Sendable {
   }
 }
 
-/// A fresh `UserDefaults` suite for one `makeTestAppContainer()` call, wiped at
-/// the test boundary.
+/// Test-only namespace for the isolated `UserDefaults` suites the factory hands
+/// out.
 ///
-/// This is the factory's `defaults:` default, and a default argument expression
-/// is evaluated at each call site, so every container gets its own store. Kept
-/// separate from `XCTestCase.testUserDefaults()`, which registers one resetter
-/// per call: that is fine for a helper a test calls by hand a few times, but the
-/// factory is reached from hundreds of call sites on every run.
-func isolatedTestUserDefaults() -> UserDefaults {
-  let suiteName = "test-container-\(UUID().uuidString)"
-  guard let defaults = UserDefaults(suiteName: suiteName) else {
-    // Falling back to `.standard` would write the app's own container, which is
-    // the leak this default exists to close, so fall back to another isolated
-    // suite and let the caller's assertions speak for themselves.
-    return UserDefaults(suiteName: "test-container-fallback-\(UUID().uuidString)") ?? .standard
+/// Grouped rather than left as bundle-global functions: `purgeForTesting()` drops
+/// live stores, and a free function with that effect is reachable from every
+/// suite in the bundle, where an accidental call would wipe another test's
+/// defaults mid-run.
+enum TestContainerDefaults {
+
+  /// A fresh suite for one `makeTestAppContainer()` call, wiped at the test
+  /// boundary.
+  ///
+  /// This is the factory's `defaults:` default, and a default argument
+  /// expression is evaluated at each call site, so every container gets its own
+  /// store. Kept separate from `XCTestCase.testUserDefaults()`, which registers
+  /// one resetter per call: that is fine for a helper a test calls by hand a few
+  /// times, but the factory is reached from hundreds of call sites on every run.
+  static func make() -> UserDefaults {
+    let suiteName = "test-container-\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+      // Falling back to `.standard` would write the app's own container, which
+      // is the leak this default exists to close, so fall back to another
+      // isolated suite and let the caller's assertions speak for themselves.
+      return UserDefaults(suiteName: "test-container-fallback-\(UUID().uuidString)") ?? .standard
+    }
+    IsolatedDefaultsSuites.shared.track(suiteName)
+    return defaults
   }
-  IsolatedDefaultsSuites.shared.track(suiteName)
-  return defaults
-}
 
-/// Test-only read of the pending-purge count, for the factory's own suite.
-func isolatedTestUserDefaultsPendingPurgeCount() -> Int {
-  IsolatedDefaultsSuites.shared.pendingCount
-}
+  /// Suites awaiting a purge, so the factory's own suite can assert that one
+  /// resetter covers many containers.
+  static var pendingPurgeCount: Int {
+    IsolatedDefaultsSuites.shared.pendingCount
+  }
 
-/// Test-only: run the purge the registered resetter runs. The factory's own suite
-/// drives this rather than `SingletonResetRegistry.invokeAll()`, which would also
-/// fire every bootstrap resetter mid-test and leave the host part-reset.
-func isolatedTestUserDefaultsPurgeForTesting() {
-  IsolatedDefaultsSuites.resetShared()
+  /// Run the purge the registered resetter runs. The factory's own suite drives
+  /// this rather than `SingletonResetRegistry.invokeAll()`, which would also
+  /// fire every bootstrap resetter mid-test and leave the host part-reset.
+  static func purgeForTesting() {
+    IsolatedDefaultsSuites.resetShared()
+  }
 }
 
 /// Build a fresh `AppContainer` whose service graph is hand-threaded just
@@ -152,7 +163,7 @@ func makeTestAppContainer(
   accountsManager: AccountsManager? = nil,
   bookRegistry: TPPBookRegistryProvider? = nil,
   networkExecutor: TPPNetworkExecutor? = nil,
-  defaults: UserDefaults = isolatedTestUserDefaults()
+  defaults: UserDefaults = TestContainerDefaults.make()
 ) -> AppContainer {
   // Pin the opt-out flag BEFORE constructing AccountsManager so its init
   // skips the background `loadCatalogs` Task. This mirrors the bootstrap

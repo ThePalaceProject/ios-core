@@ -209,7 +209,7 @@ final class TestAppContainerFactoryTests: PalaceTestCase {
   /// a run builds — and the factory is reached from hundreds of call sites.
   func testMakeTestAppContainer_defaultDefaults_shareOneResetter() {
     let before = Set(SingletonResetRegistry.shared.registeredNames())
-    let pendingBefore = isolatedTestUserDefaultsPendingPurgeCount()
+    let pendingBefore = TestContainerDefaults.pendingPurgeCount
 
     let first = makeTestAppContainer().accountsManager
     let second = makeTestAppContainer().accountsManager
@@ -223,7 +223,7 @@ final class TestAppContainerFactoryTests: PalaceTestCase {
     let added = Set(SingletonResetRegistry.shared.registeredNames()).subtracting(before)
     XCTAssertTrue(added.isSubset(of: ["isolatedTestUserDefaults"]),
                   "three containers must add at most the one shared resetter, not one each. Added: \(added)")
-    XCTAssertEqual(isolatedTestUserDefaultsPendingPurgeCount() - pendingBefore, 3,
+    XCTAssertEqual(TestContainerDefaults.pendingPurgeCount - pendingBefore, 3,
                    "and that one resetter must have all three suites to purge")
   }
 
@@ -231,15 +231,15 @@ final class TestAppContainerFactoryTests: PalaceTestCase {
   /// default would trade a leak into the app's own container for an unbounded pile
   /// of test suites on disk. Drives the factory's default-argument helper directly,
   /// since that is what every call site evaluates.
-  func testIsolatedTestUserDefaults_areWipedByTheSharedResetter() {
-    let suite = isolatedTestUserDefaults()
+  func testTestContainerDefaults_areWipedByTheSharedResetter() {
+    let suite = TestContainerDefaults.make()
     suite.set("present", forKey: "purge-probe")
     XCTAssertEqual(suite.string(forKey: "purge-probe"), "present",
                    "precondition: the value is in the isolated suite")
 
     XCTAssertTrue(SingletonResetRegistry.shared.registeredNames().contains("isolatedTestUserDefaults"),
                   "the purge must be wired to the reset registry, or nothing ever calls it")
-    isolatedTestUserDefaultsPurgeForTesting()
+    TestContainerDefaults.purgeForTesting()
 
     XCTAssertNil(suite.string(forKey: "purge-probe"),
                  "the purge must drop the suite's persistent domain")
