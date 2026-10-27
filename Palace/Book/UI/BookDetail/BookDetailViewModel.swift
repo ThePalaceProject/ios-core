@@ -144,6 +144,13 @@ final class BookDetailViewModel: ObservableObject {
     private let authGateOverride: ((@escaping () -> Void) -> Void)?
     private var cancellables = Set<AnyCancellable>()
 
+    /// PP-5402: set by a Listen tap on a loan whose license is not on disk yet.
+    /// The registry sink opens the player once the fulfilment makes it playable.
+    var pendingListen: StreamableLoanListen.Phase?
+
+    /// Starts a fulfilment. Tests replace it to observe the start without running one.
+    var downloadStarter: (TPPBook) -> Void
+
     /// Retained spelling of `BookMetadataFetcher` so existing call sites and
     /// tests that name the view model's typealias keep compiling.
     typealias BookMetadataHydrator = BookMetadataFetcher
@@ -210,6 +217,7 @@ final class BookDetailViewModel: ObservableObject {
         // AppContainer session.
         self.injectedAudiobookSession = audiobookSession
         self.authGateOverride = authGateOverride
+        self.downloadStarter = { [downloadCenter] book in downloadCenter.startDownload(for: book, withRequest: nil) }
         // Default fetchers capture the injected services instead of reading
         // .shared singletons. Tests pass custom ones to short-circuit the
         // network and the Obj-C feed bridge.
@@ -297,6 +305,8 @@ final class BookDetailViewModel: ObservableObject {
                 var snapshot = self.snapshotBorrowState()
                 _ = BorrowReducer.reduce(&snapshot, .registryStateChanged(registryState))
                 self.applyBorrowState(snapshot)
+
+                self.advancePendingListen(on: registryState)
             }
             .store(in: &cancellables)
     }
@@ -654,25 +664,17 @@ final class BookDetailViewModel: ObservableObject {
             didSelectDownload(for: book)
         // Don't remove processing here - will be removed when state changes to .downloading or .downloadFailed
 
+        case .listen where listenNeedsLicenseFirst:
+            // PP-5402: fetch the license with the Download fulfilment, then open.
+            self.downloadProgress = 0
+            runAuthGate { [weak self] in
+                guard let self else { return }
+                self.pendingListen = .requested
+                self.startDownloadAfterAuth(book: self.book)
+            }
+
         case .read, .listen:
-            // PP-4633: dismiss the half-sheet so it does not linger over the
-            // reader/player (on iPad it is a floating form-sheet). Dismiss only
-            // AFTER the reader/player is presented: dismissing while the player
-            // is presenting races the two modal transitions on iPad and freezes
-            // the screen.
-            //
-            // Audiobooks dismiss early via `onLoadingShellPresented`, because the
-            // open completion waits for the content download (PP-4542). The
-            // completion dismissal stays as an idempotent backstop for EPUB and
-            // for opens that fail before a shell is shown.
-            didSelectRead(for: book, completion: {
-                self.removeProcessingButton(button)
-                self.showHalfSheet = false
-            }, onLoadingShellPresented: { [weak self] in
-                // Defer one runloop tick so the player's present commits first;
-                // same-tick dismissal is the PP-4633 iPad modal race.
-                DispatchQueue.main.async { self?.showHalfSheet = false }
-            })
+            openForReading(button)
 
         case .readStreaming:
             // PP-4161: streaming-HTML titles don't go through ensureAuthAndExecute
@@ -803,7 +805,7 @@ final class BookDetailViewModel: ObservableObject {
     private func startDownloadAfterAuth(book: TPPBook) {
         bookState = .downloading
         showHalfSheet = true
-        downloadCenter.startDownload(for: book, withRequest: nil)
+        downloadStarter(book)
     }
 
     func didSelectReserve(for book: TPPBook, completion: (() -> Void)? = nil) {
@@ -878,45 +880,6 @@ final class BookDetailViewModel: ObservableObject {
                 #endif
                 self.openBook(book, completion: completion, onLoadingShellPresented: onLoadingShellPresented)
             }
-        }
-    }
-
-    @MainActor
-    func openBook(_ book: TPPBook, completion: (() -> Void)?, onLoadingShellPresented: (@MainActor () -> Void)? = nil) {
-        Log.debug(#file, "🎬 [OPEN BOOK] User requested to open book: \(book.title) (ID: \(book.identifier))")
-        TPPCirculationAnalytics.postEvent("open_book", withBook: book)
-
-        let resolvedBook = registry.book(forIdentifier: book.identifier) ?? book
-        let destination = BookOpenRouter.destination(for: resolvedBook)
-
-        Log.debug(#file, "  Routing \(TPPBookContentTypeConverter.stringValue(of: resolvedBook.defaultBookContentType)) to \(destination); distributor: \(resolvedBook.distributor ?? "nil")")
-
-        // Every arm below clears `processingButtons` — a button left spinning is
-        // a stuck screen. `.unsupported` deliberately does NOT report
-        // completion: it ends in an alert, not in a reader.
-        let finishOnMain: () -> Void = { [weak self] in
-            DispatchQueue.main.async {
-                self?.processingButtons.removeAll()
-                completion?()
-            }
-        }
-
-        switch destination {
-        case .epubReader, .pdfReader:
-            BookOpenRouter.open(resolvedBook, bookRegistry: registry, onFinish: finishOnMain)
-        case .audiobookSession:
-            openAudiobook(resolvedBook, completion: finishOnMain, onLoadingShellPresented: onLoadingShellPresented)
-        case .streamingReader:
-            // PP-4161: `handleAction(.readStreaming)` is the canonical entry
-            // point; this arm covers the rare path where another call site
-            // funnels a streamingHTML book through `openBook` (a
-            // coordinator-level resume, say).
-            BookOpenRouter.presentStreamingReader(resolvedBook)
-            processingButtons.removeAll()
-            completion?()
-        case .unsupported:
-            processingButtons.removeAll()
-            presentUnsupportedItemError()
         }
     }
 
@@ -1072,7 +1035,7 @@ final class BookDetailViewModel: ObservableObject {
         TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
     }
 
-    private func presentUnsupportedItemError() {
+    func presentUnsupportedItemError() {
         Log.error(#file, "⚠️ [UNSUPPORTED ITEM] Presenting unsupported item error")
         Log.error(#file, "  Book: \(book.title) (ID: \(book.identifier))")
         Log.error(#file, "  Distributor: \(book.distributor ?? "nil")")
@@ -1223,7 +1186,7 @@ extension BookDetailViewModel {
 // MARK: – BookButtonProvider
 extension BookDetailViewModel: BookButtonProvider {
     var buttonTypes: [BookButtonType] {
-        buttonState.buttonTypes(book: book)
+        buttonState.buttonTypes(book: book, lcpStreamingEnabled: downloadCenter.lcpStreamingEnabledProvider())
     }
 }
 

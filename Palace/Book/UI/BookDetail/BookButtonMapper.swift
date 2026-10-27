@@ -38,14 +38,15 @@ struct BookButtonMapper {
         case .SAMLStarted:
             // SAML authentication is part of the download flow — auth completes,
             // then download begins. UI should render "in progress" so the cell
-            // doesn't oscillate between Get/Requesting/Downloading. Matches the
-            // parallel mapping in `BookButtonState.init?(_:bookRegistry:)`.
+            // doesn't oscillate between Get/Requesting/Downloading.
             return .downloadInProgress
         case .downloadFailed:
             return .downloadFailed
         case .downloadSuccessful:
             return .downloadSuccessful
         case .downloadNeeded:
+            // A streamable LCP audiobook still maps here; `buttonTypes` offers
+            // Listen for it (PP-5402).
             return .downloadNeeded
         case .used:
             return .used

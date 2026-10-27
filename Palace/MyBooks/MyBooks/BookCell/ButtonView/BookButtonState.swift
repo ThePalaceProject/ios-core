@@ -31,7 +31,9 @@ enum BookButtonState: Equatable, CaseIterable {
 }
 
 extension BookButtonState {
-    func buttonTypes(book: TPPBook, previewEnabled: Bool = true) -> [BookButtonType] {
+    /// - parameter lcpStreamingEnabled: PP-5402: with streaming on, a loan whose
+    ///   audiobook can stream offers Listen before its license is fetched.
+    func buttonTypes(book: TPPBook, previewEnabled: Bool = true, lcpStreamingEnabled: Bool = false) -> [BookButtonType] {
         var buttons = [BookButtonType]()
 
         switch self {
@@ -79,11 +81,13 @@ extension BookButtonState {
             case .streamingHTML:
                 buttons = [.readStreaming, .return]
             case .epub, .pdf, .audiobook, .unsupported:
+                let primary: BookButtonType = StreamableLoanListen.offersListen(book: book, streamingEnabled: lcpStreamingEnabled)
+                    ? .listen : .download
                 if let authDef = AppContainer.production().accountsManager.currentUserAccount.authDefinition,
                    authDef.needsAuth || book.defaultAcquisitionIfOpenAccess != nil {
-                    buttons = [.download, .return]
+                    buttons = [primary, .return]
                 } else {
-                    buttons = [.download, .remove]
+                    buttons = [primary, .remove]
                 }
             }
         case .downloadSuccessful, .used:
@@ -145,45 +149,6 @@ extension BookButtonState {
         })
 
         return isReady
-    }
-}
-
-extension BookButtonState {
-    init?(_ book: TPPBook, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry) {
-        let bookState = bookRegistry.state(for: book.identifier)
-        switch bookState {
-        case .unregistered, .holding:
-            guard let buttonState = Self.stateForAvailability(book.defaultAcquisition?.availability) else {
-                TPPErrorLogger.logError(withCode: .noURL, summary: "Unable to determine BookButtonsViewState because no Availability was provided")
-                return nil
-            }
-
-            self = buttonState
-        case .downloadNeeded:
-            #if LCP
-            if LCPAudiobooks.canOpenBook(book) {
-                self = .downloadSuccessful
-            } else {
-                self = .downloadNeeded
-            }
-            #else
-            self = .downloadNeeded
-            #endif
-        case .downloadSuccessful:
-            self = .downloadSuccessful
-        case .SAMLStarted, .downloading:
-            // SAML started is part of download process, in this step app does authenticate user but didn't begin file downloading yet
-            // The cell should present progress bar and "Requesting" description on its side
-            self = .downloadInProgress
-        case .downloadFailed:
-            self = .downloadFailed
-        case .used:
-            self = .used
-        case .unsupported:
-            self = .unsupported
-        case .returning:
-            self = .returning
-        }
     }
 }
 
