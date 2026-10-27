@@ -255,6 +255,9 @@ def _run_gate(repo: Path, tmp_path: Path, log: str, rc: int = 0,
         "FAKE_SIMCTL_DEVICES": str(default_devices),
     })
     env.pop("PRE_PUSH_TESTS_ALLOW_TIMEOUT", None)
+    # These tests run inside a real push, where a pre-push hook may already
+    # have reserved a simulator; that choice must not reach the gate under test.
+    env.pop("PRE_PUSH_TESTS_SIM_ID", None)
     env.update(extra_env or {})
     head = _git(repo, "rev-parse", "HEAD").strip()
     refs = f"refs/heads/main {head} refs/heads/main {'0' * 40}\n"
@@ -733,3 +736,23 @@ def test_no_simulator_at_all_refuses_instead_of_guessing(tmp_path):
     assert "simctl create" in result.stderr
     assert not (tmp_path / "xcodebuild-args").exists(), (
         "it must refuse before running xcodebuild, not after")
+
+
+def test_a_simulator_named_by_the_caller_wins_over_a_booted_one(tmp_path):
+    """Two pushes that both take "the booted sim" share one test host and kill
+    each other's run, so a caller that has reserved a simulator can name it."""
+    repo = _gate_repo(tmp_path)
+    _commit(repo, "Palace/Widget.swift", _swift(4))
+    listing = """\
+== Devices ==
+-- iOS 26.2 --
+    iPhone 16 Pro (AAAAAAAA-1111-1111-1111-111111111111) (Booted)
+    iPhone 17 Pro (BBBBBBBB-2222-2222-2222-222222222222) (Shutdown)
+"""
+    env = _with_devices(tmp_path, listing)
+    env["PRE_PUSH_TESTS_SIM_ID"] = "BBBBBBBB-2222-2222-2222-222222222222"
+
+    result = _run_gate(repo, tmp_path, "two-classes-passed.log", extra_env=env)
+
+    assert result.returncode == 0, result.stderr
+    assert _dest(tmp_path) == ["id=BBBBBBBB-2222-2222-2222-222222222222"]
