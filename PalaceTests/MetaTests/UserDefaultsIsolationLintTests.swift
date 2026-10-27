@@ -53,6 +53,12 @@ final class UserDefaultsIsolationLintTests: XCTestCase {
         // Proves the factory's `defaults:` seam keeps the seed out of
         // `.standard`, so it must name the suite it asserts absence from.
         "Support/TestAppContainerFactoryTests.swift",
+
+        // The factory's isolated-defaults helper calls
+        // `UserDefaults.standard.removePersistentDomain(forName:)` to wipe each
+        // suite it hands out — the documented way to drop a whole suite, and the
+        // opposite of writing the app's own container (PP-5411).
+        "Support/TestAppContainerFactory.swift",
     ]
 
     /// PalaceTests directory root, resolved at runtime by walking up

@@ -140,6 +140,111 @@ final class TestAppContainerFactoryTests: PalaceTestCase {
                    "the seed must not reach UserDefaults.standard")
   }
 
+  /// The decisive test for PP-5411: a caller that passes NO `defaults:` must
+  /// still keep the seed out of `UserDefaults.standard`. Isolation used to be
+  /// opt-in, and 247 call sites took the `.standard` default, so a fixture uuid
+  /// that outlived its test decided which library the app opened next on that
+  /// simulator. Restore the `.standard` default and this test fails.
+  func testMakeTestAppContainer_defaultDefaults_keepSeedOutOfStandard() {
+    let manager = makeTestAppContainer().accountsManager
+    defer { manager.cancelBackgroundWork() }
+    let standardBefore = UserDefaults.standard.string(forKey: currentAccountIdentifierKey)
+    let uuid = "factory-default-\(UUID().uuidString)"
+
+    let restore = manager._seedAccountForTesting(stubAccount(uuid: uuid))
+    defer { restore() }
+
+    XCTAssertEqual(manager.currentAccountId, uuid,
+                   "the seed must still reach the manager the factory built")
+    XCTAssertEqual(UserDefaults.standard.string(forKey: currentAccountIdentifierKey), standardBefore,
+                   "a container built without an explicit defaults suite must not write the app's own container")
+  }
+
+  /// The default is a per-call expression, not one shared suite. Two containers
+  /// that shared a store would let one test read the library another seeded,
+  /// which is the cross-test pollution the factory exists to prevent.
+  func testMakeTestAppContainer_defaultDefaults_areDistinctPerCall() {
+    let first = makeTestAppContainer().accountsManager
+    let second = makeTestAppContainer().accountsManager
+    defer { first.cancelBackgroundWork(); second.cancelBackgroundWork() }
+
+    let restore = first._seedAccountForTesting(stubAccount(uuid: "distinct-\(UUID().uuidString)"))
+    defer { restore() }
+
+    XCTAssertNotNil(first.currentAccountId, "the seed must land in the first container's store")
+    XCTAssertNil(second.currentAccountId,
+                 "a second container must not see the first one's selected library")
+  }
+
+  /// The device's own selected library must not reach a test container. Writing
+  /// the key into `.standard` and then building a container with the default
+  /// store pins that: under the old `.standard` default the manager read the
+  /// device's uuid, which is what made `seedAccountIfNeeded` take its "use the
+  /// existing library" branch on some simulators and the fixture branch on
+  /// others. Isolated, that helper always seeds a fixture.
+  func testMakeTestAppContainer_defaultDefaults_ignoreTheDeviceSelectedLibrary() {
+    let original = UserDefaults.standard.object(forKey: currentAccountIdentifierKey)
+    defer {
+      if let original {
+        UserDefaults.standard.set(original, forKey: currentAccountIdentifierKey)
+      } else {
+        UserDefaults.standard.removeObject(forKey: currentAccountIdentifierKey)
+      }
+    }
+    let deviceLibrary = "device-library-\(UUID().uuidString)"
+    UserDefaults.standard.set(deviceLibrary, forKey: currentAccountIdentifierKey)
+
+    let manager = makeTestAppContainer().accountsManager
+    defer { manager.cancelBackgroundWork() }
+
+    XCTAssertNil(manager.currentAccountId,
+                 "a test container must not inherit the library the device has selected")
+    XCTAssertNil(manager.currentAccount,
+                 "so seedAccountIfNeeded takes its fixture branch whatever the device holds")
+  }
+
+  /// Isolating the default cannot cost one resetter per container. The reset
+  /// registry never drops entries and every test boundary drives all of them, so
+  /// a resetter per call would make cleanup quadratic in the number of containers
+  /// a run builds — and the factory is reached from hundreds of call sites.
+  func testMakeTestAppContainer_defaultDefaults_shareOneResetter() {
+    let before = Set(SingletonResetRegistry.shared.registeredNames())
+    let pendingBefore = isolatedTestUserDefaultsPendingPurgeCount()
+
+    let first = makeTestAppContainer().accountsManager
+    let second = makeTestAppContainer().accountsManager
+    let third = makeTestAppContainer().accountsManager
+    defer {
+      first.cancelBackgroundWork()
+      second.cancelBackgroundWork()
+      third.cancelBackgroundWork()
+    }
+
+    let added = Set(SingletonResetRegistry.shared.registeredNames()).subtracting(before)
+    XCTAssertTrue(added.isSubset(of: ["isolatedTestUserDefaults"]),
+                  "three containers must add at most the one shared resetter, not one each. Added: \(added)")
+    XCTAssertEqual(isolatedTestUserDefaultsPendingPurgeCount() - pendingBefore, 3,
+                   "and that one resetter must have all three suites to purge")
+  }
+
+  /// The shared resetter must actually wipe the suites it tracks, or isolating the
+  /// default would trade a leak into the app's own container for an unbounded pile
+  /// of test suites on disk. Drives the factory's default-argument helper directly,
+  /// since that is what every call site evaluates.
+  func testIsolatedTestUserDefaults_areWipedByTheSharedResetter() {
+    let suite = isolatedTestUserDefaults()
+    suite.set("present", forKey: "purge-probe")
+    XCTAssertEqual(suite.string(forKey: "purge-probe"), "present",
+                   "precondition: the value is in the isolated suite")
+
+    XCTAssertTrue(SingletonResetRegistry.shared.registeredNames().contains("isolatedTestUserDefaults"),
+                  "the purge must be wired to the reset registry, or nothing ever calls it")
+    isolatedTestUserDefaultsPurgeForTesting()
+
+    XCTAssertNil(suite.string(forKey: "purge-probe"),
+                 "the purge must drop the suite's persistent domain")
+  }
+
   private func stubAccount(uuid: String) -> Account {
     let publication = OPDS2Publication(
       links: [OPDS2Link(href: "https://example.com/catalog", rel: "http://opds-spec.org/catalog")],

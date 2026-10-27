@@ -100,6 +100,28 @@ final class SelectedLibraryGateTests: PalaceTestCase {
         )
     }
 
+    // MARK: - The tearDown wiring fires, not just the detector
+
+    /// The detector tests above prove the pure function. This proves the wiring:
+    /// a `PalaceTestCase` subclass that leaves the key changed is reddened by
+    /// `assertSelectedLibraryUnchanged` in `tearDownWithError`. Without this, the
+    /// detector could be correct while nothing called it — and since PP-5411
+    /// isolated the test factory's defaults, the suites that still write
+    /// `.standard` on purpose are the gate's only remaining real inputs, so the
+    /// wiring is the part that has to keep working.
+    ///
+    /// The expected failure is raised from tearDown, after the body returns.
+    /// No `defer` restores the key on purpose: the gate itself must put the old
+    /// value back before failing, so a leak reddens its own test instead of
+    /// every test after it.
+    func testSelectedLibraryGate_reddensATestThatLeavesTheKeyChanged() {
+        XCTExpectFailure("the tearDown gate must fail a test that repointed the selected library") { issue in
+            issue.compactDescription.contains("Selected-library gate")
+        }
+
+        UserDefaults.standard.set(fixture, forKey: currentAccountIdentifierKey)
+    }
+
     // MARK: - Live capture reads the real key
 
     /// Proves `captureSelectedLibrary()` reflects the live value rather than a
