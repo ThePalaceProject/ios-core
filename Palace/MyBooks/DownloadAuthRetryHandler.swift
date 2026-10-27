@@ -445,16 +445,32 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
     /// patron reached this path from Download, so the loan-era availability is
     /// the faithful record of what they acted on, and keeping it leaves the
     /// discriminator deciding exactly what it decided before the re-read.
+    ///
+    /// Both guards below hold that neutrality. A stored book with no supported
+    /// acquisition has no reading to carry over, and `preBorrowWasUnavailable`
+    /// answers `false` for it — so taking the entry whole there would hand the
+    /// discriminator the catalog's `unavailable` and silence the alert in the
+    /// one case this function cannot speak for.
     static func reborrowBook(stored: TPPBook, catalogEntry: TPPBook) -> TPPBook {
+        // A lean entry that carries no acquisition we support cannot improve the
+        // retry, and the merge takes the entry's acquisitions wholesale — an
+        // empty list would leave the borrow with no link at all, which is worse
+        // than the dead one. This reads relation and type only; `availability`
+        // is not consulted, so it cannot become a pre-filter on copies.
+        guard catalogEntry.defaultAcquisition != nil else { return stored }
         let merged = stored.mergingPreservingMetadata(from: catalogEntry)
-        guard let actedOn = stored.defaultAcquisition?.availability else { return merged }
+        guard let actedOn = stored.defaultAcquisition?.availability else { return stored }
         merged.acquisitions = merged.acquisitions.map { acquisition in
             TPPOPDSAcquisition(
                 relation: acquisition.relation,
                 type: acquisition.type,
                 hrefURL: acquisition.hrefURL,
                 indirectAcquisitions: acquisition.indirectAcquisitions,
-                availability: actedOn
+                availability: actedOn,
+                // Named rather than defaulted: the 5-argument convenience init
+                // passes nil, so a copy made with it loses the vendor and would
+                // keep losing fields as they are added.
+                licensorVendor: acquisition.licensorVendor
             )
         }
         return merged

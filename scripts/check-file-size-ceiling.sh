@@ -92,7 +92,8 @@ read -r -d '' ALLOWLIST <<'EOF'
 1142 Palace/Audiobooks/AudiobookSessionManager.swift
 # 1213 -> 1172 when the mid-download network-loss handler moved to
 # DownloadNetworkLossMonitor.swift; 1172 -> 1161 when the borrow-failed alert
-# moved to BorrowErrorAlert.swift.
+# moved to BorrowErrorAlert.swift; 1161 -> 1160 when the auth-retry handler's
+# composition moved to MyBooksDownloadCenter+AuthRetry.swift.
 1160 Palace/MyBooks/MyBooksDownloadCenter.swift
 1006 Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift
 # 867 -> 861 when the download-error admission rules moved to

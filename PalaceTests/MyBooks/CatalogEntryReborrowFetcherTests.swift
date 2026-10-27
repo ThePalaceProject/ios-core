@@ -23,12 +23,13 @@ final class CatalogEntryReborrowFetcherTests: XCTestCase {
     /// shape the circulation manager serves at a work's `alternate` URL.
     private static func catalogEntryFeed(
         href: String = CatalogEntryReborrowFetcherTests.catalogBorrowHref,
-        entries: Int = 1
+        entries: Int = 1,
+        id: String = "pp5397-book"
     ) -> TPPOPDSFeed {
         let entry = """
         <entry>
           <title type="text">A Returned Book</title>
-          <id>pp5397-book</id>
+          <id>\(id)</id>
           <updated>2026-10-01T00:00:00Z</updated>
           <link href="\(href)" type="application/atom+xml;type=entry;profile=opds-catalog" \
         rel="http://opds-spec.org/acquisition/borrow" />
@@ -137,6 +138,18 @@ final class CatalogEntryReborrowFetcherTests: XCTestCase {
         let fetched = await CatalogEntryReborrowFetcher.make(feedFetcher: feed)(Self.book(alternate: Self.alternate))
 
         XCTAssertNil(fetched, "an empty feed has no links to merge, so the stored book is the better retry")
+    }
+
+    /// An entry for some other work yields nil.
+    ///
+    /// A redirected alternate URL, or one answering with a lane, hands back a
+    /// different title. The merge keeps the stored identifier, so its link would
+    /// be borrowed under this book's id.
+    func test_whenTheEntryIsForAnotherWork_itYieldsNil() async {
+        let feed = SpyFeedFetcher(result: .success(Self.catalogEntryFeed(id: "some-other-work")))
+        let fetched = await CatalogEntryReborrowFetcher.make(feedFetcher: feed)(Self.book(alternate: Self.alternate))
+
+        XCTAssertNil(fetched, "another work's borrow link must not be borrowed under this book's identifier")
     }
 
     // MARK: - Wiring
