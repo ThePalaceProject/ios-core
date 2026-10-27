@@ -26,6 +26,14 @@ protocol DownloadAuthRetryHandlerDelegate: AnyObject {
     func startBorrow(for book: TPPBook, attemptDownload: Bool, borrowCompletion: (() -> Void)?)
 }
 
+/// Re-reads a book's catalog entry.
+///
+/// A catalog entry's acquisition links are not scoped to a loan, so it is the
+/// one place a usable borrow link survives after a loan ends. Injected as a
+/// closure so a test can supply an entry without standing up the feed service,
+/// and so the retry path depends on the capability rather than on OPDS.
+typealias CatalogEntryFetcher = @Sendable (TPPBook) async -> TPPBook?
+
 // MARK: - DownloadAuthRetryHandler
 
 /// Decides whether a download-completion failure should trigger
@@ -65,6 +73,7 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
     /// short-circuits before marking credentials stale or dispatching the
     /// coordinator. `nil` disables the guard.
     private let currentAccountHostsProvider: (@Sendable () -> Set<String>?)?
+    private let catalogEntryFetcher: CatalogEntryFetcher?
 
     /// Retained handles for the reauth-dispatch Tasks, so
     /// `cancelAllInFlightTasks()` can drop them instead of letting them write
@@ -82,7 +91,8 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
         alertPresenter: DownloadAlertPresenter,
         userAccountProvider: @escaping () -> TPPUserAccount,
         authCoordinator: AuthCoordinator? = nil,
-        currentAccountHostsProvider: (@Sendable () -> Set<String>?)? = nil
+        currentAccountHostsProvider: (@Sendable () -> Set<String>?)? = nil,
+        catalogEntryFetcher: CatalogEntryFetcher? = nil
     ) {
         self.stateManager = stateManager
         self.bookRegistry = bookRegistry
@@ -91,6 +101,7 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
         self.userAccountProvider = userAccountProvider
         self.authCoordinator = authCoordinator
         self.currentAccountHostsProvider = currentAccountHostsProvider
+        self.catalogEntryFetcher = catalogEntryFetcher
     }
 
     deinit {
@@ -388,6 +399,40 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
         // Update state to unregistered so borrow logic will work
         bookRegistry.setState(.unregistered, for: book.identifier)
 
+        // The stored acquisitions are fulfillment links scoped to the loan that
+        // just ended, which is why the download got 400 no-active-loan.
+        // Borrowing with the same book sends `defaultAcquisition` — that same
+        // dead link — so the retry failed identically and every tap for the next
+        // few seconds with it (PP-5397). Re-read the catalog entry first, whose
+        // links are not loan-scoped.
+        guard let catalogEntryFetcher, book.alternateURL != nil else {
+            startAutoBorrow(of: book, problemDoc: problemDoc, failureError: failureError)
+            return
+        }
+        launchTrackedTask { [weak self] in
+            guard let self else { return }
+            let refreshed = await catalogEntryFetcher(book)
+            if Task.isCancelled { return }
+            // `mergingPreservingMetadata` takes the incoming entry as
+            // authoritative for availability and acquisitions while keeping
+            // metadata the stored record may hold more of. That is the opposite
+            // authority from a catalog render, which must not touch a live
+            // loan's links (PP-5400) — here the loan is gone and the catalog is
+            // the only source of a usable one.
+            let toBorrow = refreshed.map { book.mergingPreservingMetadata(from: $0) } ?? book
+            if refreshed == nil {
+                // Offline, or a feed that errored. Retrying the stored book is
+                // no better than before this change, but it is no worse, and
+                // giving up would cost the patron the attempt entirely.
+                Log.warn(#file, "Could not re-read the catalog entry for \(book.identifier); retrying with the stored book")
+            }
+            await MainActor.run { [weak self] in
+                self?.startAutoBorrow(of: toBorrow, problemDoc: problemDoc, failureError: failureError)
+            }
+        }
+    }
+
+    private func startAutoBorrow(of book: TPPBook, problemDoc: TPPProblemDocument, failureError: Error?) {
         // Try to borrow the book (which will auto-download if successful)
         delegate?.startBorrow(for: book, attemptDownload: true, borrowCompletion: { [weak self] in
             guard let self else { return }
