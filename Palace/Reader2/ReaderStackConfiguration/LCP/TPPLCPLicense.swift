@@ -9,6 +9,7 @@
 #if LCP
 
 import Foundation
+import PalaceNetwork
 import ReadiumShared
 
 struct TPPLCPLicenseLink: Codable {
@@ -42,7 +43,7 @@ enum TPPLCPLicenseRel: String {
     /// Initializes with license URL
     @objc init?(url: URL) {
         if let data = try? Data(contentsOf: url),
-           let license = try? JSONDecoder().decode(TPPLCPLicense.self, from: data) {
+           let license = try? JSONDecoder().decodeGuarded(TPPLCPLicense.self, from: data) {
             self.id = license.id
             self.links = license.links
         } else {
