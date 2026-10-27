@@ -94,6 +94,15 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
     /// recovered once is not later read as a lapsed loan.
     private static let sessionExpiryEpisodeWindow: TimeInterval = 120
 
+    /// Whether an episode recorded at `recorded` is still open at `reference`.
+    ///
+    /// One definition for the gate and for pruning, which ask the same question
+    /// about different reference points. Two copies of the comparison meant the
+    /// pruning boundary had no test of its own.
+    private static func isEpisodeOpen(recorded: Date, at reference: Date) -> Bool {
+        reference.timeIntervalSince(recorded) < sessionExpiryEpisodeWindow
+    }
+
     /// Whether the no-active-loan retry can re-read a book's catalog entry
     /// before borrowing. False leaves it retrying the stored book, which is the
     /// dead-link path PP-5397 describes, so a test asserts production wires it.
@@ -277,7 +286,7 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
             // no-credentials branch would claim the failure first and this gate
             // would stop being reached — a silent no-op rather than a failure.
             let withinEpisode = sessionExpiryAttempts[book.identifier]
-                .map { now().timeIntervalSince($0) < Self.sessionExpiryEpisodeWindow } ?? false
+                .map { Self.isEpisodeOpen(recorded: $0, at: now()) } ?? false
             if reauthStrategy == .browser && hasCredentials && !withinEpisode {
                 userAccount.markCredentialsStale()
                 handleNoActiveLoanAsSessionExpiry(book: book, task: task, isSaml: userAccount.authDefinition?.isSaml == true)
@@ -450,7 +459,7 @@ final class DownloadAuthRetryHandler: @unchecked Sendable {
         // keep one for the handler's lifetime.
         let at = now()
         sessionExpiryAttempts = sessionExpiryAttempts.filter {
-            at.timeIntervalSince($0.value) < Self.sessionExpiryEpisodeWindow
+            Self.isEpisodeOpen(recorded: $0.value, at: at)
         }
         sessionExpiryAttempts[book.identifier] = at
     }
