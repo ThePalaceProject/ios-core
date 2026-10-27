@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceNetwork
 import ReadiumShared
 import PalaceLogging
 import PalaceBookModel
@@ -140,7 +141,7 @@ class TPPBookmarkFactory {
             return audioBookmark
         }
 
-        if let pdfPageBookmark = try? JSONDecoder().decode(TPPPDFPageBookmark.self, from: selectorValueData),
+        if let pdfPageBookmark = try? JSONDecoder().decodeGuarded(TPPPDFPageBookmark.self, from: selectorValueData),
            pdfPageBookmark.type == TPPPDFPageBookmark.Types.locatorPage.rawValue {
             pdfPageBookmark.annotationID = annotationID
             return pdfPageBookmark

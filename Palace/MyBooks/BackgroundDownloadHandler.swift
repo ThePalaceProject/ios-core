@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceNetwork
 import PalaceLogging
 import PalaceCatalog
 import PalaceBookModel
@@ -136,13 +137,13 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
         // shapes — `OPDS2Publication` (the lean form) and `OPDS2Full
         // Publication`. Try the lean form first; on decode failure fall back
         // to the full form before bailing out.
-        if let publication = try? JSONDecoder().decode(OPDS2Publication.self, from: jsonData),
+        if let publication = try? JSONDecoder().decodeGuarded(OPDS2Publication.self, from: jsonData),
            let updatedBook = publication.toBook() {
             return await followAcquisitionLink(from: updatedBook, originalBook: book, originalTask: originalTask, session: session)
         }
 
         do {
-            let fullPub = try JSONDecoder().decode(OPDS2FullPublication.self, from: jsonData)
+            let fullPub = try JSONDecoder().decodeGuarded(OPDS2FullPublication.self, from: jsonData)
             if let updatedBook = fullPub.toBook() {
                 return await followAcquisitionLink(from: updatedBook, originalBook: book, originalTask: originalTask, session: session)
             }

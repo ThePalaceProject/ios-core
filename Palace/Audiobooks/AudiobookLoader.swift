@@ -365,6 +365,11 @@ final class AudiobookLoader {
 
         let manifest: Manifest
         do {
+            // Unguarded on purpose: `jsonData` has one origin, the
+            // `JSONSerialization.data(withJSONObject:)` earlier in this file,
+            // whose input is a `[String: Any]`. Those keys are already valid
+            // Strings, so this path cannot reach the decoder's key trap. The
+            // delete path reads raw bytes from disk and is guarded (PP-5412).
             manifest = try Manifest.customDecoder().decode(Manifest.self, from: jsonData)
         } catch {
             Log.error(#file, "  ❌ Failed to decode Manifest from JSON: \(error)")
