@@ -838,7 +838,10 @@ final class BookDetailViewModel: ObservableObject {
         // the sheet closes instead of offering a button that does nothing
         // (PP-5407).
         var snapshot = snapshotBorrowState()
-        _ = BorrowReducer.reduce(&snapshot, .cancelTapped(registryState: registry.state(for: book.identifier)))
+        _ = BorrowReducer.reduce(&snapshot, .cancelTapped(
+            registryState: registry.state(for: book.identifier),
+            registryProcessing: registry.processing(forIdentifier: book.identifier)
+        ))
         applyBorrowState(snapshot)
     }
 

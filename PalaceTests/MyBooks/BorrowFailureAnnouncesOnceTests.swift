@@ -49,9 +49,38 @@ final class BorrowFailureAnnouncesOnceTests: XCTestCase {
         recorder = AnnouncementRecorder()
     }
 
-    override func tearDown() {
+    /// This is the only suite that drives `borrowAsync` on a real
+    /// `MyBooksDownloadCenter`, so it is the only one that runs the production
+    /// alert closure — `TPPAlertUtils.presentFromViewControllerOrNil` with a
+    /// nil presenter, which resolves the SHARED
+    /// `(UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController()`
+    /// and presents a real `UIAlertController` there. Left presented, it makes
+    /// the next nil-presenter test fail the `!(top is UIAlertController)` guard,
+    /// exhaust its three retries and drop its own alert
+    /// (`TPPAlertUtils.swift:325-334`). The protocol is the one documented in
+    /// `TPPAlertUtilsTests`, adapted: this suite presents on the shared
+    /// hierarchy rather than a window of its own, so it dismisses what it
+    /// landed there instead of releasing a window it owns.
+    override func tearDown() async throws {
+        // Let the presentation and its backoff retries settle, so a block
+        // scheduled by the alert resolves now rather than against the next
+        // test's hierarchy.
+        await drainMainQueueAsync()
+
+        // Dismiss anything left on the shared top controller. Bounded: a
+        // stacked presentation would otherwise loop.
+        for _ in 0..<3 {
+            guard let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController(),
+                  top.presentedViewController != nil || top is UIAlertController else { break }
+            let presenter = top.presentingViewController ?? top
+            await withCheckedContinuation { continuation in
+                presenter.dismiss(animated: false) { continuation.resume() }
+            }
+            await drainMainQueueAsync()
+        }
+
         recorder = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     /// A borrow failure must reach VoiceOver once. Two utterances is what the

@@ -80,8 +80,8 @@ final class BorrowReducerContractTests: XCTestCase {
             // Both arms of the declined-cancel recovery: `.unregistered` means
             // nothing was in flight, so the sheet closes; any other state has
             // something to render, so it stays open (PP-5407).
-            ("cancelTapped.unregistered", .cancelTapped(registryState: .unregistered)),
-            ("cancelTapped.downloading", .cancelTapped(registryState: .downloading)),
+            ("cancelTapped.unregistered", .cancelTapped(registryState: .unregistered, registryProcessing: false)),
+            ("cancelTapped.downloading", .cancelTapped(registryState: .downloading, registryProcessing: false)),
             ("manageHoldTapped", .manageHoldTapped),
             ("signInCancelled", .signInCancelled),
         ]

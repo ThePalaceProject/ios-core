@@ -68,7 +68,7 @@ enum BorrowAction {
     /// flight, so an optimistic `.downloading` set by `startDownloadAfterAuth`
     /// has to be resolved from the registry here or Cancel resolves nothing
     /// (PP-5407).
-    case cancelTapped(registryState: TPPBookState)
+    case cancelTapped(registryState: TPPBookState, registryProcessing: Bool)
 
     /// User chose Manage Hold — flip to managing-hold UI.
     case manageHoldTapped
@@ -204,7 +204,17 @@ enum BorrowReducer {
             state.processingButtons.insert(.returning)
             return .none
 
-        case .cancelTapped(let registryState):
+        case .cancelTapped(let registryState, let registryProcessing):
+            // A borrow still in flight also reads `.unregistered`: the registry
+            // only learns of the loan when the request returns. Resolving from
+            // the state alone would subtract `.get` and close the sheet while
+            // that request runs, re-arming Get so a second tap could race the
+            // first. The registry's processing flag separates the two — it is
+            // raised before the fetch (`BorrowOperation:310`) and cleared on
+            // every terminal path, so it is false at all four
+            // `showBorrowError` sites and true only mid-flight. Leave the sheet
+            // on Cancel there; a failure arrives by `downloadErrorPublisher`.
+            guard !registryProcessing else { return .none }
             state.downloadProgress = 0.0
             // Deliberately NOT gated on `localBookStateOverride`, unlike the
             // registry path above. Two reasons, and the second is the load-bearing

@@ -83,6 +83,8 @@ final class BookDetailBorrowFailureRecoveryTests: XCTestCase {
                        "A .get left in processingButtons keeps BookButtonMapper on Cancel only")
         XCTAssertNotNil(viewModel.downloadErrorAlert,
                         "The patron must be told why the borrow failed")
+        XCTAssertTrue(viewModel.showHalfSheet,
+                      "The ticket's outcome is a sheet that recovers onto Get, not one that vanishes. It also hosts the alert: the UIKit alert resolves to the top view controller, so tearing the sheet down here would take its presenter with it and tell the patron nothing.")
     }
 
     func testPublishedBorrowErrorForAnotherBook_leavesThisSheetAlone() async {

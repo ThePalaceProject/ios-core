@@ -305,11 +305,11 @@ final class BorrowReducerTests: XCTestCase {
 
     func testCancelTapped_resetsDownloadProgressAndIsIdempotent() {
         var state = makeState(progress: 0.7, halfSheet: true)
-        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .downloading))
+        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .downloading, registryProcessing: false))
         XCTAssertEqual(state.downloadProgress, 0.0, accuracy: 0.0001)
         // Calling again from zero must remain at zero — guards against
         // the legacy `didSelectCancel` callsite being invoked twice.
-        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .downloading))
+        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .downloading, registryProcessing: false))
         XCTAssertEqual(state.downloadProgress, 0.0, accuracy: 0.0001)
     }
 
@@ -325,7 +325,7 @@ final class BorrowReducerTests: XCTestCase {
             halfSheet: true
         )
 
-        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .unregistered))
+        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .unregistered, registryProcessing: false))
 
         XCTAssertEqual(state.bookState, .unregistered,
                        "Cancel must take the registry's answer, not the optimistic .downloading")
@@ -333,6 +333,43 @@ final class BorrowReducerTests: XCTestCase {
                        "A .get spinner with nothing in flight keeps BookButtonMapper on Cancel only")
         XCTAssertFalse(state.showHalfSheet,
                        "With no loan and nothing downloading the sheet has nothing to show")
+    }
+
+    /// A borrow in flight reads `.unregistered` too, because the registry only
+    /// learns of the loan when the request returns. Resolving from the state
+    /// alone would close the sheet and drop `.get`, re-arming Get so a second
+    /// tap could race the request still running.
+    func testCancelTapped_whileTheBorrowIsStillInFlight_leavesTheSheetOnCancel() {
+        var state = makeState(
+            bookState: .downloading,
+            progress: 0.0,
+            processing: [.get],
+            halfSheet: true
+        )
+
+        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .unregistered, registryProcessing: true))
+
+        XCTAssertTrue(state.showHalfSheet,
+                      "The request is still running, so the sheet must not close out from under it")
+        XCTAssertTrue(state.processingButtons.contains(.get),
+                      "Dropping .get re-arms Get, which lets a second borrow race the one in flight")
+        XCTAssertEqual(state.bookState, .downloading,
+                       "The registry has not resolved yet; taking its .unregistered would show 'not borrowed' mid-borrow")
+    }
+
+    /// The same registry state with the flag down must still resolve, so the
+    /// guard above cannot be satisfied by declining every cancel.
+    func testCancelTapped_processingFlagAloneDecidesBetweenInFlightAndFailed() {
+        var inFlight = makeState(bookState: .downloading, processing: [.get], halfSheet: true)
+        var failed = makeState(bookState: .downloading, processing: [.get], halfSheet: true)
+
+        _ = BorrowReducer.reduce(&inFlight, .cancelTapped(registryState: .unregistered, registryProcessing: true))
+        _ = BorrowReducer.reduce(&failed, .cancelTapped(registryState: .unregistered, registryProcessing: false))
+
+        XCTAssertNotEqual(inFlight.showHalfSheet, failed.showHalfSheet,
+                          "The processing flag is the only difference; it must change the outcome")
+        XCTAssertTrue(inFlight.showHalfSheet)
+        XCTAssertFalse(failed.showHalfSheet)
     }
 
     /// Every state, not the two the fix happens to care about: `TPPBookState`
@@ -348,7 +385,7 @@ final class BorrowReducerTests: XCTestCase {
                 halfSheet: true
             )
 
-            _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: registryState))
+            _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: registryState, registryProcessing: false))
 
             XCTAssertEqual(state.bookState, registryState,
                            "\(registryState.stringValue()): cancel must take the registry's answer")
@@ -373,7 +410,7 @@ final class BorrowReducerTests: XCTestCase {
             halfSheet: true
         )
 
-        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .unregistered))
+        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .unregistered, registryProcessing: false))
 
         XCTAssertEqual(state.bookState, .unregistered,
                        "a stale override must not outrank the registry's answer")
@@ -394,7 +431,7 @@ final class BorrowReducerTests: XCTestCase {
             halfSheet: true
         )
 
-        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .unregistered))
+        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .unregistered, registryProcessing: false))
 
         XCTAssertFalse(state.isManagingHold,
                        "a closed sheet must not reopen into the manage-hold UI")
@@ -413,7 +450,7 @@ final class BorrowReducerTests: XCTestCase {
             halfSheet: true
         )
 
-        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .downloading))
+        _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .downloading, registryProcessing: false))
 
         XCTAssertEqual(state.bookState, .downloading,
                        "A live download is still downloading until the handler reports otherwise")
