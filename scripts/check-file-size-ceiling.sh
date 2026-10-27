@@ -94,7 +94,9 @@ read -r -d '' ALLOWLIST <<'EOF'
 # DownloadNetworkLossMonitor.swift.
 1172 Palace/MyBooks/MyBooksDownloadCenter.swift
 1006 Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift
-867  Palace/Book/UI/BookDetail/BookDetailViewModel.swift
+# 867 -> 846 when PP-5402 moved openBook and the Listen-before-fetch
+# handling to BookDetailViewModel+StreamableLoanListen.swift.
+846  Palace/Book/UI/BookDetail/BookDetailViewModel.swift
 834  Palace/Utilities/Localization/Strings.swift
 # AccountsManager is 363 under this metric: it was pinned at 367 after #1520
 # landed `_ = registryLoader` in init, then lowered when #1624 moved the DEBUG
