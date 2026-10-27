@@ -342,13 +342,18 @@ final class BorrowReducerTests: XCTestCase {
     func testCancelTapped_whileTheBorrowIsStillInFlight_leavesTheSheetOnCancel() {
         var state = makeState(
             bookState: .downloading,
-            progress: 0.0,
+            // Deliberately non-zero: at 0.0 this test cannot tell a guard
+            // placed above the `downloadProgress` reset from one placed below
+            // it, which is the whole point of where the guard sits.
+            progress: 0.42,
             processing: [.get],
             halfSheet: true
         )
 
         _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: .unregistered, registryProcessing: true))
 
+        XCTAssertEqual(state.downloadProgress, 0.42,
+                       "The guard must return before the progress reset, leaving the sheet exactly as it was")
         XCTAssertTrue(state.showHalfSheet,
                       "The request is still running, so the sheet must not close out from under it")
         XCTAssertTrue(state.processingButtons.contains(.get),
@@ -378,21 +383,38 @@ final class BorrowReducerTests: XCTestCase {
     /// the sheet; a new case added later must fail here rather than pick an
     /// arm by falling off the end.
     func testCancelTapped_closesTheSheetForUnregisteredOnly_acrossEveryState() {
-        for registryState in TPPBookState.allCases {
-            var state = makeState(
-                bookState: .downloading,
-                processing: [.get],
-                halfSheet: true
-            )
+        // Both cells of the flag, not just the settled one: a re-borrow or a
+        // ready-hold fulfilment leaves the book registered while the fetch
+        // runs, so the guard is reachable with every state, not only
+        // `.unregistered`. Pinning one column would admit a guard narrowed to
+        // `!registryProcessing || registryState == .downloading`.
+        for registryProcessing in [false, true] {
+            for registryState in TPPBookState.allCases {
+                var state = makeState(
+                    bookState: .downloading,
+                    progress: 0.42,
+                    processing: [.get],
+                    halfSheet: true
+                )
 
-            _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: registryState, registryProcessing: false))
+                _ = BorrowReducer.reduce(&state, .cancelTapped(registryState: registryState,
+                                                               registryProcessing: registryProcessing))
 
-            XCTAssertEqual(state.bookState, registryState,
-                           "\(registryState.stringValue()): cancel must take the registry's answer")
-            XCTAssertFalse(state.processingButtons.contains(.get),
-                           "\(registryState.stringValue()): an acquire spinner with the cancel resolved pins the sheet to Cancel")
-            XCTAssertEqual(state.showHalfSheet, registryState != .unregistered,
-                           "\(registryState.stringValue()): only a book with no loan and nothing in flight has nothing left to show")
+                let cell = "\(registryState.stringValue()) processing=\(registryProcessing)"
+                guard !registryProcessing else {
+                    XCTAssertEqual(state.bookState, .downloading, "\(cell): a request in flight must leave the state alone")
+                    XCTAssertTrue(state.processingButtons.contains(.get), "\(cell): dropping .get re-arms Get mid-request")
+                    XCTAssertTrue(state.showHalfSheet, "\(cell): the sheet must stay up while the request runs")
+                    XCTAssertEqual(state.downloadProgress, 0.42, "\(cell): nothing is reset while in flight")
+                    continue
+                }
+                XCTAssertEqual(state.bookState, registryState,
+                               "\(cell): cancel must take the registry's answer")
+                XCTAssertFalse(state.processingButtons.contains(.get),
+                               "\(cell): an acquire spinner with the cancel resolved pins the sheet to Cancel")
+                XCTAssertEqual(state.showHalfSheet, registryState != .unregistered,
+                               "\(cell): only a book with no loan and nothing in flight has nothing left to show")
+            }
         }
     }
 

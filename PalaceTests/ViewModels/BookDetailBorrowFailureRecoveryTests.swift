@@ -286,6 +286,28 @@ final class BookDetailBorrowFailureRecoveryTests: XCTestCase {
                        "With no loan and nothing downloading the sheet has nothing left to show")
     }
 
+    /// Pins the view model's own read of the processing flag, which no reducer
+    /// test can reach: the reducer is pure and never touches a registry, so
+    /// replacing the argument at the call site with a literal `false` leaves
+    /// every reducer test green while the race returns.
+    func testCancel_whileTheBorrowIsStillInFlight_leavesTheSheetOnCancel() {
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let viewModel = makeViewModel(for: book)
+        putInOptimisticBorrowState(viewModel)
+        // What a borrow in flight looks like: the registry has not heard about
+        // the loan yet, but it is processing the request.
+        registry.setProcessing(true, for: book.identifier)
+        XCTAssertEqual(registry.state(for: book.identifier), .unregistered,
+                       "precondition: the registry learns of the loan only when the request returns")
+
+        viewModel.didSelectCancel()
+
+        XCTAssertTrue(viewModel.showHalfSheet,
+                      "The request is still running, so Cancel must not close the sheet out from under it")
+        XCTAssertTrue(viewModel.processingButtons.contains(.get),
+                      "Releasing the acquire spinner re-arms Get, letting a second borrow race the one in flight")
+    }
+
     func testCancel_duringALiveDownload_keepsTheSheetOpen() {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         registry.addBook(book, location: nil, state: .downloading,

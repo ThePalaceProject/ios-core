@@ -209,11 +209,13 @@ enum BorrowReducer {
             // only learns of the loan when the request returns. Resolving from
             // the state alone would subtract `.get` and close the sheet while
             // that request runs, re-arming Get so a second tap could race the
-            // first. The registry's processing flag separates the two — it is
-            // raised before the fetch (`BorrowOperation:310`) and cleared on
-            // every terminal path, so it is false at all four
-            // `showBorrowError` sites and true only mid-flight. Leave the sheet
-            // on Cancel there; a failure arrives by `downloadErrorPublisher`.
+            // first. The registry's processing flag separates the two. It means
+            // "any registry work in flight for this book", not just a borrow —
+            // `BorrowOperation`, `BorrowAdobeActivationStep` and
+            // `BookReturnService` all raise it — and each clears it on every
+            // terminal path, so it is down at every `showBorrowError` site and
+            // up only mid-request. Leave the sheet as it is while it is up; a
+            // failure arrives separately on `downloadErrorPublisher`.
             guard !registryProcessing else { return .none }
             state.downloadProgress = 0.0
             // Deliberately NOT gated on `localBookStateOverride`, unlike the

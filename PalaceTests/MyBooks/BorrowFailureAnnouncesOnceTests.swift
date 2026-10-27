@@ -61,23 +61,39 @@ final class BorrowFailureAnnouncesOnceTests: XCTestCase {
     /// `TPPAlertUtilsTests`, adapted: this suite presents on the shared
     /// hierarchy rather than a window of its own, so it dismisses what it
     /// landed there instead of releasing a window it owns.
+    @MainActor private static func topMostController() -> UIViewController? {
+        (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController()
+    }
+
     override func tearDown() async throws {
-        // Let the presentation and its backoff retries settle, so a block
-        // scheduled by the alert resolves now rather than against the next
-        // test's hierarchy.
         await drainMainQueueAsync()
 
-        // Dismiss anything left on the shared top controller. Bounded: a
-        // stacked presentation would otherwise loop.
-        for _ in 0..<3 {
-            guard let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController(),
-                  top.presentedViewController != nil || top is UIAlertController else { break }
-            let presenter = top.presentingViewController ?? top
-            await withCheckedContinuation { continuation in
-                presenter.dismiss(animated: false) { continuation.resume() }
-            }
-            await drainMainQueueAsync()
+        // Wait out the alert's own present animation before dismissing it.
+        // `BorrowErrorAlert` presents animated, and UIKit's behaviour for a
+        // dismiss issued mid-presentation is undefined — commonly the dismiss
+        // is simply dropped, which would leave this teardown inert while still
+        // passing. A FIFO queue flush does not cover this: it returns in
+        // microseconds, well inside the animation.
+        await awaitConditionAsync(timeout: 3.0) {
+            Self.topMostController().map { !$0.isBeingPresented } ?? true
         }
+
+        // Dismiss what landed on the shared hierarchy, then poll for it to be
+        // gone rather than awaiting a completion UIKit may never call — an
+        // unbounded continuation here would hang teardown instead of failing.
+        for _ in 0..<3 {
+            guard let top = Self.topMostController(), top is UIAlertController else { break }
+            top.presentingViewController?.dismiss(animated: false)
+            await awaitConditionAsync(timeout: 3.0) { Self.topMostController() !== top }
+        }
+
+        // Self-verifying, and deliberately here rather than in a test method:
+        // a tearDown assertion runs after every test in this class, so it can
+        // never be ordered before the test that presents. If the cleanup above
+        // ever goes inert, this fails in this suite instead of reddening an
+        // unrelated nil-presenter suite later.
+        XCTAssertFalse(Self.topMostController() is UIAlertController,
+                       "A leftover alert makes the next nil-presenter test exhaust its three retries and drop its own alert")
 
         recorder = nil
         try await super.tearDown()
