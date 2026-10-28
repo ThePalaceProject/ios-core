@@ -153,7 +153,7 @@ enum NetworkError: Int, LocalizedError {
 
 // MARK: - Book Registry Errors
 
-enum BookRegistryError: Int, LocalizedError {
+enum BookRegistryError: Int, CaseIterable, LocalizedError {
     case bookNotFound = 0
     case registryCorrupted = 1
     case syncFailed = 2
@@ -163,6 +163,10 @@ enum BookRegistryError: Int, LocalizedError {
     case concurrencyViolation = 6
     case alreadyBorrowed = 7
     case holdCopyUnavailable = 8
+    /// The patron's loan ran its course. Distinct from `bookNotFound`, which
+    /// says the registry has no such book: here the book exists and is
+    /// borrowable, and the only thing missing is the loan (PP-5397).
+    case loanEnded = 9
 
     var errorDescription: String? {
         switch self {
@@ -184,6 +188,8 @@ enum BookRegistryError: Int, LocalizedError {
             return "This book is already borrowed"
         case .holdCopyUnavailable:
             return "This title isn't ready for checkout yet"
+        case .loanEnded:
+            return "Your loan for this book has ended"
         }
     }
 
@@ -205,6 +211,8 @@ enum BookRegistryError: Int, LocalizedError {
             return "The book is already in your library. Please check My Books."
         case .holdCopyUnavailable:
             return "Another patron checked out the copy first. You're still in line — we'll notify you when another copy becomes available."
+        case .loanEnded:
+            return "Borrow it again to keep reading."
         }
     }
 }
@@ -542,6 +550,11 @@ enum AudiobookError: Int, LocalizedError {
 // MARK: - Error Conversion Utilities
 
 extension PalaceError {
+    /// Key under which a wrap carries the error it wrapped. Bridging an enum
+    /// error to `NSError` keeps only the top-level case index, so the inner
+    /// case cannot be read back out of the code (PP-5397).
+    static let wrappedErrorKey = "palaceError"
+
     /// Converts NSError to PalaceError when possible
     static func from(_ error: Error) -> PalaceError {
         if let palaceError = error as? PalaceError {
@@ -549,6 +562,13 @@ extension PalaceError {
         }
 
         let nsError = error as NSError
+
+        // A wrap that kept the error gives it back exactly. The table below can
+        // only turn a top-level case index into one representative inner case,
+        // so every book-registry failure would arrive as `invalidState`.
+        if let wrapped = nsError.userInfo[Self.wrappedErrorKey] as? PalaceError {
+            return wrapped
+        }
 
         // OPDSFeedService wraps PalaceErrors in NSErrors to attach problem
         // documents. When this happens, the domain is "Palace.PalaceError" and the code

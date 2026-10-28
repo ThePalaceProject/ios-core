@@ -79,6 +79,58 @@ final class BookCellModelProcessingStateTests: XCTestCase {
                        TPPNotificationKeys.bookProcessingValueKey: processing])
     }
 
+    // MARK: - Already-presented errors
+
+    /// `BorrowOperation` presents its own alert and publishes with
+    /// `presentsAlert: false`. The cell must not raise a second one on top of
+    /// it — the shape a patron reads as dismissing an alert and finding
+    /// another behind it (PP-5407).
+    func test_whenTheProducerAlreadyAlerted_theCellDoesNotRaiseASecondOne() async {
+        let book = makeBook(id: "already-alerted")
+        mockRegistry.setState(.unregistered, for: book.identifier)
+        let model = makeModel(book: book)
+
+        container.downloadCenter.progressReporter.downloadErrorPublisher.send(
+            DownloadErrorInfo(
+                bookId: book.identifier,
+                title: "Borrow Failed",
+                message: "Borrowing could not be completed.",
+                kind: .borrow,
+                retryAction: nil,
+                presentsAlert: false
+            )
+        )
+        await drainMainQueueAsync()
+        await Task.yield()
+        await drainMainQueueAsync()
+
+        XCTAssertNil(model.showAlert,
+                     "the producer already put this failure in front of the patron")
+        XCTAssertNil(model.downloadErrorAlert,
+                     "a half-sheet alert would stack on the one already showing")
+    }
+
+    /// The other arm, so the guard above can still be false: an error nobody
+    /// has shown yet must reach the patron.
+    func test_whenNoOneHasAlertedYet_theCellRaisesTheAlert() async {
+        let book = makeBook(id: "not-yet-alerted")
+        mockRegistry.setState(.unregistered, for: book.identifier)
+        let model = makeModel(book: book)
+
+        container.downloadCenter.progressReporter.downloadErrorPublisher.send(
+            DownloadErrorInfo(
+                bookId: book.identifier,
+                title: "Borrow Failed",
+                message: "Borrowing could not be completed.",
+                kind: .borrow
+            )
+        )
+        await awaitConditionAsync { (model.showAlert ?? model.downloadErrorAlert) != nil }
+
+        XCTAssertNotNil(model.showAlert ?? model.downloadErrorAlert,
+                        "a borrow failure nobody has reported must still reach the patron")
+    }
+
     // MARK: - The defect
 
     /// THE regression. A borrow that fails clears the registry's processing

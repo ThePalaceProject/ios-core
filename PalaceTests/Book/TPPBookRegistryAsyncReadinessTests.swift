@@ -150,7 +150,11 @@ final class TPPBookRegistryAsyncReadinessTests: PalaceWiringTestCase {
             metadata: OPDS2Publication.Metadata(id: "never-ready-\(UUID().uuidString)", title: "Never Ready"),
             images: nil)
         let account = Account(publication: pub, imageCache: MockImageCache())
-        _ = manager._seedAccountForTesting(account)
+        // Run the closure `_seedAccountForTesting` returns: it puts the previous
+        // `TPPCurrentAccountIdentifier` back, so the isolated suite above is also
+        // clean when the next method reads it.
+        let restoreSeed = manager._seedAccountForTesting(account)
+        defer { restoreSeed() }
         account._setState(.detailsLoading)
         let registry = TPPBookRegistry(accountsManager: manager, imageLoader: MockImageLoader())
 

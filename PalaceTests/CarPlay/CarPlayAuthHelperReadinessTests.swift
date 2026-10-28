@@ -10,7 +10,7 @@ import PalaceCatalog
 @testable import Palace
 
 @MainActor
-final class CarPlayAuthHelperReadinessTests: XCTestCase {
+final class CarPlayAuthHelperReadinessTests: PalaceTestCase {
 
     private var libraryMock: TPPLibraryAccountMock!
 

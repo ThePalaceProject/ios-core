@@ -136,7 +136,9 @@ private final class RedirectCompletionBox: @unchecked Sendable {
     /// Internal so the offline queue's entry point (OfflineQueueCoordinator.swift) can reach it.
     let returnService: BookReturnService
     private let alertPresenter: DownloadAlertPresenter
-    private let authRetryHandler: DownloadAuthRetryHandler
+    /// Internal so a test can assert the no-active-loan retry was wired with
+    /// its catalog re-read (PP-5397); nothing else reads it from outside.
+    let authRetryHandler: DownloadAuthRetryHandler
     private let throttlingService: DownloadThrottlingService
     private let queueOrchestrator: DownloadQueueOrchestrator
     private let borrowErrorPresenter: BorrowErrorPresenter
@@ -593,17 +595,16 @@ private final class RedirectCompletionBox: @unchecked Sendable {
         let resolveAccount: () -> TPPUserAccount = {
             userAccount ?? accountsManager.currentUserAccount
         }
-        self.authRetryHandler = authRetryHandler ?? DownloadAuthRetryHandler(
+        // Composition in MyBooksDownloadCenter+AuthRetry.swift.
+        self.authRetryHandler = authRetryHandler ?? Self.makeAuthRetryHandler(
             stateManager: stateManager,
             bookRegistry: bookRegistry,
             reauthenticator: reauthenticator,
             alertPresenter: self.alertPresenter,
             userAccountProvider: resolveAccount,
             authCoordinator: authCoordinator,
-            // Foreign-host guard (PR #1018 cross-host logout).
-            currentAccountHostsProvider: {
-                resolvedAccountScope.currentAccountAuthSurfaceHosts
-            }
+            accountScope: resolvedAccountScope,
+            opdsFeedService: opdsFeedService
         )
         // DownloadThrottlingService shares the same DownloadStateManager
         // MBDC owns so cap + suspend/resume policy stays coherent with the
@@ -826,7 +827,8 @@ private final class RedirectCompletionBox: @unchecked Sendable {
         // BorrowOperation owns the complete borrow lifecycle. Closures
         // wrap the production OPDS fetch (with DownloadErrorRecovery
         // retries), the TPPAlertUtils error-presentation path, the
-        // SignInModalPresenter, and the OIDC silent-reauth web session.
+        // download-error publisher, the SignInModalPresenter, and the OIDC
+        // silent-reauth web session.
         // Tests substitute simpler stubs.
         // Resolver path (intentional): BorrowOperation owns the complete
         // borrow lifecycle including OIDC silent reauth. The bearer-auth
@@ -850,22 +852,20 @@ private final class RedirectCompletionBox: @unchecked Sendable {
                 )
             }
         }
-        let presentBorrowErrorAlertClosure: @MainActor (String, String, NSError?, TPPProblemDocument?, TPPBook, (() -> Void)?) -> Void = { title, message, originalError, problemDoc, book, retryAction in
-            let alert = TPPAlertUtils.alertWithDetails(
-                title: title,
-                message: message,
-                error: originalError,
-                problemDocument: problemDoc,
-                bookIdentifier: book.identifier,
-                bookTitle: book.title,
-                retryAction: retryAction
-            )
-            TPPAlertUtils.presentFromViewControllerOrNil(
-                alertController: alert,
-                viewController: nil,
-                animated: true,
-                completion: nil
-            )
+        let presentBorrowErrorAlertClosure: BorrowErrorAlertPresenting = BorrowErrorAlert.present
+        // The alert above cannot tell the half-sheet that the borrow failed, so
+        // a failure from the book detail page left `BookDetailViewModel`'s
+        // optimistic `.downloading` state — and its Cancel-only button — in
+        // place indefinitely. The publish is what unsticks it (PP-5407).
+        //
+        // `send`, not `publishAndAnnounceError`: the alert path above already
+        // posted this failure to VoiceOver. `presentFromViewControllerOrNil`
+        // posts `[title, message].joined(separator: ". ")` and
+        // `announceStatus` posts `"\(title). \(message)"` — the same string,
+        // and the announcer's dedup never sees the direct post, so announcing
+        // here would read the failure to the patron twice.
+        let publishBorrowErrorClosure: @MainActor (DownloadErrorInfo) -> Void = { errorInfo in
+            reporter.downloadErrorPublisher.send(errorInfo)
         }
         let presentSignInModalClosure: @MainActor (@escaping () -> Void) -> Void = { completion in
             AppContainer.production().signInModalSheetPresenter
@@ -885,6 +885,7 @@ private final class RedirectCompletionBox: @unchecked Sendable {
             adobeDRMService: .shared,
             fetchBook: fetchBookClosure,
             presentBorrowErrorAlert: presentBorrowErrorAlertClosure,
+            publishBorrowError: publishBorrowErrorClosure,
             presentSignInModal: presentSignInModalClosure,
             attemptOIDCReauth: attemptOIDCReauthClosure,
             authCoordinator: authCoordinator,
@@ -900,6 +901,7 @@ private final class RedirectCompletionBox: @unchecked Sendable {
             userAccountProvider: resolveAccountForBorrowOp,
             fetchBook: fetchBookClosure,
             presentBorrowErrorAlert: presentBorrowErrorAlertClosure,
+            publishBorrowError: publishBorrowErrorClosure,
             presentSignInModal: presentSignInModalClosure,
             attemptOIDCReauth: attemptOIDCReauthClosure,
             authCoordinator: authCoordinator,

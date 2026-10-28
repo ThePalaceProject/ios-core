@@ -176,6 +176,7 @@ final class BorrowReauthResettingTests: PalaceWiringTestCase {
         let expected = [
             CallRecord(method: "presentSignInModal", args: ["book": book.identifier]),
             CallRecord(method: "presentBorrowErrorAlert", args: ["book": book.identifier]),
+            CallRecord(method: "publishBorrowError", args: ["book": book.identifier]),
             CallRecord(method: "presentSignInModal", args: ["book": book.identifier]),
         ]
         XCTAssertEqual(log.snapshot(), expected,
@@ -243,6 +244,9 @@ final class BorrowReauthResettingTests: PalaceWiringTestCase {
             },
             presentBorrowErrorAlert: { _, _, _, _, book, _ in
                 callLog.record("presentBorrowErrorAlert", args: ["book": book.identifier])
+            },
+            publishBorrowError: { errorInfo in
+                callLog.record("publishBorrowError", args: ["book": errorInfo.bookId])
             },
             presentSignInModal: { _ in
                 callLog.record("presentSignInModal", args: ["book": capturedBookId])

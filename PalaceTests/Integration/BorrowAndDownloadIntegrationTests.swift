@@ -128,6 +128,7 @@ class BorrowAndDownloadIntegrationTests: PalaceWiringTestCase {
             presentBorrowErrorAlert: { [unowned self] title, message, _, _, _, retry in
                 self.alertCalls.append((title, message, retry != nil))
             },
+            publishBorrowError: { _ in },
             presentSignInModal: { _ in },
             attemptOIDCReauth: { false }
         )

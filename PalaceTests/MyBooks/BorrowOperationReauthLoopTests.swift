@@ -81,6 +81,7 @@ final class BorrowOperationReauthLoopTests: XCTestCase {
                 self?.alertCount += 1
                 self?.lastRetryAction = retry
             },
+            publishBorrowError: { _ in },
             presentSignInModal: { [weak self] completion in
                 self?.signInModalCount += 1
                 self?.onSignInModal?(completion)

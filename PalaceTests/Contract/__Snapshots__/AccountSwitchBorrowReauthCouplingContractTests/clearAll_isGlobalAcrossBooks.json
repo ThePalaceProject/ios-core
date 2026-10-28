@@ -13,6 +13,12 @@
   },
   {
     "args" : {
+      "book" : "reauth-coupling-C3-A"
+    },
+    "method" : "publishBorrowError"
+  },
+  {
+    "args" : {
       "book" : "reauth-coupling-C3-B"
     },
     "method" : "presentSignInModal"
@@ -22,6 +28,12 @@
       "book" : "reauth-coupling-C3-B"
     },
     "method" : "presentBorrowErrorAlert"
+  },
+  {
+    "args" : {
+      "book" : "reauth-coupling-C3-B"
+    },
+    "method" : "publishBorrowError"
   },
   {
     "args" : {

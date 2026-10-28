@@ -126,6 +126,46 @@ Three things the gate does not cover, and cannot be assumed away:
   `3.11.0-palace.1` entry is exactly that case. Read the pin's actual diff
   before writing the per-path rows.
 
+## The fork, and what a migration owes
+
+Palace pins a fork, `ThePalaceProject/swift-toolkit`, not upstream Readium. Any
+change to the pin should establish where the fork now stands relative to
+upstream before it moves, because the fork's content is three different things
+and only one of them is a migration burden.
+
+Measured 2026-10-26, with the pin at `3.11.0-palace.3`
+(`6c8baddf38d135cb2d5ba24c9c7eb0d7d3fb2108`): the fork is 14 commits ahead of
+upstream `3.11.0` and 3 commits **behind** upstream `3.11.1`, which was released
+2026-10-16. So the pin is a fork of a superseded release.
+
+The 14 commits are:
+
+- **Upstream's own unreleased work, vendored early.** The clamped out-of-range
+  ZIP read and capped `BufferingResource` read-ahead, streaming LCP CBC
+  resources in decrypted chunks, honest playback state in `AudioNavigator`,
+  media resources cached across loading requests, cancelled HTTP reads no longer
+  reported as loading errors, and streamed reads failing when they end short.
+  These came from upstream's `fix-issue-579` branch, taken before any release
+  carried them because the LCP audiobook streaming path needed them. **That
+  branch no longer exists upstream** — it 404s as of 2026-10-26 — so it either
+  merged into `3.11.1` or was abandoned. Which of the two decides whether a
+  migration sheds these commits or has to keep carrying them, and that has not
+  been established: the comparison above matched commit subjects, not content.
+- **Ours, and it has to be carried.** `Let a caller supply a CBC resource's
+  plaintext length`, which adds `KnownLengthAcceptingResource`. The audiobook
+  toolkit depends on it: computing a CBC resource's plaintext length reads the
+  last encrypted blocks, and on device that 32-byte tail read cost 17.8 MB to
+  35.5 MB of origin traffic. Nothing upstream has this.
+- **Fork plumbing, discard on migration.** `Point the SPM integration check at
+  this fork`.
+
+So the question "do we need to bring our changes over" has a small answer —
+roughly one real graft — but it rests on an unestablished premise. Before the
+next pin move, compare the fork's twelve vendored commits against the target
+upstream release by content rather than by subject, and record which are
+already there. That turns the migration from a merge into a graft, or proves it
+is not one.
+
 ## Scope
 
 The gate covers Readium because that is the dependency with a demonstrated

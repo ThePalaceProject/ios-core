@@ -10,6 +10,7 @@
 //
 
 import Foundation
+import PalaceNetwork
 import PalaceAudiobookToolkit
 import PalaceLogging
 import PalaceBookModel
@@ -536,7 +537,7 @@ class LocalBookContentService {
 
         if !isLcpAudiobook {
             let manifestData = try Data(contentsOf: bookURL)
-            let manifest = try Manifest.customDecoder().decode(Manifest.self, from: manifestData)
+            let manifest = try Manifest.customDecoder().decodeGuarded(Manifest.self, from: manifestData)
             AudiobookFactory.audiobookClass(for: manifest).deleteLocalContent(manifest: manifest, bookIdentifier: book.identifier)
         }
 

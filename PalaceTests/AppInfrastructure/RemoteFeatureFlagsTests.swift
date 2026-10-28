@@ -572,4 +572,35 @@ final class RemoteFeatureFlagsTests: XCTestCase {
                           file: file, line: line)
     }
 
+    // MARK: - Flags Remote Config cannot reach
+
+    /// Answers `true` for every Remote Config key, so a flag that reads OFF
+    /// against it reads OFF because the lookup never happened.
+    private struct AllOnRemoteConfig: RemoteConfigProviding {
+        func fetchAndActivateRemoteConfig() async -> Bool { true }
+        func getBoolValue(forKey key: FirebaseManager.RemoteConfigKey,
+                          checkingDeviceSpecific: Bool) -> Bool { true }
+        func getDoubleValue(forKey key: FirebaseManager.RemoteConfigKey) -> Double { 1 }
+        func isEnhancedLoggingEnabled() -> Bool { true }
+        func getDeviceInfo() -> [String: String] { [:] }
+        func setUserPropertiesForTargeting() {}
+    }
+
+    /// `advancedTypographyEnabled` has no `managerKey`, so `isFeatureEnabled`
+    /// never consults Remote Config for it and resolves from the in-app default
+    /// alone. The control it gates — the reader toolbar's typography button —
+    /// therefore cannot be turned on from Firebase (PP-5394 investigation).
+    /// Wiring the key later means updating this test deliberately.
+    func testAdvancedTypography_staysOffAgainstAnAllOnRemoteConfig() {
+        let name = "test.advancedTypography.\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: name)!
+        defer { suite.removePersistentDomain(forName: name) }
+        let flags = RemoteFeatureFlags(defaults: suite, remoteConfig: AllOnRemoteConfig())
+
+        XCTAssertTrue(flags.isFeatureEnabled(.opds2Enabled),
+                      "Control: a mapped flag does read the stub, so the assertion below is not vacuous")
+        XCTAssertFalse(flags.isFeatureEnabled(.advancedTypographyEnabled),
+                       "An unmapped flag resolves from its in-app default, which is OFF")
+    }
+
 }

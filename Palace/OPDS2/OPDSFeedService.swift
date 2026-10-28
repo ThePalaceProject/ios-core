@@ -74,17 +74,9 @@ actor OPDSFeedService: OPDSFeedFetching {
 
                         // Attach problem document to error for better messaging
                         if let problemDoc = problemDoc {
-                            let nsError = error as NSError
-                            let errorWithProblemDoc = NSError(
-                                domain: nsError.domain,
-                                code: nsError.code,
-                                userInfo: (nsError.userInfo ?? [:]).merging([
-                                    "problemDocument": problemDoc,
-                                    "problemDocumentTitle": problemDoc.title ?? "",
-                                    "problemDocumentDetail": problemDoc.detail ?? ""
-                                ]) { $1 }
+                            continuation.resume(
+                                throwing: Self.attachingProblemDocument(problemDoc, to: error)
                             )
-                            continuation.resume(throwing: errorWithProblemDoc)
                         } else {
                             continuation.resume(throwing: error)
                         }
@@ -178,6 +170,27 @@ actor OPDSFeedService: OPDSFeedFetching {
         return borrowedBook
     }
 
+    /// Attaches the problem document to the error for messaging.
+    ///
+    /// Bridging a Swift enum error to `NSError` keeps only the top-level case
+    /// index, so the inner case does not survive on its own and
+    /// `PalaceError.from` can only guess it back from a fixed table. The error
+    /// therefore travels in `userInfo` as well (PP-5397).
+    static func attachingProblemDocument(_ problemDoc: TPPProblemDocument,
+                                         to error: PalaceError) -> NSError {
+        let nsError = error as NSError
+        return NSError(
+            domain: nsError.domain,
+            code: nsError.code,
+            userInfo: nsError.userInfo.merging([
+                PalaceError.wrappedErrorKey: error,
+                "problemDocument": problemDoc,
+                "problemDocumentTitle": problemDoc.title ?? "",
+                "problemDocumentDetail": problemDoc.detail ?? ""
+            ]) { $1 }
+        )
+    }
+
     // MARK: - Error Parsing
 
     private func parseError(from errorDict: [AnyHashable: Any], url: URL) -> PalaceError {
@@ -190,7 +203,7 @@ actor OPDSFeedService: OPDSFeedFetching {
         if let errorType = errorDict["type"] as? String {
             switch errorType {
             case TPPProblemDocument.TypeNoActiveLoan:
-                return .bookRegistry(.bookNotFound)
+                return .bookRegistry(.loanEnded)
             case TPPProblemDocument.TypeLoanAlreadyExists:
                 return .bookRegistry(.alreadyBorrowed)
             case TPPProblemDocument.TypeInvalidCredentials:
@@ -252,7 +265,9 @@ actor OPDSFeedService: OPDSFeedFetching {
 
         switch type {
         case TPPProblemDocument.TypeNoActiveLoan:
-            return .bookRegistry(.bookNotFound)
+            // The loan ended; the book itself is present and borrowable, so the
+            // patron is told that rather than that the book is missing (PP-5397).
+            return .bookRegistry(.loanEnded)
         case TPPProblemDocument.TypeLoanAlreadyExists:
             return .bookRegistry(.alreadyBorrowed)
         case TPPProblemDocument.TypeInvalidCredentials:
@@ -378,7 +393,10 @@ extension OPDSFeedService {
             }
         }
 
-        // Try to create problem document
+        // Unguarded on purpose: these bytes are produced by the
+        // `JSONSerialization` call below, so the screen would be a re-parse of
+        // output that parser just wrote. A Swift String key cannot hold a lone
+        // surrogate, so no key here can reach the decoder's trap (PP-5412).
         guard let data = try? JSONSerialization.data(withJSONObject: stringDict),
               let problemDoc = try? JSONDecoder().decode(TPPProblemDocument.self, from: data) else {
             return nil

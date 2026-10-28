@@ -195,3 +195,51 @@ stricter code.
 The `3.11.0-palace.1` rows carry forward: the four paths left `not validated`
 there are still unexercised, and this pin does not change that. The open item is
 the same one, now with a second reason to close it.
+
+## 3.11.0-palace.3 — ThePalaceProject/swift-toolkit @ 6c8baddf38d135cb2d5ba24c9c7eb0d7d3fb2108
+
+- Validated against: 3.4.0 (516), iPhone 17 Pro Max, iOS 26.6.1
+- Validated by: maintainer, in-app device session, A1QA staging library
+- Date: 2026-10-26
+- Pin: `3.11.0-palace.2` plus one change, "Let a caller supply a CBC resource's
+  plaintext length". `CBCLCPResource` gains an optional `knownPlainTextSize`,
+  and a new `KnownLengthAcceptingResource` protocol lets a caller hand it over
+  rather than have it computed.
+
+Why the length matters: computing a CBC resource's plaintext length reads its
+last two encrypted blocks, and in a remote publication those blocks sit far from
+the bytes being read. Measured on device, that 32-byte tail read cost 17.8 MB to
+35.5 MB of origin traffic for zero bytes of audio.
+
+**What bounds this pin's blast radius.** The shared change in `Resource.swift`
+is purely additive: a new protocol declaration, with no change to `Resource`
+itself. In `LCPDecryptor`, `knownPlainTextSize` defaults to nil and the size
+task short-circuits only when it is non-nil; with nil it runs the same
+`resource.estimatedLength()` path as `palace.2`. The `init` parameter is
+defaulted, so existing construction sites are untouched. A caller that does not
+opt in therefore reads through byte-identical code. That is why the EPUB and PDF
+rows below are "not validated" rather than "at risk": they do not supply a
+length, so they take the unchanged branch.
+
+The residual risk is confined to callers that DO supply one. The protocol states
+it must be exact — too large exposes padding at the end of the content, too
+small truncates it — so a wrong length from the audiobook toolkit would corrupt
+playback rather than fail loudly. That lands on the audiobook LCP path, which is
+the path exercised below.
+
+| Path | Result | Notes |
+|---|---|---|
+| Audiobook, LCP (streaming) | exercised | Borrowed and played from the A1QA staging library with streaming on. 97 chapter serves, none from a local package, 0.0-28.3s. Audio played and decrypted correctly: one chapter start was clean at 0.1s with 7,077,890 bytes served. Seeks across track boundaries exercised heavily, forward and backward. No sign of exposed padding or truncated content. |
+| Audiobook, LCP (defects found) | — | The session reproduced PP-5401: during the download window a skip burst cancelled one range request per tap and 18 of 21 backward taps delivered 0 bytes. Four chapter starts never became audible and one failed with -1001. These are cancellation and latency failures, not decryption failures, and the fetch-level cause is fixed in ios-audiobooktoolkit #254. PP-5398's slow-origin stall stays open. |
+| Audiobook, LCP (resume after backgrounding) | not validated | Not exercised in this session. |
+| Audiobook, LCP (local / download-first) | not validated | Not exercised against this pin. |
+| EPUB, LCP | not validated | Traverses `LCPDecryptor`, but supplies no known length, so it reads through the unchanged branch. Not exercised. |
+| EPUB, Adobe DRM | not validated | Does not traverse `LCPDecryptor` at all. Not exercised. |
+| PDF, LCP | not validated | Traverses `LCPDecryptor` on the unchanged branch. Not exercised. |
+| Audiobook, OverDrive / Findaway | not validated | Non-LCP fulfillment; does not reach this code. Not exercised. |
+| Open-access EPUB | not validated | No LCP decryption. Not exercised. |
+
+The `palace.1` and `palace.2` rows carry forward: the paths left `not validated`
+there are still unexercised. This pin narrows the open item rather than closing
+it — the audiobook LCP streaming path, which both earlier entries named as the
+one that mattered most and neither exercised, is now exercised on device.

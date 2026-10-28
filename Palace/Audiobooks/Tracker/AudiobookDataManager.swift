@@ -1,4 +1,5 @@
 import Foundation
+import PalaceNetwork
 import Combine
 import UIKit
 import PalaceUtilities
@@ -75,7 +76,7 @@ struct ResponseData: Codable {
     }
 
     init?(data: Data) {
-        guard let value = try? JSONDecoder().decode(ResponseData.self, from: data) else {
+        guard let value = try? JSONDecoder().decodeGuarded(ResponseData.self, from: data) else {
             return nil
         }
         self.init(responses: value.responses)

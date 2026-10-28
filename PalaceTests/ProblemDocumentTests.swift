@@ -7,6 +7,7 @@
 
 import XCTest
 import PalaceCatalog
+import PalaceNetwork
 @testable import Palace
 
 @MainActor
@@ -206,6 +207,48 @@ final class ProblemDocumentTests: XCTestCase {
 
         XCTAssertThrowsError(try TPPProblemDocument.fromData(Data(json.utf8)),
                              "Only `show_title` is lenient; widening that is a separate decision.")
+    }
+
+    /// A problem document carrying mangled Unicode in a member this app ignores
+    /// still parses.
+    ///
+    /// Problem documents are parsed on every error response from the circulation
+    /// manager, so this decode runs exactly when a server is already returning
+    /// something unusual. The screen that stops `JSONDecoder` trapping on a
+    /// malformed KEY (PP-5412) is stricter than the decoder about values, and
+    /// the difference shows only in members the model does not read: the decoder
+    /// never materialises those strings, so it accepts them, while the screen
+    /// parses the whole document. Screening unconditionally would therefore turn
+    /// one bad character in an unread member into a generic error in place of
+    /// the server's message. This is the gate that prevents that, asserted
+    /// where it would be felt.
+    func testProblemDocument_fromData_withALoneSurrogateInAnIgnoredMember_followsTheRuntime() throws {
+        let json = #"{"type":"about:blank","title":"T","detail":"D","vendor_note":"\uD800"}"#
+
+        if JSONDecoder.prescreensExternalJSON {
+            // The documented price on a trapping runtime: the screen parses the
+            // whole document, so it refuses bytes the decoder would have
+            // skipped. Measured on iOS 18.0.
+            XCTAssertThrowsError(try TPPProblemDocument.fromData(Data(json.utf8)))
+        } else {
+            let problemDoc = try TPPProblemDocument.fromData(Data(json.utf8))
+            XCTAssertEqual(problemDoc.detail, "D",
+                           "a document the decoder accepts must not be refused before it reaches the decoder")
+        }
+    }
+
+    /// A malformed object key is reported, not fatal.
+    ///
+    /// On iOS 18.0 through 18.3 this input traps inside `JSONDecoder` below the
+    /// throwing boundary, so neither this `catch` nor any caller's could save
+    /// the app. On a runtime that throws, this records that the failure stays an
+    /// ordinary error; it cannot distinguish the screen from the decoder here,
+    /// and the screen's own behaviour is pinned in `JSONDecoderGuardedTests`.
+    func testProblemDocument_fromData_malformedObjectKey_isReportedNotFatal() {
+        // Well-formed UTF-8; the key carries an unknown escape.
+        let json = #"{"type":"about:blank","title":"T","a\qb":1}"#
+
+        XCTAssertThrowsError(try TPPProblemDocument.fromData(Data(json.utf8)))
     }
 
     // MARK: - show_title round trips

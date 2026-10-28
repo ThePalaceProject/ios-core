@@ -1,4 +1,5 @@
 import Foundation
+import PalaceNetwork
 import PalaceLogging
 
 /**
@@ -191,13 +192,13 @@ import PalaceLogging
         jsonDecoder.keyDecodingStrategy = .convertFromSnakeCase
 
         do {
-            return try jsonDecoder.decode(TPPProblemDocument.self, from: data)
+            return try jsonDecoder.decodeGuarded(TPPProblemDocument.self, from: data)
         } catch {
             // The server may return duplicated JSON (two concatenated objects).
             // Extract and parse just the first well-formed JSON object.
             if let firstObjectData = extractFirstJSONObject(from: data),
                firstObjectData.count < data.count {
-                return try jsonDecoder.decode(TPPProblemDocument.self, from: firstObjectData)
+                return try jsonDecoder.decodeGuarded(TPPProblemDocument.self, from: firstObjectData)
             }
             throw error
         }
