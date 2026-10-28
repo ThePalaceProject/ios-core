@@ -1310,15 +1310,16 @@ public final class AudiobookSessionManager: ObservableObject {
     /// copy (synchronous) and the high-res registry copy (async). Split
     /// from `presentCoverArtAndNavigation` so the presenter-side call
     /// can be driven independently from tests without constructing a full
-    /// `LoadedAudiobook` shape.
-    private func loadCoverArt(for book: TPPBook, into playbackModel: AudiobookPlaybackModel) {
+    /// `LoadedAudiobook` shape. `playbackModel` is optional for the same reason
+    /// as in `pushSessionToPresenter`.
+    func loadCoverArt(for book: TPPBook, into playbackModel: AudiobookPlaybackModel?) {
         if let lowRes = book.coverImage ?? book.thumbnailImage {
-            playbackModel.updateCoverImage(lowRes)
+            playbackModel?.updateCoverImage(lowRes)
             updateCoverImage(lowRes)
         }
         let coverRegistry = bookCoverRegistryProvider()
         Task { [weak self, weak playbackModel] in
-            guard let img = await coverRegistry.coverImage(for: book) else { return }
+            guard let img = await coverRegistry.playerCoverImage(for: book) else { return }
             await MainActor.run {
                 playbackModel?.updateCoverImageAnimated(img)
                 self?.updateCoverImage(img)
