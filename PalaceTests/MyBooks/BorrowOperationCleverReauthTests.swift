@@ -135,7 +135,7 @@ final class BorrowOperationCleverReauthTests: XCTestCase {
         XCTAssertEqual(signInModalCompletions.value.count, 1,
                        "OAuth-intermediary (Clever) auth error with credentials MUST trigger presentSignInModal — `needsBrowserReauth` has to cover the OAuth-intermediary case")
         XCTAssertEqual(alertCalls.value.count, 0,
-                       "Browser-reauth path must NOT also surface a generic borrow-error alert; it leaves Clever patrons with no way to re-authenticate")
+                       "Browser-reauth path must NOT also surface a generic borrow-error alert; a generic alert leaves Clever patrons with no way to re-authenticate")
     }
 
     /// Broadening pin for `BorrowOperation.swift` L562.
