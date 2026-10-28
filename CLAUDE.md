@@ -57,6 +57,7 @@ A board that is usually red from flakes hides real failures. Rationale and incid
    ```
    Read per-iteration results and the sampling depth the scan prints; "passed · FAILED · passed" is a finding. A test that flips with machine load should assert a property of the code instead.
 6. **Red means stop.** `--admin` over a red check only for a specific, named, already-tracked flake that passes in isolation and has a de-flake item.
+7. **A green re-run is an unblock, not a verdict.** It shows the failure is not deterministic; it cannot separate an environment flake from a one-in-N race, because both pass sometimes. First check your own delta can even reach the test — a comments-only diff cannot change timing. Then measure a rate instead of assuming one: run the test alone with `-test-iterations` under the lane that failed. ThreadSanitizer slows execution several-fold, so a fixed wall-clock `fulfillment(of:timeout:)` is the usual culprit; the fix is the condition-based wait, per rule 5.
 
 ## Writing conventions
 
