@@ -104,7 +104,7 @@ final class BearerTokenAdapterTests: XCTestCase {
 
         XCTAssertTrue(
             adapter.canHandle(makeBook()),
-            "BearerToken adapter must signal it can drive any book — Module D's dispatch picks when to invoke"
+            "BearerToken adapter must signal it can drive any book — the dispatcher picks when to invoke it"
         )
     }
 

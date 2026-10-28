@@ -33,7 +33,7 @@ final class OIDCReauthAttemptTests: XCTestCase {
             OIDCReauthAttempt.classify(error: sessionError(.presentationContextInvalid)),
             .presentationFailed,
             "Code 3 means iOS rejected OUR anchor. The patron saw nothing, so this is ours to retry — "
-            + "treating it as a decline is the build-499 re-auth loop."
+            + "treating it as a decline puts re-auth into a loop."
         )
     }
 

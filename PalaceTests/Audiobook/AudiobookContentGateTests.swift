@@ -61,7 +61,7 @@ final class AudiobookContentGateTests: XCTestCase {
         XCTAssertTrue(
             AudiobookSessionManager.shouldTriggerContentDownloadBeforeOpen(
                 isColdLoadRecovery: false, canOpenLCPBook: true, contentIsLocal: false, streamingEnabled: false),
-            "A first cold open of an LCP audiobook whose .lcpa isn't on disk must trigger a content download — this is the exact 323-Cause-1 dead-end")
+            "A first cold open of an LCP audiobook whose .lcpa isn't on disk must trigger a content download — without it the open dead-ends with no content to play")
     }
 
     func testShouldTrigger_contentAlreadyLocal_returnsFalse() {
