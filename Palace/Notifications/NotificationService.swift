@@ -527,10 +527,10 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
                 return
             }
             // The `hasUpdatedToken` guard at the top of `updateToken()` is read
-            // BEFORE the wait. Re-read it here — a
-            // concurrent path may have confirmed registration while we waited,
-            // and re-running the full checkTokenExists -> saveToken pipeline
-            // would be duplicate traffic against the Circulation Manager.
+            // BEFORE the wait. Re-read it here — a concurrent path may have
+            // confirmed registration while we waited, and re-running the full
+            // checkTokenExists -> saveToken pipeline would be duplicate traffic
+            // against the Circulation Manager.
             guard !live.hasUpdatedToken else {
                 Log.info(#file, "[FCM_REG] SKIP: token was registered while waiting for readiness")
                 return

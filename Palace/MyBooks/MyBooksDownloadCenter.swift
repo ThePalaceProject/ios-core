@@ -1844,9 +1844,8 @@ extension MyBooksDownloadCenter: DownloadThrottlingServiceDelegate {}
 // MARK: - DownloadQueueOrchestratorDelegate
 //
 // `startDownloadAsync(for:withRequest:)` is internal and matches the
-// protocol's surface. Empty
-// conformance — the orchestrator drives MBDC's existing per-book
-// download workflow when a queued book is dequeued.
+// protocol's surface. Empty conformance — the orchestrator drives MBDC's
+// existing per-book download workflow when a queued book is dequeued.
 
 extension MyBooksDownloadCenter: DownloadQueueOrchestratorDelegate {}
 
