@@ -318,11 +318,11 @@ actor TPPBookCoverRegistry {
             thumbnailURL: book.imageThumbnailURL,
             displayPoints: displayPoints
         ) else {
-            return await coverImage(for: book, displayHeight: displayPoints)
+            return await sizedFallback(for: book, displayPoints: displayPoints)
         }
 
         guard let data = await sourceData(for: url) else {
-            return await coverImage(for: book, displayHeight: displayPoints)
+            return await sizedFallback(for: book, displayPoints: displayPoints)
         }
 
         if let image = Self.downsampleImage(data: data, maxDimension: neededPixels) {
@@ -339,6 +339,15 @@ actor TPPBookCoverRegistry {
 
         Log.error(#file, "Failed to decode image data from URL: \(url)")
         TPPErrorLogger.logImageDecodeFail(url: url)
+        return await sizedFallback(for: book, displayPoints: displayPoints)
+    }
+
+    /// When a sized fetch cannot complete (offline, host down, bad response),
+    /// a real cover already cached under the bare identifier beats a TenPrint.
+    private func sizedFallback(for book: TPPBook, displayPoints: CGFloat) async -> UIImage? {
+        if let cached = await imageCache.getAsync(for: book.identifier) {
+            return cached
+        }
         return await coverImage(for: book, displayHeight: displayPoints)
     }
 
