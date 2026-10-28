@@ -48,26 +48,53 @@ final class NoActiveLoanReborrowTests: XCTestCase {
 
     /// What the app stored while the book was on loan: a fulfillment link, with
     /// no borrow relation. Once the loan ends this answers 400 no-active-loan.
-    private func deadLoanAcquisition() -> TPPOPDSAcquisition {
+    private func deadLoanAcquisition(
+        availability: TPPOPDSAcquisitionAvailability = TPPOPDSAcquisitionAvailabilityUnlimited()
+    ) -> TPPOPDSAcquisition {
         TPPOPDSAcquisition(
             relation: .generic,
             type: "application/epub+zip",
             hrefURL: URL(string: Self.fulfillmentHref)!,
             indirectAcquisitions: [],
-            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+            availability: availability
         )
     }
 
     /// What the catalog advertises for the same work, and the only link that
     /// can still produce a loan.
-    private func catalogBorrowAcquisition() -> TPPOPDSAcquisition {
+    private func catalogBorrowAcquisition(
+        availability: TPPOPDSAcquisitionAvailability = TPPOPDSAcquisitionAvailabilityUnlimited()
+    ) -> TPPOPDSAcquisition {
         TPPOPDSAcquisition(
             relation: .borrow,
             type: "application/atom+xml;type=entry;profile=opds-catalog",
             hrefURL: URL(string: Self.catalogBorrowHref)!,
             indirectAcquisitions: [],
-            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+            availability: availability
         )
+    }
+
+    /// Every copy out: what the catalog reads once someone else takes the copy
+    /// the patron gave back.
+    private static func copyTaken() -> TPPOPDSAcquisitionAvailability {
+        TPPOPDSAcquisitionAvailabilityUnavailable(copiesHeld: 1, copiesTotal: 1)
+    }
+
+    /// Which availability arm the book's default acquisition carries.
+    ///
+    /// Named rather than a boolean so an assertion says which reading it
+    /// expects: a "not unavailable" assertion also passes when the book has no
+    /// default acquisition at all, and would go quiet if selection ever changed.
+    private static func availabilityArm(_ book: TPPBook) -> String {
+        var arm = "no acquisition"
+        book.defaultAcquisition?.availability.match(
+            unavailable: { _ in arm = "unavailable" },
+            limited: { _ in arm = "limited" },
+            unlimited: { _ in arm = "unlimited" },
+            reserved: { _ in arm = "reserved" },
+            ready: { _ in arm = "ready" }
+        )
+        return arm
     }
 
     private func book(with acquisitions: [TPPOPDSAcquisition], alternate: URL?) -> TPPBook {
@@ -154,9 +181,22 @@ final class NoActiveLoanReborrowTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    private func drainMainQueue() async {
-        await Task.yield()
-        try? await Task.sleep(nanoseconds: 50_000_000)
+    /// Drives the no-active-loan download failure the patron met, and waits for
+    /// the retry to reach `startBorrow`.
+    ///
+    /// The retry hops through a `Task`, which no main-queue drain can wait for,
+    /// so the wait is on the observable outcome. Every cell of the retry table
+    /// ends in exactly one borrow attempt, so a test that reads
+    /// `borrowedBooks.last` after this is reading a landed value rather than nil.
+    private func driveNoActiveLoan(on handler: DownloadAuthRetryHandler, book: TPPBook) async throws {
+        let task = URLSession.shared.downloadTask(with: URL(string: Self.fulfillmentHref)!)
+        _ = handler.handleAuthFailureIfApplicable(
+            book: book,
+            task: task,
+            problemDoc: try noActiveLoanProblemDocument(),
+            failureError: nil
+        )
+        await awaitConditionAsync { [spyDelegate] in !(spyDelegate?.borrowedBooks.isEmpty ?? true) }
     }
 
     // MARK: - The retry must not re-send the link that just failed
@@ -177,14 +217,7 @@ final class NoActiveLoanReborrowTests: XCTestCase {
             return fromCatalog
         })
 
-        let task = URLSession.shared.downloadTask(with: URL(string: Self.fulfillmentHref)!)
-        _ = handler.handleAuthFailureIfApplicable(
-            book: stored,
-            task: task,
-            problemDoc: try noActiveLoanProblemDocument(),
-            failureError: nil
-        )
-        await drainMainQueue()
+        try await driveNoActiveLoan(on: handler, book: stored)
 
         XCTAssertEqual(fetchedFrom.urls, [alternate],
                        "the retry must re-read the catalog entry, which is where the only working link lives")
@@ -210,16 +243,14 @@ final class NoActiveLoanReborrowTests: XCTestCase {
         let fromCatalog = book(with: [catalogBorrowAcquisition()], alternate: alternate)
 
         let handler = makeHandler(catalogEntryFetcher: { _ in fromCatalog })
-        let task = URLSession.shared.downloadTask(with: URL(string: Self.fulfillmentHref)!)
-        _ = handler.handleAuthFailureIfApplicable(
-            book: stored,
-            task: task,
-            problemDoc: try noActiveLoanProblemDocument(),
-            failureError: nil
-        )
-        await drainMainQueue()
+        try await driveNoActiveLoan(on: handler, book: stored)
 
-        let retried = spyDelegate.borrowedBooks.last?.defaultAcquisition?.hrefURL.absoluteString
+        // Unwrapped first: a nil href would satisfy the inequality below without
+        // any borrow having happened, so the assertion would pass vacuously.
+        let retried = try XCTUnwrap(
+            spyDelegate.borrowedBooks.last?.defaultAcquisition?.hrefURL.absoluteString,
+            "no borrow was attempted, so there is no retried link to judge"
+        )
         XCTAssertNotEqual(
             retried, Self.fulfillmentHref,
             "this is the defect: the retry asked the same dead fulfillment link again"
@@ -238,17 +269,255 @@ final class NoActiveLoanReborrowTests: XCTestCase {
                           alternate: URL(string: "https://example.org/works/ISBN/123")!)
 
         let handler = makeHandler(catalogEntryFetcher: { _ in nil })
-        let task = URLSession.shared.downloadTask(with: URL(string: Self.fulfillmentHref)!)
-        _ = handler.handleAuthFailureIfApplicable(
-            book: stored,
-            task: task,
-            problemDoc: try noActiveLoanProblemDocument(),
-            failureError: nil
-        )
-        await drainMainQueue()
+        try await driveNoActiveLoan(on: handler, book: stored)
 
         XCTAssertEqual(spyDelegate.borrowedBooks.count, 1,
                        "a failed catalog read must not cost the patron the retry altogether")
+    }
+
+    // MARK: - The catalog's availability must not decide the borrow
+
+    /// An entry the catalog calls unavailable is still borrowed from its link.
+    ///
+    /// A copy taken between the loan ending and the retry makes the catalog
+    /// read `unavailable`. The retry must still ask, because only the
+    /// circulation manager's answer to the borrow can tell a loan from a hold.
+    func test_whenTheCatalogEntryReadsUnavailable_theRetryStillBorrowsFromItsLink() async throws {
+        let alternate = URL(string: "https://example.org/works/ISBN/123")!
+        let stored = book(with: [deadLoanAcquisition()], alternate: alternate)
+        let fromCatalog = book(with: [catalogBorrowAcquisition(availability: Self.copyTaken())],
+                               alternate: alternate)
+
+        let handler = makeHandler(catalogEntryFetcher: { _ in fromCatalog })
+        try await driveNoActiveLoan(on: handler, book: stored)
+
+        guard let borrowed = spyDelegate.borrowedBooks.last else {
+            return XCTFail("an unavailable catalog entry must not skip the borrow")
+        }
+        XCTAssertEqual(
+            borrowed.defaultAcquisition?.hrefURL.absoluteString, Self.catalogBorrowHref,
+            "the retry must ask the catalog's link whatever the entry says about copies"
+        )
+    }
+
+    /// The retry book carries the availability the patron was acting on.
+    ///
+    /// `BorrowReducerCore` reads the pre-borrow book's availability to tell a
+    /// deliberate Place Hold from a borrow the circulation manager downgraded
+    /// to a hold (PP-4178). The patron reached this path from Download, so the
+    /// loan-era availability is the faithful record of what they acted on;
+    /// taking the catalog's would read as a Place Hold.
+    func test_theRetryBookKeepsTheAvailabilityThePatronWasActingOn() async throws {
+        let alternate = URL(string: "https://example.org/works/ISBN/123")!
+        let stored = book(with: [deadLoanAcquisition()], alternate: alternate)
+        let fromCatalog = book(with: [catalogBorrowAcquisition(availability: Self.copyTaken())],
+                               alternate: alternate)
+
+        let handler = makeHandler(catalogEntryFetcher: { _ in fromCatalog })
+        try await driveNoActiveLoan(on: handler, book: stored)
+
+        let retried = try XCTUnwrap(spyDelegate.borrowedBooks.last)
+        XCTAssertEqual(
+            Self.availabilityArm(retried), "unlimited",
+            "the retry book took the catalog's unavailable reading, which reads as a deliberate Place Hold"
+        )
+    }
+
+    /// Unavailable entry + a hold response still raises the PP-4178 alert.
+    ///
+    /// This is the risk the catalog re-read could have introduced: an
+    /// `unavailable` pre-borrow reading silences the Loan→Hold race error, so a
+    /// hold the patron never asked for would be announced as a successful
+    /// borrow. Drives the handler's own output through the real reducer.
+    func test_unavailableEntryAndAHoldResponse_stillRaisesTheHoldAlert() async throws {
+        let alternate = URL(string: "https://example.org/works/ISBN/123")!
+        let stored = book(with: [deadLoanAcquisition()], alternate: alternate)
+        let fromCatalog = book(with: [catalogBorrowAcquisition(availability: Self.copyTaken())],
+                               alternate: alternate)
+
+        let handler = makeHandler(catalogEntryFetcher: { _ in fromCatalog })
+        try await driveNoActiveLoan(on: handler, book: stored)
+
+        let preBorrow = try XCTUnwrap(spyDelegate.borrowedBooks.last,
+                                      "no borrow was attempted, so the hold path cannot be reached")
+        let heldInstead = book(with: [catalogBorrowAcquisition(availability: Self.copyTaken())],
+                               alternate: alternate)
+
+        let mapping = BorrowReducerCore.responseState(for: heldInstead, preBorrowBook: preBorrow)
+
+        XCTAssertEqual(mapping.state, .holding, "a hold response must still land the book in .holding")
+        guard case .bookRegistry(.holdCopyUnavailable)? = mapping.error else {
+            return XCTFail(
+                "the Loan→Hold race alert (PP-4178) was suppressed, so a hold the patron did not "
+                + "ask for would be reported as a borrow; error was \(String(describing: mapping.error))"
+            )
+        }
+        XCTAssertEqual(
+            BorrowReducerCore.postResponseEffects(
+                state: mapping.state,
+                isStreamingHTML: false,
+                attemptDownload: true,
+                hasRaceError: mapping.error != nil
+            ),
+            [.failWithRaceError],
+            "the only effect of a hold the patron did not ask for is the throw that surfaces the alert"
+        )
+    }
+
+    /// A deliberate Place Hold is still not reported as a failure.
+    ///
+    /// The sibling cell of the test above: when the record the patron acted on
+    /// already read unavailable, a hold response is the expected queue
+    /// placement and must stay silent.
+    func test_whenTheStoredRecordAlreadyReadUnavailable_aHoldResponseStaysSilent() async throws {
+        let alternate = URL(string: "https://example.org/works/ISBN/123")!
+        let stored = book(with: [deadLoanAcquisition(availability: Self.copyTaken())], alternate: alternate)
+        let fromCatalog = book(with: [catalogBorrowAcquisition(availability: Self.copyTaken())],
+                               alternate: alternate)
+
+        let handler = makeHandler(catalogEntryFetcher: { _ in fromCatalog })
+        try await driveNoActiveLoan(on: handler, book: stored)
+
+        let preBorrow = try XCTUnwrap(spyDelegate.borrowedBooks.last)
+        let heldInstead = book(with: [catalogBorrowAcquisition(availability: Self.copyTaken())],
+                               alternate: alternate)
+
+        let mapping = BorrowReducerCore.responseState(for: heldInstead, preBorrowBook: preBorrow)
+
+        XCTAssertEqual(mapping.state, .holding)
+        XCTAssertNil(mapping.error,
+                     "a hold placed on a record that already read unavailable is the expected outcome")
+    }
+
+    /// Unavailable entry + a granted loan is a plain success.
+    ///
+    /// The outcome the patron wants: the catalog read says the copy is gone, the
+    /// circulation manager grants the loan anyway, and the book downloads with
+    /// no alert. `responseState`'s limited arm never reads place-hold intent, so
+    /// this holds either way; it guards the success path, not the re-carry.
+    func test_unavailableEntryAndAGrantedLoan_succeedsWithNoAlert() async throws {
+        let alternate = URL(string: "https://example.org/works/ISBN/123")!
+        let stored = book(with: [deadLoanAcquisition()], alternate: alternate)
+        let fromCatalog = book(with: [catalogBorrowAcquisition(availability: Self.copyTaken())],
+                               alternate: alternate)
+
+        let handler = makeHandler(catalogEntryFetcher: { _ in fromCatalog })
+        try await driveNoActiveLoan(on: handler, book: stored)
+
+        let preBorrow = try XCTUnwrap(spyDelegate.borrowedBooks.last)
+        let lent = book(with: [catalogBorrowAcquisition(
+            availability: TPPOPDSAcquisitionAvailabilityLimited(
+                copiesAvailable: 1, copiesTotal: 1, since: nil, until: nil)
+        )], alternate: alternate)
+
+        let mapping = BorrowReducerCore.responseState(for: lent, preBorrowBook: preBorrow)
+
+        XCTAssertEqual(mapping.state, .downloadNeeded, "a granted loan must leave the book downloadable")
+        XCTAssertNil(mapping.error, "a granted loan is not a failure")
+        XCTAssertEqual(
+            BorrowReducerCore.postResponseEffects(
+                state: mapping.state,
+                isStreamingHTML: false,
+                attemptDownload: true,
+                hasRaceError: mapping.error != nil
+            ),
+            [.announceBorrowSucceeded, .noteBorrowSucceeded, .startDownload],
+            "the retry must carry straight on into the download the patron asked for"
+        )
+    }
+
+    /// No alternate URL and no fetcher still attempts the borrow.
+    ///
+    /// Both halves of the re-read guard are absent at once, which is the cell
+    /// neither single-cause test reaches.
+    func test_withNeitherAnAlternateURLNorAFetcher_theRetryIsStillAttempted() async throws {
+        let stored = book(with: [deadLoanAcquisition()], alternate: nil)
+
+        let handler = makeHandler(catalogEntryFetcher: nil)
+        try await driveNoActiveLoan(on: handler, book: stored)
+
+        XCTAssertEqual(
+            spyDelegate.borrowedBooks.last?.defaultAcquisition?.hrefURL.absoluteString,
+            Self.fulfillmentHref,
+            "with nothing to re-read the stored link is all there is, and the attempt must still happen"
+        )
+    }
+
+    /// An entry offering no acquisition we support keeps the stored book.
+    ///
+    /// The merge takes the entry's acquisitions wholesale, so a lean entry would
+    /// leave the retry with no link at all — a worse failure than the dead link,
+    /// because the borrow would stop before it ever asked.
+    func test_whenTheEntryOffersNoSupportedLink_theRetryKeepsTheStoredBook() async throws {
+        let alternate = URL(string: "https://example.org/works/ISBN/123")!
+        let stored = book(with: [deadLoanAcquisition()], alternate: alternate)
+        let leanEntry = book(with: [], alternate: alternate)
+
+        let handler = makeHandler(catalogEntryFetcher: { _ in leanEntry })
+        try await driveNoActiveLoan(on: handler, book: stored)
+
+        XCTAssertEqual(
+            spyDelegate.borrowedBooks.last?.defaultAcquisition?.hrefURL.absoluteString,
+            Self.fulfillmentHref,
+            "an entry with nothing to borrow from must leave the stored link in place, not erase it"
+        )
+    }
+
+    /// A stored book with no supported acquisition is retried unchanged.
+    ///
+    /// There is no reading to carry over, and the discriminator answers "not a
+    /// Place Hold" for a book with no acquisition — so adopting the entry here
+    /// would hand it the catalog's `unavailable` and silence the hold alert in
+    /// the one case the re-carry cannot protect.
+    func test_whenTheStoredBookHasNoSupportedAcquisition_theRetryIsUnchanged() async throws {
+        let alternate = URL(string: "https://example.org/works/ISBN/123")!
+        let unreadable = TPPOPDSAcquisition(
+            relation: .generic,
+            type: "application/vnd.example.unsupported",
+            hrefURL: URL(string: Self.fulfillmentHref)!,
+            indirectAcquisitions: [],
+            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+        )
+        let stored = book(with: [unreadable], alternate: alternate)
+        let fromCatalog = book(with: [catalogBorrowAcquisition(availability: Self.copyTaken())],
+                               alternate: alternate)
+
+        let handler = makeHandler(catalogEntryFetcher: { _ in fromCatalog })
+        try await driveNoActiveLoan(on: handler, book: stored)
+
+        let retried = try XCTUnwrap(spyDelegate.borrowedBooks.last)
+        XCTAssertEqual(
+            Self.availabilityArm(retried), "no acquisition",
+            "the retry adopted the catalog entry, which reads as a Place Hold the patron never made"
+        )
+
+        // The reading the discriminator would have made before the re-read, and
+        // must still make: a hold response here is a race, not a queue entry.
+        let heldInstead = book(with: [catalogBorrowAcquisition(availability: Self.copyTaken())],
+                               alternate: alternate)
+        let mapping = BorrowReducerCore.responseState(for: heldInstead, preBorrowBook: retried)
+        guard case .bookRegistry(.holdCopyUnavailable)? = mapping.error else {
+            return XCTFail("the hold alert was silenced for a book with no stored acquisition")
+        }
+    }
+
+    /// With no fetcher wired, the retry proceeds with the stored book.
+    ///
+    /// The fifth cell of the retry table: the capability is absent, so the old
+    /// path is the only one available and must still attempt the borrow.
+    func test_whenNoFetcherIsInjected_theRetryProceedsWithTheStoredBook() async throws {
+        let stored = book(with: [deadLoanAcquisition()],
+                          alternate: URL(string: "https://example.org/works/ISBN/123")!)
+
+        let handler = makeHandler(catalogEntryFetcher: nil)
+        try await driveNoActiveLoan(on: handler, book: stored)
+
+        XCTAssertEqual(spyDelegate.borrowedBooks.count, 1, "the retry must still be attempted")
+        XCTAssertEqual(
+            spyDelegate.borrowedBooks.last?.defaultAcquisition?.hrefURL.absoluteString,
+            Self.fulfillmentHref,
+            "without a fetcher there is nothing to re-read, so the stored link is all there is"
+        )
     }
 
     /// A book with no alternate URL is retried as before.
@@ -263,14 +532,7 @@ final class NoActiveLoanReborrowTests: XCTestCase {
             fetchedFrom.record(book.alternateURL ?? URL(string: "about:blank")!)
             return nil
         })
-        let task = URLSession.shared.downloadTask(with: URL(string: Self.fulfillmentHref)!)
-        _ = handler.handleAuthFailureIfApplicable(
-            book: stored,
-            task: task,
-            problemDoc: try noActiveLoanProblemDocument(),
-            failureError: nil
-        )
-        await drainMainQueue()
+        try await driveNoActiveLoan(on: handler, book: stored)
 
         XCTAssertEqual(fetchedFrom.urls.count, 0, "there is no catalog entry to fetch without an alternate URL")
         XCTAssertEqual(spyDelegate.borrowedBooks.count, 1, "the retry must still be attempted")

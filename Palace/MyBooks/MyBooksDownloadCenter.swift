@@ -136,7 +136,9 @@ private final class RedirectCompletionBox: @unchecked Sendable {
     /// Internal so the offline queue's entry point (OfflineQueueCoordinator.swift) can reach it.
     let returnService: BookReturnService
     private let alertPresenter: DownloadAlertPresenter
-    private let authRetryHandler: DownloadAuthRetryHandler
+    /// Internal so a test can assert the no-active-loan retry was wired with
+    /// its catalog re-read (PP-5397); nothing else reads it from outside.
+    let authRetryHandler: DownloadAuthRetryHandler
     private let throttlingService: DownloadThrottlingService
     private let queueOrchestrator: DownloadQueueOrchestrator
     private let borrowErrorPresenter: BorrowErrorPresenter
@@ -593,17 +595,16 @@ private final class RedirectCompletionBox: @unchecked Sendable {
         let resolveAccount: () -> TPPUserAccount = {
             userAccount ?? accountsManager.currentUserAccount
         }
-        self.authRetryHandler = authRetryHandler ?? DownloadAuthRetryHandler(
+        // Composition in MyBooksDownloadCenter+AuthRetry.swift.
+        self.authRetryHandler = authRetryHandler ?? Self.makeAuthRetryHandler(
             stateManager: stateManager,
             bookRegistry: bookRegistry,
             reauthenticator: reauthenticator,
             alertPresenter: self.alertPresenter,
             userAccountProvider: resolveAccount,
             authCoordinator: authCoordinator,
-            // Foreign-host guard (PR #1018 cross-host logout).
-            currentAccountHostsProvider: {
-                resolvedAccountScope.currentAccountAuthSurfaceHosts
-            }
+            accountScope: resolvedAccountScope,
+            opdsFeedService: opdsFeedService
         )
         // DownloadThrottlingService shares the same DownloadStateManager
         // MBDC owns so cap + suspend/resume policy stays coherent with the

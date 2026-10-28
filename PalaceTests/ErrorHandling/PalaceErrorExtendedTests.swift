@@ -21,16 +21,7 @@ final class PalaceErrorExtendedTests: XCTestCase {
     // MARK: - BookRegistry Error Descriptions
 
     func testBookRegistryError_allCases_haveDescriptions() {
-        let cases: [PalaceError] = [
-            .bookRegistry(.bookNotFound),
-            .bookRegistry(.registryCorrupted),
-            .bookRegistry(.syncFailed),
-            .bookRegistry(.saveFailed),
-            .bookRegistry(.loadFailed),
-            .bookRegistry(.invalidState),
-            .bookRegistry(.concurrencyViolation),
-            .bookRegistry(.alreadyBorrowed)
-        ]
+        let cases: [PalaceError] = BookRegistryError.allCases.map { .bookRegistry($0) }
         for error in cases {
             XCTAssertNotNil(error.errorDescription, "\(error) should have a description")
             XCTAssertFalse(error.errorDescription!.isEmpty, "\(error) description should not be empty")
@@ -38,11 +29,7 @@ final class PalaceErrorExtendedTests: XCTestCase {
     }
 
     func testBookRegistryError_allCases_haveRecoverySuggestions() {
-        let cases: [BookRegistryError] = [
-            .bookNotFound, .registryCorrupted, .syncFailed,
-            .saveFailed, .loadFailed, .invalidState,
-            .concurrencyViolation, .alreadyBorrowed
-        ]
+        let cases: [BookRegistryError] = BookRegistryError.allCases
         for error in cases {
             XCTAssertNotNil(error.recoverySuggestion, "\(error) should have a recovery suggestion")
         }

@@ -41,7 +41,7 @@ final class DownloadErrorRecoveryPolicyTests: XCTestCase {
         let policy = DownloadErrorRecovery.RetryPolicy.borrowOperation
 
         XCTAssertTrue(policy.shouldRetry(PalaceError.bookRegistry(.bookNotFound)),
-                      "retry on 'no active loan' (bookNotFound is the OPDS signal for it)")
+                      "bookNotFound stays retryable; no-active-loan now maps to loanEnded (PP-5397)")
         XCTAssertTrue(policy.shouldRetry(PalaceError.network(.timeout)),
                       "retry on PalaceError timeout")
         XCTAssertTrue(policy.shouldRetry(PalaceError.network(.noConnection)),
@@ -205,4 +205,27 @@ final class DownloadErrorRecoveryPolicyTests: XCTestCase {
         let arrayResult = try await recovery.executeWithRetry { return [1, 2, 3] }
         XCTAssertEqual(arrayResult, [1, 2, 3])
     }
+
+    /// The borrow retry is driven by whatever a `no-active-loan` failure maps to,
+    /// so changing that mapping must not quietly stop the retry (PP-5397).
+    func testBorrowPolicy_retriesWhateverNoActiveLoanMapsTo() async throws {
+        let mapped = try await ProblemDocumentLoanExpiryTests.mapNoActiveLoanProblemDocument()
+
+        XCTAssertTrue(DownloadErrorRecovery.RetryPolicy.borrowOperation.shouldRetry(mapped),
+                      "the error a no-active-loan maps to must stay retryable; got \(mapped)")
+    }
+
+    /// What the feed service actually throws is an NSError carrying the problem
+    /// document, and the policy's PalaceError arm cannot see through it. That is
+    /// what lets the failure reach the patron with its own text: were it
+    /// retried, three attempts would end in `maxRetriesExceeded` and the patron
+    /// would read a connection message instead (PP-5397).
+    func testBorrowPolicy_doesNotRetryTheWrappedFeedError() throws {
+        let doc = try ProblemDocumentLoanExpiryTests.makeNoActiveLoanProblemDocument()
+        let wrapped = OPDSFeedService.attachingProblemDocument(doc, to: .bookRegistry(.loanEnded))
+
+        XCTAssertFalse(DownloadErrorRecovery.RetryPolicy.borrowOperation.shouldRetry(wrapped),
+                       "a wrapped feed error must reach the patron, not be retried away")
+    }
+
 }
