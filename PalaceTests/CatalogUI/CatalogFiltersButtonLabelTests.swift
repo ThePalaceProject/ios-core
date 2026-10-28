@@ -11,9 +11,7 @@ import XCTest
 @MainActor
 final class CatalogFiltersButtonLabelTests: XCTestCase {
 
-    /// The label has to come from a key that is actually translated. A bare
-    /// literal is looked up as a localization key, and nothing defines
-    /// "APPLY FILTERS", so every language rendered the key itself (PP-5414).
+    /// The label must resolve through a translated key, not a bare literal.
     func testIdleLabel_isTheTranslatedShowResultsString() {
         XCTAssertEqual(CatalogFiltersButtonLabel.text(isApplying: false),
                        Strings.Catalog.showResults)
@@ -24,8 +22,8 @@ final class CatalogFiltersButtonLabelTests: XCTestCase {
                        Strings.Catalog.applyingFilters)
     }
 
-    /// Names the two strings that used to be shown, so a revert to literals
-    /// fails here rather than only in a non-English build.
+    /// Names both literals, so reverting to one fails here rather than only
+    /// in a non-English build.
     func testNeitherLabel_isAnUndefinedLiteralKey() {
         for isApplying in [true, false] {
             let label = CatalogFiltersButtonLabel.text(isApplying: isApplying)
@@ -34,9 +32,8 @@ final class CatalogFiltersButtonLabelTests: XCTestCase {
         }
     }
 
-    /// The keys these accessors use must exist in every localization that ships
-    /// one, otherwise the lookup falls back to the key and the patron reads
-    /// English again.
+    /// A key missing from a localization falls back to the key itself, so the
+    /// patron reads English.
     func testBothKeys_areTranslatedInEveryShippedLocalization() throws {
         for language in ["de", "es", "it", "fr"] {
             let path = try XCTUnwrap(
