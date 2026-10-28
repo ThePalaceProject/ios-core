@@ -349,7 +349,7 @@ final class AudiobookContentGateTests: XCTestCase {
         )
 
         XCTAssertEqual(triggeredBookIds, [book.identifier],
-            "The gate MUST trigger the content download exactly once for the missing book — the whole 323-Cause-1 fix is that it no longer merely polls")
+            "The gate MUST trigger the content download exactly once for the missing book — polling without triggering never starts the download")
         XCTAssertEqual(awaitedBookId, book.identifier,
             "The gate must await the SAME book's content after triggering")
         XCTAssertEqual(result, .landedAfterTrigger,

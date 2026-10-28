@@ -344,7 +344,7 @@ final class AudiobookPhoneAlertContentTests: XCTestCase {
 
     func testWifiRequired_producesAlertContent() {
         guard let content = AudiobookSessionManager.phoneAlertContent(for: .wifiRequired) else {
-            XCTFail(".wifiRequired must produce phone alert content — it's the primary bug this fix addresses")
+            XCTFail(".wifiRequired must produce phone alert content — returning nil leaves the patron with no alert")
             return
         }
         XCTAssertFalse(content.title.isEmpty, "title cannot be empty")
@@ -447,7 +447,7 @@ final class PlaybackFailureRecordTests: XCTestCase {
         XCTAssertEqual(record.userInfo["underlyingDomain"] as? String, kOpenAccessDomain)
         XCTAssertEqual(record.userInfo["underlyingCode"] as? Int, 6)
         XCTAssertEqual(record.userInfo["httpStatusCode"] as? Int, 403,
-                       "status code must round-trip — that's the whole point of this fix")
+                       "status code must round-trip — it is what separates contentForbidden from a collapsed audiobook error")
         XCTAssertEqual(
             record.userInfo["trackKey"] as? String,
             "https://library.biblioboard.com/ext/api/media/abc/assets/content/SID-1_0001_64k.mp3"

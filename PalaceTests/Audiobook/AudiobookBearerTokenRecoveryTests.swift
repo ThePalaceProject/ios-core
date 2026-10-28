@@ -103,7 +103,7 @@ final class AudiobookBearerTokenRecoveryTests: XCTestCase {
     func testBearerTokenRefulfill_bearerToken410_returnsTrue() {
         XCTAssertTrue(AudiobookPlaybackRecoveryReducer.shouldTriggerBearerTokenRefulfillForPlaybackFailure(
             error: httpError(410), book: bearerTokenBook(), alreadyAttempted: false),
-            "A bearer-token audiobook with a 410 expiry is exactly the case this fix recovers")
+            "A bearer-token audiobook with a 410 expiry must re-fulfill")
     }
 
     func testBearerTokenRefulfill_bearerToken403_returnsTrue() {

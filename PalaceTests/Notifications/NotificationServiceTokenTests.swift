@@ -211,7 +211,7 @@ final class NotificationServiceTokenTests: XCTestCase {
     /// every library switch — against the very metric the fix is measured by.
     func testReadinessFailure_timeout_isResidualNotQuiet() {
         XCTAssertEqual(NotificationService.disposition(forReadinessFailure: .readinessTimedOut(timeout: 45)), .residual,
-                       "silencing the timeout would drive the metric this fix is judged by to near-zero whether registration succeeds or the account is never driven — the fix must stay falsifiable")
+                       "silencing the timeout would drive the metric to near-zero whether registration succeeds or the account is never driven — the signal must stay falsifiable")
     }
 
     func testReadinessFailure_evicted_isQuiet() {

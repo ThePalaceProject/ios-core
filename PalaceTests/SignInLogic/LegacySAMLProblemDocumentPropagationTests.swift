@@ -168,7 +168,7 @@ final class LegacySAMLProblemDocumentPropagationTests: XCTestCase {
 
         XCTAssertEqual(uiDelegate.validationErrorCallCount, 1,
                        "nil problem doc must still surface to the delegate — " +
-                       "the whole point of this fix is to eliminate silent failures")
+                       "otherwise the failure is silent")
         XCTAssertEqual(uiDelegate.capturedValidationTitle,
                        Strings.Error.loginErrorTitle,
                        "nil problem doc must fall back to generic title")

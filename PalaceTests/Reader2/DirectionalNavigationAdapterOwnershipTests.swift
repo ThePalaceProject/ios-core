@@ -89,7 +89,7 @@ final class DirectionalNavigationAdapterOwnershipTests: XCTestCase {
 
         XCTAssertNotNil(
             weakAdapter,
-            "An adapter stored by its owner must outlive the scope that created it — this is the fix for EPUB edge-tap paging"
+            "An adapter stored by its owner must outlive the scope that created it — EPUB edge-tap paging stops working when it does not"
         )
 
         owner = nil

@@ -106,7 +106,7 @@ final class CredentialSnapshotInvalidationTests: PalaceWiringTestCase {
         viewModel.refreshSignInState()
 
         XCTAssertFalse(viewModel.isSignedIn,
-                       "After sign-out the view model must read signed-out — a stale 'signed in' here is the build-459 regression per-read invalidation used to hide")
+                       "After sign-out the view model must read signed-out — a stale 'signed in' here means the per-read invalidation did not fire")
 
         let post = manager.userAccount(for: fixture.uuid).credentialSnapshot()
         XCTAssertFalse(post.hasCredentials,

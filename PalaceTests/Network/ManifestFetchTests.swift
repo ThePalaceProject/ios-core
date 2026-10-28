@@ -871,8 +871,8 @@ final class LCPLicenseDocumentDetectionTests: XCTestCase {
         let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         XCTAssertNotNil(parsed,
             "LCP license must be valid JSON. The CM returns it with 200 OK " +
-            "and it parses as a JSON dictionary, which is why the old code " +
-            "could mistake it for a manifest."
+            "and it parses as a JSON dictionary, which is why it can be " +
+            "mistaken for a manifest."
         )
     }
 
@@ -1146,7 +1146,7 @@ final class FetchManifestWithBearerTokenLCPSafetyTests: XCTestCase {
 
         XCTAssertNotNil(receivedJSON,
             "Even if the response is an LCP license (valid JSON), it will be returned. " +
-            "The fix prevents LCP books from reaching this code path at all."
+            "LCP books are kept out of this code path upstream."
         )
         XCTAssertNotNil(receivedJSON?["encryption"],
             "Returned JSON should be the LCP license (with encryption key)")

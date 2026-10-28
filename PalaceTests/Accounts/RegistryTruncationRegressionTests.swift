@@ -185,7 +185,7 @@ final class RegistryTruncationRegressionTests: PalaceWiringTestCase {
                        "The page-1 write must carry the MERGED registry (3 bundled + 1 fresh). A count of 1 here is the defect verbatim: page 1 written over the whole registry.")
 
         XCTAssertNotNil(store.account("patron-library"),
-                        "THE DEFECT: the patron's library was committed from the bundled snapshot and must survive a partial page-1 write. Before the fix it was discarded and `currentAccount` went nil — no library name, no Settings row, and a sign-in prompt for a signed-in patron.")
+                        "The patron's library is committed from the bundled snapshot and must survive a partial page-1 write. Discarding it sends `currentAccount` nil — no library name, no Settings row, and a sign-in prompt for a signed-in patron.")
         XCTAssertNotNil(store.account("bundled-a"))
         XCTAssertNotNil(store.account("bundled-b"))
         XCTAssertNotNil(store.account("freshly-modified"),
@@ -268,7 +268,7 @@ final class RegistryTruncationRegressionTests: PalaceWiringTestCase {
                         "PREMISE: the pagination write-back must actually have run. Without this, every assertion below is already true from the page-1 merge, and a run where pagination had not finished would pass vacuously — the guard for finding A would stop guarding without turning red.")
 
         XCTAssertNotNil(store.account("patron-library"),
-                        "A crawl that ended at 2 of a declared 900 must not delete the libraries it never reached. Before this fix the pagination write-back took the `isCompleteFeed: true` default and removed them seconds after the merge had saved them.")
+                        "A crawl that ended at 2 of a declared 900 must not delete the libraries it never reached. A write-back that takes the `isCompleteFeed: true` default removes them seconds after the merge saved them.")
         XCTAssertNotNil(store.account("bundled-a"))
         XCTAssertNotNil(store.account("bundled-b"))
 
