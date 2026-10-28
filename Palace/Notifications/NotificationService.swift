@@ -279,25 +279,21 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
 
     /// What to do when the readiness wait throws.
     ///
-    /// Extracted as a pure decision because this arm has been wrong TWICE: first
-    /// it reported nothing (burying genuine failures), then it reported
-    /// `.evicted` as a hard failure (filing false ones on every library switch,
-    /// against the very metric this fix is measured by). A five-case table is
-    /// enumerable; a branch buried in a Task is not.
+    /// A pure decision, so the cases stay enumerable and table-testable; a branch
+    /// buried in a Task is not. Neither blanket answer works: reporting nothing
+    /// buries genuine failures, and reporting `.evicted` as a hard failure files
+    /// one on every library switch.
     enum ReadinessFailureDisposition: Equatable {
         /// Expected and high-volume. Stay silent — a later auth-doc drive
         /// resolves it and the next trigger registers.
         case quiet
-        /// Expected before this fix, and the RESIDUAL defect population after
-        /// it. Report under its own summary.
+        /// The residual defect population: after a 45s bounded wait, "not ready
+        /// yet" means a genuinely wedged authentication document rather than
+        /// noise. Report under its own summary.
         ///
-        /// This case exists so the fix stays falsifiable. Making the timeout
-        /// silent would drive `d63871fd…` to near-zero whether registration
-        /// now succeeds or the account is simply never driven — the metric
-        /// would confirm the fix by construction. At t=0 "not ready yet" was
-        /// noise; after a 45s bounded wait it means a genuinely wedged
-        /// authentication document, which is a small, real, and different
-        /// population that we need to be able to see.
+        /// Keeping it visible is what makes `d63871fd…` falsifiable. Silencing
+        /// the timeout would drive that metric to near-zero whether registration
+        /// succeeds or the account is simply never driven.
         case residual
         /// The authentication document will not arrive. Report it.
         case report
@@ -307,8 +303,8 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         switch error {
         case .readinessTimedOut:
             // Waited the full bound and the document still had not arrived.
-            // Low volume by construction, and the population this fix does NOT
-            // help — kept visible so success is measurable rather than assumed.
+            // Low volume by construction, and the population a bounded wait does
+            // NOT help — kept visible so success is measurable rather than assumed.
             return .residual
         case .evicted:
             // Library switch. AuthDocumentLoader re-drives this, and the
@@ -525,14 +521,13 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
             // identity is not stable (`docs/architecture/account-state-machine.md`)
             // — a `loadCatalogs` refresh mid-wait builds a fresh instance, writes
             // the terminal state from ITS details, and leaves the captured one
-            // nil forever. Without this the original defect survives the fix and
-            // reports "after the account was ready", which would be a lie.
+            // nil forever.
             guard let live = self.accountsManager.currentAccount, live.uuid == account.uuid else {
                 Log.info(#file, "[FCM_REG] SKIP: current account changed during the readiness wait — the new account's own trigger will register it")
                 return
             }
-            // QA blocking find: the `hasUpdatedToken` guard at the top of
-            // `updateToken()` was read BEFORE the wait. Re-read it here — a
+            // The `hasUpdatedToken` guard at the top of `updateToken()` is read
+            // BEFORE the wait. Re-read it here — a
             // concurrent path may have confirmed registration while we waited,
             // and re-running the full checkTokenExists -> saveToken pipeline
             // would be duplicate traffic against the Circulation Manager.

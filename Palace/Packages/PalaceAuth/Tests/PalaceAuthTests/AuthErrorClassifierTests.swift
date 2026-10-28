@@ -194,11 +194,9 @@ final class AuthErrorClassifierTests: XCTestCase {
                        "401 from a host IN the current account's auth surface MUST NOT be short-circuited by Rule 4b — legacy 401 handling applies (bare-401 → .reauthRequired(.unknown401)). A regression that always returns .ok would silently swallow real session-expired 401s.")
     }
 
-    /// Backward-compat: a classifier constructed without a host provider
-    /// must behave EXACTLY as it did pre-fix — Rule 4b is dormant, the
-    /// 401 falls through to legacy handling. Without this, the fix would
-    /// change the behavior of every existing test that uses the
-    /// no-arg `AuthErrorClassifier()` initializer.
+    /// A classifier constructed without a host provider leaves Rule 4b dormant:
+    /// the 401 falls through to legacy handling. Every call site that uses the
+    /// no-arg `AuthErrorClassifier()` initializer depends on that.
     func testClassify_401WithDefaultProvider_fallsBackToLegacyBehavior() {
         let outcome = classifier.classify(
             response: httpResponse(url: URL(string: "https://gorgon.staging.palaceproject.io/x")!, status: 401),

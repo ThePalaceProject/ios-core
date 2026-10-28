@@ -1032,19 +1032,13 @@ struct AudiobookMorphingPlayerView: View {
 
     private var loadingOverlay: some View {
         loadingOverlayContent
-            // BOTH hooks, and the pair is the fix. `.onChange` does not fire for the
-            // value a view is BORN with, and a cold open is born in `.skeleton` —
+            // Both hooks are required. `.onChange` does not fire for the value a
+            // view is BORN with, and a cold open is born in `.skeleton` —
             // `isLoaded` is false while `manager == nil`, nothing is downloading,
-            // nothing has played. With arming on `.onChange` alone a player that
-            // stalls on first open never armed the timer at all, so `.loadError`
-            // was unreachable for the whole session: a dead player behind
-            // working-looking chrome, no error, no Retry. Which is verbatim the
-            // failure `.awaitingReload` exists to prevent, reintroduced one layer up
-            // by the refactor that centralised arming.
-            //
-            // It shipped past 36 green tests because `stateArmsLoadTimeout` is a pure
-            // function tested in isolation and nothing tested the WIRING. The state
-            // it would have been asked about was correct; it was never asked.
+            // nothing has played. Arming on `.onChange` alone leaves a player that
+            // stalls on first open with no timer, so `.loadError` is unreachable
+            // for the whole session: a dead player behind working-looking chrome,
+            // no error, no Retry.
             .onAppear { applyLoadTimeoutArming(for: loadingOverlayCurrentState) }
             .onChange(of: loadingOverlayCurrentState) { applyLoadTimeoutArming(for: $0) }
             // Both panels declare `.transition(.opacity)`, but a transition only

@@ -1829,23 +1829,22 @@ extension MyBooksDownloadCenter: TokenRefreshInterceptorDelegate {}
 // MBDC's `startDownload(for:withRequest:)` already exists with the
 // signature the protocol requires (the @objc default-arg method exposed
 // to legacy callers); `schedulePendingStartsIfPossible()` is internal
-// (promoted in commit 7) and matches the protocol's surface. Empty
-// conformance — no synthesis needed.
+// and matches the protocol's surface. Empty conformance — no synthesis
+// needed.
 
 extension MyBooksDownloadCenter: DownloadAlertPresenterDelegate {}
 
 // MARK: - DownloadThrottlingServiceDelegate
 //
-// `schedulePendingStartsAsync()` is internal (promoted in this commit
-// from private) and matches the protocol's surface. Empty conformance
-// — no synthesis needed.
+// `schedulePendingStartsAsync()` is internal and matches the protocol's
+// surface. Empty conformance — no synthesis needed.
 
 extension MyBooksDownloadCenter: DownloadThrottlingServiceDelegate {}
 
 // MARK: - DownloadQueueOrchestratorDelegate
 //
-// `startDownloadAsync(for:withRequest:)` is internal (promoted in this
-// commit from private) and matches the protocol's surface. Empty
+// `startDownloadAsync(for:withRequest:)` is internal and matches the
+// protocol's surface. Empty
 // conformance — the orchestrator drives MBDC's existing per-book
 // download workflow when a queued book is dequeued.
 

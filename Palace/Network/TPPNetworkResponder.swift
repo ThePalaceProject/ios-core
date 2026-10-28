@@ -883,7 +883,7 @@ extension TPPNetworkResponder: URLSessionTaskDelegate {
 
     /// Decides WHOSE credentials answer this challenge (PP-4969).
     ///
-    /// Three cases, and the middle one is the fix:
+    /// Three cases:
     ///   * the supplied provider is still alive — use it.
     ///   * a provider WAS supplied and has since been released — answer with no
     ///     credentials. Falling back here would hand the challenging library the
