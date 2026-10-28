@@ -287,9 +287,9 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         /// Expected and high-volume. Stay silent — a later auth-doc drive
         /// resolves it and the next trigger registers.
         case quiet
-        /// The residual defect population: after a 45s bounded wait, "not ready
-        /// yet" means a genuinely wedged authentication document rather than
-        /// noise. Report under its own summary.
+        /// The residual defect population. At t=0 "not ready yet" was noise;
+        /// after a 45s bounded wait it means a genuinely wedged authentication
+        /// document. Report under its own summary.
         ///
         /// Keeping it visible is what makes `d63871fd…` falsifiable. Silencing
         /// the timeout would drive that metric to near-zero whether registration
