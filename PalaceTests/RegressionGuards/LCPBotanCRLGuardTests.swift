@@ -12,7 +12,7 @@ import ReadiumShared
 /// defense is the upstream short-circuit in TPPLCPClient:
 /// empty data + non-DRMContext context never reach R2LCPClient.
 ///
-/// The fix surface: Palace/Reader2/ReaderStackConfiguration/LCP/TPPLCPClient.swift.
+/// Guarded surface: Palace/Reader2/ReaderStackConfiguration/LCP/TPPLCPClient.swift.
 /// See PalaceTests/RegressionGuards/README.md for the full crash narrative.
 @MainActor
 final class LCPBotanCRLGuardTests: XCTestCase {
@@ -20,7 +20,7 @@ final class LCPBotanCRLGuardTests: XCTestCase {
     // MARK: - decrypt(data:using:) — empty data short-circuit
 
     func testDecrypt_WithEmptyData_ReturnsNilWithoutCallingR2LCPClient() {
-        // The fix prevents empty Data from reaching R2LCPClient.decrypt,
+        // `TPPLCPClient` keeps empty Data from reaching R2LCPClient.decrypt,
         // where Botan would attempt to decode 0 bytes and may throw.
         let client = TPPLCPClient()
         let invalidContext = NotADRMContext()
@@ -31,7 +31,7 @@ final class LCPBotanCRLGuardTests: XCTestCase {
     // MARK: - decrypt(data:using:) — non-DRMContext short-circuit
 
     func testDecrypt_WithNonDRMContext_ReturnsNilWithoutCallingR2LCPClient() {
-        // The fix's type-check guard: contexts that aren't DRMContext are
+        // The type-check guard: contexts that aren't DRMContext are
         // bounced before R2LCPClient sees them, so Botan never decodes
         // garbage that could trigger the CRL exception path.
         let client = TPPLCPClient()
@@ -61,10 +61,10 @@ final class LCPBotanCRLGuardTests: XCTestCase {
     // MARK: - createContext — error propagation
 
     func testCreateContext_WithGarbageJSONLicense_ThrowsRatherThanReturningNilSilently() {
-        // The fix's contract: when R2LCPClient.createContext returns nil OR
-        // throws, our wrapper turns both into a thrown error. Reverting this
-        // — silent nil-return on failure — re-introduces the crash because
-        // downstream code dereferences the assumed-non-nil context.
+        // The wrapper's contract: when R2LCPClient.createContext returns nil
+        // OR throws, both become a thrown error. A silent nil-return on
+        // failure would crash instead, because downstream code dereferences
+        // the assumed-non-nil context.
         let client = TPPLCPClient()
         do {
             _ = try client.createContext(

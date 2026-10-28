@@ -119,8 +119,8 @@ final class PDFPageActionLintTests: XCTestCase {
 
     // Not covered here: `handleAccessibilityScroll`'s own behaviour — the
     // boundary clamps and the `.pageScrolled` post. It is `private` with no
-    // seam, so no test drives it, and this commit made it the single
-    // implementation behind three entry points rather than one. Extracting a
+    // seam, so no test drives it, and it is the single implementation behind
+    // three entry points. Extracting a
     // pure page-advance function would let a real unit test pin the clamp;
     // that is a production change beyond restoring the lost actions.
 }

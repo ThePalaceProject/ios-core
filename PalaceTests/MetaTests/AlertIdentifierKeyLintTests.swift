@@ -245,7 +245,7 @@ final class AlertIdentifierKeyLintTests: XCTestCase {
         return out
     }
 
-    /// The form every one of the ten took. A new `Strings` member written as
+    /// A new `Strings` member written as
     /// `NSLocalizedString("SomeNewKey", comment: "")` reaches the patron as
     /// `SomeNewKey` in all five languages; adding `value:` is the fix.
     func testNoDeclarationUsesAnIdentifierKeyWithoutAValue() throws {

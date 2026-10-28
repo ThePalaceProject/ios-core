@@ -445,9 +445,9 @@ final class FCMRegistrationReadinessLintTests: XCTestCase {
                       "the lint must flag updateToken() calling getProfileDocument directly")
     }
 
-    /// No awaiting Task at all — the gate simply deleted. Trivial to reach by
-    /// reverting the fix, and nothing exercised this check before: it was one
-    /// of four whose removal left every self-test green.
+    /// No awaiting Task at all — the gate simply deleted. This check has no
+    /// other coverage: it is one of four whose removal leaves every other
+    /// self-test green, so it needs a case of its own.
     func testLint_detectsAGateWithNoTaskAtAll() throws {
         let violator = """
         func updateToken() {

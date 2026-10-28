@@ -51,9 +51,9 @@ final class AlertPresentationRawGuardLintTests: XCTestCase {
     }
 
     /// True iff `source` routes alerts through a coordinator-waiting guarded
-    /// presenter at least once — proves the fix is present, not merely that the
-    /// raw pattern is absent (a file could drop alert presentation entirely and
-    /// still pass rule 1).
+    /// presenter at least once — proves a guarded presenter is used, not merely
+    /// that the raw pattern is absent (a file could drop alert presentation
+    /// entirely and still pass rule 1).
     static func routesThroughGuardedPresenter(_ source: String) -> Bool {
         source.contains("safelyPresent(")
             || source.contains("presentFromViewControllerOrNil(")
@@ -82,7 +82,7 @@ final class AlertPresentationRawGuardLintTests: XCTestCase {
         }
     }
 
-    // MARK: - Rule 2 — the fix is actually present at the guarded sites
+    // MARK: - Rule 2 — a guarded presenter is actually used at the guarded sites
 
     func testGuardedSites_routeThroughAGuardedPresenter() throws {
         for relPath in Self.guardedSites {

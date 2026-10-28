@@ -2,15 +2,14 @@ import XCTest
 @testable import Palace
 
 /// Regression guards for the UIAlertController CACommit crash family
-/// (55 events on Crashlytics post-3.0.0). The fix surface lives in
+/// (55 events on Crashlytics post-3.0.0). The guarded surface is
 /// Palace/ErrorHandling/TPPAlertUtils.swift. See
 /// PalaceTests/RegressionGuards/README.md for the full crash narrative.
 @MainActor
 final class UIAlertCACommitGuardTests: XCTestCase {
 
     /// Window tracked for hermetic teardown so a presentation test cannot leak a
-    /// key window into a later test's shared topViewController resolution
-    /// (sibling lesson: fix-alert-presentation-test-hermeticity).
+    /// key window into a later test's shared topViewController resolution.
     private var trackedWindow: UIWindow?
 
     override func tearDown() {
@@ -63,9 +62,9 @@ final class UIAlertCACommitGuardTests: XCTestCase {
     // MARK: - presentFromViewControllerOrNil — nil controller short-circuit
 
     func testPresentFromViewControllerOrNil_WithNilController_DoesNothing() {
-        // The fix's first guard: bail immediately when the alert controller
-        // is nil. Reverting this guard re-introduces a force-unwrap path
-        // that crashes the moment any caller passes nil.
+        // The first guard: bail immediately when the alert controller is nil.
+        // Without it the path force-unwraps and crashes the moment any caller
+        // passes nil.
         let expectation = expectation(description: "completion never invoked for nil alert")
         expectation.isInverted = true
 
@@ -105,9 +104,9 @@ final class UIAlertCACommitGuardTests: XCTestCase {
     // MARK: - alert(title:message:) — produces presentable controller
 
     func testAlertTitleMessage_WithNonEmptyArgs_ProducesValidController() {
-        // The fix path expects a fully-formed UIAlertController. Asserting
-        // its shape (title, message, OK action) catches a regression where
-        // the helper returns a partially-constructed controller that
+        // The presentation path expects a fully-formed UIAlertController.
+        // Asserting its shape (title, message, OK action) catches a regression
+        // where the helper returns a partially-constructed controller that
         // crashes when present() touches a missing field.
         let alert = TPPAlertUtils.alert(title: "Title", message: "Body")
         XCTAssertNotNil(alert.title)
@@ -127,7 +126,7 @@ final class UIAlertCACommitGuardTests: XCTestCase {
     // MARK: - alert(title:error:) — empty/garbage error doesn't crash
 
     func testAlertTitleError_WithUnknownDomain_ProducesGenericMessage() {
-        // The fix's defensive-message path: if the error has an unknown
+        // The defensive-message path: if the error has an unknown
         // domain and no usable description, fall back to a generic message
         // instead of presenting an empty alert (which UIKit can crash on).
         let unknownError = NSError(
