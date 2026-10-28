@@ -69,6 +69,12 @@ final class ReaderTypographyButtonUIKit: UIButton {
     /// Called when the button is tapped. The presenting VC should show the typography sheet.
     var onTap: (() -> Void)?
 
+    /// HIG minimum touch target. A `UIBarButtonItem`'s custom view is its whole
+    /// tap area, so without this the hit region is the 17pt symbol's intrinsic
+    /// size — roughly half the minimum. Matches the bookmark button in
+    /// `TPPBaseReaderViewController.makeNavigationBarButtons()`.
+    static let minimumTapTarget: CGFloat = 44
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         setup()
@@ -80,6 +86,13 @@ final class ReaderTypographyButtonUIKit: UIButton {
     }
 
     private func setup() {
+        // Grow to the minimum in each dimension and leave a larger frame alone;
+        // the artwork keeps its natural size, centred inside.
+        frame = CGRect(x: frame.origin.x,
+                       y: frame.origin.y,
+                       width: max(frame.width, Self.minimumTapTarget),
+                       height: max(frame.height, Self.minimumTapTarget))
+
         let config = UIImage.SymbolConfiguration(pointSize: 17, weight: .regular)
         let image = UIImage(systemName: "textformat.size", withConfiguration: config)
         setImage(image, for: .normal)

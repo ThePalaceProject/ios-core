@@ -168,4 +168,69 @@ enum RuntimeQuiescenceAuditor {
             )
         ]
     }
+
+    // MARK: - Selected-library detector (app-container pollution class)
+
+    /// HARD invariant: a test must leave `UserDefaults.standard`'s
+    /// `TPPCurrentAccountIdentifier` as it found it. On a simulator that suite is
+    /// the Palace app's own container, so a test that leaves a fixture uuid there
+    /// decides which library the app opens next for whoever drives that device.
+    ///
+    /// - Parameters:
+    ///   - before: the value the key held before the test ran.
+    ///   - after: the value it holds now.
+    /// - Returns: a one-element violation when the two differ, else empty.
+    ///
+    /// Takes `Any?` rather than `String?` because the key is not type-pinned:
+    /// `SEMigrations` reads it as a legacy `Int`, and sampling such a value
+    /// through `string(forKey:)` answers `nil` on both sides, which reads as
+    /// unchanged while the overwrite stands.
+    ///
+    /// Pure so `SelectedLibraryGateTests` can prove it fires on a synthetic
+    /// polluter and stays silent on clean state.
+    static func selectedLibraryViolations(before: Any?, after: Any?) -> [Violation] {
+        guard !propertyListValuesMatch(before, after) else { return [] }
+        return [
+            Violation(
+                invariant: "UserDefaults.standard[\(currentAccountIdentifierKey)] unchanged by the test",
+                detail:
+                    "This test left the selected library pointing at "
+                    + "\(describeSelectedLibrary(after)) instead of "
+                    + "\(describeSelectedLibrary(before)). On a simulator those are "
+                    + "the app's own defaults, so the app then resolves a fixture "
+                    + "uuid to no account, reports \"No library\", and fails every "
+                    + "borrow with a 401. Build the manager with "
+                    + "makeFreshAccountsManager(defaults: Self.testUserDefaults()) "
+                    + "and run the closure _seedAccountForTesting returns, or undo "
+                    + "the write in tearDown."
+            )
+        ]
+    }
+
+    /// Compare two `UserDefaults` values without narrowing either to a type.
+    ///
+    /// Every value `UserDefaults` stores is a property-list type, so each bridges
+    /// to `NSObject` and `isEqual` is the right comparison. A value that does not
+    /// bridge is reported as a change rather than silently matched, because
+    /// "cannot compare" must not read as "unchanged".
+    static func propertyListValuesMatch(_ lhs: Any?, _ rhs: Any?) -> Bool {
+        if lhs == nil && rhs == nil { return true }
+        guard let lhs = lhs as? NSObject, let rhs = rhs as? NSObject else { return false }
+        return lhs.isEqual(rhs)
+    }
+
+    /// Render a selected-library value for a failure message, naming absence
+    /// rather than printing an empty string.
+    static func describeSelectedLibrary(_ value: Any?) -> String {
+        guard let value else { return "no library" }
+        return String(describing: value)
+    }
+
+    /// Snapshot the live selected-library value, without narrowing its type.
+    ///
+    /// Separate from the pure detector so the gate's self-test can prove this
+    /// reads real state rather than a constant.
+    static func captureSelectedLibrary() -> Any? {
+        return UserDefaults.standard.object(forKey: currentAccountIdentifierKey)
+    }
 }

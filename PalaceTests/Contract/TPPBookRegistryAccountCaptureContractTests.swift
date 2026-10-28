@@ -32,8 +32,15 @@ final class TPPBookRegistryAccountCaptureContractTests: PalaceWiringTestCase {
     // tearDownWithError run serially on one instance), so the unsafe opt-out is
     // race-free — mirrors PalaceWiringTestCase.cancellables.
     nonisolated(unsafe) private var seededRegistryDirs: [URL] = []
+    /// Undo closures from `_seedAccountForTesting`, run in reverse so the
+    /// earliest seed's previous value is the one finally restored.
+    nonisolated(unsafe) private var restoreSeededAccounts: [() -> Void] = []
 
     override func tearDownWithError() throws {
+        for restore in restoreSeededAccounts.reversed() {
+            restore()
+        }
+        restoreSeededAccounts.removeAll()
         for dir in seededRegistryDirs {
             try? FileManager.default.removeItem(at: dir)
         }
@@ -56,7 +63,13 @@ final class TPPBookRegistryAccountCaptureContractTests: PalaceWiringTestCase {
     /// Builds a facade whose currentAccount starts as A, and tracks both
     /// accounts' registry directories for cleanup.
     private func makeHarness() -> (registry: TPPBookRegistry, manager: AccountsManager) {
-        let manager = makeFreshAccountsManager()
+        // An isolated defaults suite, not `.standard`. `_seedAccountForTesting`
+        // writes `TPPCurrentAccountIdentifier`, and against `.standard` that
+        // write lands in the app's own defaults on the simulator this runs on.
+        // The app then launches with a current-account id that resolves to no
+        // account, so it reports "No library" and every borrow fails 401 — which
+        // is what a QA pass found on a shared simulator after this suite ran.
+        let manager = makeFreshAccountsManager(defaults: Self.testUserDefaults())
         let registry = TPPBookRegistry(accountsManager: manager, imageLoader: MockImageLoader())
         if let a = registry.registryUrl(for: accountAUUID)?.deletingLastPathComponent() {
             seededRegistryDirs.append(a)
@@ -67,15 +80,19 @@ final class TPPBookRegistryAccountCaptureContractTests: PalaceWiringTestCase {
         return (registry, manager)
     }
 
-    /// Seed A as current. (Cleanup handled by PalaceWiringTestCase reset +
-    /// per-dir removal in tearDown.)
+    /// Seed A as current.
+    ///
+    /// `_seedAccountForTesting` returns a closure that puts the previous
+    /// current-account id back. Discarding it left the seeded id in place for
+    /// good; the isolated suite above contains the damage, and running the
+    /// restore keeps the suite itself clean between tests.
     private func seedCurrentA(_ manager: AccountsManager) {
-        _ = manager._seedAccountForTesting(makeAccount(uuid: accountAUUID))
+        restoreSeededAccounts.append(manager._seedAccountForTesting(makeAccount(uuid: accountAUUID)))
     }
 
     /// Flip currentAccount to B (keeps A in the account set).
     private func flipCurrentToB(_ manager: AccountsManager) {
-        _ = manager._seedAccountForTesting(makeAccount(uuid: accountBUUID))
+        restoreSeededAccounts.append(manager._seedAccountForTesting(makeAccount(uuid: accountBUUID)))
     }
 
     private func fileExists(forAccount uuid: String, registry: TPPBookRegistry) -> Bool {

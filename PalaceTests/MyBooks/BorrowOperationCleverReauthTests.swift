@@ -29,7 +29,7 @@ final class BorrowOperationCleverReauthTests: XCTestCase {
     private var book: TPPBook!
 
     private let fetchBookResult = LockIsolated<Result<TPPBook, Error>?>(nil)
-    private let alertCalls = LockIsolated<[(title: String, message: String, book: TPPBook, hasRetryAction: Bool)]>([])
+    private let alertCalls = LockIsolated<[(title: String, message: String, bookId: String, hasRetryAction: Bool)]>([])
     private let signInModalCompletions = LockIsolated<[() -> Void]>([])
     private let oidcReauthResult = LockIsolated<Bool>(false)
 
@@ -68,8 +68,11 @@ final class BorrowOperationCleverReauthTests: XCTestCase {
                 }
             },
             presentBorrowErrorAlert: { title, message, _, _, b, retryAction in
-                alertCallsBox.withValue { $0.append((title, message, b, retryAction != nil)) }
+                alertCallsBox.withValue {
+                    $0.append((title, message, b.identifier, retryAction != nil))
+                }
             },
+            publishBorrowError: { _ in },
             presentSignInModal: { completion in
                 signInModalCompletionsBox.withValue { $0.append(completion) }
             },

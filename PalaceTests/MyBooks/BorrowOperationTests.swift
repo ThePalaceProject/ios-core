@@ -39,8 +39,8 @@ final class BorrowOperationTests: XCTestCase {
     // these recorders sends `self` across the boundary. Box them (lock-guarded,
     // Sendable) and capture the boxes as locals in `setUp` so the closures
     // reference the boxes, not `self`. Computed shims keep every read site unchanged.
-    private let alertCallsBox = LockIsolated<[(title: String, message: String, book: TPPBook, hasRetryAction: Bool)]>([])
-    private var alertCalls: [(title: String, message: String, book: TPPBook, hasRetryAction: Bool)] {
+    private let alertCallsBox = LockIsolated<[(title: String, message: String, bookId: String, hasRetryAction: Bool)]>([])
+    private var alertCalls: [(title: String, message: String, bookId: String, hasRetryAction: Bool)] {
         alertCallsBox.value
     }
     private let signInModalCompletionsBox = LockIsolated<[() -> Void]>([])
@@ -91,8 +91,11 @@ final class BorrowOperationTests: XCTestCase {
                 }
             },
             presentBorrowErrorAlert: { title, message, _, _, book, retryAction in
-                alertCallsBox.withValue { $0.append((title, message, book, retryAction != nil)) }
+                alertCallsBox.withValue {
+                    $0.append((title, message, book.identifier, retryAction != nil))
+                }
             },
+            publishBorrowError: { _ in },
             presentSignInModal: { completion in
                 signInModalCompletionsBox.withValue { $0.append(completion) }
             },
@@ -205,8 +208,8 @@ final class BorrowOperationTests: XCTestCase {
         // before rethrowing, so the alert has already been presented once the
         // catch returns — assert directly, no deadline poll.
         XCTAssertGreaterThanOrEqual(alertCalls.count, 1,
-                                    "Generic error path must invoke presentBorrowErrorAlert")
-        XCTAssertEqual(alertCalls.last?.book.identifier, book.identifier)
+                                    "Generic error path must present the borrow-failed alert")
+        XCTAssertEqual(alertCalls.last?.bookId, book.identifier)
     }
 
     // MARK: - Item #7 — 401 without problem document routes to re-auth

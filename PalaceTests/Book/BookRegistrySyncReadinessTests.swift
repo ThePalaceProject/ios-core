@@ -19,7 +19,7 @@ import XCTest
 @testable import PalaceBookRegistry
 
 @MainActor
-final class BookRegistrySyncReadinessTests: XCTestCase {
+final class BookRegistrySyncReadinessTests: PalaceTestCase {
 
     private var libraryMock: TPPLibraryAccountMock!
 

@@ -1073,12 +1073,25 @@ final class FacetViewModelLogoDelegateTests: XCTestCase {
     func testLogoDidUpdate_SetsLogo() {
         let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title], accountsManager: appContainer.accountsManager)
         let testImage = UIImage(systemName: "book.fill")!
+        XCTAssertNil(viewModel.logo, "precondition: the view model starts with no logo")
 
-        // Directly test the delegate method
-        if let account = appContainer.accountsManager.currentAccount {
-            viewModel.logoDidUpdate(in: account, to: testImage)
-            XCTAssertNotNil(viewModel.logo)
-        }
+        viewModel.logoDidUpdate(in: stubAccount(), to: testImage)
+
+        XCTAssertEqual(viewModel.logo, testImage,
+                       "the delegate callback must publish the logo it was handed")
+    }
+
+    /// A minimal `Account` to pass to the delegate. `logoDidUpdate` stores the
+    /// image and ignores the account, so any account exercises the callback;
+    /// this previously read `accountsManager.currentAccount`, which is `nil` for
+    /// a container built by the test factory, so the assertion never ran.
+    private func stubAccount() -> Account {
+        let publication = OPDS2Publication(
+            links: [OPDS2Link(href: "https://example.com/catalog", rel: "http://opds-spec.org/catalog")],
+            metadata: OPDS2Publication.Metadata(id: "facet-logo-fixture", title: "Facet Logo Fixture"),
+            images: nil
+        )
+        return Account(publication: publication, imageCache: MockImageCache())
     }
 
     func testAccountScreenURL_WithValidHomePageURL() {

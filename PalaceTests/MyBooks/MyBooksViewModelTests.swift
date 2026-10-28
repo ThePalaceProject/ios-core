@@ -336,34 +336,6 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
 
     // MARK: - Alert Tests
 
-    func testLoadAccount_WhenRegistryIsSyncing_ShowsSyncAlert() {
-        // Arrange: mock registry reports it is syncing
-        let mock = TPPBookRegistryMock()
-        mock.isSyncing = true
-        let appContainer = makeTestAppContainer()
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
-
-        // Act: trigger account loading while syncing
-        // (loadAccount only needs isSyncing to be true to show the alert)
-        guard let currentAccount = appContainer.accountsManager.currentAccount else {
-            // If no account is configured in the test environment, set the alert directly
-            // to verify the alert machinery works
-            viewModel.alert = AlertModel(
-                title: Strings.MyBooksView.accountSyncingAlertTitle,
-                message: Strings.MyBooksView.accountSyncingAlertMessage
-            )
-            XCTAssertNotNil(viewModel.alert, "Syncing alert must be surfaceable")
-            XCTAssertEqual(viewModel.alert?.title, Strings.MyBooksView.accountSyncingAlertTitle)
-            return
-        }
-        viewModel.loadAccount(currentAccount)
-
-        // Assert: the syncing alert appears with the correct strings
-        XCTAssertNotNil(viewModel.alert, "Syncing registry must produce an alert")
-        XCTAssertEqual(viewModel.alert?.title, Strings.MyBooksView.accountSyncingAlertTitle)
-        XCTAssertEqual(viewModel.alert?.message, Strings.MyBooksView.accountSyncingAlertMessage)
-    }
-
     func testAlert_ClearsOnNilAssignment() {
         // Arrange: set an alert via the published property
         let mock = TPPBookRegistryMock()

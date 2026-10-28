@@ -43,7 +43,7 @@ protocol BorrowOperationDelegate: AnyObject {
 ///   error is benign (the auto-re-borrow ran but wasn't needed). Caller
 ///   must not show the alert and must clear the cell spinner.
 /// - `showGenericError`: not an auth error, or auth recovery isn't
-///   available — caller shows the standard `showBorrowError` alert.
+///   available — caller reports the failure through `showBorrowError`.
 /// - `retrySucceeded`: re-authentication ran and the awaited retry borrowed
 ///   the book; the caller returns it so the borrow reports success (and the
 ///   download slot the retry handed on is not released as a failure).
@@ -145,16 +145,18 @@ final class BorrowOperation: @unchecked Sendable {
     private let fetchBook: (URL, Bool, Bool) async throws -> TPPBook
 
     /// Presents a borrow error alert. Production wraps
-    /// `TPPAlertUtils.alertWithDetails(...)` + `presentFromViewControllerOrNil`.
+    /// `TPPAlertUtils.alertWithDetails(...)` + `presentFromViewControllerOrNil`,
+    /// which carries the "View Error Details" report (PP-3439).
     /// Tests stub to assert the path was hit without UIKit.
-    private let presentBorrowErrorAlert: @MainActor (
-        _ title: String,
-        _ message: String,
-        _ originalError: NSError?,
-        _ problemDocument: TPPProblemDocument?,
-        _ book: TPPBook,
-        _ retryAction: (() -> Void)?
-    ) -> Void
+    private let presentBorrowErrorAlert: BorrowErrorAlertPresenting
+
+    /// Reports the same failure on `downloadErrorPublisher`. Production wraps
+    /// `DownloadProgressReporter.publishAndAnnounceError`. A failed borrow never
+    /// reaches the registry, so this is the only signal that lets
+    /// `BookDetailViewModel` leave the optimistic `.downloading` state
+    /// `startDownloadAfterAuth` wrote (PP-5407). Published with
+    /// `presentsAlert: false` because the alert above is already on screen.
+    private let publishBorrowError: @MainActor (DownloadErrorInfo) -> Void
 
     /// Presents the sign-in modal. Production wraps
     /// `SignInModalPresenter.presentSignInModalForCurrentAccount(completion:)`.
@@ -188,7 +190,8 @@ final class BorrowOperation: @unchecked Sendable {
         userAccountProvider: @escaping () -> TPPUserAccount,
         adobeDRMService: AdobeDRMService,
         fetchBook: @escaping (URL, Bool, Bool) async throws -> TPPBook,
-        presentBorrowErrorAlert: @escaping @MainActor (String, String, NSError?, TPPProblemDocument?, TPPBook, (() -> Void)?) -> Void,
+        presentBorrowErrorAlert: @escaping BorrowErrorAlertPresenting,
+        publishBorrowError: @escaping @MainActor (DownloadErrorInfo) -> Void,
         presentSignInModal: @escaping @MainActor (@escaping () -> Void) -> Void,
         attemptOIDCReauth: @escaping () async -> Bool,
         authCoordinator: AuthCoordinator? = nil,
@@ -203,6 +206,7 @@ final class BorrowOperation: @unchecked Sendable {
         self.adobeDRMService = adobeDRMService
         self.fetchBook = fetchBook
         self.presentBorrowErrorAlert = presentBorrowErrorAlert
+        self.publishBorrowError = publishBorrowError
         self.presentSignInModal = presentSignInModal
         self.attemptOIDCReauth = attemptOIDCReauth
         self.authCoordinator = authCoordinator
@@ -217,7 +221,8 @@ final class BorrowOperation: @unchecked Sendable {
         userRetryTracker: UserRetryTracker,
         userAccountProvider: @escaping () -> TPPUserAccount,
         fetchBook: @escaping (URL, Bool, Bool) async throws -> TPPBook,
-        presentBorrowErrorAlert: @escaping @MainActor (String, String, NSError?, TPPProblemDocument?, TPPBook, (() -> Void)?) -> Void,
+        presentBorrowErrorAlert: @escaping BorrowErrorAlertPresenting,
+        publishBorrowError: @escaping @MainActor (DownloadErrorInfo) -> Void,
         presentSignInModal: @escaping @MainActor (@escaping () -> Void) -> Void,
         attemptOIDCReauth: @escaping () async -> Bool,
         authCoordinator: AuthCoordinator? = nil,
@@ -231,6 +236,7 @@ final class BorrowOperation: @unchecked Sendable {
         self.userAccountProvider = userAccountProvider
         self.fetchBook = fetchBook
         self.presentBorrowErrorAlert = presentBorrowErrorAlert
+        self.publishBorrowError = publishBorrowError
         self.presentSignInModal = presentSignInModal
         self.attemptOIDCReauth = attemptOIDCReauth
         self.authCoordinator = authCoordinator
@@ -686,6 +692,10 @@ final class BorrowOperation: @unchecked Sendable {
         } : nil
 
         presentBorrowErrorAlert(title, message, originalError as NSError?, problemDoc, book, retryAction)
+        // Then the resync signal. `presentsAlert: false` — the alert above is
+        // the one the patron sees; this only unsticks the half-sheet.
+        publishBorrowError(DownloadErrorInfo(bookId: book.identifier, title: title, message: message,
+                                            kind: .borrow, retryAction: retryAction, presentsAlert: false))
     }
 
     // MARK: - Coordinator-Routed Retry

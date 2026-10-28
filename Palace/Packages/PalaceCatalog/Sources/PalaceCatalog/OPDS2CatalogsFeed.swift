@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceNetwork
 
 public struct OPDS2CatalogsFeed: Codable, Sendable {
     public struct Metadata: Codable, Sendable {
@@ -82,6 +83,6 @@ public struct OPDS2CatalogsFeed: Codable, Sendable {
             return date
         })
 
-        return try jsonDecoder.decode(OPDS2CatalogsFeed.self, from: data)
+        return try jsonDecoder.decodeGuarded(OPDS2CatalogsFeed.self, from: data)
     }
 }

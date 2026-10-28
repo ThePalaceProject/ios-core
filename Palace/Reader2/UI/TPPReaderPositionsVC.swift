@@ -263,6 +263,7 @@ class TPPReaderPositionsVC: UIViewController, UITableViewDataSource, UITableView
             if let cell = cell as? TPPReaderBookmarkCell, let bookmark = bookmark {
                 cell.config(withChapterName: chapter ?? "",
                             percentInChapter: bookmark.percentInChapter,
+                            percentInBook: bookmark.percentInBook,
                             rfc3339DateString: bookmark.time)
             }
             return cell
