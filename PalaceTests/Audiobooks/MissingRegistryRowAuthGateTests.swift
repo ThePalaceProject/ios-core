@@ -23,9 +23,9 @@ final class MissingRegistryRowAuthGateTests: PalaceWiringTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
-        // Both gates answer from the keychain once the fix lands, so a
-        // simulator without keychain access would make every assertion below
-        // vacuous rather than failing. Skip loudly instead.
+        // Both gates answer from the keychain, so a simulator without keychain
+        // access would make every assertion below vacuous rather than failing.
+        // Skip loudly instead.
         try KeychainAvailability.skipIfUnavailable()
 
         libraryUUID = "urn:uuid:\(UUID().uuidString)"

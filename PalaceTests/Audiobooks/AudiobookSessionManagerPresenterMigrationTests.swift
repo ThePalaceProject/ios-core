@@ -224,11 +224,10 @@ final class AudiobookSessionManagerPresenterMigrationTests: XCTestCase {
 
     /// PR #1230: `stopPlayback` with
     /// `dismissPhoneUI: true` and NO bound book (`currentBook == nil`) must
-    /// STILL clear the presenter on the flag-ON path. This is the exact
-    /// regression the fix addressed — gating the whole dismiss behind
-    /// `if let bookId` left a nil-book teardown (transient / already-cleared
-    /// states) with the mini-bar + pill on screen, so the ✕ appeared to do
-    /// nothing.
+    /// STILL clear the presenter on the flag-ON path. Gating the whole dismiss
+    /// behind `if let bookId` leaves a nil-book teardown (transient /
+    /// already-cleared states) with the mini-bar + pill on screen, so the ✕
+    /// appears to do nothing.
     ///
     /// The manager from `setUp` is built with `inAppPlaybackNavEnabledProvider:
     /// { true }` and never has a book bound, so `currentBook` is nil here —

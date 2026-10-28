@@ -381,8 +381,8 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
     // MARK: - Speed-chip rate sync (exit/return label mismatch)
 
     /// Once a manager is bound, the chip adopts the session's (restored,
-    /// persisted) rate — regardless of the stale fallback. This is the fix for
-    /// the speed label reading 1.0× after exit/return while audio plays faster.
+    /// persisted) rate — regardless of the stale fallback. Reading the fallback
+    /// instead shows 1.0× after exit/return while the audio plays faster.
     func testDisplayRate_boundAdoptsSessionRate() {
         XCTAssertEqual(
             V.displayRate(sessionRate: .doubleTime, isBound: true, fallback: .normalTime),
@@ -465,7 +465,7 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
     // MARK: - PP-4971 — whole-book remaining is wall-clock, not book time
 
     /// The baseline: at normal speed the figure is the book time unchanged, so
-    /// the fix cannot be "always divide by something".
+    /// the implementation cannot be "always divide by something".
     func testWholeBookRemaining_atNormalSpeed_readsBookTime() {
         XCTAssertEqual(
             V.wholeBookRemainingText(bookTimeRemaining: 3600, rate: .normalTime),
@@ -590,9 +590,9 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
         )
     }
 
-    /// THE REGRESSION. Selecting a later chapter is a cross-track seek, which
-    /// `LCPStreamingPlayer:204` answers by dropping `isLoaded`. Before this fix that
-    /// produced `.downloading` — a full-screen panel replacing a playing book.
+    /// Selecting a later chapter is a cross-track seek, which
+    /// `LCPStreamingPlayer:204` answers by dropping `isLoaded`. Mapping that to
+    /// `.downloading` puts a full-screen panel over a playing book.
     func testMidSessionTrackChange_doesNotTakeOverTheScreen() {
         XCTAssertEqual(
             state(loaded: false, downloading: true, timedOut: false, started: true),
@@ -630,9 +630,9 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
         )
     }
 
-    /// The pre-playback rule this fix must NOT disturb: a healthy multi-minute
-    /// download outranks the 30s timeout, so a slow download never shows an error.
-    /// An earlier revision reordered the checks globally and broke exactly this.
+    /// The pre-playback rule: a healthy multi-minute download outranks the 30s
+    /// timeout, so a slow download never shows an error. Reordering the checks
+    /// globally breaks exactly this.
     func testPrePlayback_downloadStillOutranksTheTimeout() {
         XCTAssertEqual(
             state(loaded: false, downloading: true, timedOut: true, started: false),
@@ -1071,7 +1071,7 @@ final class AudiobookPlayerColumnLayoutTests: XCTestCase {
     }
 
     /// Every bottom control must sit inside the screen on every device class.
-    /// Pre-fix this failed on the short screens by up to ~78pt.
+    /// The short screens are where this breaks, by up to ~78pt when it does.
     func testFullPlayer_bottomControlsStayOnScreen_onEveryDeviceClass() {
         for device in PlayerLayoutDevices.portrait {
             let host = mountExpandedPlayer(size: device.size)

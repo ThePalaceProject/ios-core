@@ -65,8 +65,8 @@ final class NowPlayingCoordinatorBackgroundTests: XCTestCase {
         )
 
         // Assert: second write applied SYNCHRONOUSLY — no waiting for
-        // debounce. Pre-fix the second write would be queued via
-        // DispatchQueue.main.asyncAfter and never fire under suspend.
+        // debounce. A debounced write is queued via
+        // DispatchQueue.main.asyncAfter and never fires under suspend.
         let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
         XCTAssertEqual(
             info?[MPMediaItemPropertyTitle] as? String,

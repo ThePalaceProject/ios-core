@@ -209,11 +209,10 @@ final class AudiobookLoadFailureSAMLReauthTests: XCTestCase {
 
     // MARK: - Cross-cutting invariant: regression guard
 
-    /// The fix-is-real test — ties directly to HelpSpot 17727. Asserts the
-    /// exact patron scenario fingerprint: SAML school library, stored
-    /// credentials, session expired (credentialsStale), audiobook open
-    /// fails. Before the fix this returned false-by-default (no equivalent
-    /// helper existed) and the patron got a useless Try Again dialog.
+    /// Pins the exact patron scenario from HelpSpot 17727: SAML school
+    /// library, stored credentials, session expired (credentialsStale),
+    /// audiobook open fails. Answering false here sends the patron a Try
+    /// Again dialog that cannot resolve an expired session.
     func testRegressionForBug_SAMLOpenFailureGetsReauth_perHelpSpot17727() {
         userAccountMock._authDefinition = libraryMock.samlAuthentication
         userAccountMock._credentials = .barcodeAndPin(barcode: "school-id", pin: "0000")
