@@ -51,9 +51,9 @@ final class AlertPresentationRawGuardLintTests: XCTestCase {
     }
 
     /// True iff `source` routes alerts through a coordinator-waiting guarded
-    /// presenter at least once — proves a guarded presenter is used, not merely
-    /// that the raw pattern is absent (a file could drop alert presentation
-    /// entirely and still pass rule 1).
+    /// presenter at least once. The routing must be present, not merely the raw
+    /// pattern absent — a file could drop alert presentation entirely and still
+    /// pass rule 1.
     static func routesThroughGuardedPresenter(_ source: String) -> Bool {
         source.contains("safelyPresent(")
             || source.contains("presentFromViewControllerOrNil(")
