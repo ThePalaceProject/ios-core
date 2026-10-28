@@ -280,6 +280,19 @@ private struct FacetRowButton: View {
     }
 }
 
+/// The filters sheet's action label.
+///
+/// A bare `Text("APPLY FILTERS")` is looked up as a localization key, and no
+/// `.strings` file defines one, so every language rendered the key itself while
+/// the translated copy sat unused under "SHOW RESULTS" (PP-5414). Resolving the
+/// text here keeps the lookup on a key that is actually translated, and gives
+/// the choice somewhere a test can reach.
+enum CatalogFiltersButtonLabel {
+    static func text(isApplying: Bool) -> String {
+        isApplying ? Strings.Catalog.applyingFilters : Strings.Catalog.showResults
+    }
+}
+
 private struct ResultsButton: View {
     let isApplying: Bool
     let onApply: () -> Void
@@ -309,7 +322,7 @@ private struct ResultsButton: View {
                             .scaleEffect(0.8)
                     }
 
-                    Text(isApplying ? "APPLYING..." : "APPLY FILTERS")
+                    Text(CatalogFiltersButtonLabel.text(isApplying: isApplying))
                         .bold()
                 }
                 .padding(.vertical, 12)
