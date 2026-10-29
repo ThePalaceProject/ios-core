@@ -35,7 +35,7 @@ extension AudiobookSessionManager {
     }
 
     /// Local copy of the XCTest env gate, so production never retains the handle.
-    static let _isRunningUnderXCTest =
+    private static let _isRunningUnderXCTest =
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
     /// Test-only deterministic JOIN seam; NO wall-clock. `loadCoverArt`
