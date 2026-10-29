@@ -46,11 +46,10 @@ final class AudiobookOpenStateRaceTests: XCTestCase {
     /// auth doc not yet returned).
     ///
     /// EXPECTED: the awaitReady awaiter blocks until the test transitions
-    /// the state. Before the fix, the audiobook open path's
-    /// `isUserAuthenticated` returned `true` synchronously (no awaiting)
-    /// because `details?` was nil and the function fell through to the
-    /// "no auth required" branch. After the fix, the function awaits and
-    /// only returns once state is terminal.
+    /// the state. The audiobook open path's `isUserAuthenticated` must await
+    /// and only return once state is terminal: reading `details?` while it is
+    /// nil falls through to the "no auth required" branch and returns `true`
+    /// synchronously.
     func testF016Repro_audiobookOpenAwaitsReadiness_doesNotSilentlyReadPastNilDetails() async throws {
         let account = libraryMock.tppAccount
         guard let realDetails = account.details else {
@@ -63,10 +62,9 @@ final class AudiobookOpenStateRaceTests: XCTestCase {
 
         let openTaskGateCleared = expectation(description: "gate cleared after state transition")
         let awaiterTask = Task {
-            // This is the EXACT call the migrated AudiobookSessionManager
-            // .isUserAuthenticated makes. Before the fix, this line did not
-            // exist; the code read `account.details` directly and bailed
-            // to true.
+            // This is the EXACT call AudiobookSessionManager's
+            // .isUserAuthenticated makes. Reading `account.details` directly
+            // instead of awaiting bails to true.
             let resolvedDetails = try await account.awaitReady()
             // The defaultAuth read happens AFTER the gate resolves —
             // never against nil details.
@@ -77,7 +75,6 @@ final class AudiobookOpenStateRaceTests: XCTestCase {
         }
 
         // Verify the gate is BLOCKING — the awaiter has not resolved yet.
-        // Before the fix, there was no awaiter at all (synchronous code path).
         try await Task.sleep(nanoseconds: 80_000_000)
         XCTAssertFalse(awaiterTask.isCancelled, "Gate must block, not cancel")
 

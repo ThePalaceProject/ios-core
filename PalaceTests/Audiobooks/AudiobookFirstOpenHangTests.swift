@@ -56,10 +56,9 @@ final class AudiobookFirstOpenHangTests: XCTestCase {
     /// transitions to `ready`.
     ///
     /// EXPECTED: `awaitReadinessAndPlay` waits for the ready signal,
-    /// THEN issues exactly ONE `play(at:)` call. Pre-fix behaviour would
-    /// have issued `play(at:)` immediately while the player was still
-    /// initializing — the engine would silently drop the command and the
-    /// UI would mount with no audio.
+    /// THEN issues exactly ONE `play(at:)` call. Issuing `play(at:)` while
+    /// the player is still initializing makes the engine drop the command,
+    /// and the UI mounts with no audio.
     ///
     /// Production-seam grep: openAudiobook is also exercised below to pin
     /// that the entry point is reachable; the loader stub returns failure
@@ -112,14 +111,14 @@ final class AudiobookFirstOpenHangTests: XCTestCase {
                        "play(at:) must be called exactly once after readiness — pre-fix issued before ready, post-fix issues exactly once after ready")
         XCTAssertGreaterThan(elapsed, .milliseconds(40),
                              "play(at:) must be DELAYED until the ready signal — sub-40ms return means the gate did not actually block. Load-safe: contention only makes this longer")
-        // THE assertion that distinguishes the fix from the bug, and the one an
-        // earlier revision of this test got wrong twice over. Comparing elapsed
-        // time cannot see it: with play issued BEFORE the await, the function
-        // still awaits afterwards, so total elapsed is unchanged and every
-        // duration bound still passes. Comparing `ContinuousClock().now` to the
-        // ready instant cannot see it either — that is true by construction
-        // whatever the code did. Only the instant of the PLAY CALL, compared to
-        // the instant of the READY SIGNAL, states the contract.
+        // THE assertion that distinguishes a correct gate from a broken one.
+        // Comparing elapsed time cannot see it: with play issued BEFORE the
+        // await, the function still awaits afterwards, so total elapsed is
+        // unchanged and every duration bound still passes. Comparing
+        // `ContinuousClock().now` to the ready instant cannot see it either —
+        // that is true by construction whatever the code did. Only the instant
+        // of the PLAY CALL, compared to the instant of the READY SIGNAL,
+        // states the contract.
         //
         // Verified by reintroducing the defect: moving `command.play(at:)`
         // above `gate.awaitReady` fails this assertion by name and no other.
@@ -555,17 +554,17 @@ final class AudiobookFirstOpenHangTests: XCTestCase {
         XCTAssertEqual(spy.stopCallCount, 1, "probe.stop must run via defer even on exhaustion")
     }
 
-    // MARK: - fix/audiobook-first-open-hang: early loading-shell-presented hook
+    // MARK: - Early loading-shell-presented hook
     //
-    // BUG A: on first checkout+open of an LCP audiobook, the BookDetail
-    // download-progress half-sheet stayed presented over the loading shell for
-    // the ENTIRE PP-4542 content-download wait (~19s in the live repro), because
-    // its dismissal was chained to the FULL open completion. The fix fires
-    // `onLoadingShellPresented` the moment the morphing player's loading shell is
-    // on screen (before the wait) so the caller can dismiss its transient UI
-    // immediately, present-first-then-dismiss (no iPad race). These tests pin the
-    // production fire site (`AudiobookSessionManager` open path, after
-    // `presentLoadingShell`) and its gating.
+    // On first checkout+open of an LCP audiobook, chaining the BookDetail
+    // download-progress half-sheet's dismissal to the FULL open completion
+    // leaves it over the loading shell for the ENTIRE PP-4542 content-download
+    // wait (~19s in the live repro). `onLoadingShellPresented` fires the moment
+    // the morphing player's loading shell is on screen, before that wait, so the
+    // caller can dismiss its transient UI immediately — present first, then
+    // dismiss, which avoids the iPad race. These tests pin the production fire
+    // site (`AudiobookSessionManager` open path, after `presentLoadingShell`)
+    // and its gating.
 
     /// Builds a session manager bound to a SPECIFIC presenter instance (captured
     /// + reset so cross-test pollution on the shared presenter can't leak

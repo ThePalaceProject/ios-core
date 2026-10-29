@@ -321,7 +321,8 @@ final class ImageLoaderTests: XCTestCase {
         cache.set(sentinel, for: "\(book.identifier)_cover", expiresIn: nil)
 
         for bad: CGFloat in [.nan, .infinity, -.infinity, 0, -5] {
-            // Pre-fix, the next line traps before returning.
+            // A non-finite or non-positive displayPoints must not reach the
+            // sizing math.
             let result = await loader.coverImage(for: book, displayPoints: bad)
             XCTAssertEqual(result?.pngData(), sentinel.pngData(),
                            "displayPoints=\(bad) must fall back to the unsized cover, not trap")

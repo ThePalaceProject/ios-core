@@ -5,13 +5,13 @@ import UIKit
 /// Regression test for the `ImageCache.getAsync` continuation leak
 /// (Crashlytics `ab80dbb0`).
 ///
-/// `handleMemoryWarning()` calls `processingQueue.cancelAllOperations()`. Before
-/// the fix, every `continuation.resume` lived *inside* the processing
-/// operation's block, so a cancelled-while-queued operation never ran its block
-/// and orphaned its continuation — the awaiting Task then hung forever, pinning
-/// the suspended Task + captured graph in memory under the exact pressure the
-/// warning was trying to relieve. The fix guarantees exactly one resume via the
-/// operation's completion block.
+/// `handleMemoryWarning()` calls `processingQueue.cancelAllOperations()`. The
+/// resume must come from the operation's COMPLETION block, which runs even for
+/// an operation cancelled while queued. A `continuation.resume` inside the
+/// operation's own block is never reached in that case and orphans the
+/// continuation — the awaiting Task then hangs forever, pinning the suspended
+/// Task and its captured graph in memory under the exact pressure the warning
+/// was trying to relieve.
 ///
 /// The test runs on its own cache instance: the shared queue also carries the
 /// test host app's cover loads, so its `operationCount` cannot say whether the
@@ -80,7 +80,7 @@ final class ImageCacheContinuationTests: XCTestCase {
 /// members were inferred `@MainActor` — even with class/method/leaf
 /// `nonisolated`. Running such a block on the background utility queue trips
 /// `dispatch_assert_queue` → EXC_BREAKPOINT (SIGTRAP), crashing the whole test
-/// host at bootstrap. The fix forms those closures in free functions
+/// host at bootstrap. Those closures are therefore formed in free functions
 /// (`imageCacheEnqueue*`) that have no enclosing-type isolation to inherit.
 ///
 /// Each test below drives a real image THROUGH one of the off-main blocks and
