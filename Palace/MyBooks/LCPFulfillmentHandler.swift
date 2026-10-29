@@ -177,10 +177,10 @@ final class LCPFulfillmentHandler: @unchecked Sendable {
                 // only signal of life a `.lcpa` fetch produces: `downloadInfo` is
                 // cleared ~100 ms into the phase, so the registration is all that
                 // stands between a long download and a duplicate. Publishing
-                // directly left it un-heartbeated, so it expired at the 180 s idle
-                // mark and re-armed the second archive fetch — on every title
-                // measured for this fix (438 MB / 778 MB / 1.9 GB), all of which
-                // run past three minutes on an ordinary connection.
+                // directly leaves it un-heartbeated, so it expires at the 180 s
+                // idle mark and re-arms the second archive fetch. Measured LCP
+                // audiobooks run 438 MB to 1.9 GB and all take over three minutes
+                // on an ordinary connection, so that is the common case.
                 self.progressReporter.sendProgress(bookIdentifier: book.identifier, progress: progressValue)
                 self.progressReporter.broadcastUpdate()
             }

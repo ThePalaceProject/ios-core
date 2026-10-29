@@ -141,8 +141,8 @@ class BookFileManager {
     /// `opds-publication+json → [LCP license → audiobook+lcp | application/pdf]`
     /// with the LCP MIME *nested* in the indirect chain — `canOpenBook`
     /// misses this and the file gets saved as `.epub`, breaking the LCP
-    /// extract pass. PP-4407 closed this for audiobooks; PP-4454 mirrors
-    /// the fix to PDFs.
+    /// extract pass. Both the audiobook and the PDF branch therefore use the
+    /// recursive scan (PP-4407, PP-4454).
     func pathExtension(for book: TPPBook?) -> String {
         #if LCP
         if let book = book {

@@ -161,7 +161,7 @@ final class TPPKeychainStoredVariableTests: XCTestCase {
     /// unsynchronized `return cachedValue` won't tear on every run. A genuine
     /// tear crashes loudly (retain on a torn struct), and
     /// `testTransactionPerform_returnsValueComputedInsideLock` deterministically
-    /// backstops the `perform<T>` signature the fix depends on.
+    /// backstops the `perform<T>` signature this serialization depends on.
     func testRead_underConcurrentWritesAndInvalidation_neverTearsValue() throws {
         try KeychainAvailability.skipIfUnavailable()
 

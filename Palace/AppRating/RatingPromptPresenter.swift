@@ -123,8 +123,8 @@ final class RatingPromptPresenter: ObservableObject {
 
   private func scheduleTrigger(_ trigger: AppRatingTrigger) {
     // The reset is the ONLY difference between this and a re-arm hop. Keeping
-    // the hop itself in one place means the two can never drift apart on the
-    // axis this fix is about.
+    // the hop itself in one place means the two cannot drift apart on the delay
+    // or on where they re-enter.
     deferralsRemaining = Self.maxDeferrals
     armHop(trigger)
   }

@@ -588,13 +588,11 @@ final class LibraryRegistryCrawler: @unchecked Sendable {
     /// PP-5191. Clear the completed-crawl markers so the NEXT `crawl()` takes the
     /// FULL branch rather than the incremental one.
     ///
-    /// Called after a partial page is merged into the cache. Without it the merge
-    /// trades one bug for another: the cache becomes `bundled ∪ page1`, and an
-    /// incremental refresh PRESERVES what it finds, so build-time bundled rows
-    /// (libraries since deleted, catalog URLs since changed) would be promoted into
-    /// the live cache and survive up to the 7-day full-crawl interval. Before this
-    /// change those rows were clobbered within ~260ms, so the staleness is new and
-    /// belongs to the fix.
+    /// Called after a partial page is merged into the cache. Without it the cache
+    /// is left as `bundled ∪ page1`, and an incremental refresh PRESERVES what it
+    /// finds, so build-time bundled rows (libraries since deleted, catalog URLs
+    /// since changed) are promoted into the live cache and survive up to the
+    /// 7-day full-crawl interval.
     ///
     /// `orderModifiedFacetURL` is deliberately PRESERVED — it is a discovered
     /// capability of the feed, not a record of work done, and re-discovering it costs

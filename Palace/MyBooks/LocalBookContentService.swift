@@ -561,10 +561,9 @@ class LocalBookContentService {
     ///  - content already on disk → skip (`fileExists`)
     ///  - a download already running for this book → skip (in-flight set)
     ///
-    /// The second guard is the fix for the duplicate-transfer defect: the
-    /// self-heal and the open-time gate both call this, and before the guard a
-    /// Listen tap during the self-heal's window started a second full transfer
-    /// of the same archive.
+    /// The second guard matters because the self-heal and the open-time gate
+    /// both call this: without it, a Listen tap during the self-heal's window
+    /// starts a second full transfer of the same archive.
     ///
     /// Progress and an active/idle edge are reported to
     /// `contentDownloadReporter` so the half-sheet can show a real percentage

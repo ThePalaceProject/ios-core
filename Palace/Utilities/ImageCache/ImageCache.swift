@@ -62,7 +62,7 @@ private final class OneShotImageResumer: @unchecked Sendable {
 /// independent 2-file reproducer; `import WebKit` alone is not enough, a WebKit
 /// declaration must be USED somewhere in the same process.
 ///
-/// The fix works because the closure's type comes from the `let` ANNOTATION
+/// Hoisting works because the closure's type comes from the `let` ANNOTATION
 /// (`@Sendable () -> Void`, correct), not from the poisonable imported parameter
 /// type; passing that typed value to even a poisoned parameter is a safe
 /// conversion with no runtime isolation assertion. `nonisolated` on the methods/
