@@ -79,8 +79,9 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
     private let dataCache = GeneralCache<String, Data>(cacheName: "ImageCache", mode: .memoryAndDisk)
     private let memoryImages = NSCache<NSString, UIImage>()
     private let defaultTTL: TimeInterval = 14 * 24 * 60 * 60
-    private let maxDimension: CGFloat
-    private let compressionQuality: CGFloat = 0.7
+    private let limits: Limits
+    private var maxDimension: CGFloat { limits.maxDimension }
+    private let compressionQuality: CGFloat = 0.85
     // Internal (not private) so tests can deterministically exercise the
     // cancellation path of `getAsync` (suspend → enqueue → cancelAllOperations
     // → resume) without spamming a global memory-warning notification through
@@ -92,35 +93,38 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
         return queue
     }()
 
-    private init() {
-        let deviceMemoryMB = ProcessInfo.processInfo.physicalMemory / (1024 * 1024)
-        let cacheMemoryMB: Int
+    /// Per-device-tier cache sizing.
+    struct Limits: Equatable {
+        let memoryCostLimitMB: Int
+        let countLimit: Int
+        let maxDimension: CGFloat
         let maxConcurrentProcessing: Int
+    }
 
-        // Cover art in catalog lanes displays at ~100pt (300px @3x).
-        // Each 300x300 RGBA decoded = ~360KB. A typical catalog has 15 lanes
-        // × 7 visible books = ~105 covers across All/Ebooks/Audiobooks.
-        // The NSCache must hold enough to avoid re-fetching on entry point
-        // switches. Memory is reclaimed on library switch via evictAllDecodedImages().
+    /// `maxDimension` caps every stored image. Book detail needs about 840 px
+    /// and the audiobook player about 1200 px on a 3x phone, so only devices
+    /// with memory to spare get those sizes. `memoryCostLimitMB` is what bounds
+    /// the cache: larger images mean fewer cached covers, not more memory.
+    /// Memory is reclaimed on library switch via evictAllDecodedImages().
+    static func limits(forDeviceMemoryMB deviceMemoryMB: UInt64) -> Limits {
         if deviceMemoryMB < 2048 {
-            cacheMemoryMB = 15
-            memoryImages.countLimit = 60
-            maxDimension = 200
-            maxConcurrentProcessing = 2
+            return Limits(memoryCostLimitMB: 15, countLimit: 60, maxDimension: 200, maxConcurrentProcessing: 2)
         } else if deviceMemoryMB < 4096 {
-            cacheMemoryMB = 25
-            memoryImages.countLimit = 100
-            maxDimension = 300
-            maxConcurrentProcessing = 3
+            return Limits(memoryCostLimitMB: 25, countLimit: 100, maxDimension: 600, maxConcurrentProcessing: 3)
         } else {
-            cacheMemoryMB = 40
-            memoryImages.countLimit = 150
-            maxDimension = 300
-            maxConcurrentProcessing = 4
+            return Limits(memoryCostLimitMB: 40, countLimit: 150, maxDimension: 1200, maxConcurrentProcessing: 4)
         }
+    }
 
-        processingQueue.maxConcurrentOperationCount = maxConcurrentProcessing
-        memoryImages.totalCostLimit = cacheMemoryMB * 1024 * 1024
+    private convenience init() {
+        self.init(deviceMemoryMB: ProcessInfo.processInfo.physicalMemory / (1024 * 1024))
+    }
+
+    private init(deviceMemoryMB: UInt64) {
+        limits = Self.limits(forDeviceMemoryMB: deviceMemoryMB)
+        memoryImages.countLimit = limits.countLimit
+        processingQueue.maxConcurrentOperationCount = limits.maxConcurrentProcessing
+        memoryImages.totalCostLimit = limits.memoryCostLimitMB * 1024 * 1024
 
         NotificationCenter.default.addObserver(
             self,
@@ -139,14 +143,7 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 60) { [weak self] in
             guard let self = self else { return }
-            let deviceMemoryMB = ProcessInfo.processInfo.physicalMemory / (1024 * 1024)
-            if deviceMemoryMB < 2048 {
-                self.processingQueue.maxConcurrentOperationCount = 2
-            } else if deviceMemoryMB < 4096 {
-                self.processingQueue.maxConcurrentOperationCount = 3
-            } else {
-                self.processingQueue.maxConcurrentOperationCount = 4
-            }
+            self.processingQueue.maxConcurrentOperationCount = self.limits.maxConcurrentProcessing
         }
     }
 
@@ -379,8 +376,10 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
     /// Test-only: a cache with its own `processingQueue`, so a test can count
     /// exactly the operations it enqueued. The shared queue also carries the
     /// test host app's cover loads.
-    internal static func _makeIsolatedForTesting() -> ImageCache {
-        ImageCache()
+    internal static func _makeIsolatedForTesting(
+        deviceMemoryMB: UInt64 = ProcessInfo.processInfo.physicalMemory / (1024 * 1024)
+    ) -> ImageCache {
+        ImageCache(deviceMemoryMB: deviceMemoryMB)
     }
 
     /// Test-only: restore the shared `processingQueue` to its running state.
