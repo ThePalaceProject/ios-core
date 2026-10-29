@@ -77,6 +77,7 @@ final class RatingPromptPresenterTests: XCTestCase {
         if let n = self.modalClearsAfterCheck, self.modalChecks > n { return false }
         return self.modalIsUp
       },
+      isForegroundActive: { self.foregroundActive },
       sleep: sleeper
     )
   }
@@ -125,6 +126,10 @@ final class RatingPromptPresenterTests: XCTestCase {
 
   /// Drives the "a sheet is on screen" seam for the deferral tests below.
   private var modalIsUp = false
+
+  /// Whether a scene is foreground-active. False models the app backgrounded,
+  /// where the window hierarchy cannot be inspected at all.
+  private var foregroundActive = true
 
   /// Number of times the presenter has consulted the modal seam. Each entry to
   /// `handleTrigger` past the eligibility gate checks exactly once, so this is
@@ -199,6 +204,37 @@ final class RatingPromptPresenterTests: XCTestCase {
 
   /// The cooldown/lifetime cap is stamped by `recordPromptShown`. Deferring must
   /// NOT stamp it, or a prompt the patron never saw burns the one chance to ask.
+  /// A borrow that completes while the app is backgrounded reaches the gate
+  /// with no foreground-active scene, so the modal lookup cannot see the window
+  /// and reports "nothing presented". The gate then shows, and the
+  /// borrow-success sheet presents ABOVE it on the way back to foreground —
+  /// the same occlusion F-RATING-01 fixed, through a door the check left open.
+  /// Reproduced on the 3.4.0 candidate: borrow, background immediately, return.
+  func testHandleTrigger_whileBackgrounded_doesNotShowGate() {
+    let presenter = makePresenter(eligible: true)
+    foregroundActive = false
+    modalIsUp = false
+
+    presenter.handleTrigger(.borrowSucceeded)
+
+    XCTAssertNil(presenter.step,
+                 "gate was shown while backgrounded — the sheet presents above it on foreground")
+  }
+
+  /// Showing while backgrounded is worse than occlusion alone: `recordPromptShown`
+  /// stamps the cooldown AND the lifetime cap, so the one chance to ask is spent
+  /// on a prompt whose buttons the patron cannot reach.
+  func testHandleTrigger_whileBackgrounded_doesNotStampTheDisplay() {
+    let presenter = makePresenter(eligible: true)
+    XCTAssertNil(settings.appRatingLastPromptDate, "precondition: nothing stamped yet")
+    foregroundActive = false
+
+    presenter.handleTrigger(.borrowSucceeded)
+
+    XCTAssertNil(settings.appRatingLastPromptDate,
+                 "a deferred prompt stamped the cooldown — it burns the lifetime cap unseen")
+  }
+
   func testHandleTrigger_whileModalPresented_doesNotStampTheDisplay() {
     let presenter = makePresenter(eligible: true)
     XCTAssertNil(settings.appRatingLastPromptDate, "precondition: nothing stamped yet")
