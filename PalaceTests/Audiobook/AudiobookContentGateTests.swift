@@ -61,7 +61,7 @@ final class AudiobookContentGateTests: XCTestCase {
         XCTAssertTrue(
             AudiobookSessionManager.shouldTriggerContentDownloadBeforeOpen(
                 isColdLoadRecovery: false, canOpenLCPBook: true, contentIsLocal: false, streamingEnabled: false),
-            "A first cold open of an LCP audiobook whose .lcpa isn't on disk must trigger a content download — this is the exact 323-Cause-1 dead-end")
+            "A first cold open of an LCP audiobook whose .lcpa isn't on disk must trigger a content download — without it the open dead-ends with no content to play")
     }
 
     func testShouldTrigger_contentAlreadyLocal_returnsFalse() {
@@ -349,7 +349,7 @@ final class AudiobookContentGateTests: XCTestCase {
         )
 
         XCTAssertEqual(triggeredBookIds, [book.identifier],
-            "The gate MUST trigger the content download exactly once for the missing book — the whole 323-Cause-1 fix is that it no longer merely polls")
+            "The gate MUST trigger the content download exactly once for the missing book — polling without triggering never starts the download")
         XCTAssertEqual(awaitedBookId, book.identifier,
             "The gate must await the SAME book's content after triggering")
         XCTAssertEqual(result, .landedAfterTrigger,

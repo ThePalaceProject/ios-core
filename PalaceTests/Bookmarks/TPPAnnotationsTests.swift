@@ -1842,7 +1842,7 @@ final class TPPAnnotationsHermeticTests: XCTestCase {
         XCTAssertEqual(spy.loggedSummaries, ["Error posting annotation"])
         XCTAssertEqual(spy.loggedCodes, [.apiCall], "A server refusal must stay in the 902 annotation bucket")
         XCTAssertEqual(spy.loggedMetadata.first?["statusCode"] as? Int, 401,
-                       "Without the status code every refusal looks the same in telemetry. This is the assertion that was passing vacuously: the fixture used to omit the error the responder always attaches, so the caller took a branch that kept the response — while production took the one that dropped it.")
+                       "Without the status code every refusal looks the same in telemetry. The fixture must carry the error the responder always attaches, or the caller takes a branch that keeps the response while production takes the one that drops it.")
     }
 
     // MARK: - DELETE

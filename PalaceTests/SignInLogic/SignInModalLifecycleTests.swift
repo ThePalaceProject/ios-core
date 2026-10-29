@@ -476,7 +476,7 @@ final class SignInModalLifecycleTests: XCTestCase {
         // — pin that the override is actually returned by the computed
         // property. If this fails, the rest of the test is meaningless.
         XCTAssertTrue(testContainer.signInModalSheetPresenter === spy,
-                      "Module B seam: withSignInModalSheetPresenter(_:) override must take precedence over the container-owned presenter")
+                      "withSignInModalSheetPresenter(_:) override must take precedence over the container-owned presenter")
 
         // Install the test-only AppContainer override so
         // TPPReauthenticator's production seam resolves the spy.

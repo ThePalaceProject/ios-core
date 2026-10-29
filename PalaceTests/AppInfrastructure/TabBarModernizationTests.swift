@@ -47,7 +47,7 @@ final class TabBarModernizationTests: XCTestCase {
         XCTAssertEqual(inset, 83 + 8, accuracy: 0.001,
                        "a full-frame measurement must pass through as height+margin, not add the 34pt safe area again")
         XCTAssertNotEqual(inset, 34 + 83 + 8, accuracy: 0.001,
-                          "must NOT double-count the safe area — that is the too-high bug this fixes")
+                          "must NOT double-count the safe area — doing so sits the mini-player too high")
 
         let taller = TabBarModern.miniPlayerBottomInset(safeAreaBottom: 34, tabBarHeight: 100, margin: 8)
         XCTAssertGreaterThan(taller, inset,

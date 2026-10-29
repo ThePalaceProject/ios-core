@@ -128,7 +128,7 @@ final class BookReturnCleverReauthTests: XCTestCase {
         XCTAssertTrue(reauthenticator.authenticateIfNeededCalled,
                       "Auth error must trigger reauth")
         XCTAssertEqual(userAccount.authState, .credentialsStale,
-                       "OAuth-intermediary (Clever) return auth-error MUST flip auth state to .credentialsStale before reauth — Module B broadening of `needsBrowserReauth`. Pre-fix Clever users had their stale token silently reused.")
+                       "OAuth-intermediary (Clever) return auth-error MUST flip auth state to .credentialsStale before reauth — otherwise the stale token is silently reused.")
     }
 
     // MARK: - Helpers

@@ -133,9 +133,9 @@ final class BorrowOperationCleverReauthTests: XCTestCase {
 
         // Assert: browser-reauth modal was presented.
         XCTAssertEqual(signInModalCompletions.value.count, 1,
-                       "OAuth-intermediary (Clever) auth error with credentials MUST trigger presentSignInModal — the Module B broadening of `needsBrowserReauth`")
+                       "OAuth-intermediary (Clever) auth error with credentials MUST trigger presentSignInModal — `needsBrowserReauth` has to cover the OAuth-intermediary case")
         XCTAssertEqual(alertCalls.value.count, 0,
-                       "Browser-reauth path must NOT also surface a generic borrow-error alert; that was the pre-Module-B regression for Clever users")
+                       "Browser-reauth path must NOT also surface a generic borrow-error alert; a generic alert leaves Clever patrons with no way to re-authenticate")
     }
 
     /// Broadening pin for `BorrowOperation.swift` L562.

@@ -254,7 +254,7 @@ final class AudiobookSessionPresenterTests: XCTestCase {
         XCTAssertTrue(presenter.isPlayerExpanded,
                       "expand() must drive `isPlayerExpanded = true` — this is the tap-on-mini-player entry point")
         XCTAssertEqual(observed, [false, true],
-                       "Subscriber must observe initial-false → true after expand(). Without emission, Module D's fullScreenCover binding wouldn't react.")
+                       "Subscriber must observe initial-false → true after expand(). Without the emission the fullScreenCover binding does not react.")
     }
 
     /// PRE: `isPlayerExpanded == true`.
