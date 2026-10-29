@@ -679,7 +679,6 @@ struct Strings {
 
     struct TPPPDFNavigation {
         static let resume = NSLocalizedString("Resume", comment: "A button to continue reading title.")
-        static let loadingPDF = NSLocalizedString("Loading…", comment: "Shown under the book title while an LCP-protected PDF is being decrypted and opened.")
     }
 
     struct TPPDeveloperSettingsTableViewController {
@@ -808,6 +807,7 @@ struct Strings {
         static let filter = NSLocalizedString("Filter", comment: "")
         static let sortBy = NSLocalizedString("Sort By", comment: "Header label for sort options")
         static let showResults = NSLocalizedString("SHOW RESULTS", comment: "Button to apply filters and show results")
+        static let applyingFilters = NSLocalizedString("Loading…", comment: "Shown on the catalog filters button while the filtered results load")
         // Offline state (PP-4578). Copy pending final design sign-off.
         static let offlineTitle = NSLocalizedString("You're Offline", comment: "Title of the catalog offline state shown when the device has no internet connection")
         static let offlineMessage = NSLocalizedString("The catalog isn't available without an internet connection, but your downloaded books are still here to read and listen to.", comment: "Explains that catalog browsing needs a connection while downloaded books remain available offline")
