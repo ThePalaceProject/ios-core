@@ -245,9 +245,9 @@ final class AlertIdentifierKeyLintTests: XCTestCase {
         return out
     }
 
-    /// The form every one of the ten took. A new `Strings` member written as
-    /// `NSLocalizedString("SomeNewKey", comment: "")` reaches the patron as
-    /// `SomeNewKey` in all five languages; adding `value:` is the fix.
+    /// A new `Strings` member written as `NSLocalizedString("SomeNewKey",
+    /// comment: "")` reaches the patron as `SomeNewKey` in all five languages;
+    /// `value:` supplies the fallback text.
     func testNoDeclarationUsesAnIdentifierKeyWithoutAValue() throws {
         let files = try productionSwiftFiles()
         XCTAssertGreaterThan(files.count, 100,

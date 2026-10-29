@@ -35,7 +35,7 @@ final class FindawayChapterStatusGuardTests: XCTestCase {
         final class StrongObservationHolder {
             var observer: NSObject?
             func startObserving() {
-                // The fix's contract: assigning to `self.observer` (a strong
+                // The contract: assigning to `self.observer` (a strong
                 // stored property) ensures the semaphore-bearing observer
                 // outlives any in-flight callback.
                 self.observer = NSObject()

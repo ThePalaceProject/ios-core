@@ -30,13 +30,13 @@ final class LoanStillHeldWriterLintTests: XCTestCase {
     /// Every line with comments and string-literal contents removed, lexed as a
     /// FILE rather than line by line.
     ///
-    /// The signature is the fix. A per-line sanitiser cannot see any shape that
-    /// spans lines, so a multi-line `/* */` whose interior names a guard token
-    /// satisfied the scan, and a `"""` body full of CSS braces moved the brace
-    /// arithmetic. Both are prose being read as code — the same class as a
-    /// deleted guard's leftover comment satisfying its own token, now at file
-    /// scope. Carrying `inBlockComment` and `inMultilineString` across lines is
-    /// what makes those shapes reachable at all.
+    /// The FILE-scope signature is load-bearing. A per-line sanitiser cannot see
+    /// any shape that spans lines, so a multi-line `/* */` whose interior names a
+    /// guard token satisfies the scan, and a `"""` body full of CSS braces moves
+    /// the brace arithmetic. Both are prose being read as code — the same class
+    /// as a deleted guard's leftover comment satisfying its own token, now at
+    /// file scope. Carrying `inBlockComment` and `inMultilineString` across
+    /// lines is what makes those shapes reachable at all.
     ///
     /// This is NOT a Swift parser and does not need to be: it answers one
     /// question — which characters on this line are code — and every construct
@@ -397,7 +397,7 @@ final class LoanStillHeldWriterLintTests: XCTestCase {
                        "a sibling arm's guard is not on this arm's path")
     }
 
-    /// The converse the fix must not break: a check that returns early at the
+    /// The converse this must not break: a check that returns early at the
     /// enclosing level DOES cover arms nested below it.
     func testAnEarlyReturnAtTheEnclosingLevelCoversNestedArms() {
         let s = Self.codeOnly(lines: [
