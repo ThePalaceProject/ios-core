@@ -212,7 +212,9 @@ public final class AudiobookSessionManager: ObservableObject {
     private let reachabilityProvider: () -> Reachability
     /// Cover registry resolved lazily so a future migration that injects an
     /// alternate cache (or a no-op for tests) doesn't force a touch here.
-    private let bookCoverRegistryProvider: () -> TPPBookCoverRegistry
+    /// Internal rather than private so the cover-art load can live in
+    /// `AudiobookSessionManager+CoverArt.swift` and keep this hub under its cap.
+    let bookCoverRegistryProvider: () -> TPPBookCoverRegistry
     /// Navigation hub resolved lazily — the hub itself is process-wide and
     /// references a UIKit coordinator that isn't valid at construction time
     /// during cold launch / CarPlay background launch. Used only by the
@@ -1306,50 +1308,11 @@ public final class AudiobookSessionManager: ObservableObject {
         }
     }
 
-    /// Loads cover art into the playback model — both the low-res cached
-    /// copy (synchronous) and the high-res registry copy (async). Split
-    /// from `presentCoverArtAndNavigation` so the presenter-side call
-    /// can be driven independently from tests without constructing a full
-    /// `LoadedAudiobook` shape. `playbackModel` is optional for the same reason
-    /// as in `pushSessionToPresenter`.
-    func loadCoverArt(for book: TPPBook, into playbackModel: AudiobookPlaybackModel?) {
-        if let lowRes = book.coverImage ?? book.thumbnailImage {
-            playbackModel?.updateCoverImage(lowRes)
-            updateCoverImage(lowRes)
-        }
-        let coverRegistry = bookCoverRegistryProvider()
-        let task = Task { [weak self, weak playbackModel] in
-            guard let img = await coverRegistry.playerCoverImage(for: book) else { return }
-            await MainActor.run {
-                playbackModel?.updateCoverImageAnimated(img)
-                self?.updateCoverImage(img)
-            }
-        }
-        if Self._isRunningUnderXCTest {
-            _trackedCoverArtTasks.append(task)
-        }
-    }
-
-    /// Local copy of the XCTest env gate, so production never retains the handle.
-    private static let _isRunningUnderXCTest =
-        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-
-    /// Cover-art decode handles, retained only under XCTest. The class is
-    /// `@MainActor`, so this needs no lock.
-    private var _trackedCoverArtTasks: [Task<Void, Never>] = []
-
-    /// Test-only deterministic JOIN seam; NO wall-clock. `loadCoverArt`
-    /// dispatches its decode as a Task the caller cannot reach, so a test that
-    /// polls for `coverImage` on a deadline loses the race under parallel sim
-    /// clones. Await the handle instead.
-    func _awaitCoverArtLoadForTesting() async {
-        guard Self._isRunningUnderXCTest else { return }
-        let pending = _trackedCoverArtTasks
-        _trackedCoverArtTasks = []
-        for task in pending {
-            _ = await task.value
-        }
-    }
+    /// Cover-art decode handles, retained only under XCTest so a test can join
+    /// the work instead of polling for it. Storage lives here because only a
+    /// class body can hold it; the cover-art methods are in
+    /// `AudiobookSessionManager+CoverArt.swift`.
+    var _trackedCoverArtTasks: [Task<Void, Never>] = []
 
     /// Drives the root-level presenter on a fresh open.
     ///
