@@ -280,6 +280,16 @@ private struct FacetRowButton: View {
     }
 }
 
+/// The filters sheet's action label.
+///
+/// `Text` treats a string literal as a localization key, so the label comes
+/// from accessors whose keys are translated, in a form a test can reach.
+enum CatalogFiltersButtonLabel {
+    static func text(isApplying: Bool) -> String {
+        isApplying ? Strings.Catalog.applyingFilters : Strings.Catalog.showResults
+    }
+}
+
 private struct ResultsButton: View {
     let isApplying: Bool
     let onApply: () -> Void
@@ -309,7 +319,7 @@ private struct ResultsButton: View {
                             .scaleEffect(0.8)
                     }
 
-                    Text(isApplying ? "APPLYING..." : "APPLY FILTERS")
+                    Text(CatalogFiltersButtonLabel.text(isApplying: isApplying))
                         .bold()
                 }
                 .padding(.vertical, 12)
