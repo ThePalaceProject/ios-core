@@ -52,6 +52,10 @@ final class TPPBookLargeCoverUpgradeTests: XCTestCase {
 
         book.fetchCoverImage(forDisplayHeight: 280)
 
+        // Wait on the fetch itself: the placeholder that puts `small` on screen
+        // is queued on main BEFORE the sized Task is created, so waiting for
+        // the cover alone would return before the loader was ever called.
+        await awaitConditionAsync { self.sizedFetches(of: book.identifier) == [280] }
         await waitForCover(of: book, toBe: small)
         XCTAssertTrue(book.isCoverLoading, "the sized fetch is still held open")
         XCTAssertEqual(sizedFetches(of: book.identifier), [280])
@@ -62,11 +66,11 @@ final class TPPBookLargeCoverUpgradeTests: XCTestCase {
         cache.set(small, for: book.identifier, expiresIn: nil)
         loader.holdSizedCover(for: book.identifier)
         book.fetchCoverImage(forDisplayHeight: 280)
-        await waitUntil { book.isCoverLoading }
+        await awaitConditionAsync { book.isCoverLoading }
 
         loader.releaseSizedCover()
 
-        await waitUntil { !book.isCoverLoading }
+        await awaitConditionAsync { !book.isCoverLoading }
         XCTAssertIdentical(book.coverImage, small, "a failed upgrade must not blank the placeholder")
     }
 
@@ -91,11 +95,12 @@ final class TPPBookLargeCoverUpgradeTests: XCTestCase {
         loader.stubbedCoverImage = sized
         book.fetchCoverImage(forDisplayHeight: 280)
         await waitForCover(of: book, toBe: sized)
-        await waitUntil { !book.isCoverLoading }
+        await awaitConditionAsync { !book.isCoverLoading }
 
         book.fetchCoverImage(forDisplayHeight: 280)
 
-        await waitUntil { self.sizedFetches(of: book.identifier) == [280, 280] }
+        await awaitConditionAsync { self.sizedFetches(of: book.identifier) == [280, 280] }
+        XCTAssertEqual(sizedFetches(of: book.identifier), [280, 280])
     }
 
     /// Lane cells keep reusing the unsized entry so scrolling does no extra decode work.
@@ -128,31 +133,14 @@ final class TPPBookLargeCoverUpgradeTests: XCTestCase {
         loader.coverCalls.filter { $0.identifier == identifier }.compactMap(\.displayPoints)
     }
 
+    /// Waits for the cover the view would show.
+    ///
+    /// `TPPBook` is not `@MainActor`, and the sized path completes from a
+    /// `Task` on the cooperative pool, so this polls the condition rather
+    /// than draining the main queue: a drain cannot order against work the
+    /// pool has not enqueued yet (see `XCTestCase.drainMainQueueAsync`).
     private func waitForCover(of book: TPPBook, toBe expected: UIImage, file: StaticString = #filePath, line: UInt = #line) async {
-        await waitUntil(file: file, line: line) { book.coverImage === expected }
-    }
-
-    /// Drains the main queue instead of polling against a wall-clock deadline.
-    /// The cover work is queued on main, and the queue is FIFO, so a hop
-    /// resumes only once everything queued ahead of it has run — the wait
-    /// cannot lose a CPU race under parallel sim clones.
-    private func waitUntil(rounds: Int = 32, file: StaticString = #filePath, line: UInt = #line, _ condition: () -> Bool) async {
-        for _ in 0..<rounds {
-            if condition() { return }
-            await drainMainQueue()
-        }
-        XCTAssertTrue(
-            condition(),
-            "condition still false after \(rounds) main-queue drains",
-            file: file,
-            line: line
-        )
-    }
-
-    private func drainMainQueue() async {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.main.async { continuation.resume() }
-        }
+        await awaitConditionAsync(file: file, line: line) { book.coverImage === expected }
     }
 
     /// Built while the cache is empty and the loader returns nil, so `init`
@@ -160,9 +148,10 @@ final class TPPBookLargeCoverUpgradeTests: XCTestCase {
     private func makeCoverlessBook(identifier: String) async -> TPPBook {
         let book = makeBook(identifier: identifier)
         // `init` queues its loading flag and both loader completions on main
-        // before returning; each completion queues one more block. Two hops run all of them.
-        await drainMainQueue()
-        await drainMainQueue()
+        // before returning; each completion queues one more block. Two hops run
+        // all of them, and the queue is FIFO, so this needs no deadline.
+        await drainMainQueueAsync()
+        await drainMainQueueAsync()
         XCTAssertFalse(book.isCoverLoading)
         XCTAssertNil(book.coverImage)
         XCTAssertNil(book.thumbnailImage)
