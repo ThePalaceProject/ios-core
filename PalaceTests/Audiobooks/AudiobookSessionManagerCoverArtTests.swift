@@ -47,16 +47,13 @@ final class AudiobookSessionManagerCoverArtTests: XCTestCase {
         try await super.tearDown()
     }
 
-    func testLoadCoverArt_usesScreenWidthPlayerDecode() throws {
+    func testLoadCoverArt_usesScreenWidthPlayerDecode() async throws {
         let expectedLongestSide = Int(min(UIScreen.main.bounds.width * UIScreen.main.scale, 1200))
         let book = makeBook()
 
         sessionManager.loadCoverArt(for: book, into: nil)
+        await sessionManager._awaitCoverArtLoadForTesting()
 
-        let loaded = expectation(for: NSPredicate { [unowned self] _, _ in
-            self.sessionManager.coverImage?.cgImage != nil
-        }, evaluatedWith: nil)
-        wait(for: [loaded], timeout: 5)
         let artwork = try XCTUnwrap(sessionManager.coverImage?.cgImage)
         XCTAssertEqual(max(artwork.width, artwork.height), expectedLongestSide)
     }

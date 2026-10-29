@@ -1318,12 +1318,36 @@ public final class AudiobookSessionManager: ObservableObject {
             updateCoverImage(lowRes)
         }
         let coverRegistry = bookCoverRegistryProvider()
-        Task { [weak self, weak playbackModel] in
+        let task = Task { [weak self, weak playbackModel] in
             guard let img = await coverRegistry.playerCoverImage(for: book) else { return }
             await MainActor.run {
                 playbackModel?.updateCoverImageAnimated(img)
                 self?.updateCoverImage(img)
             }
+        }
+        if Self._isRunningUnderXCTest {
+            _trackedCoverArtTasks.append(task)
+        }
+    }
+
+    /// Local copy of the XCTest env gate, so production never retains the handle.
+    private static let _isRunningUnderXCTest =
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+
+    /// Cover-art decode handles, retained only under XCTest. The class is
+    /// `@MainActor`, so this needs no lock.
+    private var _trackedCoverArtTasks: [Task<Void, Never>] = []
+
+    /// Test-only deterministic JOIN seam; NO wall-clock. `loadCoverArt`
+    /// dispatches its decode as a Task the caller cannot reach, so a test that
+    /// polls for `coverImage` on a deadline loses the race under parallel sim
+    /// clones. Await the handle instead.
+    func _awaitCoverArtLoadForTesting() async {
+        guard Self._isRunningUnderXCTest else { return }
+        let pending = _trackedCoverArtTasks
+        _trackedCoverArtTasks = []
+        for task in pending {
+            _ = await task.value
         }
     }
 

@@ -32,46 +32,46 @@ final class TPPBookLargeCoverUpgradeTests: XCTestCase {
         try await super.tearDown()
     }
 
-    func testLargeDisplay_whenOnlyUnsizedCoverIsCached_fetchesTheSizedCover() {
+    func testLargeDisplay_whenOnlyUnsizedCoverIsCached_fetchesTheSizedCover() async {
         cache.set(small, for: "book-1", expiresIn: nil)
         loader.stubbedCoverImage = sized
         let book = makeBook(identifier: "book-1")
-        waitForCover(of: book, toBe: small)
+        await waitForCover(of: book, toBe: small)
 
         book.fetchCoverImage(forDisplayHeight: 280)
 
-        waitForCover(of: book, toBe: sized)
+        await waitForCover(of: book, toBe: sized)
         XCTAssertEqual(sizedFetches(of: book.identifier), [280])
     }
 
     /// The book starts with no cover, so only the placeholder path can put `small` on screen.
-    func testLargeDisplay_showsUnsizedCoverWhileSizedFetchIsInFlight() {
-        let book = makeCoverlessBook(identifier: "book-2")
+    func testLargeDisplay_showsUnsizedCoverWhileSizedFetchIsInFlight() async {
+        let book = await makeCoverlessBook(identifier: "book-2")
         cache.set(small, for: book.identifier, expiresIn: nil)
         loader.holdSizedCover(for: book.identifier)
 
         book.fetchCoverImage(forDisplayHeight: 280)
 
-        waitForCover(of: book, toBe: small)
+        await waitForCover(of: book, toBe: small)
         XCTAssertTrue(book.isCoverLoading, "the sized fetch is still held open")
         XCTAssertEqual(sizedFetches(of: book.identifier), [280])
     }
 
-    func testLargeDisplay_whenSizedFetchFails_keepsTheUnsizedCover() {
-        let book = makeCoverlessBook(identifier: "book-6")
+    func testLargeDisplay_whenSizedFetchFails_keepsTheUnsizedCover() async {
+        let book = await makeCoverlessBook(identifier: "book-6")
         cache.set(small, for: book.identifier, expiresIn: nil)
         loader.holdSizedCover(for: book.identifier)
         book.fetchCoverImage(forDisplayHeight: 280)
-        waitUntil { book.isCoverLoading }
+        await waitUntil { book.isCoverLoading }
 
         loader.releaseSizedCover()
 
-        waitUntil { !book.isCoverLoading }
+        await waitUntil { !book.isCoverLoading }
         XCTAssertIdentical(book.coverImage, small, "a failed upgrade must not blank the placeholder")
     }
 
     /// Point-keyed entries written by earlier versions were capped at 300 px.
-    func testLargeDisplay_ignoresPointKeyedEntry_andAsksTheLoader() {
+    func testLargeDisplay_ignoresPointKeyedEntry_andAsksTheLoader() async {
         let stale = UIImage()
         cache.set(small, for: "book-3", expiresIn: nil)
         cache.set(stale, for: "book-3_280pt", expiresIn: nil)
@@ -80,43 +80,43 @@ final class TPPBookLargeCoverUpgradeTests: XCTestCase {
 
         book.fetchCoverImage(forDisplayHeight: 280)
 
-        waitForCover(of: book, toBe: sized)
+        await waitForCover(of: book, toBe: sized)
         XCTAssertEqual(sizedFetches(of: book.identifier), [280])
     }
 
     /// The registry caches real decodes under its own pixel key. The view must not pin
     /// what it got (possibly an offline fallback) under its point key, or it never upgrades.
-    func testLargeDisplay_secondVisit_asksTheLoaderAgain() {
-        let book = makeCoverlessBook(identifier: "book-7")
+    func testLargeDisplay_secondVisit_asksTheLoaderAgain() async {
+        let book = await makeCoverlessBook(identifier: "book-7")
         loader.stubbedCoverImage = sized
         book.fetchCoverImage(forDisplayHeight: 280)
-        waitForCover(of: book, toBe: sized)
-        waitUntil { !book.isCoverLoading }
+        await waitForCover(of: book, toBe: sized)
+        await waitUntil { !book.isCoverLoading }
 
         book.fetchCoverImage(forDisplayHeight: 280)
 
-        waitUntil { self.sizedFetches(of: book.identifier) == [280, 280] }
+        await waitUntil { self.sizedFetches(of: book.identifier) == [280, 280] }
     }
 
     /// Lane cells keep reusing the unsized entry so scrolling does no extra decode work.
-    func testSmallDisplay_whenUnsizedCoverIsCached_doesNotFetch() {
+    func testSmallDisplay_whenUnsizedCoverIsCached_doesNotFetch() async {
         cache.set(small, for: "book-4", expiresIn: nil)
         let book = makeBook(identifier: "book-4")
 
         book.fetchCoverImage(forDisplayHeight: 150)
 
-        waitForCover(of: book, toBe: small)
+        await waitForCover(of: book, toBe: small)
         XCTAssertEqual(sizedFetches(of: book.identifier), [])
     }
 
     /// 200 pt is the largest lane size, where the registry still serves the thumbnail URL.
-    func testDisplayAtThreshold_whenUnsizedCoverIsCached_doesNotFetch() {
+    func testDisplayAtThreshold_whenUnsizedCoverIsCached_doesNotFetch() async {
         cache.set(small, for: "book-5", expiresIn: nil)
         let book = makeBook(identifier: "book-5")
 
         book.fetchCoverImage(forDisplayHeight: 200)
 
-        waitForCover(of: book, toBe: small)
+        await waitForCover(of: book, toBe: small)
         XCTAssertEqual(sizedFetches(of: book.identifier), [])
     }
 
@@ -128,24 +128,41 @@ final class TPPBookLargeCoverUpgradeTests: XCTestCase {
         loader.coverCalls.filter { $0.identifier == identifier }.compactMap(\.displayPoints)
     }
 
-    private func waitForCover(of book: TPPBook, toBe expected: UIImage, file: StaticString = #filePath, line: UInt = #line) {
-        waitUntil(file: file, line: line) { book.coverImage === expected }
+    private func waitForCover(of book: TPPBook, toBe expected: UIImage, file: StaticString = #filePath, line: UInt = #line) async {
+        await waitUntil(file: file, line: line) { book.coverImage === expected }
     }
 
-    private func waitUntil(timeout: TimeInterval = 2, file: StaticString = #filePath, line: UInt = #line, _ condition: @escaping () -> Bool) {
-        let done = expectation(for: NSPredicate { _, _ in condition() }, evaluatedWith: nil)
-        wait(for: [done], timeout: timeout)
+    /// Drains the main queue instead of polling against a wall-clock deadline.
+    /// The cover work is queued on main, and the queue is FIFO, so a hop
+    /// resumes only once everything queued ahead of it has run — the wait
+    /// cannot lose a CPU race under parallel sim clones.
+    private func waitUntil(rounds: Int = 32, file: StaticString = #filePath, line: UInt = #line, _ condition: () -> Bool) async {
+        for _ in 0..<rounds {
+            if condition() { return }
+            await drainMainQueue()
+        }
+        XCTAssertTrue(
+            condition(),
+            "condition still false after \(rounds) main-queue drains",
+            file: file,
+            line: line
+        )
+    }
+
+    private func drainMainQueue() async {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
     }
 
     /// Built while the cache is empty and the loader returns nil, so `init`
     /// leaves both `coverImage` and `thumbnailImage` nil.
-    private func makeCoverlessBook(identifier: String) -> TPPBook {
+    private func makeCoverlessBook(identifier: String) async -> TPPBook {
         let book = makeBook(identifier: identifier)
         // `init` queues its loading flag and both loader completions on main
         // before returning; each completion queues one more block. Two hops run all of them.
-        let drained = expectation(description: "init's main-queue work ran")
-        DispatchQueue.main.async { DispatchQueue.main.async { drained.fulfill() } }
-        wait(for: [drained], timeout: 2)
+        await drainMainQueue()
+        await drainMainQueue()
         XCTAssertFalse(book.isCoverLoading)
         XCTAssertNil(book.coverImage)
         XCTAssertNil(book.thumbnailImage)
