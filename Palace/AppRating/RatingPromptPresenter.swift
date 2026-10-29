@@ -33,6 +33,7 @@ final class RatingPromptPresenter: ObservableObject {
   private let feedbackPresenter: FeedbackPresenting
   private let triggerDelayNanoseconds: UInt64
   private let isModalPresented: () -> Bool
+  private let isForegroundActive: () -> Bool
   private let sleep: @Sendable (UInt64) async -> Void
 
   /// How many times ONE trigger will re-arm itself while a modal is on screen
@@ -79,6 +80,7 @@ final class RatingPromptPresenter: ObservableObject {
     feedbackPresenter: FeedbackPresenting,
     triggerDelayNanoseconds: UInt64 = 2_000_000_000,
     isModalPresented: @escaping () -> Bool = RatingPromptPresenter.defaultIsModalPresented,
+    isForegroundActive: @escaping () -> Bool = RatingPromptPresenter.defaultIsForegroundActive,
     sleep: @escaping @Sendable (UInt64) async -> Void = RatingPromptPresenter.defaultSleep
   ) {
     self.service = service
@@ -86,12 +88,29 @@ final class RatingPromptPresenter: ObservableObject {
     self.feedbackPresenter = feedbackPresenter
     self.triggerDelayNanoseconds = triggerDelayNanoseconds
     self.isModalPresented = isModalPresented
+    self.isForegroundActive = isForegroundActive
     self.sleep = sleep
   }
 
   static let defaultSleep: @Sendable (UInt64) async -> Void = { nanoseconds in
     guard nanoseconds > 0 else { return }
     try? await Task.sleep(nanoseconds: nanoseconds)
+  }
+
+  /// True when a scene is foreground-active, i.e. when the modal check below
+  /// can actually see the window hierarchy.
+  ///
+  /// `defaultIsModalPresented` resolves the key window through the
+  /// foreground-active scene. While the app is backgrounded there is no such
+  /// scene, so that lookup yields nil and the modal check answers "nothing
+  /// presented" — an absence of evidence read as evidence of absence. A borrow
+  /// that completes in the background therefore passes the F-RATING-01 guard,
+  /// and the sheet presents above the gate on the way back to foreground.
+  static let defaultIsForegroundActive: () -> Bool = {
+    MainActor.assumeIsolated {
+      UIApplication.shared.connectedScenes
+        .contains { $0.activationState == .foregroundActive }
+    }
   }
 
   /// True when the key window's root has anything presented above it.
@@ -165,7 +184,13 @@ final class RatingPromptPresenter: ObservableObject {
     // NOT call recordPromptShown() here — that stamps the cooldown and the
     // lifetime cap, and burning the one chance to ask on a prompt nobody saw is
     // worse than the occlusion.
-    if isModalPresented() {
+    // Backgrounded counts as "cannot show". The modal lookup resolves its window
+    // through the foreground-active scene, so with the app backgrounded it finds
+    // no scene and reports "nothing presented" — not because the screen is clear
+    // but because it cannot see. A borrow finishing in the background otherwise
+    // walks straight past this guard, and the success sheet presents above the
+    // gate on the way back to foreground.
+    if !isForegroundActive() || isModalPresented() {
       guard deferralsRemaining > 0 else { return }
       deferralsRemaining -= 1
       // Re-arm WITHOUT going through scheduleTrigger, or the reset there would
