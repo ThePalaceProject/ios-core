@@ -17,6 +17,8 @@ import PalaceLogging
 @preconcurrency import PalaceAudiobookToolkit
 import PalaceBookModel
 import PalaceUtilities
+import PalaceNetwork
+import ReadiumZIPFoundation
 
 /// Narrow seams for the two collaborators LCPAdapter needs. Defined here so
 /// the adapter is unit-testable without retrofitting protocols onto the @objc
@@ -92,13 +94,23 @@ final class LCPAdapter: AudiobookVendorAdapter {
     // else re-download .lcpl from the book's fulfill URL.
 
     private func prepareLCPSource(for book: TPPBook) async -> Result<URL, AudiobookLoadError> {
+        let license = licenseURL(forBookIdentifier: book.identifier)
         if let localURL = downloadCenter.fileUrl(for: book.identifier),
            fileManager.fileExists(atPath: localURL.path),
            Self.archiveIsComplete(at: localURL) {
-            Log.info(#file, "LCP audiobook \(book.identifier): opening the local archive")
-            return .success(localURL)
+            // A package opens on the licence embedded in it, not on the `.lcpl`
+            // beside it. A loan that ended without an in-app Return can leave its
+            // package behind while a re-borrow replaces only the `.lcpl`, and that
+            // package then fails with the old licence's status (PP-5440).
+            if let license,
+               await LCPPackageLicense.belongsToAnotherLicense(packageAt: localURL, currentLicenseAt: license) {
+                Log.warn(#file, "LCP audiobook \(book.identifier): the local archive holds an earlier loan's licence; streaming from the current licence")
+            } else {
+                Log.info(#file, "LCP audiobook \(book.identifier): opening the local archive")
+                return .success(localURL)
+            }
         }
-        if let license = licenseURL(forBookIdentifier: book.identifier) {
+        if let license {
             Log.info(#file, "LCP audiobook \(book.identifier): streaming from the license")
             return .success(license)
         }
@@ -231,6 +243,51 @@ final class LCPAdapter: AudiobookVendorAdapter {
         let license = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
         return fileManager.fileExists(atPath: license.path) ? license : nil
     }
+}
+
+/// Reads the licence fulfilment injected into an `.lcpa`
+/// (`TPPLicensesService.pathInZip`) without touching the network.
+enum LCPPackageLicense {
+
+    /// `license.lcpl` for audiobooks, `META-INF/license.lcpl` for EPUBs.
+    static let entryPaths = ["license.lcpl", "META-INF/license.lcpl"]
+
+    /// True only when both licences are readable and their IDs differ. An
+    /// unreadable side keeps the package, as every open did before PP-5440.
+    static func belongsToAnotherLicense(packageAt packageURL: URL, currentLicenseAt licenseURL: URL) async -> Bool {
+        guard let current = TPPLCPLicense(url: licenseURL)?.identifier,
+              let embedded = await identifier(inPackageAt: packageURL)
+        else {
+            return false
+        }
+        return embedded != current
+    }
+
+    /// The ID of the licence embedded in the package, or nil when it has none
+    /// or cannot be read.
+    static func identifier(inPackageAt packageURL: URL) async -> String? {
+        guard let archive = try? await Archive(url: packageURL, accessMode: .read) else { return nil }
+        for path in entryPaths {
+            guard let entry = try? await archive.get(path) else { continue }
+            let buffer = LicenseDataBuffer()
+            guard (try? await archive.extract(entry, consumer: { buffer.append($0) })) != nil,
+                  let license = try? JSONDecoder().decodeGuarded(TPPLCPLicense.self, from: buffer.data)
+            else {
+                continue
+            }
+            return license.identifier
+        }
+        return nil
+    }
+}
+
+/// `Archive.extract` delivers chunks to a `@Sendable` closure, so the bytes
+/// are collected under a lock.
+private final class LicenseDataBuffer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage = Data()
+    func append(_ chunk: Data) { lock.withLock { storage.append(chunk) } }
+    var data: Data { lock.withLock { storage } }
 }
 
 #endif
