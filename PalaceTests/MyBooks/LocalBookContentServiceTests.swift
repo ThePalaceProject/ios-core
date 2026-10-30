@@ -1460,8 +1460,10 @@ final class LocalBookContentServiceTests: XCTestCase {
 
     /// Seeds an LCP loan that started at 2026-10-30T16:11:18Z with only a
     /// `.lcpl` on disk, issued at `issued`.
+    private let pp5440LoanStart = ISO8601DateFormatter().date(from: "2026-10-30T16:11:18Z")!
+
     private func seedLicenseOnlyLoan(licenseIssued issued: String) throws -> TPPBook {
-        let since = ISO8601DateFormatter().date(from: "2026-10-30T16:11:18Z")
+        let since: Date? = pp5440LoanStart
         let book = makeLCPAudiobook(
             availability: TPPOPDSAcquisitionAvailabilityLimited(copiesAvailable: 0, copiesTotal: 1, since: since, until: nil)
         )
@@ -1483,6 +1485,20 @@ final class LocalBookContentServiceTests: XCTestCase {
 
         XCTAssertEqual(fulfiller.callCount, 0,
                        "a licence from an earlier loan must not be built into a new package")
+    }
+
+    /// Once an open has confirmed the licence against the loan (the date rule
+    /// was a false positive), the package fetch must not stay blocked.
+    func testRedownload_licenceIssuedBeforeTheLoan_confirmedForTheLoan_transfers() throws {
+        let book = try seedLicenseOnlyLoan(licenseIssued: "2026-10-29T19:27:42Z")
+        let licenseURL = bookFileManager.fakeURLFor(book).deletingPathExtension().appendingPathExtension("lcpl")
+        LCPLoanLicense.markVerified(licenseAt: licenseURL, loanStart: pp5440LoanStart)
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller)
+
+        service.redownloadLCPContentFile(for: book)
+
+        XCTAssertEqual(fulfiller.callCount, 1, "a confirmed licence is the loan's own and may build a package")
     }
 
     /// The control: a licence issued for this loan is fetched as before.

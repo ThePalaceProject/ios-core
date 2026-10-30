@@ -624,9 +624,10 @@ class LocalBookContentService {
         }
         // The package is built around this licence, so one from an earlier loan
         // would produce a package that fails with that loan's status. The next
-        // open replaces the licence (`LCPAdapter.prepareLCPSource`, PP-5440).
-        if LCPLoanLicense.predatesLoan(TPPLCPLicense(url: licenseURL), loanStart: LCPLoanLicense.loanStart(of: book)) {
-            Log.warn(#file, "📥 [LCP RE-DOWNLOAD] The license for '\(book.title)' is from an earlier loan — skipping")
+        // open checks it against the loan and replaces or confirms it
+        // (`LCPAdapter.prepareLCPSource`, PP-5440), which lifts this skip.
+        if LCPLoanLicense.needsCheck(licenseAt: licenseURL, loanStart: LCPLoanLicense.loanStart(of: book)) {
+            Log.warn(#file, "📥 [LCP RE-DOWNLOAD] The license for '\(book.title)' may be from an earlier loan and is not yet checked — skipping")
             return
         }
         // The pinned account when the caller supplied one, the live account
