@@ -133,11 +133,26 @@ final class AudiobookSessionPresenterBackgroundTickTests: XCTestCase {
         XCTAssertEqual(presenter.progress.chapterOffset, 301)
     }
 
-    /// A held tick is applied once; a second foreground entry with no new tick
-    /// must not re-publish it.
+    /// A foreground entry with nothing held must not publish anything.
     func testForegroundEntry_withNoHeldTick_doesNotNotifyProgressObservers() {
         let presenter = makePresenter()
         presenter.applyPlaybackTick(tick(at: 10))
+        let changes = countProgressChanges(presenter)
+
+        notificationCenter.post(name: UIApplication.willEnterForegroundNotification, object: nil)
+        spinMainQueue()
+
+        XCTAssertEqual(changes.value, 0)
+    }
+
+    /// A held tick is applied once; a second foreground entry must not re-publish it.
+    func testSecondForegroundEntry_afterHeldTickApplied_doesNotNotifyProgressObservers() {
+        let presenter = makePresenter()
+        appState.value = .background
+        presenter.applyPlaybackTick(tick(at: 300))
+        notificationCenter.post(name: UIApplication.willEnterForegroundNotification, object: nil)
+        spinMainQueue()
+        XCTAssertEqual(presenter.progress.currentLocation?.timestamp, 300, "PRECONDITION: held tick applied")
         let changes = countProgressChanges(presenter)
 
         notificationCenter.post(name: UIApplication.willEnterForegroundNotification, object: nil)

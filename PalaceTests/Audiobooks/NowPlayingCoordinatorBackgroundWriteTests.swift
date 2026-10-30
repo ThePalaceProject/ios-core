@@ -218,6 +218,110 @@ final class NowPlayingCoordinatorBackgroundWriteTests: XCTestCase {
         XCTAssertEqual(infoCenter.infoWrites.count, 1)
     }
 
+    func testBackground_artistChange_writesImmediately() {
+        update(elapsed: 100)
+        clock.withValue { $0 = $0.addingTimeInterval(0.25) }
+
+        coordinator.updateNowPlaying(
+            title: "Chapter 1", artist: "Other Book", album: "Author",
+            elapsed: 100.25, duration: 1_800, isPlaying: true, playbackRate: .normalTime
+        )
+
+        XCTAssertEqual(infoCenter.infoWrites.count, 2)
+    }
+
+    func testBackground_albumChange_writesImmediately() {
+        update(elapsed: 100)
+        clock.withValue { $0 = $0.addingTimeInterval(0.25) }
+
+        coordinator.updateNowPlaying(
+            title: "Chapter 1", artist: "Book", album: "Other Author",
+            elapsed: 100.25, duration: 1_800, isPlaying: true, playbackRate: .normalTime
+        )
+
+        XCTAssertEqual(infoCenter.infoWrites.count, 2)
+    }
+
+    // MARK: - Direct writers carry the latest position
+
+    /// A pause from the lock screen, CarPlay or headphones writes the stored
+    /// info directly; it must carry the latest tick, not the last written one.
+    func testBackground_pauseAfterSkippedTicks_writesLatestElapsed() {
+        update(elapsed: 100)
+        let latest = steadyTicks(from: 100, count: 8)
+        XCTAssertEqual(infoCenter.infoWrites.count, 1, "PRECONDITION: steady ticks were skipped")
+
+        coordinator.setPlaybackState(playing: false)
+
+        XCTAssertEqual(lastWrittenElapsed ?? -1, latest, accuracy: 0.001)
+        XCTAssertEqual(
+            infoCenter.nowPlayingInfo?[MPNowPlayingInfoPropertyPlaybackRate] as? Double, 0
+        )
+    }
+
+    func testBackground_rateChangeAfterSkippedTicks_writesLatestElapsed() {
+        update(elapsed: 100)
+        infoCenter.playbackState = .playing
+        let latest = steadyTicks(from: 100, count: 8)
+
+        coordinator.updatePlaybackRate(.doubleTime)
+
+        XCTAssertEqual(lastWrittenElapsed ?? -1, latest, accuracy: 0.001)
+    }
+
+    /// After a direct rate change, ticks at the new rate are extrapolated from it.
+    func testBackground_ticksAfterDirectRateChange_areExtrapolatedAtNewRate() {
+        update(elapsed: 100)
+        infoCenter.playbackState = .playing
+        coordinator.updatePlaybackRate(.doubleTime)
+        let writesAfterRateChange = infoCenter.infoWrites.count
+        var elapsed = 100.0
+        for _ in 0..<8 {
+            clock.withValue { $0 = $0.addingTimeInterval(0.25) }
+            elapsed += 0.5
+            update(elapsed: elapsed, rate: .doubleTime)
+        }
+
+        XCTAssertEqual(infoCenter.infoWrites.count, writesAfterRateChange)
+    }
+
+    /// After a direct pause, paused ticks match what was just written.
+    func testBackground_pausedTicksAfterDirectPause_areNotWritten() {
+        update(elapsed: 100)
+        let latest = steadyTicks(from: 100, count: 4)
+        coordinator.setPlaybackState(playing: false)
+        let writesAfterPause = infoCenter.infoWrites.count
+
+        for _ in 0..<8 {
+            clock.withValue { $0 = $0.addingTimeInterval(0.25) }
+            update(elapsed: latest, isPlaying: false)
+        }
+
+        XCTAssertEqual(infoCenter.infoWrites.count, writesAfterPause)
+    }
+
+    /// The keep-alive interval counts from the most recent write of any kind.
+    func testBackground_keepAlive_countsFromArtworkWrite() {
+        update(elapsed: 100)
+        let atArtwork = steadyTicks(from: 100, count: 8)
+        coordinator.updateArtwork(UIImage())
+        let writesAfterArtwork = infoCenter.infoWrites.count
+
+        _ = steadyTicks(from: atArtwork, count: 36)
+
+        XCTAssertEqual(infoCenter.infoWrites.count, writesAfterArtwork,
+                       "11 s after the first write but 9 s after the artwork write")
+    }
+
+    func testBackground_artworkUpdateAfterSkippedTicks_writesLatestElapsed() {
+        update(elapsed: 100)
+        let latest = steadyTicks(from: 100, count: 8)
+
+        coordinator.updateArtwork(UIImage())
+
+        XCTAssertEqual(lastWrittenElapsed ?? -1, latest, accuracy: 0.001)
+    }
+
     // MARK: - Foreground is unchanged
 
     /// In `.active` the existing debounce still decides; the background skip
@@ -230,8 +334,8 @@ final class NowPlayingCoordinatorBackgroundWriteTests: XCTestCase {
         XCTAssertEqual(infoCenter.infoWrites.count, 1)
     }
 
-    /// After foreground use, the first background tick has nothing to
-    /// extrapolate from the debounced foreground writes, so it is written.
+    /// A chapter change on the first background tick after a foreground write
+    /// is written, whatever the foreground debounce last applied.
     func testBackground_firstTickAfterForegroundWrite_withChangedTitle_isWritten() {
         appState.value = .active
         update(elapsed: 100)

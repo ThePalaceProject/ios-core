@@ -219,6 +219,8 @@ public final class NowPlayingCoordinator {
 
         // Apply immediately (no debounce for state changes)
         currentInfo = info
+        lastIsPlaying = playing
+        recordWrite(info)
         nowPlayingInfoCenter.nowPlayingInfo = info
         nowPlayingInfoCenter.playbackState = playing ? .playing : .paused
 
@@ -239,6 +241,7 @@ public final class NowPlayingCoordinator {
         }
 
         currentInfo = info
+        recordWrite(info)
         nowPlayingInfoCenter.nowPlayingInfo = info
 
         Log.debug(#file, "Playback rate updated: \(rateValue)x")
@@ -270,6 +273,7 @@ public final class NowPlayingCoordinator {
         var info = currentInfo
         info[MPMediaItemPropertyArtwork] = artwork
         currentInfo = info
+        recordWrite(info)
         nowPlayingInfoCenter.nowPlayingInfo = info
 
         Log.debug(#file, "Artwork updated")
@@ -310,7 +314,12 @@ public final class NowPlayingCoordinator {
         if applicationStateProvider() != .active {
             // PP-4970: playback ticks arrive four times a second; skip the
             // ones whose elapsed time MediaPlayer extrapolates from the rate.
-            guard backgroundWriteIsNeeded(info, isPlaying: isPlaying) else { return }
+            guard backgroundWriteIsNeeded(info, isPlaying: isPlaying) else {
+                // Keep the latest values so a direct write (pause, rate,
+                // artwork) carries the current position, not the last written one.
+                currentInfo = info
+                return
+            }
             performUpdate(info, isPlaying: isPlaying)
             return
         }
@@ -365,15 +374,21 @@ public final class NowPlayingCoordinator {
         return abs(elapsed - extrapolated) > Configuration.backgroundSeekTolerance
     }
 
-    private func performUpdate(_ info: [String: Any], isPlaying: Bool) {
-        currentInfo = info
-        lastUpdateTime = Date()
-        lastIsPlaying = isPlaying
+    /// Every write to the system center sets the base the background skip
+    /// extrapolates from.
+    private func recordWrite(_ info: [String: Any]) {
         lastWrite = (
             at: now(),
             elapsed: info[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? Double ?? 0,
             rate: info[MPNowPlayingInfoPropertyPlaybackRate] as? Double ?? 0
         )
+    }
+
+    private func performUpdate(_ info: [String: Any], isPlaying: Bool) {
+        currentInfo = info
+        lastUpdateTime = Date()
+        lastIsPlaying = isPlaying
+        recordWrite(info)
 
         nowPlayingInfoCenter.nowPlayingInfo = info
         nowPlayingInfoCenter.playbackState = isPlaying ? .playing : .paused
