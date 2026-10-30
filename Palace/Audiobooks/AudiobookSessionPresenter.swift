@@ -166,9 +166,15 @@ class AudiobookSessionPresenter: ObservableObject {
         isArchiveTransferActive: @escaping (String) -> Bool = { _ in false },
         contentIsLocal: @escaping (String) -> Bool = {
             AudiobookSessionManager.audiobookContentIsLocal($0)
-        }
+        },
+        applicationStateProvider: @escaping () -> UIApplication.State = {
+            UIApplication.shared.applicationState
+        },
+        notificationCenter: NotificationCenter = .default
     ) {
         self.sessionManager = sessionManager
+        self.applicationStateProvider = applicationStateProvider
+        self.notificationCenter = notificationCenter
         self.archiveTransferPublisher = archiveTransferPublisher
         self.archiveProgressPublisher = archiveProgressPublisher
         self.isArchiveTransferActive = isArchiveTransferActive
@@ -177,6 +183,11 @@ class AudiobookSessionPresenter: ObservableObject {
         subscribeToAppLifecycle()
         subscribeToArchiveTransfers()
     }
+
+    /// Injected so tests can drive the background gate in `applyPlaybackTick(_:)`
+    /// without the shared `UIApplication`.
+    private let applicationStateProvider: () -> UIApplication.State
+    private let notificationCenter: NotificationCenter
 
     private let archiveTransferPublisher: AnyPublisher<(String, Bool), Never>?
     private let archiveProgressPublisher: AnyPublisher<(String, Double), Never>?
@@ -352,6 +363,7 @@ class AudiobookSessionPresenter: ObservableObject {
         // PP-5205: reset with the offsets so a new book never shows the
         // previous book's chapter name.
         progress.chapterTitle = ""
+        heldTick = nil
         overallDownloadProgress = 0
         isDownloading = false
         archiveProgress = nil
@@ -465,13 +477,14 @@ class AudiobookSessionPresenter: ObservableObject {
     /// boundary can be missed by SwiftUI, leaving a stale glyph or blank cover
     /// while audio is playing.
     private func subscribeToAppLifecycle() {
-        NotificationCenter.default
+        notificationCenter
             .publisher(for: UIApplication.willEnterForegroundNotification)
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 guard let self = self else { return }
                 self.isPlaying = self.sessionManager.isPlaying
                 self.coverImage = self.sessionManager.coverImage
+                self.applyHeldTick()
 
                 // iOS can evict the AVPlayer buffer in the background, leaving
                 // `Player.isLoaded` false and the player stuck loading. Ask the
@@ -483,32 +496,89 @@ class AudiobookSessionPresenter: ObservableObject {
             .store(in: &cancellables)
     }
 
+    /// One playback tick's values, mirrored onto `progress`. `chapter` is nil
+    /// when the playback model has already been released.
+    struct PlaybackTick: Equatable {
+        struct Chapter: Equatable {
+            var offset: TimeInterval
+            var timeLeft: TimeInterval
+            var title: String
+        }
+        var position: TrackPosition?
+        var chapter: Chapter?
+    }
+
     private func subscribeToPlaybackModelCurrentLocation(_ model: AudiobookPlaybackModel) {
         model.$currentLocation
             .receive(on: DispatchQueue.main)
             .sink { [weak self, weak model] position in
-                guard let self = self else { return }
-                self.progress.currentLocation = position
-                self.progress.playbackProgress = Self.normalizedProgress(for: position)
-                // Self-heal the transport play/pause glyph on each advancing tick.
-                self.reconcileTransportGlyphFromSessionManager()
-                // The chapter-relative offsets are computed off `currentLocation`
-                // in the toolkit, so recompute the mirrors on the same tick.
-                if let model = model {
-                    self.progress.chapterOffset = model.chapterPlayheadOffset
-                    self.progress.chapterTimeLeft = model.chapterTimeLeft
-                    // Same tick as the offsets, by construction — see `chapterTitle`.
-                    self.progress.chapterTitle = model.currentChapterTitle
-                    // Chapter-relative scrubber progress, matching the
-                    // chapter-scoped `seekWithSlider`; `playbackProgress` is
-                    // book-relative and only drives the "N min remaining" text.
-                    self.progress.chapterProgress = Self.chapterProgress(
-                        offset: model.chapterPlayheadOffset,
-                        timeLeft: model.chapterTimeLeft
+                // The chapter-relative values are computed off `currentLocation`
+                // in the toolkit, so read them on the same tick.
+                let chapter = model.map {
+                    PlaybackTick.Chapter(
+                        offset: $0.chapterPlayheadOffset,
+                        timeLeft: $0.chapterTimeLeft,
+                        title: $0.currentChapterTitle
                     )
                 }
+                self?.applyPlaybackTick(PlaybackTick(position: position, chapter: chapter))
             }
             .store(in: &playbackModelCancellables)
+    }
+
+    /// The root player view observes `progress`, so every write re-evaluates
+    /// the whole player. In the background (including a locked screen) nothing
+    /// is on screen to read it, so the latest tick is held and applied on
+    /// foreground entry instead (PP-4970).
+    func applyPlaybackTick(_ tick: PlaybackTick) {
+        if applicationStateProvider() == .background {
+            heldTick = tick
+            return
+        }
+        heldTick = nil
+        writeProgress(tick)
+    }
+
+    /// Latest tick that arrived while the app was in the background.
+    private var heldTick: PlaybackTick?
+
+    private func applyHeldTick() {
+        guard let tick = heldTick else { return }
+        heldTick = nil
+        writeProgress(tick)
+    }
+
+    /// Assigning an unchanged value to a `@Published` property still notifies
+    /// observers, so each field is written only when it differs.
+    private func writeProgress(_ tick: PlaybackTick) {
+        Self.assign(tick.position, to: \.currentLocation, on: progress)
+        Self.assign(Self.normalizedProgress(for: tick.position), to: \.playbackProgress, on: progress)
+        // Self-heal the transport play/pause glyph on each advancing tick.
+        reconcileTransportGlyphFromSessionManager()
+        if let chapter = tick.chapter {
+            Self.assign(chapter.offset, to: \.chapterOffset, on: progress)
+            Self.assign(chapter.timeLeft, to: \.chapterTimeLeft, on: progress)
+            // Same tick as the offsets, by construction — see `chapterTitle`.
+            Self.assign(chapter.title, to: \.chapterTitle, on: progress)
+            // Chapter-relative scrubber progress, matching the
+            // chapter-scoped `seekWithSlider`; `playbackProgress` is
+            // book-relative and only drives the "N min remaining" text.
+            Self.assign(
+                Self.chapterProgress(offset: chapter.offset, timeLeft: chapter.timeLeft),
+                to: \.chapterProgress,
+                on: progress
+            )
+        }
+    }
+
+    private static func assign<Value: Equatable>(
+        _ value: Value,
+        to keyPath: ReferenceWritableKeyPath<AudiobookPlaybackProgress, Value>,
+        on progress: AudiobookPlaybackProgress
+    ) {
+        if progress[keyPath: keyPath] != value {
+            progress[keyPath: keyPath] = value
+        }
     }
 
     /// Self-heal the transport play/pause glyph from the authoritative
