@@ -25,6 +25,14 @@ struct AudiobookCoverArt: View {
     /// 44pt a 2:3 cover leaves bars about 7pt wide, well inside a 24pt kernel.
     private static let blurFraction: CGFloat = 0.075
 
+    /// The flat tone behind the artwork under Reduce Transparency. It must be
+    /// OPAQUE: the backdrop sits over `Color.clear`, so anything with alpha
+    /// below 1 leaves the bars partly empty — the state the backdrop exists to
+    /// remove. Named so a test can read the alpha; the environment key for
+    /// Reduce Transparency is read-only, so the branch cannot be rendered on
+    /// demand.
+    static let reduceTransparencyFill: UIColor = .secondarySystemBackground
+
     /// Treat near-square artwork as square: it leaves no bars to fill, so the
     /// backdrop would be rendered and then completely covered.
     private static let squareTolerance: CGFloat = 0.02
@@ -68,10 +76,7 @@ struct AudiobookCoverArt: View {
     private func backdrop(side: CGFloat) -> some View {
         if let image, !Self.isSquare(image) {
             if reduceTransparency {
-                // An OPAQUE tone, not a translucent one. The backdrop sits over
-                // `Color.clear`, so anything with alpha below 1 leaves the bars
-                // partly empty — the state this exists to remove.
-                Color(.secondarySystemBackground)
+                Color(Self.reduceTransparencyFill)
                     .accessibilityHidden(true)
             } else {
                 Image(uiImage: image)

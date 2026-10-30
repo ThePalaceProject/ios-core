@@ -1258,8 +1258,11 @@ final class AudiobookCoverArtFidelityTests: XCTestCase {
         let shot = try XCTUnwrap(render(bandedArtwork()))
         let centre = try XCTUnwrap(colour(shot, atX: 0.5, y: 0.5))
         let bar = try XCTUnwrap(colour(shot, atX: 0.02, y: 0.5))
-        XCTAssertLessThan(luminance(bar), luminance(centre),
-                          "the bar is not dimmer than the artwork it frames")
+        // A margin, not a bare `<`: with the dim zeroed the bar and the centre
+        // sit near-equal and the kill would ride on blur noise rather than on
+        // a real gap.
+        XCTAssertLessThan(luminance(bar), luminance(centre) * 0.95,
+                          "the bar is not meaningfully dimmer than the artwork it frames")
     }
 
     /// At mini-bar size the bars are only a few points wide, which is exactly
@@ -1269,6 +1272,23 @@ final class AudiobookCoverArtFidelityTests: XCTestCase {
         let a = try XCTUnwrap(alpha(shot, atX: 0.03, y: 0.5))
         XCTAssertEqual(a, 1.0, accuracy: 0.02,
                        "the mini-bar bar is not opaque (alpha \(a))")
+    }
+
+    /// The Reduce Transparency branch swaps the blurred backdrop for a flat
+    /// tone, and that tone must be OPAQUE: it sits over `Color.clear`, so a
+    /// translucent one leaves the bars partly empty.
+    ///
+    /// Read as a constant rather than rendered. `\.accessibilityReduceTransparency`
+    /// is a read-only environment key, so `.environment(_:_:)` will not compile
+    /// against it and the branch cannot be driven from a test render. Asserting
+    /// the alpha of the colour the view actually uses still kills the mutant
+    /// that matters: swapping it for a translucent one.
+    func testReduceTransparencyFill_isOpaque() {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        AudiobookCoverArt.reduceTransparencyFill.getRed(&r, green: &g, blue: &b, alpha: &a)
+        XCTAssertEqual(a, 1.0, accuracy: 0.001,
+                       "the Reduce Transparency fill is translucent, so the bars " +
+                       "would show through to whatever is behind the square")
     }
 
     /// Names what it is: a unit test of the aspect classification, not of the
