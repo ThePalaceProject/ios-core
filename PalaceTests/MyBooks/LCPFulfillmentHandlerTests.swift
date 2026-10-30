@@ -544,6 +544,23 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
                       "a package for the same licence is the patron's download and must stay")
     }
 
+    /// The `.lcpl` beside the package is read before the registry: a re-borrow
+    /// leaves an older registry ID behind, and the file is what the package
+    /// was fulfilled with.
+    func testFulfill_streamingEnabled_siblingLicenseMatchesNew_registryIdOlder_keepsTheArchive() async throws {
+        let audiobook = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        registry.addBook(audiobook, state: .downloading)
+        registry.setFulfillmentId("urn:uuid:earlier-loan", for: audiobook.identifier)
+        let contentURL = try writeEarlierLoanContent(for: audiobook, siblingLicenseId: "urn:uuid:live-loan")
+        let sourceURL = try writeValidLicenseSource(id: "urn:uuid:live-loan")
+
+        makeStreamingHandler().fulfillLCPLicense(fileUrl: sourceURL, forBook: audiobook,
+                                                 downloadTask: FakeDownloadTask(state: .completed, identifier: 1))
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: contentURL.path),
+                      "the .lcpl beside the package names its licence; an older registry ID must not remove it")
+    }
+
     /// With no `.lcpl` beside the package, the registry's recorded fulfilment ID
     /// identifies the earlier loan.
     func testFulfill_streamingEnabled_noSiblingLicense_registryIdDiffers_removesTheArchive() async throws {
