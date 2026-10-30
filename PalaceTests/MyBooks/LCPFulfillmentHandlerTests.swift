@@ -498,6 +498,83 @@ final class LCPFulfillmentHandlerTests: XCTestCase {
         )
     }
 
+    /// Writes the `.lcpa` an earlier loan left on disk and, when `siblingLicenseId`
+    /// is given, the `.lcpl` that loan's fulfilment copied beside it.
+    private func writeEarlierLoanContent(for book: TPPBook, siblingLicenseId: String?) throws -> URL {
+        let contentURL = try writeLocalContent(for: book)
+        if let siblingLicenseId {
+            let sibling = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
+            try "{\"id\":\"\(siblingLicenseId)\",\"links\":[]}".data(using: .utf8)!.write(to: sibling)
+        }
+        return contentURL
+    }
+
+    /// PP-5440: a re-borrow after a loan ended without an in-app Return. The
+    /// earlier loan's package opens on its own embedded licence, so it has to go
+    /// when a different licence arrives, or Listen fails with "returned".
+    func testFulfill_streamingEnabled_newLicenseReplacesAnEarlierLoan_removesTheEarlierArchive() async throws {
+        let audiobook = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        registry.addBook(audiobook, state: .downloading)
+        let contentURL = try writeEarlierLoanContent(for: audiobook, siblingLicenseId: "urn:uuid:earlier-loan")
+        let sourceURL = try writeValidLicenseSource(id: "urn:uuid:new-loan")
+
+        makeStreamingHandler().fulfillLCPLicense(fileUrl: sourceURL, forBook: audiobook,
+                                                 downloadTask: FakeDownloadTask(state: .completed, identifier: 1))
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: contentURL.path),
+                       "the earlier loan's .lcpa must be removed so the open streams on the new licence")
+        let sibling = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
+        XCTAssertEqual(TPPLCPLicense(url: sibling)?.identifier, "urn:uuid:new-loan",
+                       "the new licence must still land beside the content")
+        XCTAssertEqual(spyDelegate.markSuccessfulCalls, [audiobook.identifier])
+    }
+
+    /// The same licence arriving again (a re-fulfilment of the live loan) must
+    /// keep a downloaded package; deleting it would cost a multi-GB re-fetch.
+    func testFulfill_streamingEnabled_sameLicenseAsTheLocalArchive_keepsTheArchive() async throws {
+        let audiobook = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        registry.addBook(audiobook, state: .downloading)
+        let contentURL = try writeEarlierLoanContent(for: audiobook, siblingLicenseId: "urn:uuid:live-loan")
+        let sourceURL = try writeValidLicenseSource(id: "urn:uuid:live-loan")
+
+        makeStreamingHandler().fulfillLCPLicense(fileUrl: sourceURL, forBook: audiobook,
+                                                 downloadTask: FakeDownloadTask(state: .completed, identifier: 1))
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: contentURL.path),
+                      "a package for the same licence is the patron's download and must stay")
+    }
+
+    /// With no `.lcpl` beside the package, the registry's recorded fulfilment ID
+    /// identifies the earlier loan.
+    func testFulfill_streamingEnabled_noSiblingLicense_registryIdDiffers_removesTheArchive() async throws {
+        let audiobook = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        registry.addBook(audiobook, state: .downloading)
+        registry.setFulfillmentId("urn:uuid:earlier-loan", for: audiobook.identifier)
+        let contentURL = try writeEarlierLoanContent(for: audiobook, siblingLicenseId: nil)
+        let sourceURL = try writeValidLicenseSource(id: "urn:uuid:new-loan")
+
+        makeStreamingHandler().fulfillLCPLicense(fileUrl: sourceURL, forBook: audiobook,
+                                                 downloadTask: FakeDownloadTask(state: .completed, identifier: 1))
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: contentURL.path),
+                       "a recorded fulfilment ID for another licence marks the package as the earlier loan's")
+    }
+
+    /// Nothing identifies the package's licence, so it stays; the open path
+    /// reads the embedded licence and decides there.
+    func testFulfill_streamingEnabled_noRecordOfTheEarlierLicense_keepsTheArchive() async throws {
+        let audiobook = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        registry.addBook(audiobook, state: .downloading)
+        let contentURL = try writeEarlierLoanContent(for: audiobook, siblingLicenseId: nil)
+        let sourceURL = try writeValidLicenseSource(id: "urn:uuid:new-loan")
+
+        makeStreamingHandler().fulfillLCPLicense(fileUrl: sourceURL, forBook: audiobook,
+                                                 downloadTask: FakeDownloadTask(state: .completed, identifier: 1))
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: contentURL.path),
+                      "with no earlier licence ID on record the package must not be deleted")
+    }
+
     /// Defensive arm: streaming ON but the license bytes don't parse. The book is
     /// still marked playable (the license read only drives the fulfillment ID),
     /// but no fulfillment ID is recorded — the license-read failure is non-fatal

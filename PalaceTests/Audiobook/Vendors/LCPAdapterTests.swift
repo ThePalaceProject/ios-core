@@ -412,6 +412,82 @@ final class LCPAdapterTests: XCTestCase {
         )
     }
 
+    // MARK: - PP-5440: a package left by an earlier loan
+
+    private func licenseJSON(id: String) -> Data {
+        Data("{\"id\":\"\(id)\",\"links\":[]}".utf8)
+    }
+
+    /// Builds an `.lcpa` the way fulfilment does: a whole ZIP into which
+    /// `TPPLicensesService.injectLicense` writes the loan's licence.
+    private func writePackage(embeddingLicenseId id: String, at url: URL) async throws {
+        writeWholeArchive(to: url)
+        let lcpl = url.deletingLastPathComponent().appendingPathComponent("embedded-\(UUID().uuidString).lcpl")
+        try licenseJSON(id: id).write(to: lcpl)
+        try await TPPLicensesService().injectLicense(lcpl: lcpl, to: url, at: "license.lcpl")
+        try FileManager.default.removeItem(at: lcpl)
+    }
+
+    private func resolvedSource(for book: TPPBook, contentURL: URL) async -> URL? {
+        let downloadCenter = SpyDownloadCenter()
+        downloadCenter.fileUrlByIdentifier[book.identifier] = contentURL
+        var captured: URL?
+        let adapter = LCPAdapter(
+            downloadCenter: downloadCenter,
+            networkExecutor: SpyNetworkExecutor(),
+            lcpAudiobooksFactory: { url in
+                captured = url
+                return nil
+            }
+        )
+        _ = await adapter.resolveManifest(for: book)
+        return captured
+    }
+
+    /// The defect: a re-borrow replaced the `.lcpl`, but the package still
+    /// carries the earlier loan's licence and opening it fails as "returned".
+    func testResolveManifest_localArchiveFromAnEarlierLoan_streamsFromTheCurrentLicense() async throws {
+        let book = makeBook(acquisitionType: lcpLicenseMIME, indirect: [indirect(audiobookLCPMIME)])
+        let contentURL = tempBookFileURL(identifier: book.identifier)
+        defer { try? FileManager.default.removeItem(at: contentURL.deletingLastPathComponent()) }
+        try await writePackage(embeddingLicenseId: "urn:uuid:earlier-loan", at: contentURL)
+        let licenseURL = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
+        try licenseJSON(id: "urn:uuid:new-loan").write(to: licenseURL)
+
+        let source = await resolvedSource(for: book, contentURL: contentURL)
+
+        XCTAssertEqual(source, licenseURL,
+                       "a package holding another loan's licence must not be opened; the current licence streams")
+    }
+
+    /// The same check must keep a package downloaded under the current loan.
+    func testResolveManifest_localArchiveWithTheCurrentLicense_usesLocalFile() async throws {
+        let book = makeBook(acquisitionType: lcpLicenseMIME, indirect: [indirect(audiobookLCPMIME)])
+        let contentURL = tempBookFileURL(identifier: book.identifier)
+        defer { try? FileManager.default.removeItem(at: contentURL.deletingLastPathComponent()) }
+        try await writePackage(embeddingLicenseId: "urn:uuid:live-loan", at: contentURL)
+        try licenseJSON(id: "urn:uuid:live-loan")
+            .write(to: contentURL.deletingPathExtension().appendingPathExtension("lcpl"))
+
+        let source = await resolvedSource(for: book, contentURL: contentURL)
+
+        XCTAssertEqual(source, contentURL, "a package for the current licence is the patron's download")
+    }
+
+    /// A package whose licence cannot be read keeps the earlier behaviour.
+    func testResolveManifest_localArchiveWithNoReadableLicense_usesLocalFile() async throws {
+        let book = makeBook(acquisitionType: lcpLicenseMIME, indirect: [indirect(audiobookLCPMIME)])
+        let contentURL = tempBookFileURL(identifier: book.identifier)
+        defer { try? FileManager.default.removeItem(at: contentURL.deletingLastPathComponent()) }
+        writeWholeArchive(to: contentURL)
+        try licenseJSON(id: "urn:uuid:new-loan")
+            .write(to: contentURL.deletingPathExtension().appendingPathExtension("lcpl"))
+
+        let source = await resolvedSource(for: book, contentURL: contentURL)
+
+        XCTAssertEqual(source, contentURL, "an unknown embedded licence must not cost the patron their download")
+    }
+
     /// No local `.lcpa`, but a `.lcpl` license sibling file exists. The
     /// adapter must reach for that license file as the LCP source. We force
     /// the factory to nil for the same reason as the previous test.
