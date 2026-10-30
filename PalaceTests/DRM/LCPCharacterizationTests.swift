@@ -113,6 +113,23 @@ final class LCPCharacterizationTests: XCTestCase {
 
     // MARK: - TPPLCPLicense: malformed / missing-required-field shapes
 
+    /// PP-5440 reads `issued` from licences on disk. A licence without it, or
+    /// with a value of the wrong type, must still parse, or every open and
+    /// fulfilment that reads a licence would fail.
+    func test_TPPLCPLicense_issuedMissingOrWrongType_stillParses() throws {
+        for body in [
+            #"{"id":"urn:uuid:no-issued","links":[]}"#,
+            #"{"id":"urn:uuid:no-issued","issued":42,"links":[]}"#
+        ] {
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("issued-\(UUID().uuidString).lcpl")
+            try Data(body.utf8).write(to: url)
+            defer { try? FileManager.default.removeItem(at: url) }
+
+            XCTAssertEqual(TPPLCPLicense(url: url)?.identifier, "urn:uuid:no-issued", body)
+        }
+    }
+
     func test_TPPLCPLicense_returnsNil_onMissingRequiredId() throws {
         // The `id` field is non-optional in the Codable struct. A JSON
         // without it must fail decoding → init? returns nil. A change that
