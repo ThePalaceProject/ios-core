@@ -18,6 +18,7 @@ import PalaceLogging
 import PalaceBookModel
 import PalaceUtilities
 import PalaceNetwork
+import PalaceCatalog
 import ReadiumZIPFoundation
 
 /// Narrow seams for the two collaborators LCPAdapter needs. Defined here so
@@ -94,17 +95,24 @@ final class LCPAdapter: AudiobookVendorAdapter {
     // else re-download .lcpl from the book's fulfill URL.
 
     private func prepareLCPSource(for book: TPPBook) async -> Result<URL, AudiobookLoadError> {
+        // Licences on disk can belong to a loan that ended without an in-app
+        // Return: nothing replaces them when the title is borrowed again, and
+        // they open on that loan's returned or expired status (PP-5440). A
+        // licence issued before the current loan began is from an earlier one.
+        let loanStart = LCPLoanLicense.loanStart(of: book)
         let license = licenseURL(forBookIdentifier: book.identifier)
+        if let license, LCPLoanLicense.predatesLoan(TPPLCPLicense(url: license), loanStart: loanStart) {
+            Log.warn(#file, "LCP audiobook \(book.identifier): the licence on disk is from an earlier loan; fetching the current one")
+            discardEarlierLoanFiles(for: book, licenseAt: license)
+            return await redownloadLCPLicense(for: book)
+        }
         if let localURL = downloadCenter.fileUrl(for: book.identifier),
            fileManager.fileExists(atPath: localURL.path),
            Self.archiveIsComplete(at: localURL) {
-            // A package opens on the licence embedded in it, not on the `.lcpl`
-            // beside it. A loan that ended without an in-app Return can leave its
-            // package behind while a re-borrow replaces only the `.lcpl`, and that
-            // package then fails with the old licence's status (PP-5440).
-            if let license,
-               await LCPPackageLicense.belongsToAnotherLicense(packageAt: localURL, currentLicenseAt: license) {
-                Log.warn(#file, "LCP audiobook \(book.identifier): the local archive holds an earlier loan's licence; streaming from the current licence")
+            // A package opens on the licence embedded in it, not on the `.lcpl`.
+            let embedded = await LCPLoanLicense.license(inPackageAt: localURL)
+            if LCPLoanLicense.predatesLoan(embedded, loanStart: loanStart) {
+                Log.warn(#file, "LCP audiobook \(book.identifier): the local archive holds an earlier loan's licence; not opening it")
             } else {
                 Log.info(#file, "LCP audiobook \(book.identifier): opening the local archive")
                 return .success(localURL)
@@ -116,6 +124,17 @@ final class LCPAdapter: AudiobookVendorAdapter {
         }
         Log.info(#file, "LCP audiobook with no local files - re-downloading license")
         return await redownloadLCPLicense(for: book)
+    }
+
+    /// Removes the earlier loan's package and its retained byte ranges. The
+    /// `.lcpl` is left for `redownloadLCPLicense` to overwrite, so a failed
+    /// fetch leaves it for the next open to try again.
+    private func discardEarlierLoanFiles(for book: TPPBook, licenseAt license: URL) {
+        LCPAudiobooks.removeArchiveStore(forLicenseAt: license)
+        if let contentURL = downloadCenter.fileUrl(for: book.identifier),
+           fileManager.fileExists(atPath: contentURL.path) {
+            try? fileManager.removeItem(at: contentURL)
+        }
     }
 
     private func loadLCPContent(
@@ -245,27 +264,41 @@ final class LCPAdapter: AudiobookVendorAdapter {
     }
 }
 
-/// Reads the licence fulfilment injected into an `.lcpa`
-/// (`TPPLicensesService.pathInZip`) without touching the network.
-enum LCPPackageLicense {
+/// Whether a licence on disk belongs to the book's current loan (PP-5440).
+enum LCPLoanLicense {
 
+    /// Allowance for the CM's loan start and the licence server's issue time
+    /// being stamped by different clocks.
+    static let issueSkew: TimeInterval = 60
+
+    /// Where fulfilment injects the licence (`TPPLicensesService.pathInZip`):
     /// `license.lcpl` for audiobooks, `META-INF/license.lcpl` for EPUBs.
     static let entryPaths = ["license.lcpl", "META-INF/license.lcpl"]
 
-    /// True only when both licences are readable and their IDs differ. An
-    /// unreadable side keeps the package, as every open did before PP-5440.
-    static func belongsToAnotherLicense(packageAt packageURL: URL, currentLicenseAt licenseURL: URL) async -> Bool {
-        guard let current = TPPLCPLicense(url: licenseURL)?.identifier,
-              let embedded = await identifier(inPackageAt: packageURL)
-        else {
-            return false
-        }
-        return embedded != current
+    /// The current loan's start, from the loans feed. Nil for anything that is
+    /// not a limited loan, or a feed without `since`.
+    static func loanStart(of book: TPPBook) -> Date? {
+        var since: Date?
+        book.defaultAcquisition?.availability.match(
+            unavailable: nil,
+            limited: { since = $0.since },
+            unlimited: nil,
+            reserved: nil,
+            ready: nil
+        )
+        return since
     }
 
-    /// The ID of the licence embedded in the package, or nil when it has none
-    /// or cannot be read.
-    static func identifier(inPackageAt packageURL: URL) async -> String? {
+    /// True only when both dates are known and the licence was issued before
+    /// the loan began. Unknown keeps the licence, as before PP-5440.
+    static func predatesLoan(_ license: TPPLCPLicense?, loanStart: Date?) -> Bool {
+        guard let issued = license?.issued, let loanStart else { return false }
+        return issued < loanStart.addingTimeInterval(-issueSkew)
+    }
+
+    /// The licence embedded in the package, read without the network; nil
+    /// when it has none or cannot be read.
+    static func license(inPackageAt packageURL: URL) async -> TPPLCPLicense? {
         guard let archive = try? await Archive(url: packageURL, accessMode: .read) else { return nil }
         for path in entryPaths {
             guard let entry = try? await archive.get(path) else { continue }
@@ -275,7 +308,7 @@ enum LCPPackageLicense {
             else {
                 continue
             }
-            return license.identifier
+            return license
         }
         return nil
     }

@@ -184,7 +184,9 @@ final class LocalBookContentServiceTests: XCTestCase {
     /// indirect child so `defaultBookContentType` resolves to `.audiobook`.
     /// Mirrors the fixtures in `LCPAcquisitionPredicateTests`; a plain
     /// `application/audiobook+lcp` acquisition does NOT satisfy the predicate.
-    private func makeLCPAudiobook() -> TPPBook {
+    private func makeLCPAudiobook(
+        availability: TPPOPDSAcquisitionAvailability = TPPOPDSAcquisitionAvailabilityUnlimited()
+    ) -> TPPBook {
         let lcpLicenseMIME = "application/vnd.readium.lcp.license.v1.0+json"
         let audiobookLCPMIME = "application/audiobook+lcp"
         let acquisition = TPPOPDSAcquisition(
@@ -194,7 +196,7 @@ final class LocalBookContentServiceTests: XCTestCase {
             indirectAcquisitions: [
                 TPPOPDSIndirectAcquisition(type: audiobookLCPMIME, indirectAcquisitions: [])
             ],
-            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+            availability: availability
         )
         return TPPBook(
             acquisitions: [acquisition],
@@ -1454,6 +1456,44 @@ final class LocalBookContentServiceTests: XCTestCase {
 
         XCTAssertEqual(fulfiller.callCount, 0,
                        "content already on disk must short-circuit before any transfer starts")
+    }
+
+    /// Seeds an LCP loan that started at 2026-10-30T16:11:18Z with only a
+    /// `.lcpl` on disk, issued at `issued`.
+    private func seedLicenseOnlyLoan(licenseIssued issued: String) throws -> TPPBook {
+        let since = ISO8601DateFormatter().date(from: "2026-10-30T16:11:18Z")
+        let book = makeLCPAudiobook(
+            availability: TPPOPDSAcquisitionAvailabilityLimited(copiesAvailable: 0, copiesTotal: 1, since: since, until: nil)
+        )
+        seedBook(book)
+        let licenseURL = bookFileManager.fakeURLFor(book).deletingPathExtension().appendingPathExtension("lcpl")
+        try Data("{\"id\":\"urn:uuid:loan\",\"issued\":\"\(issued)\",\"links\":[]}".utf8).write(to: licenseURL)
+        return book
+    }
+
+    /// PP-5440: the self-heal builds the package from the `.lcpl` on disk, so a
+    /// licence from an earlier loan would be injected into a fresh package that
+    /// then fails with that loan's "returned" status.
+    func testRedownload_licenceIssuedBeforeTheLoan_doesNotTransfer() throws {
+        let book = try seedLicenseOnlyLoan(licenseIssued: "2026-10-29T19:27:42Z")
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller)
+
+        service.redownloadLCPContentFile(for: book)
+
+        XCTAssertEqual(fulfiller.callCount, 0,
+                       "a licence from an earlier loan must not be built into a new package")
+    }
+
+    /// The control: a licence issued for this loan is fetched as before.
+    func testRedownload_licenceIssuedForTheLoan_transfers() throws {
+        let book = try seedLicenseOnlyLoan(licenseIssued: "2026-10-30T16:11:18Z")
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller)
+
+        service.redownloadLCPContentFile(for: book)
+
+        XCTAssertEqual(fulfiller.callCount, 1, "the current loan's licence still fetches the package")
     }
 
     func testRedownload_withoutLicenseOnDisk_doesNotTransfer() throws {

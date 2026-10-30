@@ -623,6 +623,13 @@ class LocalBookContentService {
             Log.warn(#file, "📥 [LCP RE-DOWNLOAD] No license file found for '\(book.title)' — skipping")
             return
         }
+        // The package is built around this licence, so one from an earlier loan
+        // would produce a package that fails with that loan's status. The next
+        // open replaces the licence (`LCPAdapter.prepareLCPSource`, PP-5440).
+        if LCPLoanLicense.predatesLoan(TPPLCPLicense(url: licenseURL), loanStart: LCPLoanLicense.loanStart(of: book)) {
+            Log.warn(#file, "📥 [LCP RE-DOWNLOAD] The license for '\(book.title)' is from an earlier loan — skipping")
+            return
+        }
         // The pinned account when the caller supplied one, the live account
         // otherwise — but ALWAYS through the identifier overload, never the
         // book-based one. That overload is what applies the R6 side-load rule
