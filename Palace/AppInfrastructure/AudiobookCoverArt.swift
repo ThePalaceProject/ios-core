@@ -14,15 +14,16 @@ import SwiftUI
 struct AudiobookCoverArt: View {
     let image: UIImage?
 
+    /// Read through the environment rather than `UIAccessibility` directly:
+    /// SwiftUI does not invalidate on the static property, so a static read
+    /// only takes effect at the next view construction.
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
     /// Blur radius as a fraction of the rendered square rather than a fixed
     /// number of points. The three call sites render this view at 320, 240 and
     /// 44pt, and a radius that suits the largest washes the smallest out: at
     /// 44pt a 2:3 cover leaves bars about 7pt wide, well inside a 24pt kernel.
     private static let blurFraction: CGFloat = 0.075
-
-    /// Below this the bars are a few points across, where a blurred image reads
-    /// as noise rather than as a backdrop. The flat dim is steadier there.
-    private static let minBlurSide: CGFloat = 120
 
     /// Treat near-square artwork as square: it leaves no bars to fill, so the
     /// backdrop would be rendered and then completely covered.
@@ -66,17 +67,18 @@ struct AudiobookCoverArt: View {
     @ViewBuilder
     private func backdrop(side: CGFloat) -> some View {
         if let image, !Self.isSquare(image) {
-            if side >= Self.minBlurSide, !UIAccessibility.isReduceTransparencyEnabled {
+            if reduceTransparency {
+                // An OPAQUE tone, not a translucent one. The backdrop sits over
+                // `Color.clear`, so anything with alpha below 1 leaves the bars
+                // partly empty — the state this exists to remove.
+                Color(.secondarySystemBackground)
+                    .accessibilityHidden(true)
+            } else {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
                     .blur(radius: side * Self.blurFraction, opaque: true)
                     .overlay(Color.black.opacity(0.22))
-                    .accessibilityHidden(true)
-            } else {
-                // Reduce Transparency, or a square too small for a blur to
-                // read: a flat tone carries the bars without the effect.
-                Color.black.opacity(0.18)
                     .accessibilityHidden(true)
             }
         }
