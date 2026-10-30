@@ -1221,11 +1221,64 @@ final class AudiobookCoverArtFidelityTests: XCTestCase {
                       "the cover is cropped at mini-bar size")
     }
 
-    /// A square cover leaves no bars, so the backdrop is skipped entirely
-    /// rather than rendered and then covered.
-    func testCoverArt_squareArtwork_needsNoBackdrop() {
-        let square = bandedArtwork(width: 600, height: 600)
-        XCTAssertTrue(AudiobookCoverArt.isSquare(square))
+    /// Alpha at a fractional point, read straight from the bitmap.
+    private func alpha(_ image: UIImage, atX fx: CGFloat, y fy: CGFloat) -> CGFloat? {
+        guard let c = colour(image, atX: fx, y: fy) else { return nil }
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        c.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return a
+    }
+
+    private func luminance(_ c: UIColor) -> CGFloat {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        c.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return 0.299 * r + 0.587 * g + 0.114 * b
+    }
+
+    /// The bars are the whole point of the backdrop, and nothing else here
+    /// samples them: every probe above lands on artwork, so removing the
+    /// backdrop overlay, flipping the isSquare guard or dropping `opaque:`
+    /// leaves those tests green. This reads the bar itself.
+    ///
+    /// A 2:3 cover in a square leaves bars on the LEFT and RIGHT, so x=0.02
+    /// and x=0.98 at mid-height are bar in every variant.
+    func testCoverArt_tallArtwork_fillsTheBarsOpaquely() throws {
+        let shot = try XCTUnwrap(render(bandedArtwork()))
+        for x in [CGFloat(0.02), CGFloat(0.98)] {
+            let a = try XCTUnwrap(alpha(shot, atX: x, y: 0.5))
+            XCTAssertEqual(a, 1.0, accuracy: 0.02,
+                           "the bar at x=\(x) is not opaque (alpha \(a)) — without a filled " +
+                           "backdrop the square shows through to whatever is behind it")
+        }
+    }
+
+    /// The backdrop is dimmed so the artwork stays the subject. If it ever
+    /// matched the artwork's brightness the cover would stop reading as a card.
+    func testCoverArt_backdropIsDimmerThanTheArtwork() throws {
+        let shot = try XCTUnwrap(render(bandedArtwork()))
+        let centre = try XCTUnwrap(colour(shot, atX: 0.5, y: 0.5))
+        let bar = try XCTUnwrap(colour(shot, atX: 0.02, y: 0.5))
+        XCTAssertLessThan(luminance(bar), luminance(centre),
+                          "the bar is not dimmer than the artwork it frames")
+    }
+
+    /// At mini-bar size the bars are only a few points wide, which is exactly
+    /// where a translucent fill stops reading as a fill.
+    func testCoverArt_atMiniBarSize_fillsTheBarsOpaquely() throws {
+        let shot = try XCTUnwrap(render(bandedArtwork(), side: 44))
+        let a = try XCTUnwrap(alpha(shot, atX: 0.03, y: 0.5))
+        XCTAssertEqual(a, 1.0, accuracy: 0.02,
+                       "the mini-bar bar is not opaque (alpha \(a))")
+    }
+
+    /// Names what it is: a unit test of the aspect classification, not of the
+    /// view. Whether the backdrop is skipped for square artwork is not
+    /// pixel-observable — square art covers the square either way — so there
+    /// is nothing to assert through the render.
+    func testIsSquare_classifiesArtworkByAspect() {
+        XCTAssertTrue(AudiobookCoverArt.isSquare(bandedArtwork(width: 600, height: 600)))
+        XCTAssertTrue(AudiobookCoverArt.isSquare(bandedArtwork(width: 600, height: 606)),
+                      "a 1% difference is within tolerance")
         XCTAssertFalse(AudiobookCoverArt.isSquare(bandedArtwork()))
     }
 }
