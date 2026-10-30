@@ -1115,3 +1115,117 @@ final class AudiobookPlayerColumnLayoutTests: XCTestCase {
         }
     }
 }
+
+// MARK: - Cover art fidelity
+
+/// The square slot is deliberate — an over-tall cover pushes the player's
+/// control row off the screen, which `AudiobookCoverArtLayoutTests` pins. What
+/// the square must not do is eat the artwork: laying the cover out `.fill`
+/// inside it overflows the square, and the clip then removes the overhang, so
+/// a 2:3 cover loses its top and bottom (PP-5441).
+///
+/// Those layout tests cannot see this. They read `sizeThatFits` on the outer
+/// view, whose size comes from `Color.clear.aspectRatio(1, .fit)`; an overlay
+/// never feeds its parent's sizing, so `.fill` and `.fit` measure identically.
+/// Green there was never evidence that red was possible.
+@MainActor
+final class AudiobookCoverArtFidelityTests: XCTestCase {
+
+    private static let side: CGFloat = 320
+
+    /// Artwork whose first and last rows are distinct, so losing either end is
+    /// visible in the pixels rather than only in the layout numbers.
+    private func bandedArtwork(width: CGFloat = 600, height: CGFloat = 900) -> UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: width, height: height)).image { ctx in
+            UIColor.systemGreen.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            UIColor.red.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: width, height: height * 0.10))
+            UIColor.blue.setFill()
+            ctx.fill(CGRect(x: 0, y: height * 0.90, width: width, height: height * 0.10))
+        }
+    }
+
+    /// Rasterizes the production view with no window. `ImageRenderer` is the
+    /// part that matters: a `UIHostingController` that was never added to a
+    /// window lays out at the wrong geometry, and `CALayer.render(in:)` drops
+    /// SwiftUI effects, so both report a crop that did not happen.
+    private func render(_ image: UIImage, side: CGFloat = side) -> UIImage? {
+        let renderer = ImageRenderer(
+            content: AudiobookCoverArt(image: image).frame(width: side, height: side))
+        renderer.scale = 1
+        return renderer.uiImage
+    }
+
+    /// Colour at a fractional point of the rendered square.
+    private func colour(_ image: UIImage, atX fx: CGFloat, y fy: CGFloat) -> UIColor? {
+        guard let cg = image.cgImage else { return nil }
+        let x = min(max(Int(CGFloat(cg.width) * fx), 0), cg.width - 1)
+        let y = min(max(Int(CGFloat(cg.height) * fy), 0), cg.height - 1)
+        var px = [UInt8](repeating: 0, count: 4)
+        guard let ctx = CGContext(data: &px, width: 1, height: 1, bitsPerComponent: 8,
+                                  bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        ctx.draw(cg, in: CGRect(x: -x, y: -(cg.height - 1 - y), width: cg.width, height: cg.height))
+        return UIColor(red: CGFloat(px[0]) / 255, green: CGFloat(px[1]) / 255,
+                       blue: CGFloat(px[2]) / 255, alpha: CGFloat(px[3]) / 255)
+    }
+
+    private func isCloserToRedThanGreen(_ c: UIColor) -> Bool {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        c.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return r > g
+    }
+
+    private func isCloserToBlueThanGreen(_ c: UIColor) -> Bool {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        c.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return b > g
+    }
+
+    /// Guards the two assertions below. If the renderer produced nothing, every
+    /// colour probe would fail and report a crop that never happened.
+    func testRenderHarness_producesTheArtwork() throws {
+        let shot = try XCTUnwrap(render(bandedArtwork()), "ImageRenderer produced no image")
+        let middle = try XCTUnwrap(colour(shot, atX: 0.5, y: 0.5))
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        middle.getRed(&r, green: &g, blue: &b, alpha: &a)
+        XCTAssertGreaterThan(g, max(r, b),
+                             "the centre of the square should be the artwork's green body; " +
+                             "got r=\(r) g=\(g) b=\(b) — the probes below would be vacuous")
+    }
+
+    /// For a 2:3 cover the bars are left and right, so the square's top-centre
+    /// and bottom-centre are artwork in both variants — that is what makes this
+    /// a clean discriminator. Flipping `artwork` back to `.fill` reddens it.
+    func testCoverArt_tallArtwork_keepsItsTopAndBottomEdges() throws {
+        let shot = try XCTUnwrap(render(bandedArtwork()))
+        let top = try XCTUnwrap(colour(shot, atX: 0.5, y: 0.02))
+        let bottom = try XCTUnwrap(colour(shot, atX: 0.5, y: 0.98))
+        XCTAssertTrue(isCloserToRedThanGreen(top),
+                      "the artwork's top band is gone — the cover is cropped to the square")
+        XCTAssertTrue(isCloserToBlueThanGreen(bottom),
+                      "the artwork's bottom band is gone — the cover is cropped to the square")
+    }
+
+    /// The mini bar renders this view at 44pt. The backdrop scales its blur to
+    /// the square, so the artwork must survive there too.
+    func testCoverArt_atMiniBarSize_stillKeepsItsEdges() throws {
+        let shot = try XCTUnwrap(render(bandedArtwork(), side: 44))
+        let top = try XCTUnwrap(colour(shot, atX: 0.5, y: 0.05))
+        let bottom = try XCTUnwrap(colour(shot, atX: 0.5, y: 0.95))
+        XCTAssertTrue(isCloserToRedThanGreen(top),
+                      "the cover is cropped at mini-bar size")
+        XCTAssertTrue(isCloserToBlueThanGreen(bottom),
+                      "the cover is cropped at mini-bar size")
+    }
+
+    /// A square cover leaves no bars, so the backdrop is skipped entirely
+    /// rather than rendered and then covered.
+    func testCoverArt_squareArtwork_needsNoBackdrop() {
+        let square = bandedArtwork(width: 600, height: 600)
+        XCTAssertTrue(AudiobookCoverArt.isSquare(square))
+        XCTAssertFalse(AudiobookCoverArt.isSquare(bandedArtwork()))
+    }
+}
