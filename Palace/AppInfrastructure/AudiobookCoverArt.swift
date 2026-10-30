@@ -24,8 +24,34 @@ struct AudiobookCoverArt: View {
         // the portrait column 114pt over an iPhone 17 Pro screen.
         Color.clear
             .aspectRatio(1, contentMode: .fit)
+            .overlay { backdrop }
             .overlay { artwork }
             .clipped()
+    }
+
+    /// Fills the square behind a cover that is not square. Laying the artwork
+    /// out `.fill` made it cover those bars, but a `.fill` image overflows the
+    /// square and `.clipped()` then removes the overhang: a 2:3 cover lost its
+    /// top and bottom, which on 3.4.0 (517) cut the author credit on "Private
+    /// Down Under" through the middle. The artwork is `.fit` now, and this
+    /// carries the bars instead.
+    ///
+    /// Both layers are overlays on the square, so neither can resize it and
+    /// the measurements in `AudiobookCoverArtLayoutTests` still hold.
+    ///
+    /// Hidden from VoiceOver: it is the same image as the artwork above it,
+    /// which already carries the cover label.
+    @ViewBuilder
+    private var backdrop: some View {
+        if let image {
+            Image(uiImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .blur(radius: 24)
+                .overlay(Color.black.opacity(0.22))
+                .clipped()
+                .accessibilityHidden(true)
+        }
     }
 
     @ViewBuilder
@@ -33,7 +59,7 @@ struct AudiobookCoverArt: View {
         if let image {
             Image(uiImage: image)
                 .resizable()
-                .aspectRatio(contentMode: .fill)
+                .aspectRatio(contentMode: .fit)
                 .accessibilityLabel(Strings.Generic.bookCover)
         } else {
             Image(systemName: "book.closed")
