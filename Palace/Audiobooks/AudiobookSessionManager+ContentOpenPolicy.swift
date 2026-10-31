@@ -144,4 +144,18 @@ extension AudiobookSessionManager {
     ) -> Bool {
         !isColdLoadRecovery && canOpenLCPBook && !contentIsLocal
     }
+
+    /// Whether the `.lcpl` beside `contentURL` was issued before the book's
+    /// current loan began and has not been checked against it (PP-5440).
+    static func lcpLicenceNeedsCheck(_ book: TPPBook, contentURL: URL?) -> Bool {
+        #if LCP
+        guard let contentURL else { return false }
+        return LCPLoanLicense.needsCheck(
+            licenseAt: contentURL.deletingPathExtension().appendingPathExtension("lcpl"),
+            loanStart: LCPLoanLicense.loanStart(of: book)
+        )
+        #else
+        return false
+        #endif
+    }
 }
