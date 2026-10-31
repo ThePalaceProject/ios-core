@@ -102,19 +102,23 @@ final class LCPAdapter: AudiobookVendorAdapter {
         // issued before the current loan began is checked against the loan's
         // own licence; nothing is removed unless that check shows another ID.
         let loanStart = LCPLoanLicense.loanStart(of: book)
-        if let license = licenseURL(forBookIdentifier: book.identifier),
+        let contentURL = downloadCenter.fileUrl(for: book.identifier)
+        if let license = licenseURL(besideContentAt: contentURL),
            let loanStart,
            LCPLoanLicense.needsCheck(licenseAt: license, loanStart: loanStart) {
             await checkLicense(at: license, for: book, loanStart: loanStart)
         }
-        let license = licenseURL(forBookIdentifier: book.identifier)
-        if let localURL = downloadCenter.fileUrl(for: book.identifier),
+        let license = licenseURL(besideContentAt: contentURL)
+        if let localURL = contentURL,
            fileManager.fileExists(atPath: localURL.path),
            Self.archiveIsComplete(at: localURL) {
             // A package opens on the licence embedded in it, not on the `.lcpl`.
             if let embedded = await LCPLoanLicense.license(inPackageAt: localURL),
                LCPLoanLicense.predatesLoan(embedded, loanStart: loanStart) {
-                if let license, let currentId = TPPLCPLicense(url: license)?.identifier {
+                // Only a checked or current `.lcpl` can show the package is
+                // another loan's; one whose check failed (offline) removes nothing.
+                if let license, let currentId = TPPLCPLicense(url: license)?.identifier,
+                   !LCPLoanLicense.needsCheck(licenseAt: license, loanStart: loanStart) {
                     if embedded.identifier != currentId {
                         Log.warn(#file, "LCP audiobook \(book.identifier): the local archive holds an earlier loan's licence; removing it")
                         removePackage(at: localURL, embeddedLicense: embedded)
@@ -155,6 +159,8 @@ final class LCPAdapter: AudiobookVendorAdapter {
         LCPAudiobooks.removeArchiveStore(forLicenseAt: license)
         do {
             try data.write(to: license, options: .atomic)
+            // The fetched licence is the loan's own, whatever its issue time.
+            LCPLoanLicense.markVerified(licenseAt: license, loanStart: loanStart)
         } catch {
             Log.error(#file, "LCP audiobook \(book.identifier): could not store the loan's licence: \(error.localizedDescription)")
         }
@@ -324,8 +330,8 @@ final class LCPAdapter: AudiobookVendorAdapter {
     /// its own locator, so the last 64 KiB plus a margin always contains it.
     private static let maximumEOCDTailLength = 66 * 1024
 
-    private func licenseURL(forBookIdentifier identifier: String) -> URL? {
-        guard let contentURL = downloadCenter.fileUrl(for: identifier) else { return nil }
+    private func licenseURL(besideContentAt contentURL: URL?) -> URL? {
+        guard let contentURL else { return nil }
         let license = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
         return fileManager.fileExists(atPath: license.path) ? license : nil
     }

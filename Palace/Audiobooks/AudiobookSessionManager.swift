@@ -295,6 +295,10 @@ public final class AudiobookSessionManager: ObservableObject {
     private let contentIsLocal: @MainActor (String) -> Bool
     private let awaitContentLocal: ContentLandingWait
 
+    /// Whether the book's `.lcpl` may be an earlier loan's and is not yet
+    /// checked against the current loan (PP-5440). Injected for tests.
+    private let lcpLicenceNeedsCheck: @MainActor (TPPBook) -> Bool
+
     /// Traces each open and reports one that stalls (PP-4973).
     private let openMonitor: AudiobookOpenMonitor
 
@@ -321,6 +325,7 @@ public final class AudiobookSessionManager: ObservableObject {
         showOpenFailureAlert: @escaping @MainActor (TPPBook, [String: Any]) -> Void,
         contentIsLocal: @escaping @MainActor (String) -> Bool,
         awaitContentLocal: @escaping ContentLandingWait,
+        lcpLicenceNeedsCheck: @escaping @MainActor (TPPBook) -> Bool,
         openMonitor: AudiobookOpenMonitor,
         makeLoader: @escaping @MainActor (Bool) -> AudiobookLoader
     ) {
@@ -343,6 +348,7 @@ public final class AudiobookSessionManager: ObservableObject {
         self.showOpenFailureAlert = showOpenFailureAlert
         self.contentIsLocal = contentIsLocal
         self.awaitContentLocal = awaitContentLocal
+        self.lcpLicenceNeedsCheck = lcpLicenceNeedsCheck
         self.openMonitor = openMonitor
         self.makeLoader = makeLoader
         Log.info(#file, "AudiobookSessionManager initialized")
@@ -389,6 +395,7 @@ public final class AudiobookSessionManager: ObservableObject {
         showOpenFailureAlert: (@MainActor (TPPBook, [String: Any]) -> Void)? = nil,
         contentIsLocal: @escaping @MainActor (String) -> Bool = { AudiobookSessionManager.audiobookContentIsLocal($0) },
         awaitContentLocal: @escaping ContentLandingWait = { await AudiobookSessionManager.awaitAudiobookContentLocal($0, onProgress: $1) },
+        lcpLicenceNeedsCheck: (@MainActor (TPPBook) -> Bool)? = nil,
         openMonitor: AudiobookOpenMonitor? = nil,
         makeLoader: @escaping @MainActor (Bool) -> AudiobookLoader = { AudiobookLoader(forceRefulfill: $0) }
     ) {
@@ -411,6 +418,9 @@ public final class AudiobookSessionManager: ObservableObject {
             showOpenFailureAlert: showOpenFailureAlert ?? AudiobookOpenFailureAlert.presenter(bookRegistry: appContainer.bookRegistry),
             contentIsLocal: contentIsLocal,
             awaitContentLocal: awaitContentLocal,
+            lcpLicenceNeedsCheck: lcpLicenceNeedsCheck ?? { [downloadCenter = appContainer.downloadCenter] book in
+                AudiobookSessionManager.lcpLicenceNeedsCheck(book, contentURL: downloadCenter.fileUrl(for: book.identifier))
+            },
             openMonitor: openMonitor ?? AudiobookOpenMonitor(),
             makeLoader: makeLoader
         )
@@ -1593,6 +1603,14 @@ public final class AudiobookSessionManager: ObservableObject {
             return .proceed
         }
 
+        // The package fetch skips a `.lcpl` that may be an earlier loan's until an
+        // open checks it, so waiting here would time out for the whole loan. The
+        // adapter checks the licence and streams on it (PP-5440).
+        if lcpLicenceNeedsCheck(book) {
+            Log.info(#file, "LCP audiobook licence not yet checked against this loan — opening so the adapter checks it before any content is fetched")
+            return .proceed
+        }
+
         Log.info(#file, "LCP audiobook content not on disk — TRIGGERING content download before opening (PP-4542 gate / 323-Cause-1)")
         // TRIGGER (not just poll): idempotent — no-ops if the .lcpa already
         // exists or a download is already in flight. This is exactly what
@@ -1601,6 +1619,20 @@ public final class AudiobookSessionManager: ObservableObject {
 
         let landed = await awaitContentLanding(book.identifier)
         return landed ? .landedAfterTrigger : .contentUnavailable
+    }
+
+    /// Whether the `.lcpl` beside `contentURL` was issued before the book's
+    /// current loan began and has not been checked against it (PP-5440).
+    static func lcpLicenceNeedsCheck(_ book: TPPBook, contentURL: URL?) -> Bool {
+        #if LCP
+        guard let contentURL else { return false }
+        return LCPLoanLicense.needsCheck(
+            licenseAt: contentURL.deletingPathExtension().appendingPathExtension("lcpl"),
+            loanStart: LCPLoanLicense.loanStart(of: book)
+        )
+        #else
+        return false
+        #endif
     }
 
     /// Dismisses the player UI and shows the honest "couldn't play right now"
