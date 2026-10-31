@@ -501,19 +501,6 @@ public final class AudiobookSessionManager: ObservableObject {
         playbackModel?.persistLocation()
     }
 
-    /// Pure guard for `persistActivePositionForLifecycleEvent`: only persist
-    /// when there is a fully-bound active session (manager + book + model).
-    /// `nonisolated static` so the decision is unit-testable without a live
-    /// toolkit session (mirrors `shouldStopPlaybackOnRegistryChange` /
-    /// `networkValidationError`).
-    nonisolated static func shouldPersistLifecyclePosition(
-        hasManager: Bool,
-        hasBook: Bool,
-        hasModel: Bool
-    ) -> Bool {
-        hasManager && hasBook && hasModel
-    }
-
     private func handleRegistryStateChange(identifier: String, state: TPPBookState) {
         guard Self.shouldStopPlaybackOnRegistryChange(
             state: state,
@@ -524,20 +511,6 @@ public final class AudiobookSessionManager: ObservableObject {
         // persistFinalPosition: false — the book is gone; do not write a stale
         // live position back into a (possibly re-borrowed) registry record.
         Task { await stopPlayback(dismissPhoneUI: true, persistFinalPosition: false) }
-    }
-
-    /// Pure decision for `subscribeToBookReturn`: stop only when the book that
-    /// changed is the one currently playing AND it has become `.unregistered`
-    /// (returned / removed / expired). `nonisolated static` so it is unit-
-    /// testable without a live session (mirrors `networkValidationError`).
-    nonisolated static func shouldStopPlaybackOnRegistryChange(
-        state: TPPBookState,
-        changedIdentifier: String,
-        currentBookIdentifier: String?
-    ) -> Bool {
-        state == .unregistered
-            && currentBookIdentifier != nil
-            && currentBookIdentifier == changedIdentifier
     }
 
     // MARK: - Public API
@@ -1619,20 +1592,6 @@ public final class AudiobookSessionManager: ObservableObject {
 
         let landed = await awaitContentLanding(book.identifier)
         return landed ? .landedAfterTrigger : .contentUnavailable
-    }
-
-    /// Whether the `.lcpl` beside `contentURL` was issued before the book's
-    /// current loan began and has not been checked against it (PP-5440).
-    static func lcpLicenceNeedsCheck(_ book: TPPBook, contentURL: URL?) -> Bool {
-        #if LCP
-        guard let contentURL else { return false }
-        return LCPLoanLicense.needsCheck(
-            licenseAt: contentURL.deletingPathExtension().appendingPathExtension("lcpl"),
-            loanStart: LCPLoanLicense.loanStart(of: book)
-        )
-        #else
-        return false
-        #endif
     }
 
     /// Dismisses the player UI and shows the honest "couldn't play right now"
