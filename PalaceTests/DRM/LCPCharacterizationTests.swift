@@ -57,9 +57,8 @@ final class LCPCharacterizationTests: XCTestCase {
         let url = try writeJSON(json)
         defer { try? FileManager.default.removeItem(at: url) }
 
-        let license = TPPLCPLicense(url: url)
-        XCTAssertNotNil(license, "Valid LCP license JSON must parse to a non-nil TPPLCPLicense")
-        XCTAssertEqual(license?.identifier, "urn:uuid:license-123",
+        let license = try XCTUnwrap(TPPLCPLicense(url: url), "Valid LCP license JSON must parse to a TPPLCPLicense")
+        XCTAssertEqual(license.identifier, "urn:uuid:license-123",
                        "TPPLCPLicense.identifier must reflect the `id` field from the JSON — NOT the URL filename or any other value")
     }
 

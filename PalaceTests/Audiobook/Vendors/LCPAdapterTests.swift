@@ -647,6 +647,118 @@ final class LCPAdapterTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: contentURL.path), "an unknown loan start must not remove a download")
     }
 
+    /// A failed fetch removes nothing, even when the package's licence differs
+    /// from the unchecked `.lcpl`.
+    func testResolveManifest_staleLicence_fetchFails_packageLicenceDiffers_keepsThePackage() async throws {
+        let book = makeLoan(since: loanSince)
+        let contentURL = tempBookFileURL(identifier: book.identifier)
+        defer { try? FileManager.default.removeItem(at: contentURL.deletingLastPathComponent()) }
+        try await writePackage(embeddingLicenseId: "urn:uuid:earlier-loan-a", issued: earlierIssued, at: contentURL)
+        try licenseJSON(id: "urn:uuid:earlier-loan-b", issued: earlierIssued)
+            .write(to: contentURL.deletingPathExtension().appendingPathExtension("lcpl"))
+        let network = SpyNetworkExecutor()
+        network.stubbedError = URLError(.notConnectedToInternet)
+
+        let source = await resolvedSource(for: book, contentURL: contentURL, network: network)
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: contentURL.path), "a failed fetch must not remove the package")
+        XCTAssertEqual(source, contentURL, "the open falls back to the package")
+    }
+
+    /// The loan's licence can itself be stamped before the loan start. Once
+    /// fetched it is the loan's own, so later opens must not fetch it again.
+    func testResolveManifest_fetchedLicenceAlsoIssuedBeforeTheLoan_isNotFetchedAgain() async throws {
+        let book = makeLoan(since: loanSince)
+        let contentURL = tempBookFileURL(identifier: book.identifier)
+        defer { try? FileManager.default.removeItem(at: contentURL.deletingLastPathComponent()) }
+        try await writePackage(embeddingLicenseId: "urn:uuid:earlier-loan", issued: earlierIssued, at: contentURL)
+        let licenseURL = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
+        try licenseJSON(id: "urn:uuid:earlier-loan", issued: earlierIssued).write(to: licenseURL)
+        let network = SpyNetworkExecutor()
+        network.stubbedData = licenseJSON(id: "urn:uuid:current-loan", issued: earlierIssued)
+        network.stubbedResponse = httpResponse(status: 200)
+        let log = SourceLog()
+        let adapter = makeAdapter(for: book, contentURL: contentURL, network: network, log: log)
+
+        _ = await adapter.resolveManifest(for: book)
+        _ = await adapter.resolveManifest(for: book)
+
+        XCTAssertEqual(network.getCallCount, 1)
+        XCTAssertEqual(log.sources, [licenseURL, licenseURL])
+        XCTAssertEqual(TPPLCPLicense(url: licenseURL)?.identifier, "urn:uuid:current-loan")
+    }
+
+    /// A 200 whose body is not a licence is a failed check: nothing changes.
+    func testResolveManifest_staleLicence_fetchReturnsAnUndecodableBody_keepsEverything() async throws {
+        let book = makeLoan(since: loanSince)
+        let contentURL = tempBookFileURL(identifier: book.identifier)
+        defer { try? FileManager.default.removeItem(at: contentURL.deletingLastPathComponent()) }
+        try await writePackage(embeddingLicenseId: "urn:uuid:earlier-loan", issued: earlierIssued, at: contentURL)
+        let licenseURL = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
+        try licenseJSON(id: "urn:uuid:earlier-loan", issued: earlierIssued).write(to: licenseURL)
+        let network = SpyNetworkExecutor()
+        network.stubbedData = Data("<html>maintenance</html>".utf8)
+        network.stubbedResponse = httpResponse(status: 200)
+
+        let source = await resolvedSource(for: book, contentURL: contentURL, network: network)
+
+        XCTAssertEqual(TPPLCPLicense(url: licenseURL)?.identifier, "urn:uuid:earlier-loan", "the .lcpl must not be replaced")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: contentURL.path))
+        XCTAssertEqual(source, contentURL)
+    }
+
+    /// A `.lcpl` with no readable ID cannot show the package is another
+    /// loan's, so the package stays.
+    func testResolveManifest_unreadableLicenceFile_packageFromAnEarlierLoan_keepsThePackage() async throws {
+        let book = makeLoan(since: loanSince)
+        let contentURL = tempBookFileURL(identifier: book.identifier)
+        defer { try? FileManager.default.removeItem(at: contentURL.deletingLastPathComponent()) }
+        try await writePackage(embeddingLicenseId: "urn:uuid:earlier-loan", issued: earlierIssued, at: contentURL)
+        try Data([0xCD, 0xCD]).write(to: contentURL.deletingPathExtension().appendingPathExtension("lcpl"))
+        let network = SpyNetworkExecutor()
+
+        let source = await resolvedSource(for: book, contentURL: contentURL, network: network)
+
+        XCTAssertEqual(source, contentURL)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: contentURL.path))
+        XCTAssertEqual(network.getCallCount, 0)
+    }
+
+    /// An earlier loan's `.lcpl` beside a package that already holds the
+    /// loan's licence: the `.lcpl` is replaced and the package is kept.
+    func testResolveManifest_earlierLicenceFile_packageHoldsTheLoansLicence_replacesTheFileAndKeepsThePackage() async throws {
+        let book = makeLoan(since: loanSince)
+        let contentURL = tempBookFileURL(identifier: book.identifier)
+        defer { try? FileManager.default.removeItem(at: contentURL.deletingLastPathComponent()) }
+        try await writePackage(embeddingLicenseId: "urn:uuid:current-loan", issued: currentIssued, at: contentURL)
+        let licenseURL = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
+        try licenseJSON(id: "urn:uuid:earlier-loan", issued: earlierIssued).write(to: licenseURL)
+        let network = SpyNetworkExecutor()
+        network.stubbedData = licenseJSON(id: "urn:uuid:current-loan", issued: currentIssued)
+        network.stubbedResponse = httpResponse(status: 200)
+
+        let source = await resolvedSource(for: book, contentURL: contentURL, network: network)
+
+        XCTAssertEqual(TPPLCPLicense(url: licenseURL)?.identifier, "urn:uuid:current-loan")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: contentURL.path), "the package holds the loan's licence")
+        XCTAssertEqual(source, contentURL)
+    }
+
+    /// The open gate's input: an unchecked `.lcpl` issued before the loan.
+    func testSessionLicenceNeedsCheck_readsTheLicenceBesideTheContent() throws {
+        let book = makeLoan(since: loanSince)
+        let contentURL = tempBookFileURL(identifier: book.identifier)
+        defer { try? FileManager.default.removeItem(at: contentURL.deletingLastPathComponent()) }
+        let licenseURL = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
+        try licenseJSON(id: "urn:uuid:earlier-loan", issued: earlierIssued).write(to: licenseURL)
+
+        XCTAssertTrue(AudiobookSessionManager.lcpLicenceNeedsCheck(book, contentURL: contentURL))
+        LCPLoanLicense.markVerified(licenseAt: licenseURL, loanStart: loanSince)
+        XCTAssertFalse(AudiobookSessionManager.lcpLicenceNeedsCheck(book, contentURL: contentURL),
+                       "a checked licence lets the gate wait for the package again")
+        XCTAssertFalse(AudiobookSessionManager.lcpLicenceNeedsCheck(book, contentURL: nil))
+    }
+
     /// The `.lcpl` is current but the package holds an earlier loan's licence:
     /// the package and its ranges go, so the background fetch can replace it.
     func testResolveManifest_packageLicenceFromAnEarlierLoan_removesThePackageAndStreams() async throws {
