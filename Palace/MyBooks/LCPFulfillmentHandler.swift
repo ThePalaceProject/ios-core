@@ -153,6 +153,8 @@ final class LCPFulfillmentHandler: @unchecked Sendable {
             }
 
             if let license = TPPLCPLicense(url: licenseUrl) {
+                // Before the new ID and licence overwrite the record of the old one.
+                removeArchiveFromAnotherLicense(book: book, newLicenseId: license.identifier)
                 bookRegistry.setFulfillmentId(license.identifier, for: book.identifier)
             } else {
                 Log.error(#file, "🔑 ❌ PP-4957 streaming: failed to read license for fulfillment ID: \(book.identifier)")
@@ -366,6 +368,40 @@ final class LCPFulfillmentHandler: @unchecked Sendable {
                 guard let self else { return }
                 await self.stateManager.bookIdentifierToDownloadInfo.set(book.identifier, value: downloadInfo)
             }
+        }
+    }
+
+    // MARK: - Earlier loan's package
+
+    /// Removes an `.lcpa` left by an earlier loan of this book (PP-5440).
+    ///
+    /// This arm fetches no package, and a package opens on the licence embedded
+    /// in it, so one left by a loan that ended without an in-app Return would
+    /// keep opening on that loan's returned or expired licence. The earlier
+    /// licence is known from the `.lcpl` beside the package, else from the
+    /// registry; a re-borrow's `addBook` clears the registry ID, so the file is
+    /// read first. With neither, the package stays.
+    private func removeArchiveFromAnotherLicense(book: TPPBook, newLicenseId: String) {
+        guard let contentURL = bookFileManager.fileUrl(for: book.identifier),
+              fileManager.fileExists(atPath: contentURL.path)
+        else {
+            return
+        }
+        let siblingLicenseURL = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
+        guard let earlierLicenseId = TPPLCPLicense(url: siblingLicenseURL)?.identifier
+                ?? bookRegistry.fulfillmentId(forIdentifier: book.identifier),
+              earlierLicenseId != newLicenseId
+        else {
+            return
+        }
+        Log.info(#file, "Removing the package of an earlier loan before streaming the new licence: \(book.identifier)")
+        if fileManager.fileExists(atPath: siblingLicenseURL.path) {
+            LCPAudiobooks.removeArchiveStore(forLicenseAt: siblingLicenseURL)
+        }
+        do {
+            try fileManager.removeItem(at: contentURL)
+        } catch {
+            Log.error(#file, "Could not remove the earlier loan's package for \(book.identifier): \(error.localizedDescription)")
         }
     }
 

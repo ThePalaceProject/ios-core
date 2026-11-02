@@ -12,6 +12,7 @@
 import XCTest
 @testable import Palace
 import PalaceBookModel
+import PalaceCatalog
 
 @MainActor
 final class AudiobookContentGateTests: XCTestCase {
@@ -330,6 +331,106 @@ final class AudiobookContentGateTests: XCTestCase {
     }
 
 
+
+    // MARK: - PP-5440: a licence that may be from an earlier loan
+
+    private func makeDownloadFirstSUT(licenceNeedsCheck: Bool) -> AudiobookSessionManager {
+        let manager = AudiobookSessionManager(
+            appContainer: appContainer,
+            lcpContentDownloadTrigger: { [weak self] book in
+                self?.triggeredBookIds.append(book.identifier)
+            },
+            lcpStreamingEnabledProvider: { false },
+            lcpLicenceNeedsCheck: { _ in licenceNeedsCheck }
+        )
+        streamingSUTs.append(manager)
+        return manager
+    }
+
+    /// Streaming off: the package fetch skips an unchecked licence, so waiting
+    /// for the package would time out for the whole loan. The open goes on to
+    /// the adapter, which checks the licence against the loan.
+    func testGate_streamingOff_licenceNeedsCheck_proceedsWithoutWaiting() async {
+        let manager = makeDownloadFirstSUT(licenceNeedsCheck: true)
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+        var awaited = false
+
+        let result = await manager.gateOnLCPContentDownload(
+            for: book,
+            isColdLoadRecovery: false,
+            canOpenLCPBook: true,
+            contentIsLocal: false,
+            awaitContentLanding: { _ in awaited = true; return false }
+        )
+
+        XCTAssertEqual(result, .proceed, "the open must reach the licence check instead of 'Audiobook Unavailable'")
+        XCTAssertFalse(awaited, "no wait on a package fetch that is skipped")
+    }
+
+    /// The production input: with no injected check, the manager reads the
+    /// `.lcpl` beside the book's content through the container's download centre.
+    func testGate_streamingOff_defaultCheckReadsTheLicenceOnDisk_proceeds() async throws {
+        let manager = AudiobookSessionManager(
+            appContainer: appContainer,
+            lcpContentDownloadTrigger: { [weak self] book in
+                self?.triggeredBookIds.append(book.identifier)
+            },
+            lcpStreamingEnabledProvider: { false }
+        )
+        streamingSUTs.append(manager)
+        let loanStart = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-30T16:11:18Z"))
+        let book = TPPBook(
+            acquisitions: [TPPOPDSAcquisition(
+                relation: .generic,
+                type: DistributorType.AudiobookLCP.rawValue,
+                hrefURL: URL(string: "https://library.test/fulfill")!,
+                indirectAcquisitions: [],
+                availability: TPPOPDSAcquisitionAvailabilityLimited(copiesAvailable: 0, copiesTotal: 1, since: loanStart, until: nil)
+            )],
+            authors: [], categoryStrings: [], distributor: "Test",
+            identifier: "pp5440-gate-\(UUID().uuidString)",
+            imageURL: nil, imageThumbnailURL: nil, published: Date(), publisher: "Test",
+            subtitle: nil, summary: nil, title: "Gate", updated: Date(),
+            annotationsURL: nil, analyticsURL: nil, alternateURL: nil, relatedWorksURL: nil,
+            previewLink: nil, seriesURL: nil, revokeURL: nil, reportURL: nil, timeTrackingURL: nil,
+            contributors: [:], bookDuration: nil, imageCache: MockImageCache()
+        )
+        appContainer.bookRegistry.addBook(book, location: nil, state: .downloadSuccessful,
+                                          fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+        let contentURL = try XCTUnwrap(appContainer.downloadCenter.fileUrl(for: book.identifier))
+        let licenseURL = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
+        try Data(#"{"id":"urn:uuid:earlier-loan","issued":"2026-10-29T19:27:42Z","links":[]}"#.utf8).write(to: licenseURL)
+        defer { try? FileManager.default.removeItem(at: licenseURL) }
+        var awaited = false
+
+        let result = await manager.gateOnLCPContentDownload(
+            for: book,
+            isColdLoadRecovery: false,
+            canOpenLCPBook: true,
+            contentIsLocal: false,
+            awaitContentLanding: { _ in awaited = true; return false }
+        )
+
+        XCTAssertEqual(result, .proceed)
+        XCTAssertFalse(awaited)
+    }
+
+    /// The control: a checked licence keeps the download-first gate.
+    func testGate_streamingOff_licenceChecked_triggersAndWaits() async {
+        let manager = makeDownloadFirstSUT(licenceNeedsCheck: false)
+        let book = TPPBookMocker.mockBook(distributorType: .AudiobookLCP)
+
+        let result = await manager.gateOnLCPContentDownload(
+            for: book,
+            isColdLoadRecovery: false,
+            canOpenLCPBook: true,
+            contentIsLocal: false,
+            awaitContentLanding: { _ in false }
+        )
+
+        XCTAssertEqual(triggeredBookIds, [book.identifier])
+        XCTAssertEqual(result, .contentUnavailable)
+    }
 
     // MARK: - Gate behavior — TRIGGERS the download (the core fix)
 
