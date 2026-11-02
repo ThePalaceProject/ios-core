@@ -614,6 +614,12 @@ extension LCPAudiobooks {
             ATLog(.warn, "No archive URL in this licence; leaving its retained range store in place")
             return
         }
+        removeArchiveStore(forPublicationAt: publicationURL)
+    }
+
+    /// The same removal for a licence that is not on disk as a file, such as
+    /// the one embedded in a package.
+    static func removeArchiveStore(forPublicationAt publicationURL: HTTPURL) {
         guard let directory = try? archiveStoreDirectory(for: publicationURL) else { return }
 
         let fm = FileManager.default

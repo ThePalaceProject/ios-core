@@ -295,6 +295,10 @@ public final class AudiobookSessionManager: ObservableObject {
     private let contentIsLocal: @MainActor (String) -> Bool
     private let awaitContentLocal: ContentLandingWait
 
+    /// Whether the book's `.lcpl` may be an earlier loan's and is not yet
+    /// checked against the current loan (PP-5440). Injected for tests.
+    private let lcpLicenceNeedsCheck: @MainActor (TPPBook) -> Bool
+
     /// Traces each open and reports one that stalls (PP-4973).
     private let openMonitor: AudiobookOpenMonitor
 
@@ -321,6 +325,7 @@ public final class AudiobookSessionManager: ObservableObject {
         showOpenFailureAlert: @escaping @MainActor (TPPBook, [String: Any]) -> Void,
         contentIsLocal: @escaping @MainActor (String) -> Bool,
         awaitContentLocal: @escaping ContentLandingWait,
+        lcpLicenceNeedsCheck: @escaping @MainActor (TPPBook) -> Bool,
         openMonitor: AudiobookOpenMonitor,
         makeLoader: @escaping @MainActor (Bool) -> AudiobookLoader
     ) {
@@ -343,6 +348,7 @@ public final class AudiobookSessionManager: ObservableObject {
         self.showOpenFailureAlert = showOpenFailureAlert
         self.contentIsLocal = contentIsLocal
         self.awaitContentLocal = awaitContentLocal
+        self.lcpLicenceNeedsCheck = lcpLicenceNeedsCheck
         self.openMonitor = openMonitor
         self.makeLoader = makeLoader
         Log.info(#file, "AudiobookSessionManager initialized")
@@ -389,6 +395,7 @@ public final class AudiobookSessionManager: ObservableObject {
         showOpenFailureAlert: (@MainActor (TPPBook, [String: Any]) -> Void)? = nil,
         contentIsLocal: @escaping @MainActor (String) -> Bool = { AudiobookSessionManager.audiobookContentIsLocal($0) },
         awaitContentLocal: @escaping ContentLandingWait = { await AudiobookSessionManager.awaitAudiobookContentLocal($0, onProgress: $1) },
+        lcpLicenceNeedsCheck: (@MainActor (TPPBook) -> Bool)? = nil,
         openMonitor: AudiobookOpenMonitor? = nil,
         makeLoader: @escaping @MainActor (Bool) -> AudiobookLoader = { AudiobookLoader(forceRefulfill: $0) }
     ) {
@@ -411,6 +418,9 @@ public final class AudiobookSessionManager: ObservableObject {
             showOpenFailureAlert: showOpenFailureAlert ?? AudiobookOpenFailureAlert.presenter(bookRegistry: appContainer.bookRegistry),
             contentIsLocal: contentIsLocal,
             awaitContentLocal: awaitContentLocal,
+            lcpLicenceNeedsCheck: lcpLicenceNeedsCheck ?? { [downloadCenter = appContainer.downloadCenter] book in
+                AudiobookSessionManager.lcpLicenceNeedsCheck(book, contentURL: downloadCenter.fileUrl(for: book.identifier))
+            },
             openMonitor: openMonitor ?? AudiobookOpenMonitor(),
             makeLoader: makeLoader
         )
@@ -491,19 +501,6 @@ public final class AudiobookSessionManager: ObservableObject {
         playbackModel?.persistLocation()
     }
 
-    /// Pure guard for `persistActivePositionForLifecycleEvent`: only persist
-    /// when there is a fully-bound active session (manager + book + model).
-    /// `nonisolated static` so the decision is unit-testable without a live
-    /// toolkit session (mirrors `shouldStopPlaybackOnRegistryChange` /
-    /// `networkValidationError`).
-    nonisolated static func shouldPersistLifecyclePosition(
-        hasManager: Bool,
-        hasBook: Bool,
-        hasModel: Bool
-    ) -> Bool {
-        hasManager && hasBook && hasModel
-    }
-
     private func handleRegistryStateChange(identifier: String, state: TPPBookState) {
         guard Self.shouldStopPlaybackOnRegistryChange(
             state: state,
@@ -514,20 +511,6 @@ public final class AudiobookSessionManager: ObservableObject {
         // persistFinalPosition: false — the book is gone; do not write a stale
         // live position back into a (possibly re-borrowed) registry record.
         Task { await stopPlayback(dismissPhoneUI: true, persistFinalPosition: false) }
-    }
-
-    /// Pure decision for `subscribeToBookReturn`: stop only when the book that
-    /// changed is the one currently playing AND it has become `.unregistered`
-    /// (returned / removed / expired). `nonisolated static` so it is unit-
-    /// testable without a live session (mirrors `networkValidationError`).
-    nonisolated static func shouldStopPlaybackOnRegistryChange(
-        state: TPPBookState,
-        changedIdentifier: String,
-        currentBookIdentifier: String?
-    ) -> Bool {
-        state == .unregistered
-            && currentBookIdentifier != nil
-            && currentBookIdentifier == changedIdentifier
     }
 
     // MARK: - Public API
@@ -1590,6 +1573,14 @@ public final class AudiobookSessionManager: ObservableObject {
                     Log.info(#file, "PP-5135: LCP content missing, but a background fetch is not allowed right now (offline, or cellular with download-only-on-WiFi set) — opening anyway; the fetch retries on a later open")
                 }
             }
+            return .proceed
+        }
+
+        // The package fetch skips a `.lcpl` that may be an earlier loan's until an
+        // open checks it, so waiting here would time out for the whole loan. The
+        // adapter checks the licence and streams on it (PP-5440).
+        if lcpLicenceNeedsCheck(book) {
+            Log.info(#file, "LCP audiobook licence not yet checked against this loan — opening so the adapter checks it before any content is fetched")
             return .proceed
         }
 

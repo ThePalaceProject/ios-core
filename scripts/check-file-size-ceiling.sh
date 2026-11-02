@@ -90,7 +90,7 @@ read -r -d '' ALLOWLIST <<'EOF'
 # when the book-open tracker's recording call was removed, then -> 1168
 # when the open-failure alert moved to AudiobookOpenFailureAlert, then -> 1129
 # when the cover-art load moved to AudiobookSessionManager+CoverArt.
-1129 Palace/Audiobooks/AudiobookSessionManager.swift
+1124 Palace/Audiobooks/AudiobookSessionManager.swift
 # 1213 -> 1172 when the mid-download network-loss handler moved to
 # DownloadNetworkLossMonitor.swift; 1172 -> 1161 when the borrow-failed alert
 # moved to BorrowErrorAlert.swift; 1161 -> 1160 when the auth-retry handler's

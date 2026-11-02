@@ -57,9 +57,8 @@ final class LCPCharacterizationTests: XCTestCase {
         let url = try writeJSON(json)
         defer { try? FileManager.default.removeItem(at: url) }
 
-        let license = TPPLCPLicense(url: url)
-        XCTAssertNotNil(license, "Valid LCP license JSON must parse to a non-nil TPPLCPLicense")
-        XCTAssertEqual(license?.identifier, "urn:uuid:license-123",
+        let license = try XCTUnwrap(TPPLCPLicense(url: url), "Valid LCP license JSON must parse to a TPPLCPLicense")
+        XCTAssertEqual(license.identifier, "urn:uuid:license-123",
                        "TPPLCPLicense.identifier must reflect the `id` field from the JSON — NOT the URL filename or any other value")
     }
 
@@ -112,6 +111,52 @@ final class LCPCharacterizationTests: XCTestCase {
     }
 
     // MARK: - TPPLCPLicense: malformed / missing-required-field shapes
+
+    /// PP-5440 reads `issued` from licences on disk. A licence without it, or
+    /// with a value of the wrong type, must still parse, or every open and
+    /// fulfilment that reads a licence would fail.
+    func test_TPPLCPLicense_issuedMissingOrWrongType_stillParses() throws {
+        for body in [
+            #"{"id":"urn:uuid:no-issued","links":[]}"#,
+            #"{"id":"urn:uuid:no-issued","issued":42,"links":[]}"#
+        ] {
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("issued-\(UUID().uuidString).lcpl")
+            try Data(body.utf8).write(to: url)
+            defer { try? FileManager.default.removeItem(at: url) }
+
+            XCTAssertEqual(TPPLCPLicense(url: url)?.identifier, "urn:uuid:no-issued", body)
+        }
+    }
+
+    /// `issued` decides whether a licence is from an earlier loan (PP-5440),
+    /// so each ISO 8601 shape a licence server may send must give the instant.
+    func test_TPPLCPLicense_issued_parsesEachISO8601Shape() throws {
+        let whole = 1_793_376_678.0 // 2026-10-30T16:11:18Z
+        let cases: [(String, Date?)] = [
+            ("2026-10-30T16:11:18Z", Date(timeIntervalSince1970: whole)),
+            ("2026-10-30T16:11:18.123Z", Date(timeIntervalSince1970: whole + 0.123)),
+            ("2026-10-30T16:11:18.123456789Z", Date(timeIntervalSince1970: whole + 0.123)),
+            ("2026-10-30T16:11:18+01:00", Date(timeIntervalSince1970: whole - 3600)),
+            ("30 October 2026", nil)
+        ]
+        for (issued, expected) in cases {
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("issued-\(UUID().uuidString).lcpl")
+            try Data(#"{"id":"urn:uuid:x","issued":"\#(issued)","links":[]}"#.utf8).write(to: url)
+            defer { try? FileManager.default.removeItem(at: url) }
+
+            let license = try XCTUnwrap(TPPLCPLicense(url: url), issued)
+            switch (license.issued, expected) {
+            case let (actual?, expected?):
+                XCTAssertEqual(actual.timeIntervalSince1970, expected.timeIntervalSince1970, accuracy: 0.0005, issued)
+            case (nil, nil):
+                break
+            default:
+                XCTFail("\(issued): parsed \(String(describing: license.issued)), expected \(String(describing: expected))")
+            }
+        }
+    }
 
     func test_TPPLCPLicense_returnsNil_onMissingRequiredId() throws {
         // The `id` field is non-optional in the Codable struct. A JSON

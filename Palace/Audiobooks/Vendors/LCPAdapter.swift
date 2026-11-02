@@ -17,6 +17,10 @@ import PalaceLogging
 @preconcurrency import PalaceAudiobookToolkit
 import PalaceBookModel
 import PalaceUtilities
+import PalaceNetwork
+import PalaceCatalog
+@preconcurrency import ReadiumShared
+import ReadiumZIPFoundation
 
 /// Narrow seams for the two collaborators LCPAdapter needs. Defined here so
 /// the adapter is unit-testable without retrofitting protocols onto the @objc
@@ -92,18 +96,103 @@ final class LCPAdapter: AudiobookVendorAdapter {
     // else re-download .lcpl from the book's fulfill URL.
 
     private func prepareLCPSource(for book: TPPBook) async -> Result<URL, AudiobookLoadError> {
-        if let localURL = downloadCenter.fileUrl(for: book.identifier),
+        // Licences on disk can belong to a loan that ended without an in-app
+        // Return: nothing replaces them when the title is borrowed again, and
+        // they open on that loan's returned or expired status (PP-5440). One
+        // issued before the current loan began is checked against the loan's
+        // own licence; nothing is removed unless that check shows another ID.
+        let loanStart = LCPLoanLicense.loanStart(of: book)
+        let contentURL = downloadCenter.fileUrl(for: book.identifier)
+        if let license = licenseURL(besideContentAt: contentURL),
+           let loanStart,
+           LCPLoanLicense.needsCheck(licenseAt: license, loanStart: loanStart) {
+            await checkLicense(at: license, for: book, loanStart: loanStart)
+        }
+        let license = licenseURL(besideContentAt: contentURL)
+        if let localURL = contentURL,
            fileManager.fileExists(atPath: localURL.path),
            Self.archiveIsComplete(at: localURL) {
+            // A package opens on the licence embedded in it, not on the `.lcpl`.
+            if let embedded = await LCPLoanLicense.license(inPackageAt: localURL),
+               LCPLoanLicense.predatesLoan(embedded, loanStart: loanStart) {
+                // Only a checked or current `.lcpl` can show the package is
+                // another loan's; one whose check failed (offline) removes nothing.
+                if let license, let currentId = TPPLCPLicense(url: license)?.identifier,
+                   !LCPLoanLicense.needsCheck(licenseAt: license, loanStart: loanStart) {
+                    if embedded.identifier != currentId {
+                        Log.warn(#file, "LCP audiobook \(book.identifier): the local archive holds an earlier loan's licence; removing it")
+                        removePackage(at: localURL, embeddedLicense: embedded)
+                        return .success(license)
+                    }
+                } else if license == nil {
+                    return await replaceLicenseOfPackage(at: localURL, embedded: embedded, for: book, loanStart: loanStart)
+                }
+            }
             Log.info(#file, "LCP audiobook \(book.identifier): opening the local archive")
             return .success(localURL)
         }
-        if let license = licenseURL(forBookIdentifier: book.identifier) {
+        if let license {
             Log.info(#file, "LCP audiobook \(book.identifier): streaming from the license")
             return .success(license)
         }
         Log.info(#file, "LCP audiobook with no local files - re-downloading license")
         return await redownloadLCPLicense(for: book)
+    }
+
+    /// Fetches the loan's licence and compares it with the one on disk. The
+    /// same ID confirms the licence; another ID replaces it and removes the
+    /// ranges kept for the old one. A failed fetch changes nothing.
+    private func checkLicense(at license: URL, for book: TPPBook, loanStart: Date) async {
+        guard case .success(let data) = await fetchLoanLicense(for: book),
+              let fetched = try? JSONDecoder().decodeGuarded(TPPLCPLicense.self, from: data)
+        else {
+            Log.warn(#file, "LCP audiobook \(book.identifier): could not fetch the loan's licence; keeping the files on disk")
+            return
+        }
+        if fetched.identifier == TPPLCPLicense(url: license)?.identifier {
+            LCPLoanLicense.markVerified(licenseAt: license, loanStart: loanStart)
+            return
+        }
+        Log.warn(#file, "LCP audiobook \(book.identifier): the licence on disk is from an earlier loan; replacing it")
+        // Keyed by the old licence, so it is removed before the file is replaced.
+        // A package holding the old licence is removed by the caller's package check.
+        LCPAudiobooks.removeArchiveStore(forLicenseAt: license)
+        do {
+            try data.write(to: license, options: .atomic)
+            // The fetched licence is the loan's own, whatever its issue time.
+            LCPLoanLicense.markVerified(licenseAt: license, loanStart: loanStart)
+        } catch {
+            Log.error(#file, "LCP audiobook \(book.identifier): could not store the loan's licence: \(error.localizedDescription)")
+        }
+    }
+
+    /// No `.lcpl` beside a package whose licence predates the loan: fetch the
+    /// loan's licence, keep the package only if it holds that same licence.
+    private func replaceLicenseOfPackage(
+        at packageURL: URL,
+        embedded: TPPLCPLicense,
+        for book: TPPBook,
+        loanStart: Date?
+    ) async -> Result<URL, AudiobookLoadError> {
+        guard case .success(let license) = await redownloadLCPLicense(for: book) else {
+            return .success(packageURL)
+        }
+        if TPPLCPLicense(url: license)?.identifier == embedded.identifier {
+            if let loanStart {
+                LCPLoanLicense.markVerified(licenseAt: license, loanStart: loanStart)
+            }
+            return .success(packageURL)
+        }
+        removePackage(at: packageURL, embeddedLicense: embedded)
+        return .success(license)
+    }
+
+    private func removePackage(at packageURL: URL, embeddedLicense: TPPLCPLicense) {
+        if let href = embeddedLicense.firstLink(withRel: .publication)?.href,
+           let publication = HTTPURL(string: href) {
+            LCPAudiobooks.removeArchiveStore(forPublicationAt: publication)
+        }
+        try? fileManager.removeItem(at: packageURL)
     }
 
     private func loadLCPContent(
@@ -146,13 +235,37 @@ final class LCPAdapter: AudiobookVendorAdapter {
     }
 
     private func redownloadLCPLicense(for book: TPPBook) async -> Result<URL, AudiobookLoadError> {
-        guard let fulfillURL = book.defaultAcquisition?.hrefURL else {
+        guard book.defaultAcquisition?.hrefURL != nil else {
             return .failure(.missingFulfillURL)
         }
         guard let contentURL = downloadCenter.fileUrl(for: book.identifier) else {
             return .failure(.missingContentDirectory)
         }
         let licenseFileURL = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
+        let data: Data
+        switch await fetchLoanLicense(for: book) {
+        case .success(let fetched):
+            data = fetched
+        case .failure(let error):
+            return .failure(error)
+        }
+        do {
+            let directory = licenseFileURL.deletingLastPathComponent()
+            if !fileManager.fileExists(atPath: directory.path) {
+                try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            }
+            try data.write(to: licenseFileURL, options: .atomic)
+        } catch {
+            return .failure(.licenseSaveFailed(underlying: error))
+        }
+        return .success(licenseFileURL)
+    }
+
+    /// The loan's licence from its fulfil link, without writing it.
+    private func fetchLoanLicense(for book: TPPBook) async -> Result<Data, AudiobookLoadError> {
+        guard let fulfillURL = book.defaultAcquisition?.hrefURL else {
+            return .failure(.missingFulfillURL)
+        }
         Log.info(#file, "Fetching LCP license from: \(fulfillURL.host ?? "unknown")")
 
         let data: Data
@@ -172,16 +285,7 @@ final class LCPAdapter: AudiobookVendorAdapter {
             Log.error(#file, "LCP license download for \(book.identifier) returned HTTP \(httpResponse.statusCode)")
             return .failure(.licenseDownloadFailed(underlying: nil))
         }
-        do {
-            let directory = licenseFileURL.deletingLastPathComponent()
-            if !fileManager.fileExists(atPath: directory.path) {
-                try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-            }
-            try data.write(to: licenseFileURL, options: .atomic)
-        } catch {
-            return .failure(.licenseSaveFailed(underlying: error))
-        }
-        return .success(licenseFileURL)
+        return .success(data)
     }
 
     /// Whether a local `.lcpa` holds a whole archive, as opposed to a download
@@ -226,11 +330,109 @@ final class LCPAdapter: AudiobookVendorAdapter {
     /// its own locator, so the last 64 KiB plus a margin always contains it.
     private static let maximumEOCDTailLength = 66 * 1024
 
-    private func licenseURL(forBookIdentifier identifier: String) -> URL? {
-        guard let contentURL = downloadCenter.fileUrl(for: identifier) else { return nil }
+    private func licenseURL(besideContentAt contentURL: URL?) -> URL? {
+        guard let contentURL else { return nil }
         let license = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
         return fileManager.fileExists(atPath: license.path) ? license : nil
     }
+}
+
+/// Whether a licence on disk belongs to the book's current loan (PP-5440).
+enum LCPLoanLicense {
+
+    /// Allowance for the CM's loan start and the licence server's issue time
+    /// being stamped by different clocks.
+    static let issueSkew: TimeInterval = 60
+
+    /// Where fulfilment injects the licence (`TPPLicensesService.pathInZip`):
+    /// `license.lcpl` for audiobooks, `META-INF/license.lcpl` for EPUBs.
+    static let entryPaths = ["license.lcpl", "META-INF/license.lcpl"]
+
+    /// The current loan's start, from the loans feed. Nil for anything that is
+    /// not a limited loan, or a feed without `since`.
+    static func loanStart(of book: TPPBook) -> Date? {
+        var since: Date?
+        book.defaultAcquisition?.availability.match(
+            unavailable: nil,
+            limited: { since = $0.since },
+            unlimited: nil,
+            reserved: nil,
+            ready: nil
+        )
+        return since
+    }
+
+    /// True only when both dates are known and the licence was issued before
+    /// the loan began. Unknown keeps the licence, as before PP-5440.
+    static func predatesLoan(_ license: TPPLCPLicense?, loanStart: Date?) -> Bool {
+        guard let issued = license?.issued, let loanStart else { return false }
+        return issued < loanStart.addingTimeInterval(-issueSkew)
+    }
+
+    /// Extended attribute on a `.lcpl` recording the loan start it was checked
+    /// against. An attribute rather than a file: it goes when the licence file
+    /// is replaced or deleted, so it cannot outlive the licence it describes.
+    static let verifiedLoanStartAttribute = "org.thepalaceproject.lcp.verified-loan-start"
+
+    /// Records that the licence at `licenseURL` was confirmed against the
+    /// loan that started at `loanStart`, so later opens do not fetch again.
+    static func markVerified(licenseAt licenseURL: URL, loanStart: Date) {
+        let value = Data(verifiedValue(for: loanStart).utf8)
+        let result = value.withUnsafeBytes { bytes in
+            setxattr(licenseURL.path, verifiedLoanStartAttribute, bytes.baseAddress, bytes.count, 0, 0)
+        }
+        if result != 0 {
+            Log.warn(#file, "Could not record the licence check for \(licenseURL.lastPathComponent): errno \(errno)")
+        }
+    }
+
+    static func isVerified(licenseAt licenseURL: URL, loanStart: Date) -> Bool {
+        let size = getxattr(licenseURL.path, verifiedLoanStartAttribute, nil, 0, 0, 0)
+        guard size > 0 else { return false }
+        // A short read leaves zeros in the buffer, which then fails the compare.
+        var buffer = [UInt8](repeating: 0, count: size)
+        _ = getxattr(licenseURL.path, verifiedLoanStartAttribute, &buffer, size, 0, 0)
+        return String(decoding: buffer, as: UTF8.self) == verifiedValue(for: loanStart)
+    }
+
+    /// True when the `.lcpl` at `licenseURL` predates the loan and has not
+    /// been confirmed against it. Such a licence may be an earlier loan's.
+    static func needsCheck(licenseAt licenseURL: URL, loanStart: Date?) -> Bool {
+        guard let loanStart, predatesLoan(TPPLCPLicense(url: licenseURL), loanStart: loanStart) else {
+            return false
+        }
+        return !isVerified(licenseAt: licenseURL, loanStart: loanStart)
+    }
+
+    private static func verifiedValue(for loanStart: Date) -> String {
+        String(format: "%.0f", loanStart.timeIntervalSince1970)
+    }
+
+    /// The licence embedded in the package, read without the network; nil
+    /// when it has none or cannot be read.
+    static func license(inPackageAt packageURL: URL) async -> TPPLCPLicense? {
+        guard let archive = try? await Archive(url: packageURL, accessMode: .read) else { return nil }
+        for path in entryPaths {
+            guard let entry = try? await archive.get(path) else { continue }
+            let buffer = LicenseDataBuffer()
+            guard (try? await archive.extract(entry, consumer: { buffer.append($0) })) != nil,
+                  let license = try? JSONDecoder().decodeGuarded(TPPLCPLicense.self, from: buffer.data)
+            else {
+                continue
+            }
+            return license
+        }
+        return nil
+    }
+}
+
+/// `Archive.extract` delivers chunks to a `@Sendable` closure, so the bytes
+/// are collected under a lock.
+private final class LicenseDataBuffer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage = Data()
+    func append(_ chunk: Data) { lock.withLock { storage.append(chunk) } }
+    var data: Data { lock.withLock { storage } }
 }
 
 #endif
