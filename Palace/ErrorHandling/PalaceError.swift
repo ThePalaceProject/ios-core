@@ -15,6 +15,9 @@ enum PalaceError: LocalizedError {
 
     // MARK: - Book Registry Errors
     case bookRegistry(BookRegistryError)
+    /// A Borrow came back as a hold at `position` in the queue, e.g. after the
+    /// server let an expired ready hold go and placed a new one (PP-5453).
+    case holdRequeued(position: UInt)
 
     // MARK: - Download Errors
     case download(DownloadError)
@@ -42,6 +45,7 @@ enum PalaceError: LocalizedError {
         switch self {
         case .network(let error): return error.errorDescription
         case .bookRegistry(let error): return error.errorDescription
+        case .holdRequeued: return BookRegistryError.holdCopyUnavailable.errorDescription
         case .download(let error): return error.errorDescription
         case .parsing(let error): return error.errorDescription
         case .drm(let error): return error.errorDescription
@@ -56,6 +60,7 @@ enum PalaceError: LocalizedError {
         switch self {
         case .network(let error): return error.recoverySuggestion
         case .bookRegistry(let error): return error.recoverySuggestion
+        case .holdRequeued(let position): return Strings.Error.holdRequeued(position: position)
         case .download(let error): return error.recoverySuggestion
         case .parsing(let error): return error.recoverySuggestion
         case .drm(let error): return error.recoverySuggestion
@@ -70,6 +75,7 @@ enum PalaceError: LocalizedError {
         switch self {
         case .network(let error): return 1000 + error.rawValue
         case .bookRegistry(let error): return 2000 + error.rawValue
+        case .holdRequeued: return 2000 + BookRegistryError.holdCopyUnavailable.rawValue
         case .download(let error): return 3000 + error.rawValue
         case .parsing(let error): return 4000 + error.rawValue
         case .drm(let error): return 5000 + error.rawValue
