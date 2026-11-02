@@ -768,6 +768,20 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
                        "arming set changed — confirm the new membership is deliberate, because this is the rule that keeps `.loadError` reachable")
     }
 
+
+    // MARK: - VoiceOver focus on open (PP-5450)
+
+    /// A VoiceOver patron opens the full player to listen, so focus starts on
+    /// Play rather than the title eight or nine swipes away.
+    func testOpeningVoiceOverFocus_fullPlayer_isPlayPause() {
+        XCTAssertEqual(AudiobookMorphingPlayerView.openingVoiceOverFocus(isExpanded: true), .playPause)
+    }
+
+    /// The mini player sits under other content, so opening it must not pull
+    /// VoiceOver focus away from what the patron was reading.
+    func testOpeningVoiceOverFocus_miniPlayer_movesNoFocus() {
+        XCTAssertNil(AudiobookMorphingPlayerView.openingVoiceOverFocus(isExpanded: false))
+    }
 }
 
 // MARK: - PP-5205 — the chapter name and the timecodes share one observed source
@@ -1114,4 +1128,5 @@ final class AudiobookPlayerColumnLayoutTests: XCTestCase {
                                         "\(device.name): play/pause is pushed off the top")
         }
     }
+
 }
