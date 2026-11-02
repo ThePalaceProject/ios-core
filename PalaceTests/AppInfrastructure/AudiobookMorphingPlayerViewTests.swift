@@ -768,7 +768,6 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
                        "arming set changed — confirm the new membership is deliberate, because this is the rule that keeps `.loadError` reachable")
     }
 
-
     // MARK: - VoiceOver focus on open (PP-5450)
 
     /// A VoiceOver patron opens the full player to listen, so focus starts on
@@ -1128,5 +1127,4 @@ final class AudiobookPlayerColumnLayoutTests: XCTestCase {
                                         "\(device.name): play/pause is pushed off the top")
         }
     }
-
 }

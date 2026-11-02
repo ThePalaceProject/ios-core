@@ -1422,18 +1422,18 @@ struct AudiobookMorphingPlayerView: View {
             }
     }
 
-    /// Resistance curve for an upward (negative) pull on the full player: the
-    /// card can only go DOWN to minimize, so an upward drag is rubber-banded. Uses
-    /// the iOS scroll-bounce formula `(1 - 1/(x/d + 1)) · limit` — natural
-    /// diminishing resistance that asymptotes toward `-limit` instead of the old
-    /// hard linear clamp, so the top edge feels elastic rather than stuck. Static +
-    /// pure so it's unit-testable. `offset` is expected ≤ 0 (an upward drag).
     /// The full player is opened to listen, so VoiceOver starts on Play (PP-5450).
     /// The mini player sits under other content and takes no focus.
     nonisolated static func openingVoiceOverFocus(isExpanded: Bool) -> VoiceOverFocusTarget? {
         isExpanded ? .playPause : nil
     }
 
+    /// Resistance curve for an upward (negative) pull on the full player: the
+    /// card can only go DOWN to minimize, so an upward drag is rubber-banded. Uses
+    /// the iOS scroll-bounce formula `(1 - 1/(x/d + 1)) · limit` — natural
+    /// diminishing resistance that asymptotes toward `-limit` instead of the old
+    /// hard linear clamp, so the top edge feels elastic rather than stuck. Static +
+    /// pure so it's unit-testable. `offset` is expected ≤ 0 (an upward drag).
     static func rubberBand(_ offset: CGFloat) -> CGFloat {
         guard offset < 0 else { return offset }
         let limit: CGFloat = 72
