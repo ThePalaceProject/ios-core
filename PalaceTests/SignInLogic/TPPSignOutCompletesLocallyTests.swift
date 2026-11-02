@@ -11,6 +11,7 @@
 //
 
 import XCTest
+import PalaceCatalog
 @testable import Palace
 
 @MainActor
@@ -326,6 +327,117 @@ final class TPPSignOutCompletesLocallyTests: XCTestCase {
 
         XCTAssertTrue(userAccount.hasCredentials(), "A late callback removed credentials from a newer sign-in")
         XCTAssertTrue(downloadCenter.resetCalledLibraryIDs.isEmpty)
+    }
+
+    // MARK: - Identity-provider logout and cache clear
+
+    private func authentication(_ json: String) throws -> AccountDetails.Authentication {
+        let doc = try OPDS2AuthenticationDocument.fromData(try XCTUnwrap(json.data(using: .utf8)))
+        return AccountDetails.Authentication(auth: try XCTUnwrap(doc.authentication?.first))
+    }
+
+    private func oidcWithLogout() throws -> AccountDetails.Authentication {
+        try authentication("""
+        {"id": "https://cm.example.com/LIB/authentication_document", "title": "OIDC Library",
+         "authentication": [{"type": "http://palaceproject.io/authtype/OpenIDConnect", "description": "SSO",
+           "links": [{"rel": "authenticate", "href": "https://cm.example.com/LIB/oidc/authenticate"},
+                     {"rel": "logout", "href": "https://cm.example.com/LIB/oidc/logout"}]}]}
+        """)
+    }
+
+    private func samlWithLogout() throws -> AccountDetails.Authentication {
+        try authentication("""
+        {"id": "https://cm.example.com/LIB/authentication_document", "title": "SAML Library",
+         "authentication": [{"type": "http://librarysimplified.org/authtype/SAML-2.0", "description": "SSO",
+           "links": [{"rel": "authenticate", "href": "https://cm.example.com/LIB/saml_authenticate?provider=SAML"},
+                     {"rel": "logout", "href": "https://cm.example.com/LIB/saml/logout?provider=SAML"}]}]}
+        """)
+    }
+
+    /// Signs in with a token through `auth`, signs out with the deauthorization
+    /// held, releases the business logic, then lets the callback arrive.
+    private func signOutReleased(with auth: AccountDetails.Authentication) async throws -> LockIsolated<[URLRequest]> {
+        drmAuthorizer.shouldDeferDeauthorize = true
+        networkExecutor.forceFailureStatusCode = 401
+        let requests = LockIsolated<[URLRequest]>([])
+        networkExecutor.onExecuteRequest = { request in requests.withValue { $0.append(request) } }
+        weak var released: TPPSignInBusinessLogic?
+        do {
+            let logic = try XCTUnwrap(businessLogic)
+            logic.selectedAuthentication = auth
+            logic.updateUserAccount(forDRMAuthorization: true, withBarcode: nil, pin: nil,
+                                    authToken: "idp-token", expirationDate: Date().addingTimeInterval(3600),
+                                    patron: nil, cookies: nil)
+            logic.userAccount.setLicensor(["vendor": "test-vendor", "clientToken": "test-user|test-password"])
+            await logic.performLogOut()
+            released = logic
+        }
+        businessLogic = nil
+        XCTAssertNil(released, "Precondition: the business logic must be released for this case")
+
+        drmAuthorizer.completeDeferredDeauthorize()
+        return requests
+    }
+
+    func testSignOut_WhenBusinessLogicReleased_SendsOIDCLogoutForThisLibrary() async throws {
+        let requests = try await signOutReleased(with: try oidcWithLogout())
+
+        let sent = await eventually {
+            requests.value.contains { $0.url?.absoluteString == "https://cm.example.com/LIB/oidc/logout" }
+        }
+        XCTAssertTrue(sent, "The identity-provider session stays live after Sign Out")
+        let logout = requests.value.first { $0.url?.absoluteString == "https://cm.example.com/LIB/oidc/logout" }
+        XCTAssertEqual(logout?.value(forHTTPHeaderField: "Authorization"), "Bearer idp-token")
+        XCTAssertEqual(networkExecutor.executedAccountIds.last, libraryMock.tppAccountUUID)
+    }
+
+    func testSignOut_WhenBusinessLogicReleased_SendsSAMLLogoutForThisLibrary() async throws {
+        let requests = try await signOutReleased(with: try samlWithLogout())
+
+        let sent = await eventually {
+            requests.value.contains { $0.url?.absoluteString.hasPrefix("https://cm.example.com/LIB/saml/logout") == true }
+        }
+        XCTAssertTrue(sent, "The identity-provider session stays live after Sign Out")
+        let logout = requests.value.first { $0.url?.absoluteString.hasPrefix("https://cm.example.com/LIB/saml/logout") == true }
+        XCTAssertEqual(logout?.value(forHTTPHeaderField: "Authorization"), "Bearer idp-token")
+        XCTAssertEqual(networkExecutor.executedAccountIds.last, libraryMock.tppAccountUUID)
+    }
+
+    /// Cached authenticated feeds must not outlive the session.
+    func testSignOut_ClearsNetworkCache() async throws {
+        let logic = try XCTUnwrap(businessLogic)
+        let clears = LockIsolated(0)
+        logic.networkCacheClearer = { clears.withValue { $0 += 1 } }
+        signIn(logic)
+        networkExecutor.forceFailureStatusCode = 401
+
+        await logic.performLogOut()
+
+        let removed = await eventually { !self.userAccount.hasCredentials() }
+        XCTAssertTrue(removed)
+        XCTAssertEqual(clears.value, 1)
+    }
+
+    func testSignOut_WhenBusinessLogicReleased_ClearsNetworkCache() async throws {
+        drmAuthorizer.shouldDeferDeauthorize = true
+        networkExecutor.forceFailureStatusCode = 401
+        let clears = LockIsolated(0)
+        weak var released: TPPSignInBusinessLogic?
+        do {
+            let logic = try XCTUnwrap(businessLogic)
+            logic.networkCacheClearer = { clears.withValue { $0 += 1 } }
+            signIn(logic)
+            await logic.performLogOut()
+            released = logic
+        }
+        businessLogic = nil
+        XCTAssertNil(released, "Precondition: the business logic must be released for this case")
+
+        drmAuthorizer.completeDeferredDeauthorize()
+
+        let removed = await eventually { !self.userAccount.hasCredentials() }
+        XCTAssertTrue(removed)
+        XCTAssertEqual(clears.value, 1)
     }
 
     // MARK: - Server sign-out fails

@@ -86,6 +86,24 @@ extension TPPSignInBusinessLogic {
     private static let signOutInProgressKey = AssocKey()
     private static let deauthorizationTimeoutKey = AssocKey()
     private static let deauthorizationSchedulerKey = AssocKey()
+    private static let networkCacheClearerKey = AssocKey()
+
+    private final class CacheClearerBox {
+        let clear: @MainActor @Sendable () -> Void
+        init(_ clear: @escaping @MainActor @Sendable () -> Void) { self.clear = clear }
+    }
+
+    /// Clears the network executor's cache at sign-out. Tests replace it to
+    /// observe the call.
+    var networkCacheClearer: @MainActor @Sendable () -> Void {
+        get {
+            if let box = objc_getAssociatedObject(self, Unmanaged.passUnretained(Self.networkCacheClearerKey).toOpaque()) as? CacheClearerBox {
+                return box.clear
+            }
+            return { @MainActor @Sendable in AppContainer.production().networkExecutor.clearCache() }
+        }
+        set { objc_setAssociatedObject(self, Unmanaged.passUnretained(Self.networkCacheClearerKey).toOpaque(), CacheClearerBox(newValue), .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+    }
 
     typealias DeauthorizationTimeoutScheduler = (TimeInterval, @escaping @Sendable () -> Void) -> Void
 
@@ -379,7 +397,8 @@ extension TPPSignInBusinessLogic {
                                      accountsProvider: libraryAccountsProvider,
                                      downloads: bookDownloadsCenter,
                                      registry: bookRegistry,
-                                     userAccount: userAccount)
+                                     userAccount: userAccount,
+                                     clearNetworkCache: networkCacheClearer)
         selectedIDP = nil
         samlHelper.clearState()
         dispatch(.signOutCompleted)
@@ -418,7 +437,8 @@ extension TPPSignInBusinessLogic {
                                                 accountsProvider: TPPLibraryAccountsProvider,
                                                 downloads: TPPBookDownloadsDeleting,
                                                 registry: TPPBookRegistrySyncing,
-                                                userAccount: TPPUserAccount) {
+                                                userAccount: TPPUserAccount,
+                                                clearNetworkCache: @MainActor () -> Void) {
         // Deregister FCM token BEFORE removing credentials (DELETE request needs auth)
         // Also reset the flag so token re-registers on next sign-in
         if let account = accountsProvider.account(libraryAccountID) {
@@ -434,7 +454,7 @@ extension TPPSignInBusinessLogic {
         // serves authenticated feeds. Clearing `URLCache.shared` here was a
         // no-op for feeds AND a privacy leak (signed-out authenticated
         // responses could persist in the executor's disk cache).
-        AppContainer.production().networkExecutor.clearCache()
+        clearNetworkCache()
     }
 
     /// Routes to the appropriate IdP session-clearing step based on auth type.
@@ -550,6 +570,18 @@ extension TPPSignInBusinessLogic {
     }
 
     #if FEATURE_DRM_CONNECTOR
+    /// The CM logout request for the selected auth method: OIDC end-session or
+    /// SAML logout (PP-3452). Nil for methods without one.
+    private func cmLogoutRequest(accessToken: String?) -> URLRequest? {
+        if selectedAuthentication?.isOidc == true {
+            return oidcLogoutRequest(accessToken: accessToken)
+        }
+        if selectedAuthentication?.samlLogoutHref != nil {
+            return samlLogoutRequest(accessToken: accessToken)
+        }
+        return nil
+    }
+
     /// The end of a sign-out once deauthorization has answered or timed out.
     ///
     /// Holds the user account strongly and the business logic weakly: the view
@@ -562,6 +594,11 @@ extension TPPSignInBusinessLogic {
         let accountsProvider = libraryAccountsProvider
         let registry = bookRegistry
         let downloads = bookDownloadsCenter
+        let clearNetworkCache = networkCacheClearer
+        let networker = self.networker
+        // Built now: the request reads the selected auth method and the token,
+        // and both are gone once this object is released.
+        let logoutRequest = cmLogoutRequest(accessToken: account.authToken)
         return { [weak self] in
             if let self {
                 self.completeLogOutProcess()
@@ -573,7 +610,16 @@ extension TPPSignInBusinessLogic {
                                          accountsProvider: accountsProvider,
                                          downloads: downloads,
                                          registry: registry,
-                                         userAccount: account)
+                                         userAccount: account,
+                                         clearNetworkCache: clearNetworkCache)
+            if let logoutRequest {
+                Task { @MainActor in
+                    let result = await networker.execute(logoutRequest, enableTokenRefresh: false, accountId: accountID)
+                    if case .failure(let error, _) = result {
+                        Log.info(#file, "Identity-provider logout after a released sign-out: \(error.localizedDescription)")
+                    }
+                }
+            }
 
             #if DEBUG
             if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {

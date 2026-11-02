@@ -740,16 +740,9 @@ final class BookDetailViewModel: ObservableObject {
                 guard let self = self else { return }
 
                 let account = self.accountsManager.currentUserAccount
-                let needsSignIn = account.needsAuth && !account.hasCredentials()
-                // .credentialsStale means we still hold credentials but a 401
-                // has marked the session expired. Reading the cached book
-                // proceeds straight to a hung reader (no fresh fulfillment,
-                // no fresh DRM grant) without an intervening sign-in. Force
-                // re-auth here so the user has a path to recover without
-                // reinstalling. HelpSpot 17716 (Cornell SAML).
-                let needsReauth = account.authState == .credentialsStale
-                if needsSignIn || needsReauth {
-                    Log.info(#file, "[SAML-REAUTH] ensureAuthAndExecute presenting modal: needsSignIn=\(needsSignIn) needsReauth=\(needsReauth)")
+                if Self.promptsSignInBeforeAction(needsAuth: account.needsAuth, hasCredentials: account.hasCredentials(),
+                                                  authState: account.authState, authDefinition: account.authDefinition) {
+                    Log.info(#file, "[SAML-REAUTH] ensureAuthAndExecute presenting modal: hasCredentials=\(account.hasCredentials()) authState=\(account.authState)")
                     let halfSheetWasShowing = self.showHalfSheet
                     self.showHalfSheet = false
                     AppContainer.production().signInModalSheetPresenter
