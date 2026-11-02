@@ -62,7 +62,8 @@ struct AudiobookPlayerOpeningFocus: ViewModifier {
                     break
                 case .focusLoadingThenPlay:
                     waiting = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { focus.wrappedValue = .loading }
+                    // Skip if the overlay already cleared and focus moved on to Play.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { if waiting { focus.wrappedValue = .loading } }
                 case .focus(let target):
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { focus.wrappedValue = target }
                 }
