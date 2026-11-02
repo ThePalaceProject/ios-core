@@ -1546,21 +1546,6 @@ struct AudiobookMorphingPlayerView: View {
         UIDevice.current.userInterfaceIdiom == .phone && size.width > size.height
     }
 
-    /// Pure `TimeInterval` -> "MM:SS" / "H:MM:SS" formatter. Negative or
-    /// non-finite inputs render "--:--". `static` so the tests can pin the
-    /// format without spinning up the view body.
-    internal static func formatTime(_ interval: TimeInterval) -> String {
-        guard interval.isFinite, interval >= 0 else { return "--:--" }
-        let totalSeconds = Int(interval)
-        let hours = totalSeconds / 3600
-        let minutes = (totalSeconds % 3600) / 60
-        let seconds = totalSeconds % 60
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
-        }
-        return String(format: "%d:%02d", minutes, seconds)
-    }
-
     // MARK: - Derived
 
     /// Chapter-relative progress (0…1 within the current chapter) — drives the
