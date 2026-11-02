@@ -24,6 +24,7 @@ final class AudiobookContentLandingWaitTests: XCTestCase {
     override func setUp() {
         super.setUp()
         clock = 0
+        polls = 0
         landed = false
         onTick = nil
         reporter = DownloadProgressReporter(
@@ -39,18 +40,34 @@ final class AudiobookContentLandingWaitTests: XCTestCase {
         super.tearDown()
     }
 
-    private func awaitLanding() async -> Bool {
+    /// More polls than any scripted case needs. Past it the test fails and
+    /// reports the content landed, so a loop that does not end cannot hang the suite.
+    private let pollLimit = 2_000
+    private var polls = 0
+
+    private func fakeSleep(_ interval: TimeInterval) {
+        polls += 1
+        if polls == pollLimit {
+            XCTFail("the wait did not end within \(pollLimit) polls")
+            landed = true
+        }
+        clock += interval
+        onTick?(clock)
+    }
+
+    private func awaitLanding(
+        downloadFraction: @escaping @MainActor (String) -> Float = { _ in 0 },
+        onProgress: (@MainActor @Sendable (Float) -> Void)? = nil
+    ) async -> Bool {
         await AudiobookSessionManager.awaitAudiobookContentLocal(
             bookId,
             pollInterval: 1,
             isLocal: { [unowned self] _ in self.landed },
             isTransferActive: { [unowned self] in self.reporter.isLCPContentTransferActive(for: $0) },
-            downloadFraction: { _ in 0 },
+            downloadFraction: downloadFraction,
             now: { [unowned self] in self.clock },
-            sleep: { [unowned self] interval in
-                self.clock += interval
-                self.onTick?(self.clock)
-            }
+            sleep: { [unowned self] in self.fakeSleep($0) },
+            onProgress: onProgress
         )
     }
 
@@ -146,7 +163,7 @@ final class AudiobookContentLandingWaitTests: XCTestCase {
             },
             downloadFraction: { _ in 0 },
             now: { [unowned self] in self.clock },
-            sleep: { [unowned self] interval in self.clock += interval }
+            sleep: { [unowned self] in self.fakeSleep($0) }
         )
 
         XCTAssertTrue(result)
@@ -200,5 +217,88 @@ final class AudiobookContentLandingWaitTests: XCTestCase {
 
         XCTAssertTrue(result)
         XCTAssertEqual(clock, 0)
+    }
+
+    /// Each poll forwards the download fraction to the sink, so the player's
+    /// bar moves while the patron waits.
+    func testWait_WithProgressSink_ForwardsTheDownloadFractionEachPoll() async {
+        reporter.sendLCPContentDownloadActive(bookIdentifier: bookId, active: true)
+        onTick = { [unowned self] t in
+            self.reporter.sendProgress(bookIdentifier: self.bookId, progress: t / 10)
+            if t == 3 { self.landed = true }
+        }
+        var forwarded: [Float] = []
+
+        let result = await awaitLanding(
+            downloadFraction: { [unowned self] _ in Float(self.clock / 10) },
+            onProgress: { forwarded.append($0) }
+        )
+
+        XCTAssertTrue(result)
+        XCTAssertEqual(forwarded, [0, 0.1, 0.2])
+    }
+
+    /// A transfer whose fraction goes backwards (a restarted range) is still
+    /// alive; the wait keeps going and the sink gets the values as reported.
+    func testWait_WhenProgressRegresses_KeepsWaitingAndForwardsIt() async {
+        reporter.sendLCPContentDownloadActive(bookIdentifier: bookId, active: true)
+        let fractions: [Float] = [0.5, 0.6, 0.2, 0.3]
+        onTick = { [unowned self] t in
+            if Int(t) < fractions.count {
+                self.reporter.sendProgress(bookIdentifier: self.bookId, progress: Double(fractions[Int(t)]))
+            } else {
+                self.landed = true
+            }
+        }
+        var forwarded: [Float] = []
+
+        let result = await awaitLanding(
+            downloadFraction: { [unowned self] _ in fractions[min(Int(self.clock), fractions.count - 1)] },
+            onProgress: { forwarded.append($0) }
+        )
+
+        XCTAssertTrue(result)
+        XCTAssertEqual(forwarded, fractions)
+        XCTAssertEqual(clock, 4)
+    }
+
+    /// Cancelling the waiting task ends the wait at the next poll, even with a
+    /// live transfer, because `Task.sleep` returns at once once cancelled.
+    func testWait_WhenTaskIsCancelled_EndsAtTheNextPoll() async {
+        reporter.sendLCPContentDownloadActive(bookIdentifier: bookId, active: true)
+        onTick = { [unowned self] t in
+            self.reporter.sendProgress(bookIdentifier: self.bookId, progress: 0.3)
+            if t == 5 { withUnsafeCurrentTask { $0?.cancel() } }
+        }
+
+        let result = await awaitLanding()
+
+        XCTAssertFalse(result)
+        XCTAssertEqual(clock, 5)
+    }
+
+    /// The production factory reads the transfer from the download centre it is
+    /// given: a download still progressing past 180 s keeps the wait open.
+    func testFactory_WhenContainerTransferKeepsProgressingPast180s_WaitsUntilItEnds() async {
+        let center = makeTestAppContainer().downloadCenter
+        center.progressReporter.monotonicClock = { [unowned self] in self.clock }
+        center.progressReporter.sendLCPContentDownloadActive(bookIdentifier: bookId, active: true)
+        onTick = { [unowned self] t in
+            if t < 400 {
+                center.progressReporter.sendProgress(bookIdentifier: self.bookId, progress: t / 1000)
+            } else {
+                center.progressReporter.sendLCPContentDownloadActive(bookIdentifier: self.bookId, active: false)
+            }
+        }
+        let wait = AudiobookSessionManager.contentLandingWait(
+            downloadCenter: center,
+            now: { [unowned self] in self.clock },
+            sleep: { [unowned self] in self.fakeSleep($0) }
+        )
+
+        let result = await wait(bookId, nil)
+
+        XCTAssertFalse(result, "no file was written for the book")
+        XCTAssertEqual(clock, 400)
     }
 }

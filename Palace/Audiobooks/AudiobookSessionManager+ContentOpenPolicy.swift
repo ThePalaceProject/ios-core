@@ -81,18 +81,17 @@ extension AudiobookSessionManager {
         _ bookId: String,
         timeout: TimeInterval = 180,
         pollInterval: TimeInterval = 0.5,
-        isLocal: @MainActor (String) -> Bool = { AudiobookSessionManager.audiobookContentIsLocal($0) },
+        isLocal: @MainActor (String) -> Bool,
         isTransferActive: @MainActor (String) -> Bool,
-        downloadFraction: @MainActor (String) -> Float = {
-            Float(AppContainer.production().downloadCenter.downloadProgress(for: $0))
-        },
-        now: @MainActor () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
-        sleep: @MainActor (TimeInterval) async -> Void = { try? await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) },
+        downloadFraction: @MainActor (String) -> Float,
+        now: @MainActor () -> TimeInterval,
+        sleep: @MainActor (TimeInterval) async -> Void,
         onProgress: (@MainActor @Sendable (Float) -> Void)? = nil
     ) async -> Bool {
         let deadline = now() + timeout
         var sawTransfer = false
-        while sawTransfer || now() < deadline {
+        // `Task.sleep` returns at once in a cancelled task, so the loop checks.
+        while !Task.isCancelled && (sawTransfer || now() < deadline) {
             if isLocal(bookId) { return true }
             if isTransferActive(bookId) {
                 sawTransfer = true
@@ -109,13 +108,21 @@ extension AudiobookSessionManager {
         return isLocal(bookId)
     }
 
-    /// The production content wait, asking `progressReporter` whether the
-    /// book's `.lcpa` transfer is still running.
-    static func contentLandingWait(progressReporter: DownloadProgressReporter) -> ContentLandingWait {
+    /// The production content wait, reading the book's file, transfer and
+    /// progress from `downloadCenter`.
+    static func contentLandingWait(
+        downloadCenter: MyBooksDownloadCenter,
+        now: @escaping @MainActor () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+        sleep: @escaping @MainActor (TimeInterval) async -> Void = { try? await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) }
+    ) -> ContentLandingWait {
         { bookId, onProgress in
             await awaitAudiobookContentLocal(
                 bookId,
-                isTransferActive: { progressReporter.isLCPContentTransferActive(for: $0) },
+                isLocal: { id in downloadCenter.fileUrl(for: id).map { FileManager.default.fileExists(atPath: $0.path) } ?? false },
+                isTransferActive: { downloadCenter.progressReporter.isLCPContentTransferActive(for: $0) },
+                downloadFraction: { Float(downloadCenter.downloadProgress(for: $0)) },
+                now: now,
+                sleep: sleep,
                 onProgress: onProgress
             )
         }

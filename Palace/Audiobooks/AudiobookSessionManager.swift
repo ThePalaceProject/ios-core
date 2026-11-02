@@ -417,7 +417,7 @@ public final class AudiobookSessionManager: ObservableObject {
             overdriveRefulfillStarter: overdriveRefulfillStarter,
             showOpenFailureAlert: showOpenFailureAlert ?? AudiobookOpenFailureAlert.presenter(bookRegistry: appContainer.bookRegistry),
             contentIsLocal: contentIsLocal,
-            awaitContentLocal: awaitContentLocal ?? Self.contentLandingWait(progressReporter: appContainer.downloadCenter.progressReporter),
+            awaitContentLocal: awaitContentLocal ?? Self.contentLandingWait(downloadCenter: appContainer.downloadCenter),
             lcpLicenceNeedsCheck: lcpLicenceNeedsCheck ?? { [downloadCenter = appContainer.downloadCenter] book in
                 AudiobookSessionManager.lcpLicenceNeedsCheck(book, contentURL: downloadCenter.fileUrl(for: book.identifier))
             },
@@ -620,6 +620,8 @@ public final class AudiobookSessionManager: ObservableObject {
     /// are swallowed until the await resolves (content lands → reopen, or times
     /// out → alert). Internal so the recovery test can assert the guard.
     var awaitingContentDownloadBookIds = Set<String>()
+    /// The cold-load recovery's content wait; `stopPlayback` cancels it (PP-5451).
+    var coldLoadContentWait: Task<Void, Never>?
 
     /// PP-5242: the content source of the bound audiobook, captured at bind for
     /// the playback-failure record, and the repeat filter for that record.
@@ -702,14 +704,7 @@ public final class AudiobookSessionManager: ObservableObject {
         // it. Identity is re-checked after the await. Progress feeds the shell
         // only when it is on screen, since the toolkit model that normally
         // drives the bar does not exist until bind.
-        let feedProgressToShell = startPlaying && inAppPlaybackNavEnabledProvider()
-        var progressSink: (@MainActor @Sendable (Float) -> Void)?
-        if feedProgressToShell {
-            progressSink = { [weak self] fraction in
-                guard let self else { return }
-                self.audiobookSessionPresenterProvider().showDownloadProgress(fraction)
-            }
-        }
+        let progressSink = startPlaying ? contentWaitProgressSink(for: book.identifier) : nil
         let gateResult = await gateOnLCPContentDownload(
             for: book,
             isColdLoadRecovery: origin.skipsContentGate,
@@ -1071,6 +1066,7 @@ public final class AudiobookSessionManager: ObservableObject {
         currentLoader?.cancel()
         currentLoader = nil
         loadGeneration &+= 1
+        cancelColdLoadContentWait()
 
         let bookId = currentBook?.identifier
 
@@ -1596,6 +1592,16 @@ public final class AudiobookSessionManager: ObservableObject {
     /// alert used by the cold-load failure paths. Factored so the immediate
     /// failure path and the PP-4542 await-local-content timeout path present an
     /// identical experience.
+    /// Forwards a content wait's progress to the player while `bookId` is still
+    /// the book this session is loading (PP-5451).
+    private func contentWaitProgressSink(for bookId: String) -> (@MainActor @Sendable (Float) -> Void)? {
+        guard inAppPlaybackNavEnabledProvider() else { return nil }
+        return { [weak self] fraction in
+            guard let self, self.isLoading(bookId) else { return }
+            self.audiobookSessionPresenterProvider().showDownloadProgress(fraction)
+        }
+    }
+
     private func dismissAndPresentColdLoadUnavailable() async {
         // Cold-load failure path: the player never started, so there is no
         // meaningful "live position" to persist.
@@ -1835,12 +1841,12 @@ public final class AudiobookSessionManager: ObservableObject {
                 awaitingContentDownloadBookIds.insert(book.identifier)
                 state = .loading(bookId: book.identifier)
                 playbackStatePublisher.send(state)
-                Task { [weak self] in
+                coldLoadContentWait = Task { [weak self] in
                     guard let self else { return }
-                    let becameLocal = await self.awaitContentLocal(book.identifier, nil)
+                    let becameLocal = await self.awaitContentLocal(book.identifier, self.contentWaitProgressSink(for: book.identifier))
                     // The wait is over — stop swallowing failures for this book
                     // so the re-open's own success/failure drives the UI.
-                    self.awaitingContentDownloadBookIds.remove(book.identifier)
+                    guard self.endColdLoadContentWait(for: book.identifier) else { return }
                     guard self.currentBook?.identifier == book.identifier else { return }
                     if becameLocal {
                         Log.info(#file, "Content download landed — re-opening audiobook from local path")
