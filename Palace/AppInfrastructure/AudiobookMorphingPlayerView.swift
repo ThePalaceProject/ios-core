@@ -109,12 +109,6 @@ struct AudiobookMorphingPlayerView: View {
     /// instant. The alert takes VoiceOver focus when presented.
     @State private var showStopConfirmation = false
 
-    /// Where VoiceOver focus goes when the player opens.
-    enum VoiceOverFocusTarget: Hashable {
-        case title
-        case playPause
-    }
-
     @AccessibilityFocusState private var voiceOverFocus: VoiceOverFocusTarget?
 
     // MARK: - Adaptive control metrics
@@ -378,11 +372,12 @@ struct AudiobookMorphingPlayerView: View {
                 object: nil
             )
             UIAccessibility.post(notification: .layoutChanged, argument: nil)
-            let openingFocus = Self.openingVoiceOverFocus(isExpanded: presenter.isPlayerExpanded)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                if let openingFocus { voiceOverFocus = openingFocus }
-            }
         }
+        .modifier(AudiobookPlayerOpeningFocus(
+            focus: $voiceOverFocus,
+            isExpanded: presenter.isPlayerExpanded,
+            overlayCoversControls: Self.loadingOverlayCoversControls(loadingOverlayCurrentState)
+        ))
         // Re-sync the speed chip when the player binds. `presenter.playbackModel`
         // goes non-nil exactly at bind (`adoptPlaybackModel`), by which point the
         // manager is set and `currentPlaybackRate` returns the toolkit's restored
@@ -1426,12 +1421,6 @@ struct AudiobookMorphingPlayerView: View {
                 let flungDown = value.predictedEndTranslation.height > 200
                 settleDrag(minimize: horizontalOK && (pastThreshold || flungDown))
             }
-    }
-
-    /// The full player is opened to listen, so VoiceOver starts on Play (PP-5450).
-    /// The mini player sits under other content and takes no focus.
-    nonisolated static func openingVoiceOverFocus(isExpanded: Bool) -> VoiceOverFocusTarget? {
-        isExpanded ? .playPause : nil
     }
 
     /// Resistance curve for an upward (negative) pull on the full player: the

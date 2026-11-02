@@ -770,16 +770,39 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
 
     // MARK: - VoiceOver focus on open (PP-5450)
 
+    private typealias PlayerView = AudiobookMorphingPlayerView
+
     /// A VoiceOver patron opens the full player to listen, so focus starts on
     /// Play rather than the title eight or nine swipes away.
-    func testOpeningVoiceOverFocus_fullPlayer_isPlayPause() {
-        XCTAssertEqual(AudiobookMorphingPlayerView.openingVoiceOverFocus(isExpanded: true), .playPause)
+    func testOpeningFocus_fullPlayerWithControlsVisible_focusesPlayPause() {
+        XCTAssertEqual(PlayerView.openingVoiceOverFocusStep(isExpanded: true, overlayCoversControls: false),
+                       .focus(.playPause))
+    }
+
+    /// A focus request made under the loading overlay is dropped and VoiceOver
+    /// lands on Close, so a cold open waits for the controls instead.
+    func testOpeningFocus_fullPlayerUnderLoadingOverlay_waitsForControls() {
+        XCTAssertEqual(PlayerView.openingVoiceOverFocusStep(isExpanded: true, overlayCoversControls: true),
+                       .waitForControls)
     }
 
     /// The mini player sits under other content, so opening it must not pull
     /// VoiceOver focus away from what the patron was reading.
-    func testOpeningVoiceOverFocus_miniPlayer_movesNoFocus() {
-        XCTAssertNil(AudiobookMorphingPlayerView.openingVoiceOverFocus(isExpanded: false))
+    func testOpeningFocus_miniPlayer_movesNoFocus() {
+        XCTAssertEqual(PlayerView.openingVoiceOverFocusStep(isExpanded: false, overlayCoversControls: false), .none)
+        XCTAssertEqual(PlayerView.openingVoiceOverFocusStep(isExpanded: false, overlayCoversControls: true), .none)
+    }
+
+    /// The open that waited gets Play once the overlay clears.
+    func testDeferredFocus_whenOverlayClears_focusesPlayPause() {
+        XCTAssertEqual(PlayerView.focusWhenControlsUncovered(waiting: true, overlayCoversControls: false), .playPause)
+    }
+
+    /// Nothing moves focus while the overlay still covers the controls, or when
+    /// no open is waiting (a later overlay, e.g. a mid-session download).
+    func testDeferredFocus_whileCoveredOrNotWaiting_movesNoFocus() {
+        XCTAssertNil(PlayerView.focusWhenControlsUncovered(waiting: true, overlayCoversControls: true))
+        XCTAssertNil(PlayerView.focusWhenControlsUncovered(waiting: false, overlayCoversControls: false))
     }
 }
 
