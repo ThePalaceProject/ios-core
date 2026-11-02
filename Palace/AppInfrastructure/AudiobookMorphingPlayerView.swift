@@ -109,9 +109,13 @@ struct AudiobookMorphingPlayerView: View {
     /// instant. The alert takes VoiceOver focus when presented.
     @State private var showStopConfirmation = false
 
-    /// VoiceOver focus target — moved to the title when the full player expands
-    /// (mirrors toolkit `isTitleFocused`).
-    @AccessibilityFocusState private var isTitleFocused: Bool
+    /// Where VoiceOver focus goes when the player opens.
+    enum VoiceOverFocusTarget: Hashable {
+        case title
+        case playPause
+    }
+
+    @AccessibilityFocusState private var voiceOverFocus: VoiceOverFocusTarget?
 
     // MARK: - Adaptive control metrics
 
@@ -369,15 +373,14 @@ struct AudiobookMorphingPlayerView: View {
                 isBound: audiobookSession.hasActiveManager,
                 fallback: currentRate
             )
-            // Announce the screen transition + move VoiceOver focus to the title
-            // (mirrors toolkit AudiobookPlayerView.onAppear).
             NotificationCenter.default.post(
                 name: Notification.Name("TPPAccessibilityScreenTransition"),
                 object: nil
             )
             UIAccessibility.post(notification: .layoutChanged, argument: nil)
+            let openingFocus = Self.openingVoiceOverFocus(isExpanded: presenter.isPlayerExpanded)
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                isTitleFocused = true
+                if let openingFocus { voiceOverFocus = openingFocus }
             }
         }
         // Re-sync the speed chip when the player binds. `presenter.playbackModel`
@@ -619,10 +622,9 @@ struct AudiobookMorphingPlayerView: View {
                 .font(.title3).fontWeight(.semibold)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
-                .accessibilityFocused($isTitleFocused)
-                // `onAppear` moves VoiceOver focus here, and the Rotor's
-                // headings list is how a patron gets back to it after browsing
-                // the controls.
+                .accessibilityFocused($voiceOverFocus, equals: .title)
+                // The Rotor's headings list is how a patron gets back to the
+                // title after browsing the controls.
                 .accessibilityAddTraits(.isHeader)
             if let authors = presenter.currentBook?.authors, !authors.isEmpty {
                 Text(authors)
@@ -676,6 +678,7 @@ struct AudiobookMorphingPlayerView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(playPauseAccessibilityLabel)
             .accessibilityValue(playPauseAccessibilityValue)
+            .accessibilityFocused($voiceOverFocus, equals: .playPause)
             skipCircleButton(asset: Self.icSkipForward, interval: skipForwardInterval,
                              label: Strings.Generic.skipForwardSeconds(skipForwardInterval),
                              glyph: metrics.skipGlyph, diameter: skipButton) {
@@ -1431,6 +1434,12 @@ struct AudiobookMorphingPlayerView: View {
     /// diminishing resistance that asymptotes toward `-limit` instead of the old
     /// hard linear clamp, so the top edge feels elastic rather than stuck. Static +
     /// pure so it's unit-testable. `offset` is expected ≤ 0 (an upward drag).
+    /// The full player is opened to listen, so VoiceOver starts on Play (PP-5450).
+    /// The mini player sits under other content and takes no focus.
+    nonisolated static func openingVoiceOverFocus(isExpanded: Bool) -> VoiceOverFocusTarget? {
+        isExpanded ? .playPause : nil
+    }
+
     static func rubberBand(_ offset: CGFloat) -> CGFloat {
         guard offset < 0 else { return offset }
         let limit: CGFloat = 72
