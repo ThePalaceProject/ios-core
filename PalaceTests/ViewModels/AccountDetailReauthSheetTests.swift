@@ -11,6 +11,7 @@
 //
 
 import XCTest
+import Combine
 import PalaceCatalog
 @testable import Palace
 
@@ -19,6 +20,22 @@ final class AccountDetailReauthSheetTests: PalaceTestCase {
 
     private enum Credentials {
         case none, fresh, stale
+    }
+
+    /// The credentials the view model reads; tests change them mid-test.
+    private final class CredentialsBox: @unchecked Sendable {
+        var value: Credentials = .none
+    }
+    private let credentialsBox = CredentialsBox()
+    private var currentCredentials: Credentials {
+        get { credentialsBox.value }
+        set { credentialsBox.value = newValue }
+    }
+    private var notificationSinks = Set<AnyCancellable>()
+
+    override func tearDown() {
+        notificationSinks.removeAll()
+        super.tearDown()
     }
 
     private func account(uuid: String, authenticationJSON: String) throws -> Account {
@@ -55,7 +72,7 @@ final class AccountDetailReauthSheetTests: PalaceTestCase {
      "links": [{"href": "https://example.com/saml/authenticate", "rel": "authenticate", "type": "text/html"}]}
     """
 
-    private func snapshot(_ credentials: Credentials) -> TPPUserAccount.CredentialSnapshot {
+    nonisolated private static func snapshot(_ credentials: Credentials) -> TPPUserAccount.CredentialSnapshot {
         switch credentials {
         case .none:
             return TPPUserAccount.CredentialSnapshot(
@@ -85,7 +102,7 @@ final class AccountDetailReauthSheetTests: PalaceTestCase {
         let uuid = "urn:uuid:pp5449-\(UUID().uuidString)"
         let account = try account(uuid: uuid, authenticationJSON: authenticationJSON)
         let restore = appContainer.accountsManager._seedAccountForTesting(account)
-        let credentialSnapshot = snapshot(credentials)
+        currentCredentials = credentials
         let viewModel = AccountDetailViewModel(
             libraryAccountID: uuid,
             accountsManager: appContainer.accountsManager,
@@ -94,12 +111,26 @@ final class AccountDetailReauthSheetTests: PalaceTestCase {
             settings: appContainer.settings,
             userAccountPublisher: appContainer.userAccountPublisher,
             drmAuthorizerProvider: { nil },
-            credentialSnapshotProvider: { _ in credentialSnapshot }
+            credentialSnapshotProvider: { [credentialsBox] _ in Self.snapshot(credentialsBox.value) }
         )
         for _ in 0..<20 { await Task.yield() }
         viewModel.forceReauthMode = forceReauthMode
         viewModel.refreshSignInState()
         return (viewModel, restore)
+    }
+
+    /// Posts the notification and returns once the view model's subscriber has
+    /// run: both hop through `RunLoop.main`, which delivers in order, and the
+    /// view model subscribed first.
+    private func postAccountChange(object: Any?) async {
+        let delivered = expectation(description: "account change delivered")
+        NotificationCenter.default.publisher(for: .TPPUserAccountDidChange)
+            .receive(on: RunLoop.main)
+            .first()
+            .sink { _ in delivered.fulfill() }
+            .store(in: &notificationSinks)
+        NotificationCenter.default.post(name: .TPPUserAccountDidChange, object: object)
+        await fulfillment(of: [delivered], timeout: 5) // STARVE-001-OK: waits on one RunLoop.main delivery, not on async work
     }
 
     private func cells(_ viewModel: AccountDetailViewModel) -> [CellType] {
@@ -132,12 +163,62 @@ final class AccountDetailReauthSheetTests: PalaceTestCase {
             authenticationJSON: basicAuthJSON, credentials: .stale, forceReauthMode: true)
         defer { restore() }
 
-        NotificationCenter.default.post(name: .TPPUserAccountDidChange, object: nil)
-        for _ in 0..<20 { await Task.yield() }
-        try await Task.sleep(nanoseconds: 50_000_000)
+        await postAccountChange(object: nil)
 
         XCTAssertFalse(viewModel.isSignedIn)
         XCTAssertEqual(viewModel.usernameText, "")
+    }
+
+    /// A token refresh in any library posts this notification; it must not
+    /// erase the barcode and PIN the patron is typing.
+    func testReauthSheet_WhenAccountChangeArrivesWhileTyping_KeepsTypedCredentials() async throws {
+        let (viewModel, restore) = try await presentedViewModel(
+            authenticationJSON: basicAuthJSON, credentials: .stale, forceReauthMode: true)
+        defer { restore() }
+        viewModel.usernameText = "01230000000999"
+        viewModel.pinText = "new-pin"
+
+        await postAccountChange(object: nil)
+        await postAccountChange(object: TPPUserAccount(libraryUUID: "urn:uuid:pp5449-other-library"))
+        viewModel.refreshSignInState()
+
+        XCTAssertEqual(viewModel.usernameText, "01230000000999")
+        XCTAssertEqual(viewModel.pinText, "new-pin")
+        XCTAssertFalse(viewModel.isSignedIn)
+    }
+
+    /// Another library's credential change says nothing about this library.
+    func testReauthSheet_WhenAnotherLibrarysAccountChanges_IgnoresIt() async throws {
+        let (viewModel, restore) = try await presentedViewModel(
+            authenticationJSON: basicAuthJSON, credentials: .stale, forceReauthMode: true)
+        defer { restore() }
+        currentCredentials = .fresh
+
+        await postAccountChange(object: TPPUserAccount(libraryUUID: "urn:uuid:pp5449-other-library"))
+
+        XCTAssertFalse(viewModel.isSignedIn)
+        XCTAssertEqual(viewModel.usernameText, "")
+    }
+
+    /// When the state really changes, the fields follow it: a sign-in fills
+    /// them with the stored barcode, a sign-out empties them.
+    func testReauthSheet_WhenSignedInStateChanges_RefillsThenClearsFields() async throws {
+        let (viewModel, restore) = try await presentedViewModel(
+            authenticationJSON: basicAuthJSON, credentials: .stale, forceReauthMode: true)
+        defer { restore() }
+        viewModel.usernameText = "01230000000999"
+
+        currentCredentials = .fresh
+        await postAccountChange(object: nil)
+        XCTAssertTrue(viewModel.isSignedIn)
+        XCTAssertEqual(viewModel.usernameText, "01230000000237")
+        XCTAssertEqual(viewModel.pinText, "old-pin")
+
+        currentCredentials = .none
+        await postAccountChange(object: nil)
+        XCTAssertFalse(viewModel.isSignedIn)
+        XCTAssertEqual(viewModel.usernameText, "")
+        XCTAssertEqual(viewModel.pinText, "")
     }
 
     /// Typing new credentials in that form must enable the Sign In button.
@@ -228,6 +309,31 @@ final class AccountDetailReauthSheetTests: PalaceTestCase {
     func testReauthSheet_WhenNoSAMLCredentials_ShowsBrowserSignInPrompt() async throws {
         let (viewModel, restore) = try await presentedViewModel(
             authenticationJSON: samlAuthJSON, credentials: .none, forceReauthMode: true)
+        defer { restore() }
+
+        XCTAssertTrue(viewModel.shouldShowSignInPrompt)
+    }
+
+    func testSettingsPage_WhenSAMLCredentialsAreStale_ShowsAccountList() async throws {
+        let (viewModel, restore) = try await presentedViewModel(
+            authenticationJSON: samlAuthJSON, credentials: .stale, forceReauthMode: false)
+        defer { restore() }
+
+        XCTAssertFalse(viewModel.shouldShowSignInPrompt)
+        XCTAssertTrue(viewModel.isSignedIn)
+    }
+
+    func testSettingsPage_WhenSAMLCredentialsAreFresh_ShowsAccountList() async throws {
+        let (viewModel, restore) = try await presentedViewModel(
+            authenticationJSON: samlAuthJSON, credentials: .fresh, forceReauthMode: false)
+        defer { restore() }
+
+        XCTAssertFalse(viewModel.shouldShowSignInPrompt)
+    }
+
+    func testSettingsPage_WhenNoSAMLCredentials_ShowsBrowserSignInPrompt() async throws {
+        let (viewModel, restore) = try await presentedViewModel(
+            authenticationJSON: samlAuthJSON, credentials: .none, forceReauthMode: false)
         defer { restore() }
 
         XCTAssertTrue(viewModel.shouldShowSignInPrompt)

@@ -85,6 +85,26 @@ extension TPPSignInBusinessLogic {
     private static let signOutSnapshotKey = AssocKey()
     private static let signOutInProgressKey = AssocKey()
     private static let deauthorizationTimeoutKey = AssocKey()
+    private static let deauthorizationSchedulerKey = AssocKey()
+
+    typealias DeauthorizationTimeoutScheduler = (TimeInterval, @escaping @Sendable () -> Void) -> Void
+
+    private final class SchedulerBox {
+        let schedule: DeauthorizationTimeoutScheduler
+        init(_ schedule: @escaping DeauthorizationTimeoutScheduler) { self.schedule = schedule }
+    }
+
+    /// Arms the deauthorization timeout. Tests replace it to fire the timeout
+    /// on demand instead of waiting on a timer.
+    var deauthorizationTimeoutScheduler: DeauthorizationTimeoutScheduler {
+        get {
+            let box = objc_getAssociatedObject(self, Unmanaged.passUnretained(Self.deauthorizationSchedulerKey).toOpaque()) as? SchedulerBox
+            return box?.schedule ?? { delay, work in
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+            }
+        }
+        set { objc_setAssociatedObject(self, Unmanaged.passUnretained(Self.deauthorizationSchedulerKey).toOpaque(), SchedulerBox(newValue), .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+    }
 
     /// How long sign-out waits for Adobe device deauthorization before it
     /// signs the patron out locally anyway. Tests shorten it.
@@ -345,16 +365,6 @@ extension TPPSignInBusinessLogic {
             return
         }
 
-        // Deregister FCM token BEFORE removing credentials (DELETE request needs auth)
-        // Also reset the flag so token re-registers on next sign-in
-        if let account = libraryAccountsProvider.account(libraryAccountID) {
-            NotificationService.shared.deleteToken(for: account)
-            account.hasUpdatedToken = false
-        }
-
-        bookDownloadsCenter.reset(libraryAccountID)
-        bookRegistry.reset(libraryAccountID)
-
         // Capture the access token before removeAll() wipes it.
         // CM logout endpoints (OIDC and SAML SLO / PP-3452) require
         // Authorization: Bearer <token>; we need this for the API calls
@@ -365,16 +375,14 @@ extension TPPSignInBusinessLogic {
             return needsToken ? userAccount.authToken : nil
         }()
 
-        userAccount.removeAll()
+        Self.removeLocalLibraryState(libraryAccountID: libraryAccountID,
+                                     accountsProvider: libraryAccountsProvider,
+                                     downloads: bookDownloadsCenter,
+                                     registry: bookRegistry,
+                                     userAccount: userAccount)
         selectedIDP = nil
         samlHelper.clearState()
         dispatch(.signOutCompleted)
-
-        // N1: clear the executor's PRIVATE URLCache — the one that actually
-        // serves authenticated feeds. Clearing `URLCache.shared` here was a
-        // no-op for feeds AND a privacy leak (signed-out authenticated
-        // responses could persist in the executor's disk cache).
-        AppContainer.production().networkExecutor.clearCache()
 
         // Clear the IdP session before notifying the UI that sign-out is complete.
         //
@@ -400,6 +408,33 @@ extension TPPSignInBusinessLogic {
                 self.uiDelegate?.businessLogicDidFinishDeauthorizing(self)
             }
         }
+    }
+
+    /// The sign-out steps that need only the library's collaborators, so a
+    /// sign-out whose business logic was released still runs them (PP-5449).
+    /// `selectedIDP`, the SAML helper and the reducer state belong to the
+    /// business logic and are released with it.
+    private static func removeLocalLibraryState(libraryAccountID: String,
+                                                accountsProvider: TPPLibraryAccountsProvider,
+                                                downloads: TPPBookDownloadsDeleting,
+                                                registry: TPPBookRegistrySyncing,
+                                                userAccount: TPPUserAccount) {
+        // Deregister FCM token BEFORE removing credentials (DELETE request needs auth)
+        // Also reset the flag so token re-registers on next sign-in
+        if let account = accountsProvider.account(libraryAccountID) {
+            NotificationService.shared.deleteToken(for: account)
+            account.hasUpdatedToken = false
+        }
+
+        downloads.reset(libraryAccountID)
+        registry.reset(libraryAccountID)
+        userAccount.removeAll()
+
+        // N1: clear the executor's PRIVATE URLCache — the one that actually
+        // serves authenticated feeds. Clearing `URLCache.shared` here was a
+        // no-op for feeds AND a privacy leak (signed-out authenticated
+        // responses could persist in the executor's disk cache).
+        AppContainer.production().networkExecutor.clearCache()
     }
 
     /// Routes to the appropriate IdP session-clearing step based on auth type.
@@ -524,6 +559,7 @@ extension TPPSignInBusinessLogic {
         let account = userAccount
         let generation = signOutSnapshot
         let accountID = libraryAccountID
+        let accountsProvider = libraryAccountsProvider
         let registry = bookRegistry
         let downloads = bookDownloadsCenter
         return { [weak self] in
@@ -533,9 +569,11 @@ extension TPPSignInBusinessLogic {
             }
             // Same re-sign-in guard as `completeLogOutProcess()`.
             guard account.signInGeneration == generation else { return }
-            downloads.reset(accountID)
-            registry.reset(accountID)
-            account.removeAll()
+            Self.removeLocalLibraryState(libraryAccountID: accountID,
+                                         accountsProvider: accountsProvider,
+                                         downloads: downloads,
+                                         registry: registry,
+                                         userAccount: account)
 
             #if DEBUG
             if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
@@ -621,7 +659,7 @@ extension TPPSignInBusinessLogic {
             // RMSDK gives no bound on when, or whether, the callback arrives.
             // The patron asked to sign out, so after the timeout the local
             // cleanup runs without it (PP-5449).
-            DispatchQueue.main.asyncAfter(deadline: .now() + adobeDeauthorizationTimeout) {
+            deauthorizationTimeoutScheduler(adobeDeauthorizationTimeout) {
                 latch.fire(timedOut: true)
             }
         } else {

@@ -94,6 +94,34 @@ final class TPPSignOutCompletesLocallyTests: XCTestCase {
         return condition()
     }
 
+    /// Holds the sign-out timeout instead of arming a timer, so a test decides
+    /// when it fires.
+    private final class CapturedTimeout: @unchecked Sendable {
+        var delay: TimeInterval?
+        var work: (@Sendable () -> Void)?
+
+        func fire() { work?() }
+    }
+
+    private func captureTimeout(_ logic: TPPSignInBusinessLogic) -> CapturedTimeout {
+        let captured = CapturedTimeout()
+        logic.deauthorizationTimeoutScheduler = { delay, work in
+            captured.delay = delay
+            captured.work = work
+        }
+        return captured
+    }
+
+    /// Runs everything already queued on the main actor, including the cleanup
+    /// a latch fire schedules, so "nothing happened" is read after it would have.
+    private func drainMainQueue() async {
+        for _ in 0..<3 {
+            let drained = expectation(description: "main queue drained")
+            DispatchQueue.main.async { drained.fulfill() }
+            await fulfillment(of: [drained], timeout: 5) // STARVE-001-OK: waits on one main-queue hop, not on async work
+        }
+    }
+
     // MARK: - Deauthorization answers
 
     func testSignOut_WhenDeauthorizationCompletes_RemovesCredentials() async throws {
@@ -108,11 +136,24 @@ final class TPPSignOutCompletesLocallyTests: XCTestCase {
         XCTAssertTrue(uiDelegate.didCallDidFinishDeauthorizing)
     }
 
+    /// The bound on the wait is 30 seconds.
+    func testSignOut_ArmsTimeoutOfThirtySeconds() async throws {
+        let logic = try XCTUnwrap(businessLogic)
+        let timeout = captureTimeout(logic)
+        drmAuthorizer.shouldDeferDeauthorize = true
+        signIn(logic)
+        networkExecutor.forceFailureStatusCode = 401
+
+        await logic.performLogOut()
+
+        XCTAssertEqual(timeout.delay, 30)
+    }
+
     /// A deauthorization that answered must not leave a timeout armed that later
     /// wipes credentials from a sign-in the patron made afterwards.
     func testSignOut_WhenDeauthorizationCompletesThenPatronSignsIn_TimeoutKeepsNewCredentials() async throws {
         let logic = try XCTUnwrap(businessLogic)
-        logic.adobeDeauthorizationTimeout = 0.3
+        let timeout = captureTimeout(logic)
         signIn(logic)
         networkExecutor.forceFailureStatusCode = 401
 
@@ -122,7 +163,9 @@ final class TPPSignOutCompletesLocallyTests: XCTestCase {
 
         logic.cancelPendingSignOut()
         signIn(logic, barcode: "new-barcode")
-        try await Task.sleep(nanoseconds: 800_000_000)
+        XCTAssertNotNil(timeout.work, "Precondition: sign-out armed a timeout")
+        timeout.fire()
+        await drainMainQueue()
 
         XCTAssertTrue(userAccount.hasCredentials(), "The timeout of a finished sign-out ran cleanup again")
         XCTAssertEqual(userAccount.barcode, "new-barcode")
@@ -132,36 +175,23 @@ final class TPPSignOutCompletesLocallyTests: XCTestCase {
     /// cleanup a second time; a second pass repeats the sign-out notification.
     func testSignOut_WhenDeauthorizationCompletesBeforeTimeout_CleansUpOnce() async throws {
         let logic = try XCTUnwrap(businessLogic)
-        logic.adobeDeauthorizationTimeout = 0.2
-        signIn(logic)
-        networkExecutor.forceFailureStatusCode = 401
-
-        await logic.performLogOut()
-        try await Task.sleep(nanoseconds: 600_000_000)
-
-        XCTAssertEqual(downloadCenter.resetCalledLibraryIDs.count, 1)
-    }
-
-    /// A deauthorization answering after the timeout must not run the cleanup
-    /// a second time.
-    func testSignOut_WhenDeauthorizationAnswersAfterTimeout_CleansUpOnce() async throws {
-        let logic = try XCTUnwrap(businessLogic)
-        logic.adobeDeauthorizationTimeout = 0.2
-        drmAuthorizer.shouldDeferDeauthorize = true
+        let timeout = captureTimeout(logic)
         signIn(logic)
         networkExecutor.forceFailureStatusCode = 401
 
         await logic.performLogOut()
         let removed = await eventually { !self.userAccount.hasCredentials() }
         XCTAssertTrue(removed)
-        drmAuthorizer.completeDeferredDeauthorize()
-        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertNotNil(timeout.work, "Precondition: sign-out armed a timeout")
+        timeout.fire()
+        await drainMainQueue()
 
         XCTAssertEqual(downloadCenter.resetCalledLibraryIDs.count, 1)
     }
 
     // MARK: - Deauthorization never answers
 
+    /// Uses the real timer, so the production scheduling path is exercised.
     func testSignOut_WhenDeauthorizationNeverCompletes_RemovesCredentialsAfterTimeout() async throws {
         let logic = try XCTUnwrap(businessLogic)
         logic.adobeDeauthorizationTimeout = 0.2
@@ -177,23 +207,48 @@ final class TPPSignOutCompletesLocallyTests: XCTestCase {
         XCTAssertFalse(logic.isSignOutInProgressForTests, "Further Sign Out taps are ignored while this stays true")
     }
 
-    /// The deauthorization answering after the timeout already signed the patron
-    /// out, and after they signed in again, must not remove the new credentials.
-    func testSignOut_WhenDeauthorizationAnswersAfterTimeoutAndNewSignIn_KeepsNewCredentials() async throws {
+    /// A deauthorization answering after the timeout must not run the cleanup
+    /// a second time.
+    func testSignOut_WhenDeauthorizationAnswersAfterTimeout_CleansUpOnce() async throws {
         let logic = try XCTUnwrap(businessLogic)
-        logic.adobeDeauthorizationTimeout = 0.2
+        let timeout = captureTimeout(logic)
         drmAuthorizer.shouldDeferDeauthorize = true
         signIn(logic)
         networkExecutor.forceFailureStatusCode = 401
 
         await logic.performLogOut()
+        timeout.fire()
+        let removed = await eventually { !self.userAccount.hasCredentials() }
+        XCTAssertTrue(removed)
+
+        XCTAssertNotNil(drmAuthorizer.deferredDeauthCompletion, "Precondition: the deauthorization callback is pending")
+        drmAuthorizer.completeDeferredDeauthorize()
+        XCTAssertNil(drmAuthorizer.deferredDeauthCompletion, "The late callback did not run")
+        await drainMainQueue()
+
+        XCTAssertEqual(downloadCenter.resetCalledLibraryIDs.count, 1)
+    }
+
+    /// The deauthorization answering after the timeout already signed the patron
+    /// out, and after they signed in again, must not remove the new credentials.
+    func testSignOut_WhenDeauthorizationAnswersAfterTimeoutAndNewSignIn_KeepsNewCredentials() async throws {
+        let logic = try XCTUnwrap(businessLogic)
+        let timeout = captureTimeout(logic)
+        drmAuthorizer.shouldDeferDeauthorize = true
+        signIn(logic)
+        networkExecutor.forceFailureStatusCode = 401
+
+        await logic.performLogOut()
+        timeout.fire()
         let removed = await eventually { !self.userAccount.hasCredentials() }
         XCTAssertTrue(removed)
 
         logic.cancelPendingSignOut()
         signIn(logic, barcode: "new-barcode")
+        XCTAssertNotNil(drmAuthorizer.deferredDeauthCompletion, "Precondition: the deauthorization callback is pending")
         drmAuthorizer.completeDeferredDeauthorize()
-        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertNil(drmAuthorizer.deferredDeauthCompletion, "The late callback did not run")
+        await drainMainQueue()
 
         XCTAssertEqual(userAccount.barcode, "new-barcode")
     }
@@ -203,6 +258,7 @@ final class TPPSignOutCompletesLocallyTests: XCTestCase {
     func testSignOut_WhenBusinessLogicReleasedBeforeDeauthorizationAnswers_RemovesCredentials() async throws {
         drmAuthorizer.shouldDeferDeauthorize = true
         networkExecutor.forceFailureStatusCode = 401
+        libraryMock.tppAccount.hasUpdatedToken = true
         weak var released: TPPSignInBusinessLogic?
         do {
             let logic = try XCTUnwrap(businessLogic)
@@ -218,8 +274,33 @@ final class TPPSignOutCompletesLocallyTests: XCTestCase {
 
         let removed = await eventually { !self.userAccount.hasCredentials() }
         XCTAssertTrue(removed, "Credentials stayed in the keychain after Sign Out")
-        XCTAssertEqual(downloadCenter.resetCalledLibraryIDs.count, 1, "Downloaded books stay on the device")
-        XCTAssertEqual(bookRegistry.resetCalledLibraryIDs.count, 1, "Loans stay in the registry")
+        let libraryID = libraryMock.tppAccountUUID
+        XCTAssertEqual(downloadCenter.resetCalledLibraryIDs, [libraryID], "Downloaded books stay on the device")
+        XCTAssertEqual(bookRegistry.resetCalledLibraryIDs, [libraryID], "Loans stay in the registry")
+        XCTAssertFalse(libraryMock.tppAccount.hasUpdatedToken, "The push token is not re-registered on the next sign-in")
+    }
+
+    func testSignOut_WhenBusinessLogicReleasedAndDeauthorizationNeverAnswers_RemovesCredentials() async throws {
+        drmAuthorizer.shouldDeferDeauthorize = true
+        networkExecutor.forceFailureStatusCode = 401
+        weak var released: TPPSignInBusinessLogic?
+        var timeout: CapturedTimeout?
+        do {
+            let logic = try XCTUnwrap(businessLogic)
+            timeout = captureTimeout(logic)
+            signIn(logic)
+            await logic.performLogOut()
+            released = logic
+        }
+        businessLogic = nil
+        XCTAssertNil(released, "Precondition: the business logic must be released for this case")
+
+        XCTAssertNotNil(timeout?.work, "Precondition: sign-out armed a timeout")
+        timeout?.fire()
+
+        let removed = await eventually { !self.userAccount.hasCredentials() }
+        XCTAssertTrue(removed)
+        XCTAssertEqual(downloadCenter.resetCalledLibraryIDs, [libraryMock.tppAccountUUID])
     }
 
     /// A patron who signed in again before the released sign-out's callback
@@ -238,41 +319,26 @@ final class TPPSignOutCompletesLocallyTests: XCTestCase {
         XCTAssertNil(released, "Precondition: the business logic must be released for this case")
 
         userAccount.incrementSignInGeneration()
+        XCTAssertNotNil(drmAuthorizer.deferredDeauthCompletion, "Precondition: the deauthorization callback is pending")
         drmAuthorizer.completeDeferredDeauthorize()
-        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertNil(drmAuthorizer.deferredDeauthCompletion, "The late callback did not run")
+        await drainMainQueue()
 
         XCTAssertTrue(userAccount.hasCredentials(), "A late callback removed credentials from a newer sign-in")
         XCTAssertTrue(downloadCenter.resetCalledLibraryIDs.isEmpty)
-    }
-
-    func testSignOut_WhenBusinessLogicReleasedAndDeauthorizationNeverAnswers_RemovesCredentials() async throws {
-        drmAuthorizer.shouldDeferDeauthorize = true
-        networkExecutor.forceFailureStatusCode = 401
-        weak var released: TPPSignInBusinessLogic?
-        do {
-            let logic = try XCTUnwrap(businessLogic)
-            logic.adobeDeauthorizationTimeout = 0.2
-            signIn(logic)
-            await logic.performLogOut()
-            released = logic
-        }
-        businessLogic = nil
-        XCTAssertNil(released, "Precondition: the business logic must be released for this case")
-
-        let removed = await eventually { !self.userAccount.hasCredentials() }
-        XCTAssertTrue(removed)
     }
 
     // MARK: - Server sign-out fails
 
     func testSignOut_WhenServerReturns401AndDeauthorizationHangs_RemovesCredentials() async throws {
         let logic = try XCTUnwrap(businessLogic)
-        logic.adobeDeauthorizationTimeout = 0.2
+        let timeout = captureTimeout(logic)
         drmAuthorizer.shouldDeferDeauthorize = true
         signIn(logic)
         networkExecutor.forceFailureStatusCode = 401
 
         await logic.performLogOut()
+        timeout.fire()
 
         let removed = await eventually { !self.userAccount.hasCredentials() }
         XCTAssertTrue(removed)
@@ -281,7 +347,6 @@ final class TPPSignOutCompletesLocallyTests: XCTestCase {
 
     func testSignOut_WhenOffline_RemovesCredentials() async throws {
         let logic = try XCTUnwrap(businessLogic)
-        logic.adobeDeauthorizationTimeout = 0.2
         signIn(logic)
         networkExecutor.forceTransportError = NSError(domain: NSURLErrorDomain,
                                                       code: NSURLErrorNotConnectedToInternet)

@@ -222,7 +222,10 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         // two subscribers below that already receive on main.
         NotificationCenter.default.publisher(for: .TPPUserAccountDidChange)
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.accountDidChange() }
+            .sink { [weak self] notification in
+                guard let self, self.concernsThisLibrary(notification) else { return }
+                self.accountDidChange()
+            }
             .store(in: &cancellables)
 
         // Listen for account switches to refresh sign-in state
@@ -603,16 +606,32 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         presented.dismiss(animated: true)
     }
 
+    /// `.TPPUserAccountDidChange` carries the account that changed; a change
+    /// to another library's account (a token refresh, say) is not this page's.
+    private func concernsThisLibrary(_ notification: Notification) -> Bool {
+        guard let changed = (notification.object as? TPPUserAccount)?.libraryUUID else { return true }
+        return changed == libraryAccountID
+    }
+
+    /// While signed out the fields hold what the patron is typing, so they are
+    /// rewritten only when the signed-in state changes. While signed in they
+    /// show the stored credentials and follow every change.
     private func accountDidChange() {
         let snapshot = credentialSnapshotProvider(libraryAccountID)
 
         let newSignedIn = Self.showsSignedIn(snapshot, forceReauthMode: forceReauthMode)
 
-        if isSignedIn != newSignedIn {
+        let stateChanged = isSignedIn != newSignedIn
+        if stateChanged {
             Log.debug(#file, "isSignedIn: \(isSignedIn)->\(newSignedIn), authState=\(snapshot.authState)")
         }
 
-        applySignedInState(newSignedIn, snapshot: snapshot)
+        if stateChanged || newSignedIn {
+            applySignedInState(newSignedIn, snapshot: snapshot)
+        } else {
+            setupTableData()
+            loadBarcodeIfNeeded()
+        }
     }
 
     /// Whether the page presents the stored credentials as a signed-in account.
@@ -645,9 +664,8 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         showingAlert = true
     }
 
-    /// Re-reads the credentials when the page appears. The fields are only
-    /// rewritten when the signed-in state changed, so text the patron typed
-    /// survives returning from a pushed page.
+    /// Re-reads the credentials when the page appears and applies them only
+    /// if the signed-in state changed; otherwise the page is left as it is.
     func refreshSignInState() {
         let snapshot = credentialSnapshotProvider(libraryAccountID)
         let signedIn = Self.showsSignedIn(snapshot, forceReauthMode: forceReauthMode)
