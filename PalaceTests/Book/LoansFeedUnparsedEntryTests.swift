@@ -184,11 +184,44 @@ final class LoansFeedUnparsedEntryTests: XCTestCase {
         XCTAssertEqual(downloadSpy.deletedIdentifiers, [])
     }
 
+    /// A returned book the patron already opened (`.used`) has its content deleted too.
+    func testSync_WhenWellFormedFeedOmitsUsedBook_RemovesRecordAndContent() async {
+        let feed = Self.feed([Self.entryXML(id: "feed-only")])
+
+        let store = await runSync(feed: feed, held: ["returned"], heldState: .used)
+
+        XCTAssertNil(store.book(forIdentifier: "returned"))
+        XCTAssertEqual(downloadSpy.deletedIdentifiers, ["returned"])
+    }
+
+    /// A sideloaded book never appears in the loans feed and survives the main sync.
+    func testSync_WhenBookIsSideloaded_KeepsIt() async {
+        let feed = Self.feed([Self.entryXML(id: "feed-only")])
+
+        let store = await runSync(feed: feed, held: ["sideloaded", "returned"], sideloaded: ["sideloaded"])
+
+        XCTAssertNotNil(store.book(forIdentifier: "sideloaded"))
+        XCTAssertNil(store.book(forIdentifier: "returned"))
+        XCTAssertEqual(downloadSpy.deletedIdentifiers, ["returned"])
+    }
+
+    /// A hold whose entry fails to parse stays a hold; nothing is deleted for it.
+    func testSync_WhenHoldEntryFailsToParse_KeepsHold() async {
+        let feed = Self.feed([Self.entryXML(id: "feed-only"), Self.unparsableEntry(id: "held-hold")])
+
+        let store = await runSync(feed: feed, held: ["held-hold"], heldState: .holding)
+
+        XCTAssertNotNil(store.book(forIdentifier: "held-hold"))
+        XCTAssertEqual(store.state(for: "held-hold"), .holding)
+        XCTAssertEqual(downloadSpy.deletedIdentifiers, [])
+    }
+
     // MARK: - TPPBookRegistry.processLoansSync (syncAsync)
 
     private func runProcessLoansSync(
         feed: TPPOPDSFeed,
         held: [String],
+        heldState: TPPBookState = .downloadSuccessful,
         sideloaded: Set<String> = []
     ) async -> (registry: TPPBookRegistry, deleted: [String]) {
         // No current account: the facade's mutations skip their disk saves.
@@ -198,7 +231,7 @@ final class LoansFeedUnparsedEntryTests: XCTestCase {
             dependencies: makeDependencies(feed: feed, sideloaded: sideloaded)
         )
         for id in held {
-            registry.addBook(makeBook(id), state: .downloadSuccessful)
+            registry.addBook(makeBook(id), state: heldState)
         }
         await registry._awaitPendingWritesForTesting()
 
@@ -210,6 +243,24 @@ final class LoansFeedUnparsedEntryTests: XCTestCase {
         )
         await registry._awaitPendingWritesForTesting()
         return (registry, deleted)
+    }
+
+    /// A returned `.used` book loses its content on the post-Return sync.
+    func testProcessLoansSync_WhenFeedOmitsUsedBook_DeletesContent() async {
+        let result = await runProcessLoansSync(feed: Self.feed([Self.entryXML(id: "feed-only")]),
+                                               held: ["returned"], heldState: .used)
+
+        XCTAssertNil(result.registry.book(forIdentifier: "returned"))
+        XCTAssertEqual(result.deleted, ["returned"])
+    }
+
+    /// A returned book that was never downloaded has no content to delete.
+    func testProcessLoansSync_WhenFeedOmitsUndownloadedBook_RemovesRecordWithoutDeletingContent() async {
+        let result = await runProcessLoansSync(feed: Self.feed([Self.entryXML(id: "feed-only")]),
+                                               held: ["returned"], heldState: .downloadNeeded)
+
+        XCTAssertNil(result.registry.book(forIdentifier: "returned"))
+        XCTAssertEqual(result.deleted, [])
     }
 
     /// An empty loans feed after a Return keeps the shelf instead of deleting every book.
