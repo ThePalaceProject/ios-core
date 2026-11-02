@@ -394,7 +394,7 @@ public final class AudiobookSessionManager: ObservableObject {
         },
         showOpenFailureAlert: (@MainActor (TPPBook, [String: Any]) -> Void)? = nil,
         contentIsLocal: @escaping @MainActor (String) -> Bool = { AudiobookSessionManager.audiobookContentIsLocal($0) },
-        awaitContentLocal: @escaping ContentLandingWait = { await AudiobookSessionManager.awaitAudiobookContentLocal($0, onProgress: $1) },
+        awaitContentLocal: ContentLandingWait? = nil,
         lcpLicenceNeedsCheck: (@MainActor (TPPBook) -> Bool)? = nil,
         openMonitor: AudiobookOpenMonitor? = nil,
         makeLoader: @escaping @MainActor (Bool) -> AudiobookLoader = { AudiobookLoader(forceRefulfill: $0) }
@@ -417,7 +417,7 @@ public final class AudiobookSessionManager: ObservableObject {
             overdriveRefulfillStarter: overdriveRefulfillStarter,
             showOpenFailureAlert: showOpenFailureAlert ?? AudiobookOpenFailureAlert.presenter(bookRegistry: appContainer.bookRegistry),
             contentIsLocal: contentIsLocal,
-            awaitContentLocal: awaitContentLocal,
+            awaitContentLocal: awaitContentLocal ?? Self.contentLandingWait(progressReporter: appContainer.downloadCenter.progressReporter),
             lcpLicenceNeedsCheck: lcpLicenceNeedsCheck ?? { [downloadCenter = appContainer.downloadCenter] book in
                 AudiobookSessionManager.lcpLicenceNeedsCheck(book, contentURL: downloadCenter.fileUrl(for: book.identifier))
             },
@@ -730,7 +730,7 @@ public final class AudiobookSessionManager: ObservableObject {
                 return .failure(.alreadyLoading)
             }
             if gateResult == .contentUnavailable {
-                Log.info(#file, "PP-4542 gate: content did not finish downloading within the wait window after trigger — surfacing unavailable")
+                Log.info(#file, "PP-4542 gate: content download ended without landing, stalled, or never started after trigger — surfacing unavailable")
                 await dismissAndPresentColdLoadUnavailable()
                 return .failure(.unknown("Audiobook content is still downloading"))
             }
@@ -1534,9 +1534,7 @@ public final class AudiobookSessionManager: ObservableObject {
         isColdLoadRecovery: Bool,
         canOpenLCPBook: Bool,
         contentIsLocal: Bool,
-        awaitContentLanding: (String) async -> Bool = { bookId in
-            await AudiobookSessionManager.awaitAudiobookContentLocal(bookId)
-        }
+        awaitContentLanding: (String) async -> Bool
     ) async -> ContentGateResult {
         guard Self.shouldTriggerContentDownloadBeforeOpen(
             isColdLoadRecovery: isColdLoadRecovery,
@@ -1827,8 +1825,8 @@ public final class AudiobookSessionManager: ObservableObject {
                 // PP-4542: a cold-load failure while content is still downloading.
                 // Re-opening the same stream fails again, so hold the loading
                 // state and re-open from the local file once it lands. Does not
-                // stack with the upfront LCP gate in openAudiobook, so the wait
-                // is a single 180s window.
+                // stack with the upfront LCP gate in openAudiobook. The wait runs
+                // while the download makes progress (PP-5451).
                 guard let book = currentBook else { return }
                 Log.info(#file, "Cold-load failure while content still downloading — awaiting local content before re-opening (PP-4542)")
                 // Park this book so the streaming player's follow-on failure
@@ -1848,7 +1846,7 @@ public final class AudiobookSessionManager: ObservableObject {
                         Log.info(#file, "Content download landed — re-opening audiobook from local path")
                         await self.reopen(book, because: .coldLoad)
                     } else {
-                        Log.info(#file, "Content download did not land within wait window — surfacing unavailable alert")
+                        Log.info(#file, "Content download ended without landing, stalled, or never started — surfacing unavailable alert")
                         await self.dismissAndPresentColdLoadUnavailable()
                     }
                 }

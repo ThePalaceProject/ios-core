@@ -62,9 +62,15 @@ extension AudiobookSessionManager {
     }
 
     /// Awaits a freshly-borrowed audiobook's content download landing on disk by
-    /// polling existence of the local package. Bounded so a stalled/failed
-    /// download can't hold the loading state forever; on timeout the caller
-    /// surfaces the unavailable alert.
+    /// polling existence of the local package.
+    ///
+    /// While the download centre reports a running `.lcpa` transfer the wait has
+    /// no fixed end (PP-5451): an archive of a gigabyte or more can take longer
+    /// than any fixed window and still finish. It ends when that transfer ends:
+    /// it completed, failed, or went quiet past
+    /// `DownloadProgressReporter.contentTransferIdleTimeout`, the window the
+    /// download centre already uses to declare a transfer dead. Until a
+    /// transfer is seen, `timeout` bounds the wait as before.
     ///
     /// Only waits: `gateOnLCPContentDownload` first triggers the content
     /// download, since a license-only `.downloadSuccessful` book may have none
@@ -75,18 +81,44 @@ extension AudiobookSessionManager {
         _ bookId: String,
         timeout: TimeInterval = 180,
         pollInterval: TimeInterval = 0.5,
+        isLocal: @MainActor (String) -> Bool = { AudiobookSessionManager.audiobookContentIsLocal($0) },
+        isTransferActive: @MainActor (String) -> Bool,
+        downloadFraction: @MainActor (String) -> Float = {
+            Float(AppContainer.production().downloadCenter.downloadProgress(for: $0))
+        },
+        now: @MainActor () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+        sleep: @MainActor (TimeInterval) async -> Void = { try? await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) },
         onProgress: (@MainActor @Sendable (Float) -> Void)? = nil
     ) async -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if audiobookContentIsLocal(bookId) { return true }
-            if let onProgress {
-                let fraction = Float(AppContainer.production().downloadCenter.downloadProgress(for: bookId))
-                await onProgress(fraction)
+        let deadline = now() + timeout
+        var sawTransfer = false
+        while sawTransfer || now() < deadline {
+            if isLocal(bookId) { return true }
+            if isTransferActive(bookId) {
+                sawTransfer = true
+            } else if sawTransfer {
+                // A transfer clears its registration after the archive is moved
+                // into place, so this second look sees a completed download.
+                return isLocal(bookId)
             }
-            try? await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
+            if let onProgress {
+                await onProgress(downloadFraction(bookId))
+            }
+            await sleep(pollInterval)
         }
-        return audiobookContentIsLocal(bookId)
+        return isLocal(bookId)
+    }
+
+    /// The production content wait, asking `progressReporter` whether the
+    /// book's `.lcpa` transfer is still running.
+    static func contentLandingWait(progressReporter: DownloadProgressReporter) -> ContentLandingWait {
+        { bookId, onProgress in
+            await awaitAudiobookContentLocal(
+                bookId,
+                isTransferActive: { progressReporter.isLCPContentTransferActive(for: $0) },
+                onProgress: onProgress
+            )
+        }
     }
 
     /// PP-4542: predicate for the upfront LCP content gate. With streaming off,
