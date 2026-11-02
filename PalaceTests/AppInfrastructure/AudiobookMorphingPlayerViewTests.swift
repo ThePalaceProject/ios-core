@@ -779,11 +779,11 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
                        .focus(.playPause))
     }
 
-    /// A focus request made under the loading overlay is dropped and VoiceOver
-    /// lands on Close, so a cold open waits for the controls instead.
-    func testOpeningFocus_fullPlayerUnderLoadingOverlay_waitsForControls() {
+    /// Under the loading overlay a VoiceOver patron hears "Loading" (or the
+    /// download progress) rather than Close, and Play follows once it clears.
+    func testOpeningFocus_fullPlayerUnderLoadingOverlay_focusesLoadingThenPlay() {
         XCTAssertEqual(PlayerView.openingVoiceOverFocusStep(isExpanded: true, overlayCoversControls: true),
-                       .waitForControls)
+                       .focusLoadingThenPlay)
     }
 
     /// The mini player sits under other content, so opening it must not pull

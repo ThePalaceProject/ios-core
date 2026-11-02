@@ -14,24 +14,25 @@ extension AudiobookMorphingPlayerView {
     enum VoiceOverFocusTarget: Hashable {
         case title
         case playPause
+        case loading
     }
 
     enum OpeningFocusStep: Equatable {
         case none
         case focus(VoiceOverFocusTarget)
-        case waitForControls
+        case focusLoadingThenPlay
     }
 
-    /// The full player is opened to listen, so VoiceOver starts on Play. A focus
-    /// request made while the loading overlay covers the controls is dropped and
-    /// VoiceOver picks the first visible element instead, so it waits for the
-    /// controls. The mini player sits under other content and takes no focus.
+    /// The full player is opened to listen, so VoiceOver starts on Play. While the
+    /// loading overlay covers the controls a focus request on Play is dropped, so
+    /// focus goes to the overlay, which says it is loading, and moves to Play once
+    /// the overlay clears. The mini player sits under other content and takes no focus.
     nonisolated static func openingVoiceOverFocusStep(
         isExpanded: Bool,
         overlayCoversControls: Bool
     ) -> OpeningFocusStep {
         guard isExpanded else { return .none }
-        return overlayCoversControls ? .waitForControls : .focus(.playPause)
+        return overlayCoversControls ? .focusLoadingThenPlay : .focus(.playPause)
     }
 
     /// The focus owed by an open that waited, once the overlay stops covering the controls.
@@ -59,8 +60,9 @@ struct AudiobookPlayerOpeningFocus: ViewModifier {
                 ) {
                 case .none:
                     break
-                case .waitForControls:
+                case .focusLoadingThenPlay:
                     waiting = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { focus.wrappedValue = .loading }
                 case .focus(let target):
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { focus.wrappedValue = target }
                 }
