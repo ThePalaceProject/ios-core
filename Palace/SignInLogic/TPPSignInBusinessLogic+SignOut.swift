@@ -29,6 +29,32 @@ private final class SignOutCompletionBox: @unchecked Sendable {
     init(_ call: @escaping () -> Void) { self.call = call }
 }
 
+/// Runs the end of a sign-out once, for whichever comes first: the Adobe
+/// deauthorization callback or the timeout. The callback arrives on an Adobe
+/// thread, hence the lock; the action itself runs on the main actor.
+private final class SignOutDeauthorizationLatch: @unchecked Sendable {
+    private let lock = NSLock()
+    private var fired = false
+    private let action: @MainActor () -> Void
+
+    init(_ action: @escaping @MainActor () -> Void) { self.action = action }
+
+    /// Runs the action on the first call only.
+    /// - Parameter timedOut: whether this call is the timeout, for the log.
+    func fire(timedOut: Bool) {
+        let first = lock.withLock { () -> Bool in
+            guard !fired else { return false }
+            fired = true
+            return true
+        }
+        guard first else { return }
+        if timedOut {
+            Log.error(#file, "Adobe deauthorization did not answer in time — signing out locally")
+        }
+        Task { @MainActor in self.action() }
+    }
+}
+
 extension TPPSignInBusinessLogic {
 
     // MARK: - Sign-Out Race Condition Guard
@@ -58,6 +84,14 @@ extension TPPSignInBusinessLogic {
     private final class AssocKey: Sendable {}
     private static let signOutSnapshotKey = AssocKey()
     private static let signOutInProgressKey = AssocKey()
+    private static let deauthorizationTimeoutKey = AssocKey()
+
+    /// How long sign-out waits for Adobe device deauthorization before it
+    /// signs the patron out locally anyway. Tests shorten it.
+    var adobeDeauthorizationTimeout: TimeInterval {
+        get { objc_getAssociatedObject(self, Unmanaged.passUnretained(Self.deauthorizationTimeoutKey).toOpaque()) as? TimeInterval ?? 30 }
+        set { objc_setAssociatedObject(self, Unmanaged.passUnretained(Self.deauthorizationTimeoutKey).toOpaque(), newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+    }
 
     /// The signInGeneration captured when performLogOut() was called.
     private var signOutSnapshot: Int {
@@ -481,6 +515,45 @@ extension TPPSignInBusinessLogic {
     }
 
     #if FEATURE_DRM_CONNECTOR
+    /// The end of a sign-out once deauthorization has answered or timed out.
+    ///
+    /// Holds the user account strongly and the business logic weakly: the view
+    /// model that owns this object can be released while RMSDK works, and the
+    /// credentials must still leave the keychain (PP-5449).
+    private func finishSignOutAfterDeauthorization() -> @MainActor () -> Void {
+        let account = userAccount
+        let generation = signOutSnapshot
+        let accountID = libraryAccountID
+        let registry = bookRegistry
+        let downloads = bookDownloadsCenter
+        return { [weak self] in
+            if let self {
+                self.completeLogOutProcess()
+                return
+            }
+            // Same re-sign-in guard as `completeLogOutProcess()`.
+            guard account.signInGeneration == generation else { return }
+            downloads.reset(accountID)
+            registry.reset(accountID)
+            account.removeAll()
+
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+                return
+            }
+            #endif
+            let dataStore = WKWebsiteDataStore.default()
+            dataStore.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
+                                 modifiedSince: .distantPast) {
+                if let cookies = HTTPCookieStorage.shared.cookies {
+                    for cookie in cookies {
+                        HTTPCookieStorage.shared.deleteCookie(cookie)
+                    }
+                }
+            }
+        }
+    }
+
     private func deauthorizeDevice() {
         let licensor = userAccount.licensor
 
@@ -520,11 +593,12 @@ extension TPPSignInBusinessLogic {
         }
 
         if let drmAuthorizer = drmAuthorizer {
+            let latch = SignOutDeauthorizationLatch(finishSignOutAfterDeauthorization())
             drmAuthorizer.deauthorize(
                 withUsername: attempt.username,
                 password: attempt.password,
                 userID: attempt.userID,
-                deviceID: attempt.deviceID) { [weak self] success, error in
+                deviceID: attempt.deviceID) { success, error in
                 if case .notFreed(let reason) = AdobeDeauthorization.outcome(success: success, error: error) {
                     // Not "expected". E_DEACT_USER_MISMATCH explains the cause
                     // and changes nothing about the consequence: the patron is
@@ -542,44 +616,13 @@ extension TPPSignInBusinessLogic {
                         metadata: ["reason": reason,
                                    "licensorWasExpired": licensorWasExpired])
                 }
-
-                // Check if self was deallocated during the DRM callback
-                guard let strongSelf = self else {
-                    // Skip WebKit cleanup in test environments (no UI context)
-                    #if DEBUG
-                    if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
-                        return
-                    }
-                    #endif
-
-                    // Even if self is nil, we need to complete the logout process
-                    // Call static/global cleanup methods directly
-                    DispatchQueue.main.async {
-                        let dataStore = WKWebsiteDataStore.default()
-                        let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
-                        dataStore.removeData(ofTypes: dataTypes, modifiedSince: .distantPast) {
-                            if let cookies = HTTPCookieStorage.shared.cookies {
-                                for cookie in cookies {
-                                    HTTPCookieStorage.shared.deleteCookie(cookie)
-                                }
-                            }
-                        }
-                    }
-                    return
-                }
-
-                // Swift 6: the DRM deauthorize completion is `@Sendable` and fires
-                // off the main actor (Adobe deauth thread); `completeLogOutProcess()`
-                // is `@MainActor`-isolated (the whole type is `@MainActor`). Hop onto
-                // the main actor to call it. `strongSelf` is a `@MainActor` class and
-                // therefore Sendable, so the capture is safe. This also corrects the
-                // latent off-main execution of the credential/WebKit cleanup that
-                // Swift 5 did not enforce across the `@Sendable` boundary; the stale-
-                // callback validity check at the top of `completeLogOutProcess()`
-                // remains correct when it runs one main-runloop turn later.
-                Task { @MainActor in
-                    strongSelf.completeLogOutProcess()
-                }
+                latch.fire(timedOut: false)
+            }
+            // RMSDK gives no bound on when, or whether, the callback arrives.
+            // The patron asked to sign out, so after the timeout the local
+            // cleanup runs without it (PP-5449).
+            DispatchQueue.main.asyncAfter(deadline: .now() + adobeDeauthorizationTimeout) {
+                latch.fire(timedOut: true)
             }
         } else {
             self.completeLogOutProcess()

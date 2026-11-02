@@ -106,6 +106,12 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         return result
     }
 
+    /// Whether the page shows the single browser sign-in prompt instead of the
+    /// account list. Only browser-based auths have that prompt.
+    var shouldShowSignInPrompt: Bool {
+        !isSignedIn && businessLogic.selectedAuthentication?.isBrowserBased == true
+    }
+
     var libraryName: String {
         selectedAccount?.name ?? ""
     }
@@ -116,9 +122,9 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
     // MARK: - Initialization
 
-    /// When true, signIn() proceeds even if the user has stale credentials
-    /// (instead of showing sign-out confirmation). Set by SignInModalView for
-    /// re-auth flows triggered by 401 responses.
+    /// When true, stale credentials count as signed out, so the page offers
+    /// sign-in and signIn() proceeds instead of confirming sign-out. Set by
+    /// SignInModalView for re-auth flows triggered by 401 responses.
     var forceReauthMode: Bool = false
 
     convenience init(libraryAccountID: String, appContainer: AppContainer) {
@@ -165,7 +171,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         )
 
         let snapshot = self.credentialSnapshotProvider(libraryAccountID)
-        self.isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
+        self.isSignedIn = Self.showsSignedIn(snapshot, forceReauthMode: false)
 
         super.init()
 
@@ -600,13 +606,26 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     private func accountDidChange() {
         let snapshot = credentialSnapshotProvider(libraryAccountID)
 
-        let newSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
+        let newSignedIn = Self.showsSignedIn(snapshot, forceReauthMode: forceReauthMode)
 
         if isSignedIn != newSignedIn {
             Log.debug(#file, "isSignedIn: \(isSignedIn)->\(newSignedIn), authState=\(snapshot.authState)")
         }
 
-        isSignedIn = newSignedIn
+        applySignedInState(newSignedIn, snapshot: snapshot)
+    }
+
+    /// Whether the page presents the stored credentials as a signed-in account.
+    /// In the re-auth sheet, credentials the server refused count as signed out
+    /// so the patron gets an editable form (PP-5449). Elsewhere they still show
+    /// as signed in so Sign Out stays reachable (PP-3784).
+    static func showsSignedIn(_ snapshot: TPPUserAccount.CredentialSnapshot, forceReauthMode: Bool) -> Bool {
+        guard snapshot.hasCredentials, snapshot.authState != .loggedOut else { return false }
+        return !(forceReauthMode && snapshot.authState == .credentialsStale)
+    }
+
+    private func applySignedInState(_ signedIn: Bool, snapshot: TPPUserAccount.CredentialSnapshot) {
+        isSignedIn = signedIn
 
         if isSignedIn {
             usernameText = snapshot.barcode ?? ""
@@ -626,14 +645,15 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         showingAlert = true
     }
 
+    /// Re-reads the credentials when the page appears. The fields are only
+    /// rewritten when the signed-in state changed, so text the patron typed
+    /// survives returning from a pushed page.
     func refreshSignInState() {
-        let wasSignedIn = isSignedIn
-
         let snapshot = credentialSnapshotProvider(libraryAccountID)
-        isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
+        let signedIn = Self.showsSignedIn(snapshot, forceReauthMode: forceReauthMode)
 
-        if wasSignedIn != isSignedIn {
-            setupTableData()
+        if signedIn != isSignedIn {
+            applySignedInState(signedIn, snapshot: snapshot)
         }
     }
 }
