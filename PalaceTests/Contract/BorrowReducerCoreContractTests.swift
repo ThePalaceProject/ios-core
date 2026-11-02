@@ -27,13 +27,15 @@ final class BorrowReducerCoreContractTests: XCTestCase {
 
     func test_responseState_borrowReturnedHold_raceError() {
         // Pre-borrow was a loan-class title (unlimited) but the response is
-        // reserved → CM Loan→Hold race → .holding + hold-copy-unavailable error.
+        // reserved at position 1 → CM Loan→Hold race → .holding + .holdRequeued(position: 1).
         let pre = Self.book(availability: TPPOPDSAcquisitionAvailabilityUnlimited())
         let post = Self.book(availability: TPPOPDSAcquisitionAvailabilityReserved(
             holdPosition: 1, copiesTotal: 1, since: nil, until: nil))
         let r = BorrowReducerCore.responseState(for: post, preBorrowBook: pre)
         XCTAssertEqual(r.state, .holding)
-        XCTAssertNotNil(r.error)
+        guard case .holdRequeued(position: 1)? = r.error else {
+            return XCTFail("expected .holdRequeued(position: 1), got \(String(describing: r.error))")
+        }
     }
 
     func test_responseState_deliberatePlaceHold_noError() {

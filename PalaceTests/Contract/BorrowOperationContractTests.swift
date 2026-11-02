@@ -235,7 +235,9 @@ final class BorrowOperationContractTests: XCTestCase {
             _ = try await operation.borrowAsync(preBorrowBook, attemptDownload: true)
             XCTFail("Hold-race response must throw .holdRequeued")
         } catch {
-            // expected
+            guard case .holdRequeued(position: 1)? = error as? PalaceError else {
+                return XCTFail("expected .holdRequeued(position: 1), got \(error)")
+            }
         }
         await yieldSettle()
         ContractSnapshot.assert(log, named: "holdResponse_doesNotCallStartDownload")

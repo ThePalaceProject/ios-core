@@ -103,6 +103,34 @@ final class ExpiredReadyHoldTests: XCTestCase {
         XCTAssertEqual(BookButtonState.managingHold.buttonTypes(book: open, previewEnabled: false, now: now), [.get, .cancelHold])
     }
 
+    // MARK: - BookCellModel (production caller, real clock)
+
+    private func cellModel(holdUntil until: Date) -> BookCellModel {
+        let book = book(with: TPPOPDSAcquisitionAvailabilityReady(since: nil, until: until))
+        let registry = TPPBookRegistryMock()
+        registry.addBook(book, state: .holding)
+        let container = makeTestAppContainer()
+        return BookCellModel(book: book, imageCache: MockImageCache(), bookRegistry: registry,
+                             downloadCenter: container.downloadCenter, accountsManager: container.accountsManager,
+                             samplePreviewManager: container.samplePreviewManager, readerService: container.readerService)
+    }
+
+    /// A My Books cell for a ready hold whose window has closed offers no Get button.
+    func testBookCellModel_HoldingReadyUntilDistantPast_OffersNoGet() {
+        let model = cellModel(holdUntil: .distantPast)
+
+        XCTAssertEqual(model.stableButtonState, .holding)
+        XCTAssertFalse(model.buttonTypes.contains(.get), "\(model.buttonTypes)")
+        XCTAssertTrue(model.buttonTypes.contains(.manageHold), "\(model.buttonTypes)")
+    }
+
+    func testBookCellModel_HoldingReadyUntilDistantFuture_OffersGet() {
+        let model = cellModel(holdUntil: .distantFuture)
+
+        XCTAssertEqual(model.stableButtonState, .canBorrow)
+        XCTAssertTrue(model.buttonTypes.contains(.get), "\(model.buttonTypes)")
+    }
+
     // MARK: - BorrowReducerCore.responseState (Borrow returned a hold)
 
     private func borrowResponse(holdPosition: UInt) -> (state: TPPBookState, error: PalaceError?) {
