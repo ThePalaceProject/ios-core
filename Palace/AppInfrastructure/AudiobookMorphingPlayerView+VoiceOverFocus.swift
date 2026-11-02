@@ -14,25 +14,25 @@ extension AudiobookMorphingPlayerView {
     enum VoiceOverFocusTarget: Hashable {
         case title
         case playPause
-        case loading
     }
 
     enum OpeningFocusStep: Equatable {
         case none
         case focus(VoiceOverFocusTarget)
-        case focusLoadingThenPlay
+        case announceLoadingThenPlay
     }
 
     /// The full player is opened to listen, so VoiceOver starts on Play. While the
     /// loading overlay covers the controls a focus request on Play is dropped, so
-    /// focus goes to the overlay, which says it is loading, and moves to Play once
-    /// the overlay clears. The mini player sits under other content and takes no focus.
+    /// the open says it is loading and focuses Play once the overlay clears. It
+    /// announces rather than focusing the overlay: when a focused overlay goes
+    /// away VoiceOver moves to Close itself. The mini player takes no focus.
     nonisolated static func openingVoiceOverFocusStep(
         isExpanded: Bool,
         overlayCoversControls: Bool
     ) -> OpeningFocusStep {
         guard isExpanded else { return .none }
-        return overlayCoversControls ? .focusLoadingThenPlay : .focus(.playPause)
+        return overlayCoversControls ? .announceLoadingThenPlay : .focus(.playPause)
     }
 
     /// The focus owed by an open that waited, once the overlay stops covering the controls.
@@ -60,10 +60,14 @@ struct AudiobookPlayerOpeningFocus: ViewModifier {
                 ) {
                 case .none:
                     break
-                case .focusLoadingThenPlay:
+                case .announceLoadingThenPlay:
                     waiting = true
                     // Skip if the overlay already cleared and focus moved on to Play.
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { if waiting { focus.wrappedValue = .loading } }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                        if waiting {
+                            UIAccessibility.post(notification: .announcement, argument: Strings.Generic.audiobookLoading)
+                        }
+                    }
                 case .focus(let target):
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { focus.wrappedValue = target }
                 }

@@ -1156,7 +1156,6 @@ struct AudiobookMorphingPlayerView: View {
                 overallDownloadProgress: presenter.overallDownloadProgress
             ))
         ))
-        .accessibilityFocused($voiceOverFocus, equals: .loading)
     }
 
     /// Shown while the audiobook loads; a fresh open presents the player at once
@@ -1164,7 +1163,6 @@ struct AudiobookMorphingPlayerView: View {
     /// when `audiobookSession.isLoaded` flips.
     private var playerLoadingSkeleton: some View {
         AudiobookPlayerLoadingSkeleton(bottomInset: bottomSafeInset)
-            .accessibilityFocused($voiceOverFocus, equals: .loading)
     }
 
     // MARK: - Toast overlay (toolkit `bookmarkAddedToastView` parity)
