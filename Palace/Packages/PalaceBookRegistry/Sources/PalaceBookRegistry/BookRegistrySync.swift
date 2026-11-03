@@ -574,16 +574,13 @@ final class BookRegistrySync: @unchecked Sendable {
         // state the merge changes is sent there after the barrier releases.
         var stateChanges: [(identifier: String, state: TPPBookState)] = []
         self.store.mutateRegistrySync { registry in
-          var recordsToDelete = Set<String>(registry.keys)
-          // Side-loaded books never appear in the loans feed. Exempt them so
-          // reconciliation neither un-registers them (:480-481) nor deletes
-          // their on-disk content (:496-497). See sideloading-plan.md R1.
-          recordsToDelete.subtract(dependencies.sideloadedIdentifiers())
+          let localIdentifiers = Set<String>(registry.keys)
+          var feedIdentifiers = Set<String>()
           for entry in feed.entries {
             guard let opdsEntry = entry as? TPPOPDSEntry,
                   let book = TPPBook(entry: opdsEntry)
             else { continue }
-            recordsToDelete.remove(book.identifier)
+            feedIdentifiers.insert(book.identifier)
 
             if let record = registry[book.identifier] {
               // Follow the server between Holds and My Books: a hold borrowed on
@@ -622,41 +619,36 @@ final class BookRegistrySync: @unchecked Sendable {
             }
           }
 
-          // Guard against bulk deletion from truncated server responses
-          let localCount = registry.count
-          let feedCount = feed.entries.count
-          let deletionCount = recordsToDelete.count
-          let deletionRatio = localCount > 0 ? Double(deletionCount) / Double(localCount) : 0
-
-          let shouldSkipBulkDeletion = BookRegistrySync.shouldSkipBulkDeletion(
-            localCount: localCount, feedCount: feedCount, deletionCount: deletionCount
+          // Side-loaded books never appear in the loans feed, so they are
+          // exempt; an empty feed or an unreadable entry removes nothing
+          // (sideloading-plan.md R1, PP-5452).
+          let recordsToDelete = LoansFeedReconciliation.identifiersToRemove(
+            localIdentifiers: localIdentifiers,
+            feedIdentifiers: feedIdentifiers,
+            unparsedEntryIdentifiers: feed.unparsedEntryIdentifiers,
+            sideloadedIdentifiers: dependencies.sideloadedIdentifiers()
           )
 
-          let shouldWarnLargeDeletion = localCount > 4
-            && deletionRatio > 0.5
-            && deletionCount > 2
-
-          if shouldSkipBulkDeletion {
-            Log.error(#file, "Sync returned EMPTY feed but \(localCount) local books exist - skipping deletion (possible server issue)")
-          } else if shouldWarnLargeDeletion {
+          let localCount = registry.count
+          let deletionCount = recordsToDelete.count
+          let deletionRatio = localCount > 0 ? Double(deletionCount) / Double(localCount) : 0
+          if localCount > 4 && deletionRatio > 0.5 && deletionCount > 2 {
             Log.warn(#file, "Sync would remove \(deletionCount)/\(localCount) books (\(Int(deletionRatio * 100))%) - proceeding but logging for investigation")
           }
 
-          if !shouldSkipBulkDeletion {
-            recordsToDelete.forEach { identifier in
-              guard let record = registry[identifier] else { return }
+          recordsToDelete.forEach { identifier in
+            guard let record = registry[identifier] else { return }
 
-              let wasDownloaded = record.state == .downloadSuccessful || record.state == .used
+            let wasDownloaded = record.state == .downloadSuccessful || record.state == .used
 
-              if wasDownloaded {
-                Log.info(#file, "Removing expired/returned book '\(record.book.title)' (not in server feed)")
-                booksToDeleteLocally.append(record.book)
-              }
-
-              registry[identifier]?.state = .unregistered
-              registry.removeValue(forKey: identifier)
-              changesMade = true
+            if wasDownloaded {
+              Log.info(#file, "Removing expired/returned book '\(record.book.title)' (not in server feed)")
+              booksToDeleteLocally.append(record.book)
             }
+
+            registry[identifier]?.state = .unregistered
+            registry.removeValue(forKey: identifier)
+            changesMade = true
           }
           // NOTE: do NOT call save(for:) inside the mutateRegistrySync barrier —
           // save() reads the store's snapshot via performSync, which tries to

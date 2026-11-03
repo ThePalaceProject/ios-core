@@ -69,8 +69,9 @@ extension TPPBookRegistry {
             throw PalaceError.authentication(.accountNotFound)
         }
 
+        let container = AppContainer.production()
         do {
-            let feed = try await AppContainer.production().opdsFeedService.fetchFeed(
+            let feed = try await container.opdsFeedService.fetchFeed(
                 from: loansURL,
                 resetCache: true,
                 useToken: true
@@ -80,7 +81,12 @@ extension TPPBookRegistry {
             // `SendableErrorDocument` carrier so the `[AnyHashable: Any]?` value
             // can cross the `@MainActor` → nonisolated actor-hop safely; unbox
             // here on the nonisolated side to preserve the public tuple shape.
-            let result = await processLoansSync(feed: feed)
+            let downloadCenter = container.downloadCenter
+            let result = await processLoansSync(
+                feed: feed,
+                sideloadedIdentifiers: container.sideloadedBookRegistry.identifiers,
+                deleteLocalContent: { downloadCenter.deleteLocalContent(for: $0) }
+            )
             return (result.errorDocument.value, result.hasNewBooks)
 
         } catch let error as PalaceError {
@@ -89,13 +95,18 @@ extension TPPBookRegistry {
         }
     }
 
-    /// Processes a loans feed for sync.
+    /// Processes a loans feed for sync. Removals follow
+    /// `LoansFeedReconciliation`, the same rule `BookRegistrySync.sync` uses.
     ///
     /// Returns the error document inside a `SendableErrorDocument` carrier so the
     /// non-Sendable `[AnyHashable: Any]?` can cross the `@MainActor` → nonisolated
     /// boundary under Swift 6. The value is currently always `nil` on this path.
     @MainActor
-    private func processLoansSync(feed: TPPOPDSFeed) async -> (errorDocument: SendableErrorDocument, hasNewBooks: Bool) {
+    func processLoansSync(
+        feed: TPPOPDSFeed,
+        sideloadedIdentifiers: Set<String>,
+        deleteLocalContent: (String) -> Void
+    ) async -> (errorDocument: SendableErrorDocument, hasNewBooks: Bool) {
         var changesMade = false
 
         var newBooks: [TPPBook] = []
@@ -109,7 +120,12 @@ extension TPPBookRegistry {
 
         let currentBooks = self.allBooks
         let currentIds = Set(currentBooks.map { $0.identifier })
-        let newIds = Set(newBooks.map { $0.identifier })
+        let removedIds = LoansFeedReconciliation.identifiersToRemove(
+            localIdentifiers: currentIds,
+            feedIdentifiers: Set(newBooks.map { $0.identifier }),
+            unparsedEntryIdentifiers: feed.unparsedEntryIdentifiers,
+            sideloadedIdentifiers: sideloadedIdentifiers
+        )
 
         for book in newBooks {
             if currentIds.contains(book.identifier) {
@@ -121,11 +137,10 @@ extension TPPBookRegistry {
             changesMade = true
         }
 
-        let removedIds = currentIds.subtracting(newIds)
         for identifier in removedIds {
             let state = self.state(for: identifier)
             if state == .downloadSuccessful || state == .used {
-                AppContainer.production().downloadCenter.deleteLocalContent(for: identifier)
+                deleteLocalContent(identifier)
             }
             self.setState(.unregistered, for: identifier)
             self.removeBook(forIdentifier: identifier)
