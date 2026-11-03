@@ -224,7 +224,7 @@ final class BorrowOperationContractTests: XCTestCase {
     /// Loan→Hold race, PP-4178), BorrowOperation:
     ///   - registers `.holding` state
     ///   - announces start (via silent service — not in log)
-    ///   - throws `.bookRegistry(.holdCopyUnavailable)`
+    ///   - throws `.holdRequeued(position: 1)` (the reserved fixture's position)
     ///   - does NOT call startDownload regardless of attemptDownload.
     func test_borrowAsync_holdResponse_doesNotCallStartDownload() async {
         let preBorrowBook = Self.makeBook(identifier: "HOLD-PRE", availability: .unlimited)
@@ -233,9 +233,11 @@ final class BorrowOperationContractTests: XCTestCase {
 
         do {
             _ = try await operation.borrowAsync(preBorrowBook, attemptDownload: true)
-            XCTFail("Hold-race response must throw .holdCopyUnavailable")
+            XCTFail("Hold-race response must throw .holdRequeued")
         } catch {
-            // expected
+            guard case .holdRequeued(position: 1)? = error as? PalaceError else {
+                return XCTFail("expected .holdRequeued(position: 1), got \(error)")
+            }
         }
         await yieldSettle()
         ContractSnapshot.assert(log, named: "holdResponse_doesNotCallStartDownload")
