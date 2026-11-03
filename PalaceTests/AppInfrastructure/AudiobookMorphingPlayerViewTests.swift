@@ -768,6 +768,43 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
                        "arming set changed — confirm the new membership is deliberate, because this is the rule that keeps `.loadError` reachable")
     }
 
+    // MARK: - VoiceOver focus on open (PP-5450)
+
+    private typealias PlayerView = AudiobookMorphingPlayerView
+
+    /// A VoiceOver patron opens the full player to listen, so focus starts on
+    /// Play rather than the title eight or nine swipes away.
+    func testOpeningFocus_fullPlayerWithControlsVisible_focusesPlayPause() {
+        XCTAssertEqual(PlayerView.openingVoiceOverFocusStep(isExpanded: true, overlayCoversControls: false),
+                       .focus(.playPause))
+    }
+
+    /// Under the loading overlay a VoiceOver patron hears that the book is
+    /// loading, and focus moves to Play once the overlay clears. Focusing the
+    /// overlay itself handed focus to Close when it disappeared.
+    func testOpeningFocus_fullPlayerUnderLoadingOverlay_announcesLoadingThenPlay() {
+        XCTAssertEqual(PlayerView.openingVoiceOverFocusStep(isExpanded: true, overlayCoversControls: true),
+                       .announceLoadingThenPlay)
+    }
+
+    /// The mini player sits under other content, so opening it must not pull
+    /// VoiceOver focus away from what the patron was reading.
+    func testOpeningFocus_miniPlayer_movesNoFocus() {
+        XCTAssertEqual(PlayerView.openingVoiceOverFocusStep(isExpanded: false, overlayCoversControls: false), .none)
+        XCTAssertEqual(PlayerView.openingVoiceOverFocusStep(isExpanded: false, overlayCoversControls: true), .none)
+    }
+
+    /// The open that waited gets Play once the overlay clears.
+    func testDeferredFocus_whenOverlayClears_focusesPlayPause() {
+        XCTAssertEqual(PlayerView.focusWhenControlsUncovered(waiting: true, overlayCoversControls: false), .playPause)
+    }
+
+    /// Nothing moves focus while the overlay still covers the controls, or when
+    /// no open is waiting (a later overlay, e.g. a mid-session download).
+    func testDeferredFocus_whileCoveredOrNotWaiting_movesNoFocus() {
+        XCTAssertNil(PlayerView.focusWhenControlsUncovered(waiting: true, overlayCoversControls: true))
+        XCTAssertNil(PlayerView.focusWhenControlsUncovered(waiting: false, overlayCoversControls: false))
+    }
 }
 
 // MARK: - PP-5205 — the chapter name and the timecodes share one observed source
