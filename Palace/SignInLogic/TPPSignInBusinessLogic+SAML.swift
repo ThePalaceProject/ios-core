@@ -92,16 +92,16 @@ extension TPPSignInBusinessLogic {
     /// Logout is best-effort: any server error calls `completion` without
     /// surfacing anything to the patron, since local credentials are already
     /// cleared at this point in the pipeline.
-    func samlLogOut(accessToken: String?, completion: @escaping @Sendable () -> Void) {
+    /// The CM saml_logout_redirect request, or nil when the library has no
+    /// logout link, there is no token, or the URL cannot be built.
+    func samlLogoutRequest(accessToken: String?) -> URLRequest? {
         guard let logoutHref = selectedAuthentication?.samlLogoutHref else {
-            completion()
-            return
+            return nil
         }
 
         guard let token = accessToken else {
             Log.warn(#file, "SAML logout: no access token available — skipping CM session invalidation")
-            completion()
-            return
+            return nil
         }
 
         guard let logoutURL = Self.expandSAMLLogoutHref(
@@ -110,14 +110,21 @@ extension TPPSignInBusinessLogic {
             postLogoutRedirectURI: Self.samlPostLogoutRedirectURI
         ) else {
             Log.warn(#file, "SAML logout: URL could not be constructed — skipping CM session invalidation")
-            completion()
-            return
+            return nil
         }
 
         var request = URLRequest(url: logoutURL, applyingCustomUserAgent: true)
         request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        return request
+    }
 
-        Log.debug(#file, "SAML logout: calling CM saml_logout_redirect: \(logoutURL)")
+    func samlLogOut(accessToken: String?, completion: @escaping @Sendable () -> Void) {
+        guard let request = samlLogoutRequest(accessToken: accessToken) else {
+            completion()
+            return
+        }
+
+        Log.debug(#file, "SAML logout: calling CM saml_logout_redirect: \(request.url?.absoluteString ?? "")")
 
         // PP-4986: built for `libraryAccountID`, not necessarily the current library.
         // PP-5301: `await`, not a completion — a completion arrives off the main

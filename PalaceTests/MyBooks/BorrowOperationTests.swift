@@ -381,10 +381,10 @@ final class BorrowOperationTests: XCTestCase {
         }
 
         // Side effects are awaited inside borrowAsync (see above) — assert directly.
-        // basic auth + creds + .unregistered → not SQ-007 → not
-        // browser-reauth → no automatic recovery → generic alert.
-        XCTAssertGreaterThanOrEqual(alertCalls.count, 1,
-                                    ".unregistered must NOT trigger SQ-007 suppression; alert proceeds")
+        // basic auth + creds + .unregistered → not SQ-007 → the refused
+        // barcode/PIN opens the sign-in sheet (PP-5449).
+        XCTAssertEqual(signInModalCompletions.count, 1,
+                       ".unregistered must NOT trigger SQ-007 suppression; the sign-in sheet opens")
     }
 
     /// Boundary: `.holding` IS a loan-class state — SQ-007 applies.
@@ -467,6 +467,111 @@ final class BorrowOperationTests: XCTestCase {
                        ":636 would fall through to .showGenericError and fire the alert.")
     }
 
+    // MARK: - PP-5449: stored barcode/PIN refused by the server
+
+    private func failBorrowWithRefusedCredentials() {
+        let problemDoc = Self.makeProblemDoc(type: TPPProblemDocument.TypeInvalidCredentials)
+        fetchBookResult.value = .failure(NSError(
+            domain: "test", code: 401,
+            userInfo: ["problemDocument": problemDoc as Any]
+        ))
+    }
+
+    private func borrowExpectingFailure() async {
+        do {
+            _ = try await operation.borrowAsync(book, attemptDownload: false)
+            XCTFail("A refused borrow must rethrow")
+        } catch {
+            // expected
+        }
+    }
+
+    /// Stale barcode/PIN go to the server; its refusal opens the sign-in sheet
+    /// once, with no error alert on top.
+    func testBorrow_WhenServerRefusesStaleBasicCredentials_OpensSignInSheetOnce() async {
+        userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "old")
+        userAccount.setAuthState(.credentialsStale)
+        userAccount._authDefinition = SyntheticAuthDef.basicNeedsAuth
+        failBorrowWithRefusedCredentials()
+
+        await borrowExpectingFailure()
+
+        XCTAssertEqual(signInModalCompletions.count, 1)
+        XCTAssertEqual(alertCalls.count, 0)
+    }
+
+    /// After the patron signs in with new credentials the borrow runs again
+    /// and completes.
+    func testBorrow_WhenPatronSignsInAfterRefusal_RetriesAndBorrows() async throws {
+        userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "old")
+        userAccount.setAuthState(.loggedIn)
+        userAccount._authDefinition = SyntheticAuthDef.basicNeedsAuth
+        failBorrowWithRefusedCredentials()
+        await borrowExpectingFailure()
+        let completion = try XCTUnwrap(signInModalCompletions.first)
+
+        userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "new")
+        userAccount.setAuthState(.loggedIn)
+        fetchBookResult.value = .success(book)
+        completion()
+        await operation._awaitPendingRetriesForTesting()
+
+        XCTAssertEqual(fetchBookCalls.value.count, 2, "The borrow did not run again after sign-in")
+        XCTAssertEqual(bookRegistry.state(for: book.identifier), .downloadNeeded)
+        XCTAssertEqual(alertCalls.count, 0)
+    }
+
+    /// Cancelling the sheet leaves the refused credentials stored; retrying
+    /// with them would only be refused again.
+    func testBorrow_WhenPatronCancelsSignInAfterRefusal_DoesNotRetry() async throws {
+        userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "old")
+        userAccount.setAuthState(.loggedIn)
+        userAccount._authDefinition = SyntheticAuthDef.basicNeedsAuth
+        failBorrowWithRefusedCredentials()
+        await borrowExpectingFailure()
+        let completion = try XCTUnwrap(signInModalCompletions.first)
+
+        completion()
+        await operation._awaitPendingRetriesForTesting()
+
+        XCTAssertEqual(fetchBookCalls.value.count, 1)
+        XCTAssertFalse(BorrowOperation.isBorrowReauthGatedForTesting(book.identifier),
+                       "A later tap must be able to ask for sign-in again")
+    }
+
+    /// A retry the server also refuses reports the failure instead of
+    /// opening the sheet again.
+    func testBorrow_WhenRetryAfterSignInIsRefused_ReportsError() async throws {
+        userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "old")
+        userAccount.setAuthState(.loggedIn)
+        userAccount._authDefinition = SyntheticAuthDef.basicNeedsAuth
+        failBorrowWithRefusedCredentials()
+        await borrowExpectingFailure()
+        let completion = try XCTUnwrap(signInModalCompletions.first)
+
+        userAccount.setAuthState(.loggedIn)
+        completion()
+        await operation._awaitPendingRetriesForTesting()
+
+        XCTAssertEqual(fetchBookCalls.value.count, 2)
+        XCTAssertEqual(signInModalCompletions.count, 1, "The sheet opened a second time")
+        XCTAssertEqual(alertCalls.count, 1)
+    }
+
+    /// The barcode/PIN branch is for basic auth only; a refused token keeps the
+    /// error alert it had.
+    func testBorrow_WhenServerRefusesTokenCredentials_ShowsErrorNotSignInSheet() async {
+        userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
+        userAccount.setAuthState(.loggedIn)
+        userAccount._authDefinition = SyntheticAuthDef.token
+        failBorrowWithRefusedCredentials()
+
+        await borrowExpectingFailure()
+
+        XCTAssertEqual(signInModalCompletions.count, 0)
+        XCTAssertEqual(alertCalls.count, 1)
+    }
+
     // MARK: - Helpers (items #7 / #8)
 
     /// Synthesizes a minimal problem document with the given type.
@@ -492,6 +597,22 @@ final class BorrowOperationTests: XCTestCase {
               "type": "http://opds-spec.org/auth/basic",
               "description": "Basic auth",
               "labels": {"login": "Barcode", "password": "PIN"}
+            }
+            """
+            let docAuth = try! JSONDecoder().decode(
+                OPDS2AuthenticationDocument.Authentication.self,
+                from: Data(json.utf8)
+            )
+            return AccountDetails.Authentication(auth: docAuth)
+        }
+
+        /// Token auth: credentials collected on-device, but not barcode/PIN.
+        static var token: AccountDetails.Authentication {
+            let json = """
+            {
+              "type": "http://thepalaceproject.org/authtype/basic-token",
+              "description": "Token",
+              "links": [{"rel": "authenticate", "href": "https://cm.example.com/token"}]
             }
             """
             let docAuth = try! JSONDecoder().decode(
