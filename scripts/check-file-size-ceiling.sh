@@ -96,11 +96,11 @@ read -r -d '' ALLOWLIST <<'EOF'
 # moved to BorrowErrorAlert.swift; 1161 -> 1160 when the auth-retry handler's
 # composition moved to MyBooksDownloadCenter+AuthRetry.swift.
 1160 Palace/MyBooks/MyBooksDownloadCenter.swift
-1006 Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift
+957 Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift
 # 867 -> 861 when the download-error admission rules moved to
 # BookDetailErrorAdmission.swift; 861 -> 840 when PP-5402 moved openBook and
 # the Listen-before-fetch handling to BookDetailViewModel+StreamableLoanListen.swift.
-840  Palace/Book/UI/BookDetail/BookDetailViewModel.swift
+839  Palace/Book/UI/BookDetail/BookDetailViewModel.swift
 834  Palace/Utilities/Localization/Strings.swift
 # AccountsManager is 363 under this metric: it was pinned at 367 after #1520
 # landed `_ = registryLoader` in init, then lowered when #1624 moved the DEBUG
@@ -115,7 +115,7 @@ read -r -d '' ALLOWLIST <<'EOF'
 # only ratchets down, so pinning them costs nothing and closes the regression.
 362  Palace/Accounts/Library/AccountsManager.swift
 613  Palace/SignInLogic/TPPSignInBusinessLogic.swift
-500  Palace/MyBooks/BorrowOperation.swift
+471  Palace/MyBooks/BorrowOperation.swift
 # Package source is in scope (see THE RULE). This one was already over the
 # ceiling inside the old blind spot; pinned here at its measured size so the
 # scope widening lands green rather than red-on-arrival.

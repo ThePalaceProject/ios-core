@@ -77,16 +77,16 @@ extension TPPSignInBusinessLogic {
     ///
     /// Logout is best-effort: any server error calls `completion` without
     /// surfacing anything to the patron, since local credentials are already cleared.
-    func oidcLogOut(accessToken: String?, completion: @escaping @Sendable () -> Void) {
+    /// The CM end-session request, or nil when the library has no logout link,
+    /// there is no token, or the URL cannot be built.
+    func oidcLogoutRequest(accessToken: String?) -> URLRequest? {
         guard let logoutHref = selectedAuthentication?.oidcLogoutHref else {
-            completion()
-            return
+            return nil
         }
 
         guard let token = accessToken else {
             Log.warn(#file, "OIDC logout: no access token available — skipping CM session invalidation")
-            completion()
-            return
+            return nil
         }
 
         let expandedHref: String
@@ -98,8 +98,7 @@ extension TPPSignInBusinessLogic {
                 )
             } catch {
                 Log.warn(#file, "OIDC logout URI template expansion failed: \(error) — skipping CM session invalidation")
-                completion()
-                return
+                return nil
             }
         } else {
             expandedHref = logoutHref
@@ -107,14 +106,21 @@ extension TPPSignInBusinessLogic {
 
         guard let logoutURL = URL(string: expandedHref) else {
             Log.warn(#file, "OIDC logout URL could not be constructed — skipping CM session invalidation")
-            completion()
-            return
+            return nil
         }
 
         var request = URLRequest(url: logoutURL, applyingCustomUserAgent: true)
         request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        return request
+    }
 
-        Log.debug(#file, "OIDC logout: calling CM end-session endpoint: \(logoutURL)")
+    func oidcLogOut(accessToken: String?, completion: @escaping @Sendable () -> Void) {
+        guard let request = oidcLogoutRequest(accessToken: accessToken) else {
+            completion()
+            return
+        }
+
+        Log.debug(#file, "OIDC logout: calling CM end-session endpoint: \(request.url?.absoluteString ?? "")")
 
         // PP-4986: built for `libraryAccountID`, not necessarily the current library.
         // PP-5301: `await`, not a completion — a completion arrives off the main
