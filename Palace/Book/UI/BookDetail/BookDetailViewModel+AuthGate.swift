@@ -18,10 +18,10 @@ extension BookDetailViewModel {
         case other
     }
 
-    /// Get borrows only a book that is not on loan. A ready hold's Get and a
-    /// loan's Download are not routed through the borrow refusal path.
+    /// Get on a book not on loan or on a ready hold borrows first, through
+    /// the refusal path; Download of a loan is a fulfilment.
     static func gatedRequest(forDownloadFrom state: TPPBookState) -> GatedRequest {
-        state == .unregistered ? .borrow : .other
+        DownloadStartReducer.borrowsBeforeDownload(state) ? .borrow : .other
     }
 
     /// Whether the gate asks the patron to sign in before running the action.

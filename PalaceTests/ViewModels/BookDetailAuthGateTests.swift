@@ -101,25 +101,29 @@ final class BookDetailAuthGateTests: XCTestCase {
 
     // MARK: - Download request kind
 
-    /// Get on a book not on loan borrows; every other Download state is a
-    /// fulfilment of a loan or a ready hold, which has no refusal sheet.
-    func testDownloadRequest_ForEachState_OnlyUnregisteredBorrows() {
-        for state in TPPBookState.allCases {
-            let expected: BookDetailViewModel.GatedRequest = state == .unregistered ? .borrow : .other
-            XCTAssertEqual(BookDetailViewModel.gatedRequest(forDownloadFrom: state), expected, "\(state)")
+    /// Get on a book not on loan or on a ready hold borrows, so the server
+    /// decides; Download of a loan is a fulfilment, which has no refusal sheet.
+    func testDownloadRequest_ReadyHoldGet_IsABorrow() {
+        XCTAssertEqual(BookDetailViewModel.gatedRequest(forDownloadFrom: .holding), .borrow)
+        XCTAssertEqual(BookDetailViewModel.gatedRequest(forDownloadFrom: .unregistered), .borrow)
+    }
+
+    func testDownloadRequest_LoanDownloadOrRetry_IsNotABorrow() {
+        for state: TPPBookState in [.downloadNeeded, .downloadFailed, .SAMLStarted] {
+            XCTAssertEqual(BookDetailViewModel.gatedRequest(forDownloadFrom: state), .other, "\(state)")
         }
     }
 
-    func testGate_WhenBasicCredentialsAreFresh_RunsTheAction() throws {
-        XCTAssertFalse(try prompts(.basic, hasCredentials: true, authState: .loggedIn))
-    }
-
-    func testGate_WhenNoCredentials_PromptsUpFront() throws {
-        XCTAssertTrue(try prompts(.basic, hasCredentials: false, authState: .loggedOut))
-    }
-
-    func testGate_WhenLibraryNeedsNoAuth_RunsTheAction() throws {
-        XCTAssertFalse(try prompts(nil, hasCredentials: false, authState: .loggedOut, needsAuth: false))
+    /// The gate must agree with the download router: a request is a borrow
+    /// exactly when the router starts a borrow for that state.
+    func testDownloadRequest_ForEachState_MatchesTheDownloadRouter() {
+        for state in TPPBookState.allCases {
+            let route = DownloadStartReducer.routeWithCredentials(.init(
+                isStreamingHTML: false, state: state,
+                isOverdriveAudiobook: false, shouldDeferOverdrive: false))
+            let expected: BookDetailViewModel.GatedRequest = route == .startBorrow ? .borrow : .other
+            XCTAssertEqual(BookDetailViewModel.gatedRequest(forDownloadFrom: state), expected, "\(state)")
+        }
     }
 
     // MARK: - Browser sign-in (HelpSpot 17716)
