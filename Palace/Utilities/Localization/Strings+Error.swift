@@ -7,9 +7,20 @@
 //
 
 import Foundation
+import PalaceBookModel
 
 extension Strings {
     struct Error {
+        /// A Borrow that came back as a hold; the position is formatted as an ordinal ("7th").
+        static func holdRequeued(position: UInt) -> String {
+            String(
+                format: NSLocalizedString(
+                    "You are now %@ in line. We'll notify you when a copy becomes available.",
+                    comment: "Shown after a borrow attempt placed the patron in the hold queue. %@ is the queue position as an ordinal, e.g. '7th'."
+                ),
+                Int(position).ordinal()
+            )
+        }
         static let loginFailedErrorTitle = NSLocalizedString("Login Failed", comment: "")
         static let loadFailedError = pageLoadFailedError
         static let invalidCredentialsErrorTitle = NSLocalizedString("Invalid Credentials", comment: "")

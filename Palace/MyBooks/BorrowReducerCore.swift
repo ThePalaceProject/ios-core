@@ -46,10 +46,13 @@ enum BorrowReducerCore {
             },
             limited: { _ in state = .downloadNeeded },
             unlimited: { _ in state = .downloadNeeded },
-            reserved: { _ in
+            reserved: { reserved in
                 state = .holding
                 if !userTappedPlaceHold {
-                    error = .bookRegistry(.holdCopyUnavailable)
+                    // Position 0 means the feed gave none.
+                    error = reserved.holdPosition > 0
+                        ? .holdRequeued(position: reserved.holdPosition)
+                        : .bookRegistry(.holdCopyUnavailable)
                 }
             },
             ready: { _ in state = .downloadNeeded }

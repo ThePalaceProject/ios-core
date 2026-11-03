@@ -147,7 +147,7 @@ final class BorrowOperationTests: XCTestCase {
 
     // MARK: - Holding race (PP-4178)
 
-    func testBorrowAsync_holdingRace_throwsHoldCopyUnavailableAndSetsHolding() async {
+    func testBorrowAsync_holdingRace_throwsHoldRequeuedAndSetsHolding() async {
         // Replace the book's acquisition with one that decodes to .reserved
         // availability, simulating CM's Loan→Hold race. Easiest path: build
         // a fresh book with the right availability.
@@ -158,10 +158,10 @@ final class BorrowOperationTests: XCTestCase {
             _ = try await operation.borrowAsync(book, attemptDownload: false)
             XCTFail("Borrow with reserved-availability response must throw")
         } catch let error as PalaceError {
-            if case .bookRegistry(.holdCopyUnavailable) = error {
-                // expected
+            if case .holdRequeued(position: 1) = error {
+                // expected: the reserved fixture carries hold position 1
             } else {
-                XCTFail("Expected .bookRegistry(.holdCopyUnavailable), got \(error)")
+                XCTFail("Expected .holdRequeued(position: 1), got \(error)")
             }
             XCTAssertEqual(bookRegistry.state(for: raceBook.identifier), .holding,
                            "Holding-race path must register .holding before throwing so UI is accurate")
