@@ -111,6 +111,14 @@ final class SpyAudiobookSessionPresenter: AudiobookSessionPresenter {
         super.adoptCoverImage(image)
     }
 
+    /// Every fraction the session forwarded to the pre-bind download bar.
+    private(set) var shownDownloadProgress: [Float] = []
+
+    override func showDownloadProgress(_ fraction: Float) {
+        shownDownloadProgress.append(fraction)
+        super.showDownloadProgress(fraction)
+    }
+
     // MARK: - Test-only helpers
 
     /// Directly drives `hasActiveSession` for setup convenience — the
