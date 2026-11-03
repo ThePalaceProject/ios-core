@@ -116,6 +116,12 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         return result
     }
 
+    /// Whether the page shows the single browser sign-in prompt instead of the
+    /// account list. Only browser-based auths have that prompt.
+    var shouldShowSignInPrompt: Bool {
+        !isSignedIn && businessLogic.selectedAuthentication?.isBrowserBased == true
+    }
+
     var libraryName: String {
         selectedAccount?.name ?? ""
     }
@@ -126,9 +132,9 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
     // MARK: - Initialization
 
-    /// When true, signIn() proceeds even if the user has stale credentials
-    /// (instead of showing sign-out confirmation). Set by SignInModalView for
-    /// re-auth flows triggered by 401 responses.
+    /// When true, stale credentials count as signed out, so the page offers
+    /// sign-in and signIn() proceeds instead of confirming sign-out. Set by
+    /// SignInModalView for re-auth flows triggered by 401 responses.
     var forceReauthMode: Bool = false
 
     convenience init(libraryAccountID: String, appContainer: AppContainer) {
@@ -175,7 +181,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         )
 
         let snapshot = self.credentialSnapshotProvider(libraryAccountID)
-        self.isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
+        self.isSignedIn = Self.showsSignedIn(snapshot, forceReauthMode: false)
 
         super.init()
 
@@ -226,7 +232,10 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         // two subscribers below that already receive on main.
         NotificationCenter.default.publisher(for: .TPPUserAccountDidChange)
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.accountDidChange() }
+            .sink { [weak self] notification in
+                guard let self, self.concernsThisLibrary(notification) else { return }
+                self.accountDidChange()
+            }
             .store(in: &cancellables)
 
         // Listen for account switches to refresh sign-in state
@@ -607,16 +616,45 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         presented.dismiss(animated: true)
     }
 
+    /// `.TPPUserAccountDidChange` carries the account that changed; a change
+    /// to another library's account (a token refresh, say) is not this page's.
+    private func concernsThisLibrary(_ notification: Notification) -> Bool {
+        guard let changed = (notification.object as? TPPUserAccount)?.libraryUUID else { return true }
+        return changed == libraryAccountID
+    }
+
+    /// While signed out the fields hold what the patron is typing, so they are
+    /// rewritten only when the signed-in state changes. While signed in they
+    /// show the stored credentials and follow every change.
     private func accountDidChange() {
         let snapshot = credentialSnapshotProvider(libraryAccountID)
 
-        let newSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
+        let newSignedIn = Self.showsSignedIn(snapshot, forceReauthMode: forceReauthMode)
 
-        if isSignedIn != newSignedIn {
+        let stateChanged = isSignedIn != newSignedIn
+        if stateChanged {
             Log.debug(#file, "isSignedIn: \(isSignedIn)->\(newSignedIn), authState=\(snapshot.authState)")
         }
 
-        isSignedIn = newSignedIn
+        if stateChanged || newSignedIn {
+            applySignedInState(newSignedIn, snapshot: snapshot)
+        } else {
+            setupTableData()
+            loadBarcodeIfNeeded()
+        }
+    }
+
+    /// Whether the page presents the stored credentials as a signed-in account.
+    /// In the re-auth sheet, credentials the server refused count as signed out
+    /// so the patron gets an editable form (PP-5449). Elsewhere they still show
+    /// as signed in so Sign Out stays reachable (PP-3784).
+    static func showsSignedIn(_ snapshot: TPPUserAccount.CredentialSnapshot, forceReauthMode: Bool) -> Bool {
+        guard snapshot.hasCredentials, snapshot.authState != .loggedOut else { return false }
+        return !(forceReauthMode && snapshot.authState == .credentialsStale)
+    }
+
+    private func applySignedInState(_ signedIn: Bool, snapshot: TPPUserAccount.CredentialSnapshot) {
+        isSignedIn = signedIn
 
         if isSignedIn {
             usernameText = snapshot.barcode ?? ""
@@ -636,14 +674,14 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         showingAlert = true
     }
 
+    /// Re-reads the credentials when the page appears and applies them only
+    /// if the signed-in state changed; otherwise the page is left as it is.
     func refreshSignInState() {
-        let wasSignedIn = isSignedIn
-
         let snapshot = credentialSnapshotProvider(libraryAccountID)
-        isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
+        let signedIn = Self.showsSignedIn(snapshot, forceReauthMode: forceReauthMode)
 
-        if wasSignedIn != isSignedIn {
-            setupTableData()
+        if signedIn != isSignedIn {
+            applySignedInState(signedIn, snapshot: snapshot)
         }
     }
 }
