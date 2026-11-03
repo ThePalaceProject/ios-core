@@ -79,6 +79,28 @@ final class BookDetailAuthGateTests: XCTestCase {
         XCTAssertTrue(try prompts(.basic, hasCredentials: false, authState: .loggedOut, request: .other))
     }
 
+    func testGate_WhenBasicCredentialsAreFresh_RunsTheBorrow() throws {
+        XCTAssertFalse(try prompts(.basic, hasCredentials: true, authState: .loggedIn))
+    }
+
+    func testGate_WhenNoCredentials_PromptsBeforeABorrow() throws {
+        XCTAssertTrue(try prompts(.basic, hasCredentials: false, authState: .loggedOut))
+    }
+
+    /// A library that needs no sign-in never prompts, for any request.
+    func testGate_WhenLibraryNeedsNoAuth_RunsEveryAction() throws {
+        XCTAssertFalse(try prompts(nil, hasCredentials: false, authState: .loggedOut, needsAuth: false))
+        XCTAssertFalse(try prompts(nil, hasCredentials: false, authState: .loggedOut, needsAuth: false,
+                                   request: .other))
+    }
+
+    /// Basic-token libraries keep the up-front prompt when stale: only plain
+    /// barcode/PIN borrows go to the server first.
+    func testGate_WhenBasicTokenCredentialsAreStale_PromptsUpFront() throws {
+        XCTAssertTrue(try prompts(.token, hasCredentials: true, authState: .credentialsStale))
+        XCTAssertTrue(try prompts(.token, hasCredentials: true, authState: .credentialsStale, request: .other))
+    }
+
     // MARK: - Account reading
 
     /// The production call site reads these four fields from the account; a
