@@ -719,11 +719,11 @@ final class BookDetailViewModel: ObservableObject {
         if let authGateOverride {
             authGateOverride(action)
         } else {
-            ensureAuthAndExecute(action)
+            ensureAuthAndExecute(request: .other, action)
         }
     }
 
-    private func ensureAuthAndExecute(_ action: @escaping () -> Void) {
+    private func ensureAuthAndExecute(request: GatedRequest, _ action: @escaping () -> Void) {
         let businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: accountsManager.currentAccount?.uuid ?? "",
             libraryAccountsProvider: accountsManager,
@@ -740,8 +740,7 @@ final class BookDetailViewModel: ObservableObject {
                 guard let self = self else { return }
 
                 let account = self.accountsManager.currentUserAccount
-                if Self.promptsSignInBeforeAction(needsAuth: account.needsAuth, hasCredentials: account.hasCredentials(),
-                                                  authState: account.authState, authDefinition: account.authDefinition) {
+                if Self.promptsSignInBeforeAction(for: account, request: request) {
                     Log.info(#file, "[SAML-REAUTH] ensureAuthAndExecute presenting modal: hasCredentials=\(account.hasCredentials()) authState=\(account.authState)")
                     let halfSheetWasShowing = self.showHalfSheet
                     self.showHalfSheet = false
@@ -785,7 +784,8 @@ final class BookDetailViewModel: ObservableObject {
 
     func didSelectDownload(for book: TPPBook) {
         self.downloadProgress = 0
-        ensureAuthAndExecute { [weak self] in
+        let request = Self.gatedRequest(forDownloadFrom: registry.state(for: book.identifier))
+        ensureAuthAndExecute(request: request) { [weak self] in
             self?.startDownloadAfterAuth(book: book)
         }
     }
@@ -797,7 +797,7 @@ final class BookDetailViewModel: ObservableObject {
     }
 
     func didSelectReserve(for book: TPPBook, completion: (() -> Void)? = nil) {
-        ensureAuthAndExecute { [weak self] in
+        ensureAuthAndExecute(request: .borrow) { [weak self] in
             guard let self = self else {
                 completion?()
                 return
