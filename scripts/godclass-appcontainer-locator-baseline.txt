@@ -63,6 +63,7 @@
 #   longer falls back to the app executor and accounts manager.
 # 223 -> 222: PP-5402 removed the unused BookButtonState initializer, whose
 #   default argument read the production book registry.
-# 222 -> 221: PP-5451 reads LCP download progress through the download
+# 222 -> 221: PP-5452 reads the production container once in syncAsync.
+# 221 -> 220: PP-5451 reads LCP download progress through the download
 #   center injected into the content wait, not a fresh production container.
-221
+220

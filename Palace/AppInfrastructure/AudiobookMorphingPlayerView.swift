@@ -109,9 +109,7 @@ struct AudiobookMorphingPlayerView: View {
     /// instant. The alert takes VoiceOver focus when presented.
     @State private var showStopConfirmation = false
 
-    /// VoiceOver focus target — moved to the title when the full player expands
-    /// (mirrors toolkit `isTitleFocused`).
-    @AccessibilityFocusState private var isTitleFocused: Bool
+    @AccessibilityFocusState private var voiceOverFocus: VoiceOverFocusTarget?
 
     // MARK: - Adaptive control metrics
 
@@ -369,17 +367,17 @@ struct AudiobookMorphingPlayerView: View {
                 isBound: audiobookSession.hasActiveManager,
                 fallback: currentRate
             )
-            // Announce the screen transition + move VoiceOver focus to the title
-            // (mirrors toolkit AudiobookPlayerView.onAppear).
             NotificationCenter.default.post(
                 name: Notification.Name("TPPAccessibilityScreenTransition"),
                 object: nil
             )
             UIAccessibility.post(notification: .layoutChanged, argument: nil)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                isTitleFocused = true
-            }
         }
+        .modifier(AudiobookPlayerOpeningFocus(
+            focus: $voiceOverFocus,
+            isExpanded: presenter.isPlayerExpanded,
+            overlayCoversControls: Self.loadingOverlayCoversControls(loadingOverlayCurrentState)
+        ))
         // Re-sync the speed chip when the player binds. `presenter.playbackModel`
         // goes non-nil exactly at bind (`adoptPlaybackModel`), by which point the
         // manager is set and `currentPlaybackRate` returns the toolkit's restored
@@ -619,10 +617,9 @@ struct AudiobookMorphingPlayerView: View {
                 .font(.title3).fontWeight(.semibold)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
-                .accessibilityFocused($isTitleFocused)
-                // `onAppear` moves VoiceOver focus here, and the Rotor's
-                // headings list is how a patron gets back to it after browsing
-                // the controls.
+                .accessibilityFocused($voiceOverFocus, equals: .title)
+                // The Rotor's headings list is how a patron gets back to the
+                // title after browsing the controls.
                 .accessibilityAddTraits(.isHeader)
             if let authors = presenter.currentBook?.authors, !authors.isEmpty {
                 Text(authors)
@@ -676,6 +673,7 @@ struct AudiobookMorphingPlayerView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(playPauseAccessibilityLabel)
             .accessibilityValue(playPauseAccessibilityValue)
+            .accessibilityFocused($voiceOverFocus, equals: .playPause)
             skipCircleButton(asset: Self.icSkipForward, interval: skipForwardInterval,
                              label: Strings.Generic.skipForwardSeconds(skipForwardInterval),
                              glyph: metrics.skipGlyph, diameter: skipButton) {
@@ -1160,66 +1158,11 @@ struct AudiobookMorphingPlayerView: View {
         ))
     }
 
-    /// Skeleton lockup shown while the audiobook loads — replaces the old
-    /// spinner so a fresh open (which now presents the player IMMEDIATELY, via
-    /// `AudiobookSessionManager`'s pre-loader `presentLoadingShell`) reads as the
-    /// player "materializing" rather than a blank scrim. Mirrors the portrait
-    /// full-player layout (grabber · title · scrubber · cover · transport ·
-    /// bottom chips). Opaque `Color(.systemBackground)` matches the player, which
-    /// follows the system appearance; `SkeletonBox`/`SkeletonCircle` handle the
-    /// shimmer + Reduce-Motion gating internally. Cross-fades out when
-    /// `audiobookSession.isLoaded` flips.
+    /// Shown while the audiobook loads; a fresh open presents the player at once
+    /// (`AudiobookSessionManager.presentLoadingShell`), and this cross-fades out
+    /// when `audiobookSession.isLoaded` flips.
     private var playerLoadingSkeleton: some View {
-        ZStack {
-            Color(.systemBackground).ignoresSafeArea()
-            VStack(spacing: 0) {
-                SkeletonBox(width: 40, height: 5, cornerRadius: 2.5)
-                    .padding(.top, 12)
-
-                Spacer(minLength: 20)
-
-                VStack(spacing: 10) {
-                    SkeletonBox(width: 220, height: 20, cornerRadius: 4)
-                    SkeletonBox(width: 150, height: 14, cornerRadius: 4)
-                }
-
-                VStack(spacing: 10) {
-                    SkeletonBox(height: 4, cornerRadius: 2)
-                    HStack {
-                        SkeletonBox(width: 40, height: 12, cornerRadius: 3)
-                        Spacer()
-                        SkeletonBox(width: 40, height: 12, cornerRadius: 3)
-                    }
-                }
-                .padding(.horizontal, 24)
-                .padding(.top, 22)
-
-                Spacer(minLength: 24)
-
-                SkeletonBox(width: 240, height: 240, cornerRadius: 12)
-
-                Spacer(minLength: 24)
-
-                HStack(spacing: 26) {
-                    SkeletonCircle(size: 40)
-                    SkeletonCircle(size: 52)
-                    SkeletonCircle(size: 72)
-                    SkeletonCircle(size: 52)
-                    SkeletonCircle(size: 40)
-                }
-
-                HStack(spacing: 40) {
-                    SkeletonBox(width: 60, height: 30, cornerRadius: 15)
-                    SkeletonBox(width: 44, height: 30, cornerRadius: 15)
-                    SkeletonBox(width: 60, height: 30, cornerRadius: 15)
-                }
-                .padding(.top, 26)
-                .padding(.bottom, bottomSafeInset + 24)
-            }
-            .padding(.horizontal, 24)
-        }
-        .accessibilityElement()
-        .accessibilityLabel(Strings.Generic.audiobookLoading)
+        AudiobookPlayerLoadingSkeleton(bottomInset: bottomSafeInset)
     }
 
     // MARK: - Toast overlay (toolkit `bookmarkAddedToastView` parity)
@@ -1529,21 +1472,6 @@ struct AudiobookMorphingPlayerView: View {
     /// iPhone in a landscape aspect. iPad keeps the portrait lockup.
     static func isLandscapePhone(size: CGSize) -> Bool {
         UIDevice.current.userInterfaceIdiom == .phone && size.width > size.height
-    }
-
-    /// Pure `TimeInterval` -> "MM:SS" / "H:MM:SS" formatter. Negative or
-    /// non-finite inputs render "--:--". `static` so the tests can pin the
-    /// format without spinning up the view body.
-    internal static func formatTime(_ interval: TimeInterval) -> String {
-        guard interval.isFinite, interval >= 0 else { return "--:--" }
-        let totalSeconds = Int(interval)
-        let hours = totalSeconds / 3600
-        let minutes = (totalSeconds % 3600) / 60
-        let seconds = totalSeconds % 60
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
-        }
-        return String(format: "%d:%02d", minutes, seconds)
     }
 
     // MARK: - Derived
