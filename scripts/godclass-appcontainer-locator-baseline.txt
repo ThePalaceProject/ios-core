@@ -61,4 +61,5 @@
 #   hosted had no caller since PR #1008; its readerService read went with it.
 # 225 -> 223: a 401 or 2xx on a responder whose executor was released no
 #   longer falls back to the app executor and accounts manager.
-223
+# 223 -> 222: PP-5452 reads the production container once in syncAsync.
+222
