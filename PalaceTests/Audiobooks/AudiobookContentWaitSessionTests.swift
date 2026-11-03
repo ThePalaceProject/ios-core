@@ -115,13 +115,16 @@ final class AudiobookProductionContentWaitTests: AudiobookSessionOpenTestCase {
         content.isLocal = false
         let book = downloadedBook("book-a")
         let reporter = container.downloadCenter.progressReporter
+        // Each transfer check reads the reporter's clock, so the count shows
+        // when a poll has seen the transfer running.
+        let clockReads = ClockReadCounter()
+        reporter.monotonicClock = { clockReads.count += 1; return 0 }
         reporter.sendLCPContentDownloadActive(bookIdentifier: book.identifier, active: true)
         await startParkedOpen(book)
+        let readsBeforeFailure = clockReads.count
         failFirstPlay()
         XCTAssertTrue(sut.awaitingContentDownloadBookIds.contains(book.identifier))
-        // One poll must see the transfer running before it fails; the first
-        // poll runs as soon as the wait task starts.
-        try await Task.sleep(nanoseconds: 200_000_000)
+        await awaitConditionAsync { clockReads.count > readsBeforeFailure }
 
         reporter.sendLCPContentDownloadActive(bookIdentifier: book.identifier, active: false)
 
@@ -129,4 +132,9 @@ final class AudiobookProductionContentWaitTests: AudiobookSessionOpenTestCase {
         XCTAssertFalse(sut.awaitingContentDownloadBookIds.contains(book.identifier))
         await finishOpens()
     }
+}
+
+/// Written by the reporter's clock closure, read by the test, both on the main actor.
+private final class ClockReadCounter: @unchecked Sendable {
+    var count = 0
 }
