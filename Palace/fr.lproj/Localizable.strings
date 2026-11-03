@@ -1550,6 +1550,9 @@
 /* User hold position without copies info. Format: 'You are 5th in line.' */
 "You are %1$@ in line." = "Vous êtes en %1$@ position dans la file d’attente.";
 
+/* Shown after a borrow attempt placed the patron in the hold queue. %@ is the queue position as an ordinal, e.g. '7th'. */
+"You are now %@ in line. We'll notify you when a copy becomes available." = "Vous êtes maintenant en %@ position dans la file d’attente. Nous vous préviendrons dès qu’un exemplaire sera disponible.";
+
 /* Alert message shown when the user attempts to download or reserve a book while offline */
 "You don’t appear to be connected to the internet. Reconnect and try again." = "Aucune connexion à Internet ne semble active. Rétablissez la connexion et réessayez.";
 
