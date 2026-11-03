@@ -21,7 +21,7 @@ The #1129 playbook, in the order to try:
 | generic `T` crossing a `Task`/continuation | constrain it: `<T: Sendable>` |
 | class captured or crossed | `final class … : @unchecked Sendable` **with a documented invariant** — lock-guarded, or immutable-after-init. **No bare `@unchecked`.** |
 | `@MainActor` member reached from nonisolated | `await MainActor.run { }`, or mark the member `@MainActor` |
-| delegate conformance "crosses into main actor-isolated code" | `@preconcurrency` on the *conformance* (the EmailTicketGateway #1134 pattern) |
+| delegate conformance "crosses into main actor-isolated code" | `@preconcurrency` on the *conformance* (the EmailTicketGateway #1134 pattern), **only if every caller is on the main thread**. The relaxed conformance still traps at runtime when a witness runs off main. If a requirement can be called off main (for example from a URLSession delegate queue), use a `nonisolated` witness over lock-guarded state instead (PP-5465) <!-- audit-verified --> |
 | a module's types not Sendable-audited | `@preconcurrency import <Module>` |
 
 **`nonisolated(unsafe)` is not on this list.** It silences the compiler without
