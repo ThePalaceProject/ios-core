@@ -23,7 +23,8 @@ struct BookButtonMapper {
     static func map(
         registryState: TPPBookState,
         availability: TPPOPDSAcquisitionAvailability?,
-        isProcessingDownload: Bool
+        isProcessingDownload: Bool,
+        now: Date = Date()
     ) -> BookButtonState {
         // Precondition: an active in-flight download short-circuits the
         // registry-state decision tree. Keeps the SAML/borrow handoff window
@@ -51,7 +52,7 @@ struct BookButtonMapper {
         case .used:
             return .used
         case .holding:
-            if availability is TPPOPDSAcquisitionAvailabilityReady {
+            if isBorrowableReadyHold(availability, now: now) {
                 return .canBorrow
             }
             return .holding
@@ -61,7 +62,7 @@ struct BookButtonMapper {
             // No registry signal — derive from OPDS availability. nil
             // availability with no registry state means we genuinely don't know
             // how to render the cell, so .unsupported is the honest answer.
-            return stateForAvailability(availability) ?? .unsupported
+            return stateForAvailability(availability, now: now) ?? .unsupported
         case .unsupported:
             return .unsupported
         }
@@ -69,7 +70,7 @@ struct BookButtonMapper {
 
     /// Map OPDS availability (unavailable/limited/unlimited/reserved/ready)
     /// → a BookButtonState, _but only if_ the registry didn’t already claim a higher‐priority state.
-    static func stateForAvailability(_ availability: TPPOPDSAcquisitionAvailability?) -> BookButtonState? {
+    static func stateForAvailability(_ availability: TPPOPDSAcquisitionAvailability?, now: Date = Date()) -> BookButtonState? {
         guard let availability else {
             return nil
         }
@@ -87,10 +88,23 @@ struct BookButtonMapper {
             state = .canBorrow
         }, reserved: { _ in
             state = .holdingFrontOfQueue
-        }, ready: { _ in
-            state = .canBorrow
+        }, ready: { ready in
+            state = isBorrowable(ready, now: now) ? .canBorrow : .holding
         })
 
         return state
+    }
+
+    /// True for a ready hold whose reservation window is still open. At or after
+    /// `until` the server no longer lends the copy to this patron: a Borrow places
+    /// a new hold at the back of the queue (PP-5453). A missing `until` counts as open.
+    static func isBorrowableReadyHold(_ availability: TPPOPDSAcquisitionAvailability?, now: Date) -> Bool {
+        guard let ready = availability as? TPPOPDSAcquisitionAvailabilityReady else { return false }
+        return isBorrowable(ready, now: now)
+    }
+
+    private static func isBorrowable(_ ready: TPPOPDSAcquisitionAvailabilityReady, now: Date) -> Bool {
+        guard let until = ready.until else { return true }
+        return until > now
     }
 }
