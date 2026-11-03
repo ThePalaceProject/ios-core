@@ -64,6 +64,14 @@ class TPPRequestExecutorMock: TPPRequestExecuting, @unchecked Sendable {
         set { lock.withLock { _forceFailureStatusCode = newValue } }
     }
 
+    /// When set, ALL requests fail with this error and no HTTP response, the
+    /// shape an offline device produces.
+    private var _forceTransportError: NSError?
+    var forceTransportError: NSError? {
+        get { lock.withLock { _forceTransportError } }
+        set { lock.withLock { _forceTransportError = newValue } }
+    }
+
     /// Every URL passed to `executeRequest`, in call order. Lets tests assert
     /// that a sign-in actually FIRED the credential request (e.g. the
     /// basic/token readiness-race regression where `logIn()` used to silently
@@ -132,6 +140,7 @@ class TPPRequestExecutorMock: TPPRequestExecuting, @unchecked Sendable {
         // expectation on a later test's request.
         onExecuteRequest = nil
         executedAccountIds = []
+        forceTransportError = nil
     }
 
     /// The protocol's only request entry point. Implemented over this double's
@@ -173,6 +182,11 @@ class TPPRequestExecutorMock: TPPRequestExecuting, @unchecked Sendable {
             guard let url = req.url else {
                 completion(.failure(NSError(domain: "Unit tests: empty url",
                                             code: 0, userInfo: nil), nil))
+                return
+            }
+
+            if let transportError = self.forceTransportError {
+                completion(.failure(transportError, nil))
                 return
             }
 
