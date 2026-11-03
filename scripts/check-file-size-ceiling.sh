@@ -99,7 +99,7 @@ read -r -d '' ALLOWLIST <<'EOF'
 957 Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift
 # 867 -> 861 when the download-error admission rules moved to
 # BookDetailErrorAdmission.swift.
-861  Palace/Book/UI/BookDetail/BookDetailViewModel.swift
+860  Palace/Book/UI/BookDetail/BookDetailViewModel.swift
 834  Palace/Utilities/Localization/Strings.swift
 # AccountsManager is 363 under this metric: it was pinned at 367 after #1520
 # landed `_ = registryLoader` in init, then lowered when #1624 moved the DEBUG
@@ -114,7 +114,7 @@ read -r -d '' ALLOWLIST <<'EOF'
 # only ratchets down, so pinning them costs nothing and closes the regression.
 362  Palace/Accounts/Library/AccountsManager.swift
 613  Palace/SignInLogic/TPPSignInBusinessLogic.swift
-500  Palace/MyBooks/BorrowOperation.swift
+471  Palace/MyBooks/BorrowOperation.swift
 # Package source is in scope (see THE RULE). This one was already over the
 # ceiling inside the old blind spot; pinned here at its measured size so the
 # scope widening lands green rather than red-on-arrival.
