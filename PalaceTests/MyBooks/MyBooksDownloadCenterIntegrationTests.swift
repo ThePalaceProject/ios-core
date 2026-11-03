@@ -548,8 +548,8 @@ final class DownloadStateMachineIntegrationTests: XCTestCase {
         let result = MyBooksDownloadCenter.borrowResponseState(for: postBook, preBorrowBook: preBook)
 
         XCTAssertEqual(result.state, .holding)
-        guard case .bookRegistry(.holdCopyUnavailable) = result.error else {
-            XCTFail("Expected race-loss error for limited→reserved, got \(String(describing: result.error))")
+        guard case .holdRequeued(position: 2) = result.error else {
+            XCTFail("Expected race-loss error with the queue position for limited→reserved, got \(String(describing: result.error))")
             return
         }
     }

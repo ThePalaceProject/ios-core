@@ -37,6 +37,12 @@ enum PalaceError: LocalizedError {
     // MARK: - Audiobook Errors
     case audiobook(AudiobookError)
 
+    /// A Borrow came back as a hold at `position` in the queue, e.g. after the
+    /// server let an expired ready hold go and placed a new one (PP-5453).
+    /// Declared last: the bridged NSError code is the case index, which
+    /// `palaceErrorFromCode` decodes and crash reports group by.
+    case holdRequeued(position: UInt)
+
     // MARK: - LocalizedError Implementation
     var errorDescription: String? {
         switch self {
@@ -49,6 +55,7 @@ enum PalaceError: LocalizedError {
         case .storage(let error): return error.errorDescription
         case .bookReader(let error): return error.errorDescription
         case .audiobook(let error): return error.errorDescription
+        case .holdRequeued: return BookRegistryError.holdCopyUnavailable.errorDescription
         }
     }
 
@@ -63,6 +70,7 @@ enum PalaceError: LocalizedError {
         case .storage(let error): return error.recoverySuggestion
         case .bookReader(let error): return error.recoverySuggestion
         case .audiobook(let error): return error.recoverySuggestion
+        case .holdRequeued(let position): return Strings.Error.holdRequeued(position: position)
         }
     }
 
@@ -77,6 +85,7 @@ enum PalaceError: LocalizedError {
         case .storage(let error): return 7000 + error.rawValue
         case .bookReader(let error): return 8000 + error.rawValue
         case .audiobook(let error): return 9000 + error.rawValue
+        case .holdRequeued: return 2000 + BookRegistryError.holdCopyUnavailable.rawValue
         }
     }
 }
@@ -605,6 +614,8 @@ extension PalaceError {
         case 6: return .storage(.insufficientSpace)
         case 7: return .bookReader(.bookNotAvailable)
         case 8: return .audiobook(.playbackError)
+        // `.holdRequeued`; the position does not survive bridging.
+        case 9: return .bookRegistry(.holdCopyUnavailable)
         default: return .network(.unknown)
         }
     }
