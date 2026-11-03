@@ -941,8 +941,8 @@ struct AudiobookMorphingPlayerView: View {
     /// Whether the 30s load-error timer, once fired, should actually surface the
     /// error. A download in flight is healthy progress, not a load failure, so
     /// the timeout is suppressed while `isDownloading` — the download has its own
-    /// bound (the PP-4542 180s content wait) and must not be short-circuited by
-    /// the view's buffering-window timer.
+    /// bound (the PP-4542 content wait, which ends when the transfer stops) and
+    /// must not be short-circuited by the view's buffering-window timer.
     nonisolated static func shouldSurfaceLoadTimeout(isLoaded: Bool, isDownloading: Bool) -> Bool {
         !isLoaded && !isDownloading
     }
