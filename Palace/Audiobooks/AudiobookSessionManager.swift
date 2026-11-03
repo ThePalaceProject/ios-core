@@ -1588,10 +1588,6 @@ public final class AudiobookSessionManager: ObservableObject {
         return landed ? .landedAfterTrigger : .contentUnavailable
     }
 
-    /// Dismisses the player UI and shows the honest "couldn't play right now"
-    /// alert used by the cold-load failure paths. Factored so the immediate
-    /// failure path and the PP-4542 await-local-content timeout path present an
-    /// identical experience.
     /// Forwards a content wait's progress to the player while `bookId` is still
     /// the book this session is loading (PP-5451).
     private func contentWaitProgressSink(for bookId: String) -> (@MainActor @Sendable (Float) -> Void)? {
@@ -1602,6 +1598,10 @@ public final class AudiobookSessionManager: ObservableObject {
         }
     }
 
+    /// Dismisses the player UI and shows the honest "couldn't play right now"
+    /// alert used by the cold-load failure paths. Factored so the immediate
+    /// failure path and the PP-4542 await-local-content timeout path present an
+    /// identical experience.
     private func dismissAndPresentColdLoadUnavailable() async {
         // Cold-load failure path: the player never started, so there is no
         // meaningful "live position" to persist.
