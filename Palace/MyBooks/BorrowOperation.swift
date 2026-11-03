@@ -71,60 +71,6 @@ final class BorrowOperation: @unchecked Sendable {
     /// Test-only record of sign-in-modal retries; see `BorrowRetryRecorder`.
     let retryRecorder = BorrowRetryRecorder()
 
-    // MARK: - Pure Helpers
-
-    /// Races an async operation against a deadline; the loser is cancelled.
-    /// Expiry throws `PalaceError.network(.timeout)` so the borrow-error alert
-    /// with Retry appears instead of the half-sheet spinning forever.
-    static func withTimeout<T: Sendable>(
-        seconds: TimeInterval,
-        operation: @escaping @Sendable () async throws -> T
-    ) async throws -> T {
-        try await withThrowingTaskGroup(of: T.self) { group in
-            group.addTask { try await operation() }
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                throw PalaceError.network(.timeout)
-            }
-            defer { group.cancelAll() }
-            guard let first = try await group.next() else {
-                throw PalaceError.network(.timeout)
-            }
-            return first
-        }
-    }
-
-    /// Maps a borrow/place-hold response to a registry state and optional error.
-    /// Delegates to `BorrowReducerCore.responseState`.
-    static func borrowResponseState(
-        for postBorrowBook: TPPBook,
-        preBorrowBook: TPPBook? = nil
-    ) -> (state: TPPBookState, error: PalaceError?) {
-        BorrowReducerCore.responseState(for: postBorrowBook, preBorrowBook: preBorrowBook)
-    }
-
-    /// Builds a user-friendly borrow error message that always uses
-    /// the localized "Borrowing [title] could not be completed." base
-    /// instead of raw `PalaceError.localizedDescription` (which can
-    /// contain technical strings that confuse users).
-    static func buildBorrowErrorMessage(
-        for bookTitle: String,
-        error: PalaceError,
-        problemDocument: TPPProblemDocument?
-    ) -> String {
-        let baseMessage = String(format: Strings.MyDownloadCenter.borrowFailedMessage, bookTitle)
-
-        if let doc = problemDocument, let detail = doc.detail, !detail.isEmpty {
-            return baseMessage + "\n\n" + detail
-        }
-
-        if let recovery = error.recoverySuggestion {
-            return baseMessage + "\n\n" + recovery
-        }
-
-        return baseMessage
-    }
-
     // MARK: - Dependencies
 
     private let bookRegistry: TPPBookRegistryProvider
@@ -604,6 +550,15 @@ final class BorrowOperation: @unchecked Sendable {
             }
             return .routeToReauth
 
+        } else if hasCredentials && authDef?.isBasic == true {
+            // The server refused the stored barcode/PIN. The sheet offers
+            // empty fields for new ones; the borrow runs again only after a
+            // real sign-in, since cancelling leaves the refused ones stored
+            // (PP-5449).
+            await presentSignInModalAndRetryBorrow(book: book, attemptDownload: attemptDownload,
+                                                   authLabel: "Basic", requiresSignedIn: true)
+            return .routeToReauth
+
         } else if !hasCredentials && (authDef?.needsAuth ?? false) {
             Log.info(#file, "No credentials for borrow - showing sign-in modal")
 
@@ -757,14 +712,20 @@ final class BorrowOperation: @unchecked Sendable {
     // MARK: - Sign-In Modal Retry
 
     /// Presents the sign-in modal and retries the borrow on success.
-    /// Used by both SAML and OIDC fallback paths.
-    private func presentSignInModalAndRetryBorrow(book: TPPBook, attemptDownload: Bool, authLabel: String) async {
+    /// Used by the SAML, OIDC and barcode/PIN paths.
+    /// - Parameter requiresSignedIn: retry only if the account ended signed
+    ///   in, not merely holding credentials.
+    private func presentSignInModalAndRetryBorrow(book: TPPBook, attemptDownload: Bool, authLabel: String,
+                                                  requiresSignedIn: Bool = false) async {
         await MainActor.run { [weak self] in
             guard let self = self else { return }
             self.presentSignInModal { [weak self] in
                 guard let self else { return }
 
-                guard self.userAccountProvider().hasCredentials() else {
+                let account = self.userAccountProvider()
+                let signedIn = account.hasCredentials()
+                    && (!requiresSignedIn || account.authState == .loggedIn)
+                guard signedIn else {
                     Log.info(#file, "\(authLabel) re-auth cancelled or failed, not retrying borrow for '\(book.title)'")
                     Self.clearBorrowReauthAttempted(for: book.identifier)
                     return

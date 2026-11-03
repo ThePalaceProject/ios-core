@@ -82,12 +82,7 @@ struct AccountDetailView: View {
     }
 
     private var shouldShowSignInPrompt: Bool {
-        let needsSignIn = !viewModel.isSignedIn
-        let needsReauth = forceReauthMode && viewModel.selectedUserAccount.authState == .credentialsStale
-
-        let isBrowserBasedAuth = viewModel.businessLogic.selectedAuthentication?.isBrowserBased == true
-
-        return (needsSignIn || needsReauth) && isBrowserBasedAuth
+        viewModel.shouldShowSignInPrompt
     }
 
     // MARK: - Sign In Prompt View

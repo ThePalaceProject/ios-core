@@ -69,13 +69,19 @@ enum DownloadStartReducer {
         case fallThroughToRegular
     }
 
+    /// A download from this state starts with a borrow request. The detail
+    /// screen's sign-in gate reads the same rule (PP-5449).
+    static func borrowsBeforeDownload(_ state: TPPBookState) -> Bool {
+        state == .unregistered || state == .holding
+    }
+
     /// Selection order: streaming skip → borrow-state route →
     /// OverDrive-audiobook divert → regular.
     static func routeWithCredentials(_ input: CredentialsInput) -> CredentialsRoute {
         if input.isStreamingHTML {
             return .noop
         }
-        if input.state == .unregistered || input.state == .holding {
+        if borrowsBeforeDownload(input.state) {
             return .startBorrow
         }
         if input.isOverdriveAudiobook {
