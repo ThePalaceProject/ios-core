@@ -39,7 +39,10 @@ struct BookDetailView: View {
 
     private let scaleAnimation = Animation.linear(duration: 0.35)
 
-    @State private var headerColor: Color = Color(UIColor.systemBackground)
+    /// Seeded from the book's dominant color in `init` rather than from
+    /// `onAppear`: `onAppear` runs after the first frame, so a view seeded with
+    /// the system background painted one plain frame before the colored header.
+    @State private var headerColor: Color
 
     private let maxHeaderHeight: CGFloat = 225
     private let minHeaderHeight: CGFloat = 80
@@ -50,6 +53,7 @@ struct BookDetailView: View {
         // Use _viewModel to initialize @StateObject with a parameter
         // This ensures SwiftUI only creates the ViewModel once per view identity
         _viewModel = StateObject(wrappedValue: BookDetailViewModel(book: book))
+        _headerColor = State(initialValue: Color(book.dominantUIColor))
     }
 
     var body: some View {
