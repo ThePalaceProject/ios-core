@@ -97,6 +97,24 @@ final class HoldsReducerTests: XCTestCase {
         XCTAssertNil(state.syncErrorMessage, "syncBegan still clears the stale banner")
     }
 
+    /// A library switch starts a new first load: the new account's first sync
+    /// shows the skeleton, not the previous account's "no holds" answer.
+    func testSyncBegan_afterAccountChangedWithNoHolds_showsSkeleton() {
+        var state = HoldsState()
+        _ = HoldsReducer.reduce(&state, .syncEnded)
+        _ = HoldsReducer.reduce(&state, .accountChanged)
+        _ = HoldsReducer.reduce(&state, .syncBegan)
+        XCTAssertTrue(state.isLoading)
+    }
+
+    func testSyncBegan_afterAccountChangedWithHoldsOnScreen_keepsListVisible() {
+        var state = HoldsState(reservedBooks: [TPPBookMocker.snapshotReservedBook(identifier: "a1", title: "Held")])
+        _ = HoldsReducer.reduce(&state, .syncEnded)
+        _ = HoldsReducer.reduce(&state, .accountChanged)
+        _ = HoldsReducer.reduce(&state, .syncBegan)
+        XCTAssertFalse(state.isLoading)
+    }
+
     func testSyncBegan_beforeAnySyncWithNoHolds_showsSkeleton() {
         var state = HoldsState()
         _ = HoldsReducer.reduce(&state, .syncBegan)

@@ -120,6 +120,22 @@ final class HoldsViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.isLoading)
     }
 
+    /// After a library switch, the new account's first sync on an empty shelf
+    /// shows the skeleton again rather than the old account's empty state.
+    func testSyncBegan_AfterAccountChange_RaisesLoading() async {
+        let viewModel = createViewModel()
+        NotificationCenter.default.post(name: .TPPSyncEnded, object: nil)
+        await drainMainQueueAsync()
+        await viewModel._awaitRefreshForTesting()
+
+        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
+        await drainMainQueueAsync()
+        NotificationCenter.default.post(name: .TPPSyncBegan, object: nil)
+        await drainMainQueueAsync()
+
+        XCTAssertTrue(viewModel.isLoading)
+    }
+
     func testSyncEndedSetsLoadingFalse() async {
         let viewModel = createViewModel()
         viewModel.isLoading = true // Set initial state

@@ -55,6 +55,8 @@ enum HoldsAction {
     /// legacy `handleSyncFailure` enforced; the reducer keeps them explicit.
     case syncFailed(errorMessage: String?, cached: Bool, anonymous: Bool)
     case registryChanged(held: [TPPBook])
+    /// The current library changed; its first sync is a new first load.
+    case accountChanged
     case searchQueryChanged(String)
     case filterCompleted([TPPBook])
     case dismissSyncError
@@ -110,6 +112,10 @@ enum HoldsReducer {
             if state.searchQuery.isEmpty {
                 state.visibleBooks = reserved + active
             }
+            return .none
+
+        case .accountChanged:
+            state.hasSyncedOnce = false
             return .none
 
         case .searchQueryChanged(let query):
