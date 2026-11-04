@@ -162,6 +162,10 @@ final class AdobeActivationGenerationGateTests: XCTestCase {
     /// succeeded. `AdobeConnectorGeneration.preMarker` carries the reasoning;
     /// `testNeedsReactivation_EveryCombination` pins the Wipro side, where the
     /// same absent marker does re-activate.
+    ///
+    /// The unchanged connector is passed explicitly rather than taken from
+    /// `AdobeConnectorGeneration.current`, so this keeps pinning the fast path
+    /// after a swap moves that constant past the pre-marker generation.
     func testAbsentGeneration_KeepsTheFastPath_WhileTheConnectorIsUnchanged() async throws {
         drm.isUserAuthorizedReturnValue = true
         let account = GenerationAccount(licensor: Self.validLicensor,
@@ -169,11 +173,12 @@ final class AdobeActivationGenerationGateTests: XCTestCase {
                                         deviceID: "old-device",
                                         generation: nil)
 
-        try await activate(account)
+        try await activate(account, connectorGeneration: AdobeConnectorGeneration.preMarker)
 
         XCTAssertEqual(drm.authorizeCallCount, 0,
                        "an unmarked activation is backfilled to the pre-marker "
-                       + "generation, which equals current on this build")
+                       + "generation, so a connector still on that generation "
+                       + "keeps the fast path")
     }
 
     /// The gate cell nothing covered: identifiers present, generation current,
