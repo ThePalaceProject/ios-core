@@ -146,12 +146,9 @@ final class NSNotificationTPPTests: XCTestCase {
         XCTAssertEqual(Notification.Name.TPPSettingsDidChange.rawValue, "TPPSettingsDidChange")
         XCTAssertEqual(Notification.Name.TPPCurrentAccountDidChange.rawValue, "TPPCurrentAccountDidChange")
         XCTAssertEqual(Notification.Name.TPPCatalogDidLoad.rawValue, "TPPCatalogDidLoad")
-        XCTAssertEqual(Notification.Name.TPPSyncBegan.rawValue, "TPPSyncBegan")
-        XCTAssertEqual(Notification.Name.TPPSyncEnded.rawValue, "TPPSyncEnded")
         XCTAssertEqual(Notification.Name.TPPUseBetaDidChange.rawValue, "TPPUseBetaDidChange")
         XCTAssertEqual(Notification.Name.TPPDidSignOut.rawValue, "TPPDidSignOut")
         XCTAssertEqual(Notification.Name.TPPIsSigningIn.rawValue, "TPPIsSigningIn")
-        XCTAssertEqual(Notification.Name.TPPBookRegistryDidChange.rawValue, "TPPBookRegistryDidChange")
         // .TPPBookRegistryStateDidChange was removed with the registry
         // dual-write — its lifecycle/per-book signal moved to the
         // registry's Combine publishers, so there is no longer a name to assert.
@@ -166,7 +163,6 @@ final class NSNotificationTPPTests: XCTestCase {
     func testNSNotificationConstants_matchSwift() {
         XCTAssertEqual(NSNotification.TPPSettingsDidChange, Notification.Name.TPPSettingsDidChange)
         XCTAssertEqual(NSNotification.TPPCurrentAccountDidChange, Notification.Name.TPPCurrentAccountDidChange)
-        XCTAssertEqual(NSNotification.TPPBookRegistryDidChange, Notification.Name.TPPBookRegistryDidChange)
     }
 
     // SRS: TPPNotificationKeys constants

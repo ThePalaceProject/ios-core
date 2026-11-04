@@ -58,7 +58,9 @@ extension TPPSignInBusinessLogic {
 
             #if FEATURE_DRM_CONNECTOR
             guard drmSuccess else {
-                NotificationCenter.default.post(name: .TPPSyncEnded, object: nil)
+                // Holds and My Books handle this like a finished sync: they
+                // reload and leave their loading state.
+                self.bookRegistry.reportSyncEnded()
 
                 let alert = TPPAlertUtils.alert(title: Strings.Error.loginErrorTitle,
                                                 message: errorMessage,

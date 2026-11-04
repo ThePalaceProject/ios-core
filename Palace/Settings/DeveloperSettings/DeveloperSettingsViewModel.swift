@@ -881,7 +881,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
                 guard let self else { return }
                 self.testHoldsConfiguration = config
 
-                NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+                self.bookRegistry.notifyRegistryChanged()
                 // The tab badge refreshes from the holds-changed publisher.
                 self.bookRegistry.notifyHoldsChanged()
 

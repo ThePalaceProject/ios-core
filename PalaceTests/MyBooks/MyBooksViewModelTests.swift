@@ -499,7 +499,7 @@ final class MyBooksViewModelLoginStateTests: XCTestCase {
         // add a book, and fire the registry-change notification (debounced 300 ms)
         viewModel.isVisible = true
         mock.myBooks = [TPPBookMocker.mockBook(identifier: "n1", title: "New Book")]
-        NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+        mock.sendRegistryDidChange()
 
         // Join the debounced reload's actual republish rather than polling a
         // wall-clock deadline: the 300 ms Combine debounce (main-queue
@@ -1088,7 +1088,7 @@ final class MyBooksViewModelNotificationTests: XCTestCase {
         let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
         let bookCountBefore = viewModel.books.count
 
-        NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+        mock.sendRegistryDidChange()
 
         // The ViewModel must not crash and must still reflect the registry state
         XCTAssertEqual(viewModel.books.count, bookCountBefore,
@@ -1117,14 +1117,32 @@ final class MyBooksViewModelNotificationTests: XCTestCase {
         let appContainer = makeTestAppContainer()
         let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
 
-        NotificationCenter.default.post(name: .TPPSyncEnded, object: nil)
+        mock.sendSyncEvent(.ended)
 
         // ViewModel must not crash; book list must reflect (possibly empty) registry
         XCTAssertEqual(viewModel.books.count, mock.myBooks.count,
                        "Books must match registry after sync-ended notification")
     }
 
-    /// After TPPSyncEnded is posted, viewModel reloads and exposes the updated book list.
+    /// The sync-ended event alone reloads the shelf. The mock replays its last
+    /// book state on subscription, which schedules one reload; that reload is
+    /// let land first so it cannot pick up the new book on its own.
+    func testSyncEndedEvent_AfterInitialReload_LoadsNewBooks() {
+        let mock = TPPBookRegistryMock()
+        mock.myBooks = []
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
+        viewModel.isVisible = true
+        awaitPublished(viewModel.$isLoading.dropFirst()) { !$0 }
+        mock.myBooks = [TPPBookMocker.mockBook(identifier: "se1", title: "Synced Book")]
+
+        mock.sendSyncEvent(.ended)
+
+        awaitPublished(viewModel.$books) { $0.count == 1 }
+        XCTAssertEqual(viewModel.books.map(\.identifier), ["se1"])
+    }
+
+    /// After a sync-ended event, viewModel reloads and exposes the updated book list.
     func testSyncEndedNotification_CausesBookListToUpdate() {
         let mock = TPPBookRegistryMock()
         mock.myBooks = []
@@ -1135,13 +1153,13 @@ final class MyBooksViewModelNotificationTests: XCTestCase {
         // Simulate sync completing and bringing in a new book
         viewModel.isVisible = true
         mock.myBooks = [TPPBookMocker.mockBook(identifier: "sn1", title: "Post-Sync Book")]
-        NotificationCenter.default.post(name: .TPPSyncEnded, object: nil)
+        mock.sendSyncEvent(.ended)
 
         // Join the reload's `$books` republish instead of polling a deadline —
         // the sync-ended handler hops the main queue then reassigns `books`.
         awaitPublished(viewModel.$books) { $0.count == 1 }
         XCTAssertEqual(viewModel.books.count, 1,
-            "TPPSyncEnded notification must trigger a reload that reflects the new registry contents")
+            "A sync-ended event must trigger a reload that reflects the new registry contents")
     }
 }
 
@@ -1706,7 +1724,7 @@ final class MyBooksViewModelStateTransitionTests: XCTestCase {
     }
 
     /// showInstructionsLabel transitions from true→false when the registry gains books
-    /// (driven by a TPPBookRegistryDidChange notification triggering loadData).
+    /// (driven by a registry-changed event triggering loadData).
     func testShowInstructionsLabel_TransitionsOnRegistryChange() {
         // Arrange: empty registry — label must show
         let mock = TPPBookRegistryMock()
@@ -1719,7 +1737,7 @@ final class MyBooksViewModelStateTransitionTests: XCTestCase {
         // Act: mark visible, add a book to the registry, and fire the change notification
         viewModel.isVisible = true
         mock.myBooks = [TPPBookMocker.mockBook(identifier: "st2", title: "New Book")]
-        NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+        mock.sendRegistryDidChange()
 
         // Join the reload's `$books` republish rather than polling a deadline.
         // `loadData()` assigns `books` then `showInstructionsLabel` in the same

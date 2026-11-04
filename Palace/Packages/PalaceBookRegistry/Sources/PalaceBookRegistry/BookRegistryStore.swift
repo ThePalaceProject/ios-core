@@ -30,7 +30,8 @@ import PalaceLogging
 ///   write window. A synchronous write runs inline only inside a write of this
 ///   store (`barrierOwnerKey`); started inside a read it is reported and skipped
 ///   (PP-5274). No property is read or written outside these helpers.
-///   The Combine subjects (`registrySubject`, `bookStateSubject`) are `let`
+///   The Combine subjects (`registrySubject`, `bookStateSubject`,
+///   `registryDidChangeSubject`) are `let`
 ///   and thread-safe by construction. Therefore instances are safe to share
 ///   across concurrency domains: the class carries its own synchronization,
 ///   which is exactly the condition `@unchecked Sendable` documents.
@@ -49,7 +50,7 @@ final class BookRegistryStore: @unchecked Sendable {
       DispatchQueue.main.async { [weak self] in
         guard let self else { return }
         registrySubject.send(snapshot)
-        NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil, userInfo: nil)
+        registryDidChangeSubject.send(())
       }
     }
   }
@@ -64,6 +65,10 @@ final class BookRegistryStore: @unchecked Sendable {
 
   let registrySubject = CurrentValueSubject<[String: TPPBookRegistryRecord], Never>([:])
   let bookStateSubject = PassthroughSubject<(String, TPPBookState), Never>()
+  /// Backs `TPPBookRegistry.registryDidChangePublisher`. Sent on the main queue
+  /// by the announced-mutation path here and by `BookRegistrySync`'s load and
+  /// shelf saves; never by a bare `registrySubject.send`.
+  let registryDidChangeSubject = PassthroughSubject<Void, Never>()
 
   /// Fired when `updateBook` reconciles a record whose availability changed
   /// (drives the app's push-notification comparison). Injected app-side because
@@ -217,8 +222,8 @@ final class BookRegistryStore: @unchecked Sendable {
     }
   }
 
-  /// - Parameter announce: `false` withholds the `registrySubject` emission and
-  ///   the `TPPBookRegistryDidChange` post for this one mutation. Only for
+  /// - Parameter announce: `false` withholds the `registrySubject` and
+  ///   `registryDidChangeSubject` emissions for this one mutation. Only for
   ///   changes no observer renders — a reading position, saved every few seconds
   ///   of playback (PP-5268). The withheld state is not lost: the next announced
   ///   mutation publishes a snapshot that includes it.

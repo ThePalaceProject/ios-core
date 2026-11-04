@@ -90,6 +90,19 @@ final class BookReturnService: @unchecked Sendable {
     /// no-op.
     private let remotePositionWriteCanceller: @Sendable (String) -> Void
 
+    /// Syncs the registry after a return; a throw is reported as a sync
+    /// failure. Injected so tests can drive the failure without a server.
+    private let postReturnSync: @Sendable (TPPBookRegistryProvider) async throws -> Void
+
+    /// Production default for `postReturnSync`. `syncAsync` exists only on the
+    /// concrete `TPPBookRegistry`, which production always injects; test
+    /// doubles skip the sync.
+    static let productionPostReturnSync: @Sendable (TPPBookRegistryProvider) async throws -> Void = { registry in
+        if let registry = registry as? TPPBookRegistry {
+            _ = try await registry.syncAsync()
+        }
+    }
+
     /// Adobe DRM service stored property gated on FEATURE_DRM_CONNECTOR
     /// (the type itself is gated). In Palace-noDRM the property doesn't
     /// exist and the Adobe-return code path is compiled out.
@@ -136,7 +149,8 @@ final class BookReturnService: @unchecked Sendable {
         authCoordinator: AuthCoordinator? = nil,
         offlineReturnEnqueuer: (@Sendable (OfflineAction) async -> Void)? = BookReturnService.productionOfflineReturnEnqueuer,
         alertPresenter: @escaping @MainActor @Sendable (UIAlertController) -> Void = { TPPPresentationUtils.safelyPresent($0) },
-        remotePositionWriteCanceller: @escaping @Sendable (String) -> Void = { _ in }
+        remotePositionWriteCanceller: @escaping @Sendable (String) -> Void = { _ in },
+        postReturnSync: @escaping @Sendable (TPPBookRegistryProvider) async throws -> Void = BookReturnService.productionPostReturnSync
     ) {
         self.bookRegistry = bookRegistry
         self.localContentService = localContentService
@@ -151,6 +165,7 @@ final class BookReturnService: @unchecked Sendable {
         self.offlineReturnEnqueuer = offlineReturnEnqueuer
         self.alertPresenter = alertPresenter
         self.remotePositionWriteCanceller = remotePositionWriteCanceller
+        self.postReturnSync = postReturnSync
     }
     #else
     init(
@@ -165,7 +180,8 @@ final class BookReturnService: @unchecked Sendable {
         authCoordinator: AuthCoordinator? = nil,
         offlineReturnEnqueuer: (@Sendable (OfflineAction) async -> Void)? = BookReturnService.productionOfflineReturnEnqueuer,
         alertPresenter: @escaping @MainActor @Sendable (UIAlertController) -> Void = { TPPPresentationUtils.safelyPresent($0) },
-        remotePositionWriteCanceller: @escaping @Sendable (String) -> Void = { _ in }
+        remotePositionWriteCanceller: @escaping @Sendable (String) -> Void = { _ in },
+        postReturnSync: @escaping @Sendable (TPPBookRegistryProvider) async throws -> Void = BookReturnService.productionPostReturnSync
     ) {
         self.bookRegistry = bookRegistry
         self.localContentService = localContentService
@@ -179,6 +195,7 @@ final class BookReturnService: @unchecked Sendable {
         self.offlineReturnEnqueuer = offlineReturnEnqueuer
         self.alertPresenter = alertPresenter
         self.remotePositionWriteCanceller = remotePositionWriteCanceller
+        self.postReturnSync = postReturnSync
     }
     #endif
 
@@ -747,20 +764,19 @@ final class BookReturnService: @unchecked Sendable {
 
     // MARK: - Post-return sync
 
-    /// Performs a registry sync after a return. On failure, posts
-    /// `TPPSyncFailed` so the Reservations tab can show the sync error
-    /// banner; completion is always called so the return UI is dismissed.
+    /// Performs a registry sync after a return. On failure, reports it through
+    /// the registry so the Reservations tab can show the sync error banner;
+    /// completion is always called so the return UI is dismissed.
     private func performPostReturnSyncThen(completion: @escaping @Sendable () -> Void) {
         launchTrackedTask { [weak self] in
             do {
-                // `syncAsync` exists only on the concrete `TPPBookRegistry`,
-                // which production always injects; test doubles skip the sync.
-                if let registry = self?.bookRegistry as? TPPBookRegistry {
-                    _ = try await registry.syncAsync()
+                // Read through `self?` so the service is not held across the sync.
+                if let registry = self?.bookRegistry, let sync = self?.postReturnSync {
+                    try await sync(registry)
                 }
             } catch {
                 Log.error(#file, "Post-return sync failed: \(error.localizedDescription)")
-                NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
+                self?.bookRegistry.reportSyncFailure(errorDocument: nil)
             }
             runOnMainAsync(completion)
         }

@@ -9,6 +9,7 @@
 import XCTest
 import Combine
 @testable import Palace
+import PalaceBookRegistry
 
 // MARK: - SAML Sign-In Regression Tests
 
@@ -579,6 +580,53 @@ final class TPPSAMLSignInTests: XCTestCase {
                   "businessLogicDidCompleteSignIn should be called when sign-in completes")
   }
   
+  #if FEATURE_DRM_CONNECTOR
+  /// A failed DRM activation ends any sync wait through the registry, so Holds
+  /// and My Books reload and leave their loading state.
+  func testFinalizeSignIn_WhenDRMFails_ReportsSyncEndedThroughRegistry() async {
+    businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
+    var cancellables = Set<AnyCancellable>()
+    let ended = expectation(description: "sync-ended event")
+    bookRegistry.syncEventPublisher
+      .sink { if $0 == .ended { ended.fulfill() } }
+      .store(in: &cancellables)
+
+    businessLogic.finalizeSignIn(forDRMAuthorization: false, errorMessage: "DRM activation failed")
+
+    await fulfillment(of: [ended], timeout: 3.0)
+    XCTAssertEqual(bookRegistry.reportSyncEndedCount, 1)
+    await dismissAlertOverAppWindow()
+  }
+  #endif
+
+  func testFinalizeSignIn_WhenDRMSucceeds_DoesNotReportSyncEnded() {
+    businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
+    let signedIn = expectation(description: "businessLogicDidCompleteSignIn called")
+    uiDelegate.didCompleteSignInHandler = { signedIn.fulfill() }
+
+    businessLogic.finalizeSignIn(forDRMAuthorization: true)
+
+    wait(for: [signedIn], timeout: 3.0)
+    XCTAssertEqual(bookRegistry.reportSyncEndedCount, 0)
+  }
+
+  /// The DRM-failure path presents an error alert over the host app's window;
+  /// dismiss it so later tests that present find no alert in the way.
+  private func dismissAlertOverAppWindow() async {
+    guard let root = UIApplication.shared.delegate?.window??.rootViewController else { return }
+    var top = root
+    while let next = top.presentedViewController { top = next }
+    guard let alert = top as? UIAlertController, let presenter = alert.presentingViewController else { return }
+    if let coordinator = alert.transitionCoordinator {
+      await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+        coordinator.animate(alongsideTransition: nil) { _ in continuation.resume() }
+      }
+    }
+    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+      presenter.dismiss(animated: false) { continuation.resume() }
+    }
+  }
+
   /// Tests that loading state transitions correctly through sign-in flow.
   func testSignIn_loadingStateTransitions() {
     // Setup

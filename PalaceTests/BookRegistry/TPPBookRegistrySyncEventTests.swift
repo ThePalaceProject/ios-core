@@ -1,0 +1,273 @@
+//
+//  TPPBookRegistrySyncEventTests.swift
+//  PalaceTests
+//
+//  The registry's sync-event and registry-changed publishers (PP-5470): when
+//  each fires, what a failure carries, and that both deliver on main.
+//
+
+import XCTest
+import Combine
+import PalaceCatalog
+@testable import Palace
+import PalaceBookModel
+@_spi(Testing) @testable import PalaceBookRegistry
+
+@MainActor
+final class TPPBookRegistrySyncEventTests: XCTestCase {
+
+    private static let loansURL = URL(string: "https://sync-event-test.example.com/loans")!
+
+    private var tempDirectory: URL!
+    private var appContainer: AppContainer!
+    private var cancellables: Set<AnyCancellable> = []
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("SyncEventTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        appContainer = makeTestAppContainer()
+    }
+
+    override func tearDownWithError() throws {
+        cancellables.removeAll()
+        try? FileManager.default.removeItem(at: tempDirectory)
+        tempDirectory = nil
+        appContainer = nil
+        try super.tearDownWithError()
+    }
+
+    // MARK: - Helpers
+
+    private func makeRegistry(
+        scope: SyncEventAccountScope,
+        feedFetcher: OPDSFeedFetching = FailingLoansFeedFetcher(userInfo: [:])
+    ) -> TPPBookRegistry {
+        let directory = tempDirectory!
+        let container = appContainer!
+        return TPPBookRegistry(
+            accountScope: scope,
+            imageLoader: MockImageLoader(),
+            dependencies: RegistryExternalDependencies(
+                downloadService: { container.downloadCenter },
+                loansFeedFetcher: { feedFetcher },
+                sideloadedIdentifiers: { [] },
+                registryDirectory: { directory.appendingPathComponent($0) },
+                onAvailabilityChange: { _, _ in }
+            )
+        )
+    }
+
+    private func load(_ registry: TPPBookRegistry) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            registry.load(account: nil) { continuation.resume() }
+        }
+    }
+
+    private func collectSyncEvents(from registry: TPPBookRegistry) -> LockIsolated<[RegistrySyncEvent]> {
+        let events = LockIsolated<[RegistrySyncEvent]>([])
+        registry.syncEventPublisher
+            .sink { event in events.withValue { $0.append(event) } }
+            .store(in: &cancellables)
+        return events
+    }
+
+    private func countRegistryChanges(from registry: TPPBookRegistry) -> LockIsolated<Int> {
+        let count = LockIsolated(0)
+        registry.registryDidChangePublisher
+            .sink { count.withValue { $0 += 1 } }
+            .store(in: &cancellables)
+        return count
+    }
+
+    private func makeBook(_ identifier: String) -> TPPBook {
+        TPPBookMocker.mockBook(identifier: identifier, title: identifier, distributorType: .EpubZip)
+    }
+
+    // MARK: - Sync lifecycle
+
+    /// A failed loans sync reports, in order: the sync began, it ended, and why
+    /// it failed. Holds relies on that order to drop its placeholder and then
+    /// decide on the error banner.
+    func testSync_WhenLoansFetchFails_PublishesBeganEndedThenFailedWithDetail() async {
+        let fetcher = FailingLoansFeedFetcher(userInfo: ["detail": "Your card has expired."])
+        let registry = makeRegistry(
+            scope: SyncEventAccountScope(accountID: "sync-event-lib", loansURL: Self.loansURL),
+            feedFetcher: fetcher
+        )
+        await load(registry)
+        let events = collectSyncEvents(from: registry)
+        let failed = expectation(description: "sync failure published")
+        registry.syncEventPublisher
+            .sink { if case .failed = $0 { failed.fulfill() } }
+            .store(in: &cancellables)
+
+        registry.sync()
+
+        await fulfillment(of: [failed], timeout: 5.0)
+        XCTAssertEqual(events.value, [.began, .ended, .failed(detail: "Your card has expired.")])
+    }
+
+    // MARK: - reportSyncFailure
+
+    func testReportSyncFailure_WithDetail_PublishesDetail() async {
+        let registry = makeRegistry(scope: SyncEventAccountScope(accountID: nil))
+        let events = collectSyncEvents(from: registry)
+
+        registry.reportSyncFailure(errorDocument: ["title": "Title", "detail": "Detail text"])
+        await drainMainQueueAsync()
+
+        XCTAssertEqual(events.value, [.failed(detail: "Detail text")])
+    }
+
+    func testReportSyncFailure_WithTitleOnly_PublishesTitle() async {
+        let registry = makeRegistry(scope: SyncEventAccountScope(accountID: nil))
+        let events = collectSyncEvents(from: registry)
+
+        registry.reportSyncFailure(errorDocument: ["title": "Authentication Required"])
+        await drainMainQueueAsync()
+
+        XCTAssertEqual(events.value, [.failed(detail: "Authentication Required")])
+    }
+
+    /// An empty `detail` is not replaced by the title; Holds then shows its
+    /// generic message, as it did when it read the error document itself.
+    func testReportSyncFailure_WithEmptyDetail_PublishesNilDetail() async {
+        let registry = makeRegistry(scope: SyncEventAccountScope(accountID: nil))
+        let events = collectSyncEvents(from: registry)
+
+        registry.reportSyncFailure(errorDocument: ["detail": "", "title": "Ignored"])
+        await drainMainQueueAsync()
+
+        XCTAssertEqual(events.value, [.failed(detail: nil)])
+    }
+
+    func testReportSyncFailure_WithoutErrorDocument_PublishesNilDetail() async {
+        let registry = makeRegistry(scope: SyncEventAccountScope(accountID: nil))
+        let events = collectSyncEvents(from: registry)
+
+        registry.reportSyncFailure(errorDocument: nil)
+        await drainMainQueueAsync()
+
+        XCTAssertEqual(events.value, [.failed(detail: nil)])
+    }
+
+    /// The post-return sync reports from a background task; listeners are
+    /// main-actor view models, so delivery must be on main.
+    func testReportSyncFailure_FromBackgroundThread_DeliversOnMain() async {
+        let registry = makeRegistry(scope: SyncEventAccountScope(accountID: nil))
+        let deliveredOnMain = LockIsolated<Bool?>(nil)
+        let delivered = expectation(description: "failure delivered")
+        registry.syncEventPublisher
+            .sink { _ in
+                deliveredOnMain.withValue { $0 = Thread.isMainThread }
+                delivered.fulfill()
+            }
+            .store(in: &cancellables)
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            registry.reportSyncFailure(errorDocument: nil)
+        }
+
+        await fulfillment(of: [delivered], timeout: 5.0)
+        XCTAssertEqual(deliveredOnMain.value, true)
+    }
+
+    // MARK: - reportSyncEnded
+
+    func testReportSyncEnded_PublishesEnded() async {
+        let registry = makeRegistry(scope: SyncEventAccountScope(accountID: nil))
+        let events = collectSyncEvents(from: registry)
+
+        registry.reportSyncEnded()
+        await drainMainQueueAsync()
+
+        XCTAssertEqual(events.value, [.ended])
+    }
+
+    // MARK: - registryDidChangePublisher
+
+    func testAddBook_PublishesRegistryDidChange() async {
+        let registry = makeRegistry(scope: SyncEventAccountScope(accountID: nil))
+        let changes = countRegistryChanges(from: registry)
+
+        registry.addBook(makeBook("change-book"), state: .downloadNeeded)
+        await registry._awaitPendingWritesForTesting()
+        await drainMainQueueAsync()
+
+        XCTAssertEqual(changes.value, 1)
+    }
+
+    func testNotifyRegistryChanged_PublishesRegistryDidChange() async {
+        let registry = makeRegistry(scope: SyncEventAccountScope(accountID: nil))
+        let changes = countRegistryChanges(from: registry)
+
+        registry.notifyRegistryChanged()
+        await drainMainQueueAsync()
+
+        XCTAssertEqual(changes.value, 1)
+    }
+
+    /// Clearing the shelf on a library switch is not a registry change: Holds
+    /// reads a change as an answered sync, and the new library's first sync
+    /// must still show the placeholder (PP-5468).
+    func testAccountChange_ClearsRecordsWithoutPublishingRegistryDidChange() async {
+        // No current account: the reload that follows the switch has nothing to
+        // load, so only the clearing step runs.
+        let scope = SyncEventAccountScope(accountID: nil)
+        let registry = makeRegistry(scope: scope)
+        registry.addBook(makeBook("previous-library-book"), state: .downloadNeeded)
+        await registry._awaitPendingWritesForTesting()
+        await drainMainQueueAsync()
+        let changes = countRegistryChanges(from: registry)
+        let cleared = expectation(description: "records cleared")
+        registry.registryPublisher
+            .dropFirst()
+            .first { $0.isEmpty }
+            .sink { _ in cleared.fulfill() }
+            .store(in: &cancellables)
+
+        scope.sendAccountDidChange()
+
+        await fulfillment(of: [cleared], timeout: 5.0)
+        await drainMainQueueAsync()
+        await drainMainQueueAsync()
+        XCTAssertEqual(changes.value, 0)
+    }
+}
+
+// MARK: - Test doubles
+
+/// Account scope whose account-change signal the test fires by hand.
+private final class SyncEventAccountScope: AccountScopeProviding, @unchecked Sendable {
+    private let accountID: String?
+    private let loansURL: URL?
+    private let accountDidChange = PassthroughSubject<Void, Never>()
+
+    init(accountID: String?, loansURL: URL? = nil) {
+        self.accountID = accountID
+        self.loansURL = loansURL
+    }
+
+    var currentAccountID: String? { accountID }
+    var accountDidChangePublisher: AnyPublisher<Void, Never> { accountDidChange.eraseToAnyPublisher() }
+    func hasCredentials(forAccount accountID: String) -> Bool { true }
+    func loansURL(forAccount accountID: String, readinessTimeout: TimeInterval) async throws -> URL? { loansURL }
+
+    func sendAccountDidChange() { accountDidChange.send(()) }
+}
+
+/// Fails every fetch with an `NSError` whose `userInfo` is the error document.
+private final class FailingLoansFeedFetcher: OPDSFeedFetching, @unchecked Sendable {
+    private let userInfo: [String: Any]
+    init(userInfo: [String: Any]) { self.userInfo = userInfo }
+
+    func fetchFeed(from url: URL) async throws -> TPPOPDSFeed {
+        throw NSError(domain: "SyncEventTests", code: 401, userInfo: userInfo)
+    }
+
+    func fetchFeed(from url: URL, resetCache: Bool) async throws -> TPPOPDSFeed {
+        try await fetchFeed(from: url)
+    }
+}

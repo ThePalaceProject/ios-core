@@ -352,12 +352,9 @@ final class BookDetailViewModel: ObservableObject {
     }
 
     private func setupObservers() {
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleBookRegistryChange(_:)),
-            name: .TPPBookRegistryDidChange,
-            object: nil
-        )
+        registry.registryDidChangePublisher
+            .sink { [weak self] in self?.handleBookRegistryChange() }
+            .store(in: &cancellables)
 
         // BorrowOperation posts .TPPBookProcessingDidChange via the registry
         // when it starts a borrow request and again when it finishes. Mirror
@@ -510,7 +507,7 @@ final class BookDetailViewModel: ObservableObject {
             .assign(to: &self.$stableButtonState)
     }
 
-    @objc func handleBookRegistryChange(_ notification: Notification) {
+    func handleBookRegistryChange() {
         let updatedBook = registry.book(forIdentifier: book.identifier) ?? book
         // Always update book from registry - it has authoritative data including loan duration
         // after borrowing completes

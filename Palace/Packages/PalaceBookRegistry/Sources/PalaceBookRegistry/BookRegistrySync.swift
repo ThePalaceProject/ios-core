@@ -430,7 +430,7 @@ final class BookRegistrySync: @unchecked Sendable {
           self.store.bookStateSubject.send((identifier, state))
         }
 
-        NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+        self.store.registryDidChangeSubject.send(())
         Log.info(#file, "  Registry loaded with \(bookCount) books")
 
         // Fire the completion AFTER state is .loaded and subscribers have been
@@ -770,8 +770,8 @@ final class BookRegistrySync: @unchecked Sendable {
           needsRebuildFromServer = false
         }
         if scope == .shelf {
-          DispatchQueue.main.async {
-            NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil, userInfo: nil)
+          DispatchQueue.main.async { [store] in
+            store.registryDidChangeSubject.send(())
           }
         }
       } catch {
@@ -852,11 +852,11 @@ final class BookRegistrySync: @unchecked Sendable {
   ///
   /// `diskWriteQueue` is serial, so a trailing `async` block resumes STRICTLY
   /// AFTER every previously-enqueued write block has finished flushing to disk
-  /// (and enqueued its main-hop `.TPPBookRegistryDidChange` post) — including a
+  /// (and enqueued its main-hop registry-changed send) — including a
   /// refused INV-1 empty save, whose block runs and returns without writing.
   /// Bounded by construction: no `wait(for:)` deadline, no sleep/poll/clock.
   /// Mirrors `BookRegistryStore._awaitPendingWritesForTesting`. Production never
-  /// calls it — it is a deterministic replacement for a `.TPPBookRegistryDidChange`
+  /// calls it — it is a deterministic replacement for a registry-changed
   /// deadline wait in the persistence contract tests (STARVE-001).
   func _awaitPendingDiskWritesForTesting() async {
     await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
@@ -881,8 +881,8 @@ final class BookRegistrySync: @unchecked Sendable {
     }
     if didChange {
       save(for: account)
-      DispatchQueue.main.async {
-        NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+      DispatchQueue.main.async { [store] in
+        store.registryDidChangeSubject.send(())
       }
     }
   }
@@ -1158,10 +1158,10 @@ private struct SendableRegistryPayload: @unchecked Sendable {
 /// scopes write the whole registry file.
 enum RegistrySaveScope {
   /// Anything that can change what is on the shelf. Refreshes the last-good
-  /// backup and posts `TPPBookRegistryDidChange`.
+  /// backup and announces a registry change.
   case shelf
   /// Only a reading position moved (PP-5268). Neither refreshes the backup nor
-  /// posts a change: positions are saved every few seconds of playback, and no
+  /// announces a change: positions are saved every few seconds of playback, and no
   /// observer of the shelf renders one.
   case positionOnly
 }

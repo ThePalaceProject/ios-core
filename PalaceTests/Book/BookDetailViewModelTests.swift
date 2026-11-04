@@ -1317,14 +1317,36 @@ final class BookDetailViewModelTests: XCTestCase {
         XCTAssertTrue(vm.processingButtons.intersection([.returning, .cancelHold, .return, .remove]).isEmpty)
     }
 
-    // MARK: handleBookRegistryChange notification handler
+    // MARK: handleBookRegistryChange
+
+    /// The detail screen follows the registry's change event, so a record the
+    /// registry replaced (new loan dates after a borrow) reaches the screen.
+    func testRegistryDidChange_UpdatesBookFromRegistry() {
+        let (vm, registry, book) = makeVM()
+        // Lets the book-state replay from `makeVM` land first; it also re-reads
+        // the registry and would otherwise satisfy this test on its own.
+        drainMainQueue()
+        let updated = TPPBookMocker.mockBook(identifier: book.identifier, title: "Renamed", distributorType: .EpubZip)
+        // Assigned directly so no change event is sent until the Act step.
+        registry.registry[book.identifier] = TPPBookRegistryRecord(book: updated, state: .unregistered)
+        let exp = expectation(description: "book updated")
+        var cancellables = Set<AnyCancellable>()
+        vm.$book.filter { $0.title == "Renamed" }.first()
+            .sink { _ in exp.fulfill() }
+            .store(in: &cancellables)
+
+        registry.sendRegistryDidChange()
+
+        wait(for: [exp], timeout: 2.0)
+        XCTAssertEqual(vm.book.title, "Renamed")
+    }
 
     func testHandleBookRegistryChange_UpdatesBookFromRegistry() {
         let (vm, registry, book) = makeVM()
         let updated = TPPBookMocker.mockBook(identifier: book.identifier, title: "Renamed", distributorType: .EpubZip)
         registry.addBook(updated, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        vm.handleBookRegistryChange(Notification(name: .TPPBookRegistryDidChange))
+        vm.handleBookRegistryChange()
 
         let exp = expectation(description: "book updated")
         var cancellables = Set<AnyCancellable>()

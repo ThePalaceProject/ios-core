@@ -77,6 +77,7 @@ protocol TPPBookRegistrySyncing {
     var isSyncing: Bool {get}
     func reset(_ libraryAccountUUID: String)
     func sync()
+    func reportSyncEnded()
 }
 
 @objc protocol TPPDRMAuthorizing: NSObjectProtocol {
