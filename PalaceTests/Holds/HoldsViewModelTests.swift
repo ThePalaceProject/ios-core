@@ -675,7 +675,7 @@ final class HoldsSyncFailureTests: XCTestCase {
         // to avoid alarming the user when stale data is still useful.
         mockRegistry.sendSyncEvent(.failed(detail: nil))
 
-        // Drain the main queue so the notification observer's main-queue
+        // Drain the main queue so the sync event's main-queue
         // dispatch lands before we assert. FIFO guarantees ordering. Async
         // variant required — sync `drainMainQueue()` deadlocks inside async
         // test methods (CI on PR #989 surfaced this).

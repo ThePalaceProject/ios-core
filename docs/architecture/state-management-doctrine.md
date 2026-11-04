@@ -81,7 +81,7 @@ governs the app target's critical paths, not every package's internal choices.
 `TPPBookRegistry` (`Palace/Packages/PalaceBookRegistry/Sources/PalaceBookRegistry/TPPBookRegistry.swift`) is the single
 source of truth for book state — **scoped to loans**. It projects read-only
 Combine publishers (`registryPublisher` / `bookStatePublisher` /
-`syncStatePublisher`); consumers observe, they never reach in and mutate.
+`syncEventPublisher` / `registryDidChangePublisher`); consumers observe, they never reach in and mutate.
 
 `SideloadedBookRegistry` (`Palace/MyBooks/Sideload/SideloadedBookRegistry.swift:45`)
 is a **documented, probe-guarded second owner** for side-loaded content, exempt

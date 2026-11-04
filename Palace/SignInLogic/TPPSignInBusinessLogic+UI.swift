@@ -65,7 +65,7 @@ extension TPPSignInBusinessLogic {
                 let alert = TPPAlertUtils.alert(title: Strings.Error.loginErrorTitle,
                                                 message: errorMessage,
                                                 error: error as NSError?)
-                TPPPresentationUtils.safelyPresent(alert, animated: true)
+                self.presentDRMFailureAlert(alert)
                 return
             }
             #endif

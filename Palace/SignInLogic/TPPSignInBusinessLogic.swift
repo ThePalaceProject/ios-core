@@ -108,6 +108,12 @@ protocol TPPBookRegistrySyncing {
 class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider, @preconcurrency TPPCurrentLibraryAccountProvider {
     var onLocationAuthorizationCompletion: (UINavigationController?, Error?) -> Void = {_, _ in }
 
+    /// Presents the DRM-activation failure alert. Replaceable so tests can
+    /// record the alert instead of presenting it over the host app's window.
+    var presentDRMFailureAlert: (UIViewController) -> Void = { alert in
+        TPPPresentationUtils.safelyPresent(alert, animated: true)
+    }
+
     /// Makes a business logic object with a network request executor that
     /// performs no persistent storage for caching.
     convenience init(libraryAccountID: String,

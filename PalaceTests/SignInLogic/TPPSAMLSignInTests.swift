@@ -585,6 +585,8 @@ final class TPPSAMLSignInTests: XCTestCase {
   /// and My Books reload and leave their loading state.
   func testFinalizeSignIn_WhenDRMFails_ReportsSyncEndedThroughRegistry() async {
     businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
+    var presentedAlerts: [UIViewController] = []
+    businessLogic.presentDRMFailureAlert = { presentedAlerts.append($0) }
     var cancellables = Set<AnyCancellable>()
     let ended = expectation(description: "sync-ended event")
     bookRegistry.syncEventPublisher
@@ -595,7 +597,7 @@ final class TPPSAMLSignInTests: XCTestCase {
 
     await fulfillment(of: [ended], timeout: 3.0)
     XCTAssertEqual(bookRegistry.reportSyncEndedCount, 1)
-    await dismissAlertOverAppWindow()
+    XCTAssertEqual(presentedAlerts.count, 1, "the patron still sees the DRM error")
   }
   #endif
 
@@ -608,23 +610,6 @@ final class TPPSAMLSignInTests: XCTestCase {
 
     wait(for: [signedIn], timeout: 3.0)
     XCTAssertEqual(bookRegistry.reportSyncEndedCount, 0)
-  }
-
-  /// The DRM-failure path presents an error alert over the host app's window;
-  /// dismiss it so later tests that present find no alert in the way.
-  private func dismissAlertOverAppWindow() async {
-    guard let root = UIApplication.shared.delegate?.window??.rootViewController else { return }
-    var top = root
-    while let next = top.presentedViewController { top = next }
-    guard let alert = top as? UIAlertController, let presenter = alert.presentingViewController else { return }
-    if let coordinator = alert.transitionCoordinator {
-      await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-        coordinator.animate(alongsideTransition: nil) { _ in continuation.resume() }
-      }
-    }
-    await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-      presenter.dismiss(animated: false) { continuation.resume() }
-    }
   }
 
   /// Tests that loading state transitions correctly through sign-in flow.

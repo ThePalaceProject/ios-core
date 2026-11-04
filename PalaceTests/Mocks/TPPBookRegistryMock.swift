@@ -82,16 +82,21 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider, @unchecked Sendabl
         bookStateSubject.eraseToAnyPublisher()
     }
 
-    /// Delivered synchronously on the sending thread so a test sees the effect
-    /// as soon as `sendSyncEvent` returns. Production delivers on main.
+    /// Delivered on the main queue after a hop, as production delivers: a test
+    /// drains the main queue (or waits on an expectation) before asserting, and
+    /// a `@MainActor` subscriber is never called from a background sender.
     private let syncEventSubject = PassthroughSubject<RegistrySyncEvent, Never>()
     var syncEventPublisher: AnyPublisher<RegistrySyncEvent, Never> {
-        syncEventSubject.eraseToAnyPublisher()
+        syncEventSubject
+            .receive(on: DispatchQueue.main)
+            .eraseToAnyPublisher()
     }
 
     private let registryDidChangeSubject = PassthroughSubject<Void, Never>()
     var registryDidChangePublisher: AnyPublisher<Void, Never> {
-        registryDidChangeSubject.eraseToAnyPublisher()
+        registryDidChangeSubject
+            .receive(on: DispatchQueue.main)
+            .eraseToAnyPublisher()
     }
 
     /// Drives `syncEventPublisher` as the real registry's sync would.
@@ -293,17 +298,9 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider, @unchecked Sendabl
         registrySubject.send(snapshot)
         bookStateSubject.send((book.identifier, state))
 
-        // The real registry announces the change on the main thread, and its
-        // `@MainActor` subscribers (view models) trap when called off main.
-        // On-main callers keep synchronous timing; off-main callers (the async
-        // borrow path) defer to main, as production does.
-        if Thread.isMainThread {
-            registryDidChangeSubject.send(())
-        } else {
-            DispatchQueue.main.async { [registryDidChangeSubject] in
-                registryDidChangeSubject.send(())
-            }
-        }
+        // `registryDidChangePublisher` delivers on main, so an off-main caller
+        // (the async borrow path) never runs a `@MainActor` subscriber off main.
+        registryDidChangeSubject.send(())
     }
 
     func removeBook(forIdentifier bookIdentifier: String) {

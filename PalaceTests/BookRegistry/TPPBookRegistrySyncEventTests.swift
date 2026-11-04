@@ -19,7 +19,6 @@ final class TPPBookRegistrySyncEventTests: XCTestCase {
     private static let loansURL = URL(string: "https://sync-event-test.example.com/loans")!
 
     private var tempDirectory: URL!
-    private var appContainer: AppContainer!
     private var cancellables: Set<AnyCancellable> = []
 
     override func setUpWithError() throws {
@@ -27,14 +26,12 @@ final class TPPBookRegistrySyncEventTests: XCTestCase {
         tempDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("SyncEventTests-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
-        appContainer = makeTestAppContainer()
     }
 
     override func tearDownWithError() throws {
         cancellables.removeAll()
         try? FileManager.default.removeItem(at: tempDirectory)
         tempDirectory = nil
-        appContainer = nil
         try super.tearDownWithError()
     }
 
@@ -45,12 +42,11 @@ final class TPPBookRegistrySyncEventTests: XCTestCase {
         feedFetcher: OPDSFeedFetching = FailingLoansFeedFetcher(userInfo: [:])
     ) -> TPPBookRegistry {
         let directory = tempDirectory!
-        let container = appContainer!
         return TPPBookRegistry(
             accountScope: scope,
             imageLoader: MockImageLoader(),
             dependencies: RegistryExternalDependencies(
-                downloadService: { container.downloadCenter },
+                downloadService: { AbsentContentDownloadService() },
                 loansFeedFetcher: { feedFetcher },
                 sideloadedIdentifiers: { [] },
                 registryDirectory: { directory.appendingPathComponent($0) },
@@ -209,6 +205,48 @@ final class TPPBookRegistrySyncEventTests: XCTestCase {
         XCTAssertEqual(changes.value, 1)
     }
 
+    /// Each announcement below is one main-queue send; the count pins every
+    /// source, so dropping any one of them fails the test.
+    private func settleAnnouncements(of registry: TPPBookRegistry) async {
+        await registry._awaitPendingPersistenceForTesting()
+        await drainMainQueueAsync()
+        await drainMainQueueAsync()
+    }
+
+    /// Loading a saved shelf announces a change, so screens opened before the
+    /// load finished show its books. Two sends: the store write and the end of
+    /// the load.
+    func testLoad_OfSavedShelf_PublishesRegistryDidChangeTwice() async {
+        let scope = SyncEventAccountScope(accountID: "load-lib")
+        let writer = makeRegistry(scope: scope)
+        writer.addBook(makeBook("saved-book"), state: .downloadNeeded)
+        await settleAnnouncements(of: writer)
+        let reader = makeRegistry(scope: scope)
+        let changes = countRegistryChanges(from: reader)
+
+        await load(reader)
+        await settleAnnouncements(of: reader)
+
+        XCTAssertEqual(reader.allBooks.map(\.identifier), ["saved-book"], "precondition: the saved shelf loaded")
+        XCTAssertEqual(changes.value, 2)
+    }
+
+    /// Marking a downloaded book whose file is gone announces the change, so
+    /// its button turns back to Download. Three sends: the store write, the
+    /// shelf save, and the validation itself.
+    func testValidateDownloadedContent_WhenFileMissing_PublishesRegistryDidChange() async {
+        let registry = makeRegistry(scope: SyncEventAccountScope(accountID: "validate-lib"))
+        registry.addBook(makeBook("missing-file-book"), state: .downloadSuccessful)
+        await settleAnnouncements(of: registry)
+        let changes = countRegistryChanges(from: registry)
+
+        registry.validateDownloadedContent()
+        await settleAnnouncements(of: registry)
+
+        XCTAssertEqual(registry.state(for: "missing-file-book"), .downloadNeeded)
+        XCTAssertEqual(changes.value, 3)
+    }
+
     /// Clearing the shelf on a library switch is not a registry change: Holds
     /// reads a change as an answered sync, and the new library's first sync
     /// must still show the placeholder (PP-5468).
@@ -256,6 +294,18 @@ private final class SyncEventAccountScope: AccountScopeProviding, @unchecked Sen
     func loansURL(forAccount accountID: String, readinessTimeout: TimeInterval) async throws -> URL? { loansURL }
 
     func sendAccountDidChange() { accountDidChange.send(()) }
+}
+
+/// Reports every content file as absent and no download in flight.
+private final class AbsentContentDownloadService: RegistryDownloadServicing, @unchecked Sendable {
+    func fileUrl(for book: TPPBook, account: String?) -> URL? { nil }
+    func startDownload(for book: TPPBook) {}
+    func deleteLocalContent(forBook book: TPPBook, account: String?) {}
+    func redownloadLCPContentFile(for book: TPPBook) {}
+    func contentFileSatisfied(for book: TPPBook, account: String) -> Bool { false }
+    func lcpContentFileMissing(for book: TPPBook, account: String) -> Bool { false }
+    func contentPresence(for book: TPPBook, account: String) -> RegistryContentPresence { .absent }
+    func isDownloadInFlight(for book: TPPBook) -> Bool { false }
 }
 
 /// Fails every fetch with an `NSError` whose `userInfo` is the error document.
