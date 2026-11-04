@@ -91,6 +91,41 @@ final class BookDetailMetadataHydrationGuardTests: XCTestCase {
                       "A short-circuited hydration must not touch the registry")
     }
 
+    /// Hydration replaces `viewModel.book` with a merged instance while the
+    /// detail header is on screen. The header reads the cover, the thumbnail
+    /// and the dominant color from that instance, so a merged book that starts
+    /// with none of them makes the cover vanish and the header turn gray until
+    /// a fresh cover fetch completes. The resolved presentation state must ride
+    /// along with the merge.
+    ///
+    /// Mutation: dropping any one of the three carry-overs in
+    /// `BookMetadataService.merge` fails the matching assertion.
+    func testHydrate_onSuccess_keepsCoverThumbnailAndDominantColorOnTheMergedBook() async {
+        let sparse = makeSparseBook(identifier: "keep-cover", title: "Kept Title")
+        let cover = UIImage(systemName: "book")!
+        let thumbnail = UIImage(systemName: "book.closed")!
+        sparse.coverImage = cover
+        sparse.thumbnailImage = thumbnail
+        sparse.dominantUIColor = .systemIndigo
+        let fresh = makeHydratedBook(identifier: "keep-cover", title: "Server Title",
+                                     publisher: "Fresh Publisher")
+        let registry = RecordingMetadataRegistry()
+        registry.addBook(sparse, location: nil, state: .downloadSuccessful,
+                         fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+        let vm = makeVM(book: sparse, registry: registry) { _ in fresh }
+
+        await vm.hydrateMetadataIfNeeded()
+
+        XCTAssertFalse(vm.book === sparse, "precondition: hydration swapped in a merged instance")
+        XCTAssertEqual(vm.book.publisher, "Fresh Publisher", "precondition: the merge took the fetched metadata")
+        XCTAssertTrue(vm.book.coverImage === cover,
+                      "The merged book must keep the cover already on screen; otherwise the header shows nothing until a refetch")
+        XCTAssertTrue(vm.book.thumbnailImage === thumbnail,
+                      "The merged book must keep the thumbnail fallback")
+        XCTAssertEqual(vm.book.dominantUIColor, .systemIndigo,
+                       "The merged book must keep the header color; a fresh instance defaults to gray")
+    }
+
     // MARK: - 1b. The needs-hydration predicate, as a table
 
     /// `needsHydration` is a six-way conjunction: published, publisher,

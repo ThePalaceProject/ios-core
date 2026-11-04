@@ -150,6 +150,11 @@ final class HoldsViewModel: ObservableObject {
             .sink { [weak self] _ in self?.store.send(.syncBegan) }
             .store(in: &cancellables)
 
+        NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.store.send(.accountChanged) }
+            .store(in: &cancellables)
+
         let syncEnd = NotificationCenter.default.publisher(for: .TPPSyncEnded)
         let registryChange = NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)
 
