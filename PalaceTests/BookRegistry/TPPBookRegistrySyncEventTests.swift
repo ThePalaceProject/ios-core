@@ -94,14 +94,14 @@ final class TPPBookRegistrySyncEventTests: XCTestCase {
         )
         await load(registry)
         let events = collectSyncEvents(from: registry)
-        let failed = expectation(description: "sync failure published")
-        registry.syncEventPublisher
-            .sink { if case .failed = $0 { failed.fulfill() } }
-            .store(in: &cancellables)
 
-        registry.sync()
+        // The completion runs after the failure is reported; the drain then
+        // lands the publisher's main-queue delivery.
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            registry.sync { _, _ in continuation.resume() }
+        }
+        await drainMainQueueAsync()
 
-        await fulfillment(of: [failed], timeout: 5.0)
         XCTAssertEqual(events.value, [.began, .ended, .failed(detail: "Your card has expired.")])
     }
 
@@ -154,19 +154,19 @@ final class TPPBookRegistrySyncEventTests: XCTestCase {
     func testReportSyncFailure_FromBackgroundThread_DeliversOnMain() async {
         let registry = makeRegistry(scope: SyncEventAccountScope(accountID: nil))
         let deliveredOnMain = LockIsolated<Bool?>(nil)
-        let delivered = expectation(description: "failure delivered")
         registry.syncEventPublisher
-            .sink { _ in
-                deliveredOnMain.withValue { $0 = Thread.isMainThread }
-                delivered.fulfill()
-            }
+            .sink { _ in deliveredOnMain.withValue { $0 = Thread.isMainThread } }
             .store(in: &cancellables)
 
-        DispatchQueue.global(qos: .userInitiated).async {
-            registry.reportSyncFailure(errorDocument: nil)
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                registry.reportSyncFailure(errorDocument: nil)
+                continuation.resume()
+            }
         }
+        // The delivery was queued on main during the send, ahead of this drain.
+        await drainMainQueueAsync()
 
-        await fulfillment(of: [delivered], timeout: 5.0)
         XCTAssertEqual(deliveredOnMain.value, true)
     }
 
@@ -259,16 +259,11 @@ final class TPPBookRegistrySyncEventTests: XCTestCase {
         await registry._awaitPendingWritesForTesting()
         await drainMainQueueAsync()
         let changes = countRegistryChanges(from: registry)
-        let cleared = expectation(description: "records cleared")
-        registry.registryPublisher
-            .dropFirst()
-            .first { $0.isEmpty }
-            .sink { _ in cleared.fulfill() }
-            .store(in: &cancellables)
+        let cleared = registry.registryPublisher.dropFirst()
 
         scope.sendAccountDidChange()
 
-        await fulfillment(of: [cleared], timeout: 5.0)
+        await awaitPublishedAsync(cleared) { $0.isEmpty }
         await drainMainQueueAsync()
         await drainMainQueueAsync()
         XCTAssertEqual(changes.value, 0)

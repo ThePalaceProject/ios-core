@@ -1329,15 +1329,13 @@ final class BookDetailViewModelTests: XCTestCase {
         let updated = TPPBookMocker.mockBook(identifier: book.identifier, title: "Renamed", distributorType: .EpubZip)
         // Assigned directly so no change event is sent until the Act step.
         registry.registry[book.identifier] = TPPBookRegistryRecord(book: updated, state: .unregistered)
-        let exp = expectation(description: "book updated")
-        var cancellables = Set<AnyCancellable>()
-        vm.$book.filter { $0.title == "Renamed" }.first()
-            .sink { _ in exp.fulfill() }
-            .store(in: &cancellables)
 
         registry.sendRegistryDidChange()
 
-        wait(for: [exp], timeout: 2.0)
+        // Two main-queue hops: the registry's delivery, then the handler's
+        // assignment of the re-read book.
+        drainMainQueue()
+        drainMainQueue()
         XCTAssertEqual(vm.book.title, "Renamed")
     }
 

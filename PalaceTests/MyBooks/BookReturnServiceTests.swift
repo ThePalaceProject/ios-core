@@ -420,6 +420,15 @@ final class BookReturnServiceTests: XCTestCase {
         return service
     }
 
+    /// Returns `book` and resumes when the return's completion runs, which
+    /// comes after the post-return sync and its failure report.
+    private func returnAndJoin(_ service: BookReturnService) async {
+        let identifier = book.identifier
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            service.returnBook(withIdentifier: identifier) { continuation.resume() }
+        }
+    }
+
     /// A failed post-return sync reaches Holds as a sync failure through the
     /// registry, so the Reservations tab can show its banner.
     func testReturnBook_WhenPostReturnSyncThrows_ReportsSyncFailureThroughRegistry() async throws {
@@ -427,9 +436,7 @@ final class BookReturnServiceTests: XCTestCase {
                          fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
         let service = makeService(postReturnSync: { _ in throw PostReturnSyncError() })
 
-        let exp = expectation(description: "completion")
-        service.returnBook(withIdentifier: book.identifier) { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 2.0)
+        await returnAndJoin(service)
 
         XCTAssertEqual(registry.reportedSyncFailures, [nil])
         XCTAssertEqual(announcementService.succeededCalls, [book.identifier],
@@ -442,9 +449,7 @@ final class BookReturnServiceTests: XCTestCase {
         let synced = LockIsolated(0)
         let service = makeService(postReturnSync: { _ in synced.withValue { $0 += 1 } })
 
-        let exp = expectation(description: "completion")
-        service.returnBook(withIdentifier: book.identifier) { exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 2.0)
+        await returnAndJoin(service)
 
         XCTAssertEqual(synced.value, 1, "the return must run the post-return sync")
         XCTAssertEqual(registry.reportedSyncFailures, [])

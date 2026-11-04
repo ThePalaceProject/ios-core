@@ -588,14 +588,17 @@ final class TPPSAMLSignInTests: XCTestCase {
     var presentedAlerts: [UIViewController] = []
     businessLogic.presentDRMFailureAlert = { presentedAlerts.append($0) }
     var cancellables = Set<AnyCancellable>()
-    let ended = expectation(description: "sync-ended event")
+    var events: [RegistrySyncEvent] = []
     bookRegistry.syncEventPublisher
-      .sink { if $0 == .ended { ended.fulfill() } }
+      .sink { events.append($0) }
       .store(in: &cancellables)
 
+    // On main, `finalizeSignIn` runs its body synchronously; the drain lands
+    // the registry's main-queue delivery.
     businessLogic.finalizeSignIn(forDRMAuthorization: false, errorMessage: "DRM activation failed")
+    await drainMainQueueAsync()
 
-    await fulfillment(of: [ended], timeout: 3.0)
+    XCTAssertEqual(events, [.ended])
     XCTAssertEqual(bookRegistry.reportSyncEndedCount, 1)
     XCTAssertEqual(presentedAlerts.count, 1, "the patron still sees the DRM error")
   }
@@ -603,12 +606,10 @@ final class TPPSAMLSignInTests: XCTestCase {
 
   func testFinalizeSignIn_WhenDRMSucceeds_DoesNotReportSyncEnded() {
     businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
-    let signedIn = expectation(description: "businessLogicDidCompleteSignIn called")
-    uiDelegate.didCompleteSignInHandler = { signedIn.fulfill() }
-
+    // On main, `finalizeSignIn` runs its body synchronously.
     businessLogic.finalizeSignIn(forDRMAuthorization: true)
 
-    wait(for: [signedIn], timeout: 3.0)
+    XCTAssertTrue(uiDelegate.didCallDidCompleteSignIn, "precondition: sign-in finished")
     XCTAssertEqual(bookRegistry.reportSyncEndedCount, 0)
   }
 
