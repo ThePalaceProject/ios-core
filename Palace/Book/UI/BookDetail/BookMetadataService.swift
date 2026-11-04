@@ -68,8 +68,13 @@ struct BookMetadataService {
     ///    for them and the alternate feed can disagree,
     ///  - blank-string fields take `fresh` only when `current` is empty or nil,
     ///  - optional-value fields fall back to `fresh` only when `current` is nil.
+    ///
+    /// The resolved cover, thumbnail and dominant color ride along from
+    /// `current`: the detail header reads them from whichever instance the view
+    /// model holds, and `TPPBook.init` only re-fetches them asynchronously, so a
+    /// merged instance without them shows an empty header until that completes.
     static func merge(into current: TPPBook, fresh: TPPBook) -> TPPBook {
-        TPPBook(
+        let merged = TPPBook(
             acquisitions: current.acquisitions,
             authors: current.bookAuthors,
             categoryStrings: (current.categoryStrings?.isEmpty ?? true) ? fresh.categoryStrings : current.categoryStrings,
@@ -99,5 +104,9 @@ struct BookMetadataService {
             language: (current.language?.isEmpty ?? true) ? fresh.language : current.language,
             imageCache: current.imageCache
         )
+        merged.coverImage = current.coverImage ?? fresh.coverImage
+        merged.thumbnailImage = current.thumbnailImage ?? fresh.thumbnailImage
+        merged.dominantUIColor = current.dominantUIColor
+        return merged
     }
 }
