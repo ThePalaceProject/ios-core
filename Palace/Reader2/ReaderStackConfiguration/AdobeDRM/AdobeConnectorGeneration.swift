@@ -24,7 +24,7 @@ enum AdobeConnectorGeneration {
     /// vendor's build number moves. `AdobeConnectorGenerationTests` ties the value
     /// to a known build number so a drop that moves it fails a test rather than
     /// silently mis-targeting the migration.
-    static let current = 1
+    static let current = 2
 
     /// Known connector builds, as reported by `hobbes.build` in `libhobbes-iOS.a`.
     ///
