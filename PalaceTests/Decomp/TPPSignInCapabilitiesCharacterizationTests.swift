@@ -160,8 +160,9 @@ final class TPPSignInCapabilitiesCharacterizationTests: XCTestCase {
     // The existing suite only covers the FALSE early-returns.
     func test_shouldSkipAdobeActivation_true_whenStaleWithAdobeCredsAndAuthorizedDevice() {
         let acct = businessLogic.userAccount as! TPPUserAccountMock
-        acct.setUserID("adobe-user")
-        acct.setDeviceID("adobe-device")
+        acct.setAdobeActivation(userID: "adobe-user",
+                                deviceID: "adobe-device",
+                                generation: AdobeConnectorGeneration.current)
         acct.setAuthState(.credentialsStale)
         drmAuthorizer.isUserAuthorizedReturnValue = true   // default, made explicit
 
@@ -175,8 +176,9 @@ final class TPPSignInCapabilitiesCharacterizationTests: XCTestCase {
     #if FEATURE_DRM_CONNECTOR
     func test_shouldSkipAdobeActivation_false_whenDeviceNoLongerAuthorized() {
         let acct = businessLogic.userAccount as! TPPUserAccountMock
-        acct.setUserID("adobe-user")
-        acct.setDeviceID("adobe-device")
+        acct.setAdobeActivation(userID: "adobe-user",
+                                deviceID: "adobe-device",
+                                generation: AdobeConnectorGeneration.current)
         acct.setAuthState(.credentialsStale)
         drmAuthorizer.isUserAuthorizedReturnValue = false
 
@@ -201,8 +203,9 @@ final class TPPSignInCapabilitiesCharacterizationTests: XCTestCase {
     // guard). A fresh sign-in must re-activate.
     func test_shouldSkipAdobeActivation_false_whenAuthorizedButNotStale() {
         let acct = businessLogic.userAccount as! TPPUserAccountMock
-        acct.setUserID("adobe-user")
-        acct.setDeviceID("adobe-device")
+        acct.setAdobeActivation(userID: "adobe-user",
+                                deviceID: "adobe-device",
+                                generation: AdobeConnectorGeneration.current)
         acct.setAuthState(.loggedIn)
         drmAuthorizer.isUserAuthorizedReturnValue = true
 
