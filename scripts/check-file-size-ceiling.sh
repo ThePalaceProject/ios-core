@@ -100,7 +100,7 @@ read -r -d '' ALLOWLIST <<'EOF'
 # 867 -> 861 when the download-error admission rules moved to
 # BookDetailErrorAdmission.swift; 861 -> 840 when PP-5402 moved openBook and
 # the Listen-before-fetch handling to BookDetailViewModel+StreamableLoanListen.swift.
-839  Palace/Book/UI/BookDetail/BookDetailViewModel.swift
+836  Palace/Book/UI/BookDetail/BookDetailViewModel.swift
 834  Palace/Utilities/Localization/Strings.swift
 # AccountsManager is 363 under this metric: it was pinned at 367 after #1520
 # landed `_ = registryLoader` in init, then lowered when #1624 moved the DEBUG
@@ -114,7 +114,7 @@ read -r -d '' ALLOWLIST <<'EOF'
 # 870 in total, on two CLAUDE.md critical paths (sign-in, borrow). The allowlist
 # only ratchets down, so pinning them costs nothing and closes the regression.
 362  Palace/Accounts/Library/AccountsManager.swift
-613  Palace/SignInLogic/TPPSignInBusinessLogic.swift
+602  Palace/SignInLogic/TPPSignInBusinessLogic.swift
 471  Palace/MyBooks/BorrowOperation.swift
 # Package source is in scope (see THE RULE). This one was already over the
 # ceiling inside the old blind spot; pinned here at its measured size so the
