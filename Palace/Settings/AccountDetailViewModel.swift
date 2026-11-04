@@ -13,6 +13,7 @@ import PalaceLogging
 import PalaceNetwork
 import PalaceAuth
 import PalaceBookRegistry
+import os
 
 @MainActor
 class AccountDetailViewModel: NSObject, ObservableObject {
@@ -31,8 +32,17 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
     // MARK: - Published Properties
 
-    @Published var usernameText = ""
-    @Published var pinText = ""
+    @Published var usernameText = "" {
+        didSet { let typed = usernameText; typedCredentials.withLock { $0.username = typed } }
+    }
+    @Published var pinText = "" {
+        didSet { let typed = pinText; typedCredentials.withLock { $0.pin = typed } }
+    }
+
+    /// Copy of the two fields above for `NYPLBasicAuthCredentialsProvider`,
+    /// whose getters URLSession calls off the main thread (PP-5465).
+    private nonisolated let typedCredentials = OSAllocatedUnfairLock(
+        initialState: (username: "", pin: ""))
     @Published var isLoading = false
     @Published var isLoadingAuth = false
     @Published var isPINHidden = true
@@ -897,17 +907,16 @@ extension AccountDetailViewModel: @preconcurrency TPPSignInOutBusinessLogicUIDel
 
 // MARK: - NYPLBasicAuthCredentialsProvider
 
-extension AccountDetailViewModel: @preconcurrency NYPLBasicAuthCredentialsProvider {
-    // `@preconcurrency`: this type is @MainActor, but the protocol's requirements
-    // are non-isolated, so the @MainActor witnesses 'cross into main actor-isolated
-    // code' under Swift 6. The conformance's callers (sign-in business logic / UIKit
-    // input providers) deliver on the main thread by contract, so relaxing the
-    // isolation check here is behavior-preserving. No logic change.
-    var username: String? {
-        usernameText.isEmpty ? nil : usernameText
+extension AccountDetailViewModel: NYPLBasicAuthCredentialsProvider {
+    // `nonisolated`: the network layer answers a basic-auth challenge on a
+    // URLSession delegate thread, so these read the lock-protected copy rather
+    // than the @MainActor text fields (PP-5465).
+    nonisolated var username: String? {
+        let typed = typedCredentials.withLock { $0.username }
+        return typed.isEmpty ? nil : typed
     }
 
-    var pin: String? {
-        pinText.isEmpty ? "" : pinText
+    nonisolated var pin: String? {
+        typedCredentials.withLock { $0.pin }
     }
 }
