@@ -109,17 +109,22 @@ final class RegistryPositionOnlySaveTests: PalaceWiringTestCase {
         }
     }
 
-    /// Counts `TPPBookRegistryDidChange` posts caused by `work`, which must
-    /// return only after its writes are on disk.
-    private func registryChangeCount(during work: () async -> Void) async -> Int {
+    /// Counts registry-change events on `changes` caused by `work`, which must
+    /// return only after its writes are on disk. Settles main twice: once for
+    /// the store's main-queue send, once for a publisher that re-delivers on main.
+    private func registryChangeCount(
+        on changes: AnyPublisher<Void, Never>? = nil,
+        during work: () async -> Void
+    ) async -> Int {
+        await settleMainQueue()
         await settleMainQueue()
         var count = 0
-        let token = NotificationCenter.default.addObserver(
-            forName: .TPPBookRegistryDidChange, object: nil, queue: nil
-        ) { _ in count += 1 }
+        let subscription = (changes ?? store.registryDidChangeSubject.eraseToAnyPublisher())
+            .sink { count += 1 }
         await work()
         await settleMainQueue()
-        NotificationCenter.default.removeObserver(token)
+        await settleMainQueue()
+        subscription.cancel()
         return count
     }
 
@@ -194,7 +199,7 @@ final class RegistryPositionOnlySaveTests: PalaceWiringTestCase {
 
     /// Drives the production `TPPBookRegistry.setLocation` end to end: the facade
     /// wires `BookmarkManager.savePosition` to the position-only save. Wired to
-    /// the shelf save instead, this test sees the backup rewritten and a post.
+    /// the shelf save instead, this test sees the backup rewritten and a change event.
     func test_registrySetLocation_persists_withoutAnnouncingOrRewritingTheBackup() async throws {
         let container = appContainer!
         let registry = TPPBookRegistry(
@@ -216,7 +221,7 @@ final class RegistryPositionOnlySaveTests: PalaceWiringTestCase {
         let backup = RegistryFileRecovery.backupURL(for: primary)
         let backupBefore = try Data(contentsOf: backup)
 
-        let posts = await registryChangeCount {
+        let posts = await registryChangeCount(on: registry.registryDidChangePublisher) {
             registry.setLocation(makeLocation("after"), forIdentifier: bookID)
             await registry._awaitPendingPersistenceForTesting()
         }

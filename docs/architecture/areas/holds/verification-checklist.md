@@ -41,7 +41,6 @@ description: Per-area verification reference; refresh before changing this area
 | `Palace/Accounts/Library/Account.swift` | 301, 377, 552 | `supportsReservations: Bool` is parsed from authentication-document `features.disabled` containing `"https://librarysimplified.org/rel/policy/reservations"`. | `decideHoldNavigation` reads this via `awaitReady().supportsReservations`; library carve-out for anonymous libraries falls through this predicate. |
 
 **STILL UNMIGRATED / known scope debt:**
-- `HoldsViewModel.dispatchSyncFailure` (line 197) still references `TPPBookRegistry.syncFailureErrorDocumentKey` as `[AnyHashable: Any]` — when registry sync moves to a typed error envelope, update this and the reducer payload together.
 - The `HoldNotificationCategoryIdentifier` retains the legacy `NYPL` string prefix (line 17 of NotificationService) — rename pending a coordinated cleanup with the CM-side category registration.
 
 ---
@@ -84,8 +83,8 @@ Most UNKNOWN cells reflect the PP-4020 and PP-4358 audit gaps; refresh with each
 | App returns to the foreground | `SceneDelegate.sceneWillEnterForeground` → `ForegroundShelfSync.appWillEnterForeground()` | If the throttle elapsed (>30s), sync the registry for any signed-in patron, then update the badge | Throttle is shared with the notification path, so a push tap and a foreground within 30s sync once |
 | Manual tab-switch to holds | `AppTabHostView` `onChange(of: selectedTab)` (line 99) | `bookRegistry.sync()` unconditionally (F-035) | None known; unconditional sync acceptable here because user-initiated |
 | Pull-to-refresh on holds list | `HoldsView.content` `.refreshable { model.refresh() }` (line 145) | `HoldsViewModel.refresh()` → either `bookRegistry.sync()` or `presentSignIn` if no creds | If `presentSignIn` is invoked and user cancels, the spinner clears via the completion closure |
-| `TPPSyncBegan` notification | `HoldsViewModel.init` Combine sink (line 125) | Dispatch `.syncBegan` → reducer sets `isLoading = true`, clears prior `syncErrorMessage` | Reducer cancels prior banner; if a banner just appeared, it disappears on next sync. Intentional. |
-| `TPPSyncFailed` notification | `dispatchSyncFailure` (line 197) | Computes `cached = !visibleBooks.isEmpty` and `anonymous = !currentLibraryNeedsAuth() || !hasCredentials()`; dispatches `.syncFailed(message, cached, anonymous)` | Banner suppressed only when EITHER flag is true — see Section 7 trap on the `||` semantics |
+| `syncEventPublisher` `.began` | `HoldsViewModel.init` Combine sink | Dispatch `.syncBegan` → reducer sets `isLoading = true`, clears prior `syncErrorMessage` | Reducer cancels prior banner; if a banner just appeared, it disappears on next sync. Intentional. |
+| `syncEventPublisher` `.failed(detail:)` | `dispatchSyncFailure(detail:)` | Computes `cached = !visibleBooks.isEmpty` and `anonymous = !currentLibraryNeedsAuth() || !hasCredentials()`; dispatches `.syncFailed(message, cached, anonymous)` | Banner suppressed only when EITHER flag is true — see Section 7 trap on the `||` semantics |
 | `authStateDidChangePublisher == .loggedIn` | line 159 sink | Calls `self.refresh()` after fresh sign-in OR SAML re-auth | Required because `hasCredentials`-only publishers miss SAML re-auth — `hasCredentials` stays true through `.credentialsStale` → `.loggedIn` |
 
 ---

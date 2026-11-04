@@ -19,7 +19,7 @@ import PalaceBookModel
 ///   (`preloadData` → `_addGenericBookmark`). No public method calls another
 ///   public method while holding the lock. `NSRecursiveLock` is deliberately
 ///   not used — it would mask lock-ordering mistakes.
-/// - Combine `send(...)` and `NotificationCenter.post(...)` happen OUTSIDE the
+/// - Combine `send(...)` calls happen OUTSIDE the
 ///   lock: a synchronous subscriber re-entering the mock must not deadlock.
 /// - Direct `registry`/`myBooks`/… property access (used single-threaded by
 ///   many tests) goes through locked computed accessors; record-object
@@ -82,9 +82,57 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider, @unchecked Sendabl
         bookStateSubject.eraseToAnyPublisher()
     }
 
-    private let syncStateSubject = CurrentValueSubject<Bool, Never>(false)
-    var syncStatePublisher: AnyPublisher<Bool, Never> {
-        syncStateSubject.eraseToAnyPublisher()
+    /// Delivered on the main queue after a hop, as production delivers: a test
+    /// drains the main queue (or waits on an expectation) before asserting, and
+    /// a `@MainActor` subscriber is never called from a background sender.
+    private let syncEventSubject = PassthroughSubject<RegistrySyncEvent, Never>()
+    var syncEventPublisher: AnyPublisher<RegistrySyncEvent, Never> {
+        syncEventSubject
+            .receive(on: DispatchQueue.main)
+            .eraseToAnyPublisher()
+    }
+
+    private let registryDidChangeSubject = PassthroughSubject<Void, Never>()
+    var registryDidChangePublisher: AnyPublisher<Void, Never> {
+        registryDidChangeSubject
+            .receive(on: DispatchQueue.main)
+            .eraseToAnyPublisher()
+    }
+
+    /// Drives `syncEventPublisher` as the real registry's sync would.
+    func sendSyncEvent(_ event: RegistrySyncEvent) {
+        syncEventSubject.send(event)
+    }
+
+    /// Drives `registryDidChangePublisher` as a real registry save would.
+    func sendRegistryDidChange() {
+        registryDidChangeSubject.send(())
+    }
+
+    private var _reportedSyncFailures: [String?] = []
+    /// The `detail` of each `reportSyncFailure` call, in order.
+    var reportedSyncFailures: [String?] { lock.withLock { _reportedSyncFailures } }
+
+    func reportSyncFailure(errorDocument: [AnyHashable: Any]?) {
+        let detail = TPPBookRegistry.syncFailureDetail(from: errorDocument)
+        lock.withLock { _reportedSyncFailures.append(detail) }
+        syncEventSubject.send(.failed(detail: detail))
+    }
+
+    private var _reportSyncEndedCount = 0
+    var reportSyncEndedCount: Int { lock.withLock { _reportSyncEndedCount } }
+
+    func reportSyncEnded() {
+        lock.withLock { _reportSyncEndedCount += 1 }
+        syncEventSubject.send(.ended)
+    }
+
+    private var _notifyRegistryChangedCount = 0
+    var notifyRegistryChangedCount: Int { lock.withLock { _notifyRegistryChangedCount } }
+
+    func notifyRegistryChanged() {
+        lock.withLock { _notifyRegistryChangedCount += 1 }
+        registryDidChangeSubject.send(())
     }
 
     /// `PassthroughSubject` (not `CurrentValueSubject`) so tests get deterministic
@@ -246,27 +294,13 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider, @unchecked Sendabl
             _registry[book.identifier] = record
             return _registry
         }
-        // Subject sends + notification post OUTSIDE the lock (re-entrancy rule).
+        // Subject sends OUTSIDE the lock (re-entrancy rule).
         registrySubject.send(snapshot)
         bookStateSubject.send((book.identifier, state))
 
-        // Simulate Notification (the real registry sends one). Honor the
-        // production thread contract: every real poster of
-        // `.TPPBookRegistryDidChange` posts on the MAIN thread
-        // (BookRegistryStore / BookRegistrySync wrap the post in
-        // `DispatchQueue.main.async`). App-hosted tests have a live
-        // `MyBooksViewModel` whose `@MainActor` NotificationCenter observer
-        // asserts main-thread isolation (Swift 6) — posting off-main here
-        // crashed it (EXC_BREAKPOINT). Preserve identical synchronous timing for
-        // on-main callers (the vast majority of suites); only off-main callers
-        // (e.g. the async borrow path) defer to main, matching production.
-        if Thread.isMainThread {
-            NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
-        } else {
-            DispatchQueue.main.async {
-                NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
-            }
-        }
+        // `registryDidChangePublisher` delivers on main, so an off-main caller
+        // (the async borrow path) never runs a `@MainActor` subscriber off main.
+        registryDidChangeSubject.send(())
     }
 
     func removeBook(forIdentifier bookIdentifier: String) {

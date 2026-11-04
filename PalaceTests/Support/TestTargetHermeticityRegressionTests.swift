@@ -3,34 +3,19 @@
 //  Pins three test-pollution mechanisms found in CI run 29802862487 (#1305):
 //  1. PalaceTests compiled without `DEBUG`, so `#if DEBUG` blocks in test code
 //     (the AppContainer reset, the loadCatalogs deferral pin) never ran.
-//  2. `TPPBookRegistryMock.addBook` posted `.TPPBookRegistryDidChange` on the
+//  2. `TPPBookRegistryMock.addBook` announced its registry change on the
 //     caller's thread; a leftover `@MainActor` observer then tripped Swift 6's
 //     isolation check and killed the runner.
 //  3. `awaitCondition` re-evaluated its predicate after cancellation, possibly
 //     after tearDown nil'd fixtures, crashing on a force-unwrap.
 
 import XCTest
+import Combine
 @testable import Palace
 @testable import PalaceBookRegistry
 
 @MainActor
 final class TestTargetHermeticityRegressionTests: XCTestCase {
-
-    /// Observer token from `testMockRegistry_...`. Removed in `tearDown` as a
-    /// belt-and-suspenders backstop to the per-test `defer`, so a mid-test
-    /// abort still cannot leak a `.TPPBookRegistryDidChange` observer into a
-    /// later test — the very hazard this suite exists to pin. Its presence
-    /// also satisfies the `TearDownRequiredLintTests` polluter-hygiene gate
-    /// (this class touches `NotificationCenter.default.addObserver`).
-    private var registryObserver: NSObjectProtocol?
-
-    override func tearDown() {
-        if let observer = registryObserver {
-            NotificationCenter.default.removeObserver(observer)
-            registryObserver = nil
-        }
-        super.tearDown()
-    }
 
     // MARK: - 1. DEBUG compilation condition (the dead-reset-layer pin)
 
@@ -81,60 +66,25 @@ final class TestTargetHermeticityRegressionTests: XCTestCase {
         )
     }
 
-    // MARK: - 2. Mock registry posts its change notification on main
+    // MARK: - 2. Mock registry announces its change on main
 
-    /// Production contract: `.TPPBookRegistryDidChange` is ALWAYS posted on the
-    /// main queue (BookRegistryStore `registry.didSet`, BookRegistrySync save/
-    /// update paths). The mock must honor the same delivery-thread contract:
-    /// posting on a background caller's thread makes NotificationCenter invoke
-    /// any live `@MainActor` selector observer synchronously OFF main, which
-    /// Swift 6's executor precondition converts into SIGTRAP process death
-    /// (the `TPPBookRegistryMock.addBook` crash that killed three CI runner
-    /// processes in run 29802862487).
-    func testMockRegistry_addBookFromBackgroundThread_deliversChangeNotificationOnMain() {
+    /// The production registry announces a change on the main queue. The mock
+    /// must too: a background caller's synchronous send would run a live
+    /// `@MainActor` subscriber off main, which Swift 6's executor check turns
+    /// into a SIGTRAP that kills the test runner.
+    func testMockRegistry_addBookFromBackgroundThread_announcesChangeOnMain() {
         let mock = TPPBookRegistryMock()
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
 
-        let delivered = expectation(description: "registry-change notification delivered")
-        // The observer below is registered with `object: nil`, so it receives
-        // `.TPPBookRegistryDidChange` from ANY poster in the process — another
-        // suite's registry, a background AccountsManager load, the real
-        // registry. A second delivery therefore over-fulfills this expectation,
-        // and `assertForOverFulfill` defaults to true, so XCTest raises
-        // `NSInternalInconsistencyException` and takes the whole test HOST down
-        // — which then reports as an unrelated test "exceeding its execution
-        // time allowance" while the tally still reads 0 failures.
-        //
-        // Scoping the observer to a sender is NOT an option: every poster of this
-        // notification passes `object: nil` (TPPBookRegistryMock.addBook,
-        // BookRegistryStore, BookRegistrySync), so an `object:`-filtered observer
-        // would never fire at all.
-        //
-        // `deliveredOnMain` below already guards against multiple deliveries
-        // (`if current == nil`), so tolerating them here matches the intent that
-        // was already expressed; what this test asserts is that a delivery
-        // happens and that the FIRST one is on the main queue, not that exactly
-        // one ever arrives. Observed in CI run 35885402298 — and note it does NOT
-        // reproduce in isolation, because no foreign poster exists in a run of
-        // this class alone. Only a full-suite run exercises it.
-        delivered.assertForOverFulfill = false
+        let delivered = expectation(description: "registry change delivered")
         let deliveredOnMain = LockIsolated<Bool?>(nil)
-        let observer = NotificationCenter.default.addObserver(
-            forName: .TPPBookRegistryDidChange,
-            object: nil,
-            queue: nil
-        ) { _ in
-            // Record only the FIRST delivery; addBook posts exactly once.
+        let subscription = mock.registryDidChangePublisher.sink {
             deliveredOnMain.withValue { current in
                 if current == nil { current = Thread.isMainThread }
             }
             delivered.fulfill()
         }
-        registryObserver = observer
-        defer {
-            NotificationCenter.default.removeObserver(observer)
-            registryObserver = nil
-        }
+        defer { subscription.cancel() }
 
         DispatchQueue.global(qos: .userInitiated).async {
             mock.addBook(book, location: nil, state: .downloadNeeded,
@@ -144,9 +94,9 @@ final class TestTargetHermeticityRegressionTests: XCTestCase {
         wait(for: [delivered], timeout: 5.0)
         XCTAssertEqual(
             deliveredOnMain.value, true,
-            "TPPBookRegistryMock.addBook must post .TPPBookRegistryDidChange on the MAIN queue " +
-            "(the production registry's contract). Off-main delivery invokes @MainActor selector " +
-            "observers on the posting thread and crashes the runner under Swift 6."
+            "TPPBookRegistryMock.addBook must announce the change on the MAIN queue " +
+            "(the production registry's contract). Off-main delivery runs @MainActor " +
+            "subscribers on the calling thread and crashes the runner under Swift 6."
         )
     }
 

@@ -879,11 +879,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
 
             alert.addAction(UIAlertAction(title: config.displayName + checkmark, style: .default) { [weak self, weak presenter] _ in
                 guard let self else { return }
-                self.testHoldsConfiguration = config
-
-                NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
-                // The tab badge refreshes from the holds-changed publisher.
-                self.bookRegistry.notifyHoldsChanged()
+                self.applyTestHoldsConfiguration(config)
 
                 if config != .none {
                     let confirmAlert = TPPAlertUtils.alert(
@@ -898,6 +894,15 @@ final class DeveloperSettingsViewModel: ObservableObject {
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
         anchorActionSheet(alert, to: presenter)
         presenter.present(alert, animated: true)
+    }
+
+    /// Stores the test-holds configuration and tells Holds and the tab badge,
+    /// which read the test books in place of the registry's holds.
+    func applyTestHoldsConfiguration(_ config: DebugSettings.TestHoldsConfiguration) {
+        testHoldsConfiguration = config
+        bookRegistry.notifyRegistryChanged()
+        // The tab badge refreshes from the holds-changed publisher.
+        bookRegistry.notifyHoldsChanged()
     }
 
     /// Drives the ErrorDetail preview flow.

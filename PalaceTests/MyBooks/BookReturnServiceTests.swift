@@ -397,6 +397,64 @@ final class BookReturnServiceTests: XCTestCase {
                        "No book in registry → nothing to cancel; the seam must run only after the book is resolved")
     }
 
+    // MARK: - Post-return sync
+
+    private struct PostReturnSyncError: Error {}
+
+    private func makeService(
+        postReturnSync: @escaping @Sendable (TPPBookRegistryProvider) async throws -> Void
+    ) -> BookReturnService {
+        let service = BookReturnService(
+            bookRegistry: registry,
+            localContentService: localContent,
+            opdsFeedService: feedFetcher,
+            downloadAnnouncementService: announcementService,
+            bookmarkDeletionLog: bookmarkLog,
+            reauthenticator: reauthenticator,
+            userRetryTracker: retryTracker,
+            userAccountProvider: { [unowned self] in self.userAccount },
+            offlineReturnEnqueuer: { _ in },
+            postReturnSync: postReturnSync
+        )
+        service.delegate = spyDelegate
+        return service
+    }
+
+    /// Returns `book` and resumes when the return's completion runs, which
+    /// comes after the post-return sync and its failure report.
+    private func returnAndJoin(_ service: BookReturnService) async {
+        let identifier = book.identifier
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            service.returnBook(withIdentifier: identifier) { continuation.resume() }
+        }
+    }
+
+    /// A failed post-return sync reaches Holds as a sync failure through the
+    /// registry, so the Reservations tab can show its banner.
+    func testReturnBook_WhenPostReturnSyncThrows_ReportsSyncFailureThroughRegistry() async throws {
+        registry.addBook(book, location: nil, state: .downloadSuccessful,
+                         fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+        let service = makeService(postReturnSync: { _ in throw PostReturnSyncError() })
+
+        await returnAndJoin(service)
+
+        XCTAssertEqual(registry.reportedSyncFailures, [nil])
+        XCTAssertEqual(announcementService.succeededCalls, [book.identifier],
+                       "the return itself still succeeded")
+    }
+
+    func testReturnBook_WhenPostReturnSyncSucceeds_ReportsNoSyncFailure() async throws {
+        registry.addBook(book, location: nil, state: .downloadSuccessful,
+                         fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
+        let synced = LockIsolated(0)
+        let service = makeService(postReturnSync: { _ in synced.withValue { $0 += 1 } })
+
+        await returnAndJoin(service)
+
+        XCTAssertEqual(synced.value, 1, "the return must run the post-return sync")
+        XCTAssertEqual(registry.reportedSyncFailures, [])
+    }
+
     // MARK: - Branch 2: revokeURL == nil + downloaded
 
     func testReturnBook_noRevokeURL_downloaded_deletesContentAndRemovesBook() async throws {

@@ -38,6 +38,7 @@ final class CountingRegistrySpy: TPPBookRegistrySyncing, @unchecked Sendable {
 
     func sync() { lock.withLock { _syncCount += 1 } }
     func reset(_ libraryAccountUUID: String) { lock.withLock { _resetUUIDs.append(libraryAccountUUID) } }
+    func reportSyncEnded() {}
 }
 
 /// Captures the validation-error callback. The shared

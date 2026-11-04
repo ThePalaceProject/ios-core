@@ -7,6 +7,7 @@
 //  reentrancy-safe.
 
 import XCTest
+import Combine
 import PalaceCatalog
 @testable import Palace
 import PalaceBookModel
@@ -146,8 +147,8 @@ final class BookRegistrySyncReentrancyTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
 
         // Snapshot A: a single book. Each async save(for:) captures this at
-        // enqueue time and writes a 1-record registry, posting a notification
-        // when its disk write completes.
+        // enqueue time and writes a 1-record registry, announcing a registry
+        // change when its disk write completes.
         let book1 = makeBook(identifier: "serialize-1")
         store.mutateRegistrySync { $0[book1.identifier] = TPPBookRegistryRecord(book: book1, state: .downloadSuccessful) }
 
@@ -155,10 +156,8 @@ final class BookRegistrySyncReentrancyTests: XCTestCase {
         let drained = expectation(description: "all async save(for:) writes flushed")
         drained.expectedFulfillmentCount = asyncWrites
         drained.assertForOverFulfill = false
-        let token = NotificationCenter.default.addObserver(
-            forName: .TPPBookRegistryDidChange, object: nil, queue: nil
-        ) { _ in drained.fulfill() }
-        defer { NotificationCenter.default.removeObserver(token) }
+        let subscription = store.registryDidChangeSubject.sink { drained.fulfill() }
+        defer { subscription.cancel() }
 
         for _ in 0..<asyncWrites { syncManager.save(for: account) }
 
@@ -168,7 +167,7 @@ final class BookRegistrySyncReentrancyTests: XCTestCase {
         store.mutateRegistrySync { $0[book2.identifier] = TPPBookRegistryRecord(book: book2, state: .downloadSuccessful) }
         syncManager.saveSync(for: account)
 
-        wait(for: [drained], timeout: 15.0) // FLAKE-003-OK: waits for 30 async save(for:) disk writes to flush (NotificationCenter drain signal); integration-scoped real-I/O, generous under suite load.
+        wait(for: [drained], timeout: 15.0) // FLAKE-003-OK: waits for 30 async save(for:) disk writes to flush (registry-change drain signal); integration-scoped real-I/O, generous under suite load.
 
         let data = try Data(contentsOf: url)
         let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])

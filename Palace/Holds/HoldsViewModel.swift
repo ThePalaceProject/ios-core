@@ -146,9 +146,20 @@ final class HoldsViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        NotificationCenter.default.publisher(for: .TPPSyncBegan)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.store.send(.syncBegan) }
+        // The registry delivers sync events on the main queue, in the order
+        // they happened.
+        bookRegistry.syncEventPublisher
+            .sink { [weak self] event in
+                guard let self else { return }
+                switch event {
+                case .began:
+                    self.store.send(.syncBegan)
+                case .ended:
+                    self.scheduleDebouncedRefresh()
+                case .failed(let detail):
+                    self.dispatchSyncFailure(detail: detail)
+                }
+            }
             .store(in: &cancellables)
 
         (accountDidChange ?? NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
@@ -158,33 +169,13 @@ final class HoldsViewModel: ObservableObject {
             .sink { [weak self] _ in self?.store.send(.accountChanged) }
             .store(in: &cancellables)
 
-        let syncEnd = NotificationCenter.default.publisher(for: .TPPSyncEnded)
-        let registryChange = NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)
-
-        // Trailing-edge debounce of the merged sync-ended / registry-changed
-        // stream. Previously `.debounce(for: .milliseconds(300), scheduler:
-        // DispatchQueue.main)`; that Combine timer + `.receive(on: main)` hop is
-        // exactly the starvation-prone shape that made the Holds tests race a
-        // fixed wall-clock timeout under parallel-CI load — the debounce fired
-        // late on a saturated main queue and `fulfillment(timeout:)` expired.
-        // We re-express the SAME 300ms trailing debounce as a cancel-and-replace
-        // Task (`scheduleDebouncedRefresh`), whose interval defaults to 300ms in
-        // production (byte-identical user-visible timing) but which a test can
-        // construct with `debounceInterval: 0` and deterministically JOIN via
-        // `_awaitRefreshForTesting()` — no timer, no deadline. The `.receive(on:
-        // main)` hop is kept so the scheduling call mutates main-actor state on
-        // main, matching the `.TPPSyncBegan` observer above.
-        syncEnd
-            .merge(with: registryChange)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.scheduleDebouncedRefresh() }
-            .store(in: &cancellables)
-
-        NotificationCenter.default.publisher(for: .TPPSyncFailed)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] notification in
-                self?.dispatchSyncFailure(notification)
-            }
+        // A registry change shares the sync-ended refresh: both go through the
+        // 300 ms trailing debounce in `scheduleDebouncedRefresh`, which a test
+        // can join with `_awaitRefreshForTesting()` instead of racing a timer.
+        // Not `registryPublisher`: the account-change reset sends that without a
+        // sync having answered (PP-5468).
+        bookRegistry.registryDidChangePublisher
+            .sink { [weak self] in self?.scheduleDebouncedRefresh() }
             .store(in: &cancellables)
 
         // Force a registry refresh on any transition into `.loggedIn`
@@ -234,14 +225,7 @@ final class HoldsViewModel: ObservableObject {
         visibleBooks = state.visibleBooks
     }
 
-    private func dispatchSyncFailure(_ notification: Notification) {
-        let detail: String? = {
-            guard let errorDoc = notification.userInfo?[TPPBookRegistry.syncFailureErrorDocumentKey] as? [AnyHashable: Any],
-                  let text = (errorDoc["detail"] as? String) ?? (errorDoc["title"] as? String),
-                  !text.isEmpty
-            else { return nil }
-            return text
-        }()
+    private func dispatchSyncFailure(detail: String?) {
         let cached = !visibleBooks.isEmpty
         // `anonymous` collapses two distinct anonymous-state signals:
         //   1. The current *library* declares no credential-based auth method

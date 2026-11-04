@@ -13,6 +13,7 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookRegistry
 
 @MainActor
 final class DeveloperSettingsEngineeringTierTests: XCTestCase {
@@ -109,17 +110,35 @@ final class DeveloperSettingsViewModelOverrideTests: XCTestCase {
     /// Seeding from a test-scoped `RemoteFeatureFlags` also stops the `@Published`
     /// mirrors being initialised from `UserDefaults.standard` while the assertions
     /// read `testDefaults` — the write and the read now address one store.
-    private func makeViewModel(debugSettings: DebugSettings? = nil) -> DeveloperSettingsViewModel {
+    private func makeViewModel(
+        debugSettings: DebugSettings? = nil,
+        bookRegistry: TPPBookRegistryProvider? = nil
+    ) -> DeveloperSettingsViewModel {
         let container = makeTestAppContainer()
         return DeveloperSettingsViewModel(
             settings: container.settings,
             accountsManager: container.accountsManager,
-            bookRegistry: container.bookRegistry,
+            bookRegistry: bookRegistry ?? container.bookRegistry,
             debugSettings: debugSettings ?? container.debugSettings,
             featureFlags: RemoteFeatureFlags(defaults: testDefaults),
             overrideDefaults: testDefaults
         )
     }
+
+    #if DEBUG
+    /// Holds reads the test books on a registry change, so picking a test-holds
+    /// configuration must announce one along with storing the choice.
+    func testApplyTestHoldsConfiguration_StoresItAndAnnouncesARegistryChange() {
+        let registry = TPPBookRegistryMock()
+        let debugSettings = DebugSettings(defaults: testDefaults)
+        let vm = makeViewModel(debugSettings: debugSettings, bookRegistry: registry)
+
+        vm.applyTestHoldsConfiguration(.mixedHolds)
+
+        XCTAssertEqual(debugSettings.testHoldsConfiguration, .mixedHolds)
+        XCTAssertEqual(registry.notifyRegistryChangedCount, 1)
+    }
+    #endif
 
     // Each feature-flag toggle must WRITE THROUGH to the RemoteFeatureFlags
     // local-override key in the injected store — the exact key the app reads.

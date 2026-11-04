@@ -9,6 +9,7 @@
 import XCTest
 import Combine
 @testable import Palace
+import PalaceBookRegistry
 
 // MARK: - SAML Sign-In Regression Tests
 
@@ -579,6 +580,39 @@ final class TPPSAMLSignInTests: XCTestCase {
                   "businessLogicDidCompleteSignIn should be called when sign-in completes")
   }
   
+  #if FEATURE_DRM_CONNECTOR
+  /// A failed DRM activation ends any sync wait through the registry, so Holds
+  /// and My Books reload and leave their loading state.
+  func testFinalizeSignIn_WhenDRMFails_ReportsSyncEndedThroughRegistry() async {
+    businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
+    var presentedAlerts: [UIViewController] = []
+    businessLogic.presentDRMFailureAlert = { presentedAlerts.append($0) }
+    var cancellables = Set<AnyCancellable>()
+    var events: [RegistrySyncEvent] = []
+    bookRegistry.syncEventPublisher
+      .sink { events.append($0) }
+      .store(in: &cancellables)
+
+    // On main, `finalizeSignIn` runs its body synchronously; the drain lands
+    // the registry's main-queue delivery.
+    businessLogic.finalizeSignIn(forDRMAuthorization: false, errorMessage: "DRM activation failed")
+    await drainMainQueueAsync()
+
+    XCTAssertEqual(events, [.ended])
+    XCTAssertEqual(bookRegistry.reportSyncEndedCount, 1)
+    XCTAssertEqual(presentedAlerts.count, 1, "the patron still sees the DRM error")
+  }
+  #endif
+
+  func testFinalizeSignIn_WhenDRMSucceeds_DoesNotReportSyncEnded() {
+    businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
+    // On main, `finalizeSignIn` runs its body synchronously.
+    businessLogic.finalizeSignIn(forDRMAuthorization: true)
+
+    XCTAssertTrue(uiDelegate.didCallDidCompleteSignIn, "precondition: sign-in finished")
+    XCTAssertEqual(bookRegistry.reportSyncEndedCount, 0)
+  }
+
   /// Tests that loading state transitions correctly through sign-in flow.
   func testSignIn_loadingStateTransitions() {
     // Setup

@@ -1239,7 +1239,7 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
     /// Runs `action`, then blocks until `save()`'s disk write has actually
     /// flushed — so a following assertion may read the file.
     ///
-    /// This used to wait for a `.TPPBookRegistryDidChange` notification, which is
+    /// This used to wait for a registry-changed notification, which is
     /// not the same event. The expectation set `assertForOverFulfill = false`, so
     /// ANY posting of that notification satisfied it, including one still in
     /// flight from an earlier `load()` in the same test. The barrier could return
@@ -1364,7 +1364,7 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         // Act: a NON-authoritative save of the empty shelf.
         // This save is REFUSED by INV-1 (empty + non-authoritative + rebuild
         // window): the diskWriteQueue closure returns early without writing or
-        // posting `.TPPBookRegistryDidChange`. It DOES still run, so
+        // announcing a registry change. It DOES still run, so
         // `awaitRegistrySaved`'s drain would join it — the "no positive edge"
         // claim this comment used to make was true only of the notification
         // barrier. `settle()` is kept here for now because switching an INV-1
@@ -1529,9 +1529,9 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
     }
 
     /// Pins the barrier's contract: it must wait for the DISK WRITE, not for any
-    /// `.TPPBookRegistryDidChange`.
+    /// registry-change event.
     ///
-    /// The stray post below is what made the original defect intermittent — a
+    /// The stray event below is what made the original defect intermittent — a
     /// notification already in flight from an earlier `load()` satisfied the old
     /// expectation before `save()`'s write flushed. Posting one explicitly makes
     /// that race deterministic, so this test fails every time against the old
@@ -1543,19 +1543,19 @@ final class BookRegistrySyncTests: PalaceWiringTestCase {
         store.addBook(makeBook(identifier: "barrier-book"), state: .downloadNeeded) { _ in }
         awaitStoreWrites()
 
-        // A notification of the same name, from something other than this save,
+        // A registry-change event from something other than this save,
         // arriving INSIDE the barrier's window. Posting it before the call does
         // not reproduce anything: the old barrier registered its observer inside
         // the helper, so an earlier post was never delivered to it. The real
         // defect was an in-flight post from a previous operation landing here.
         awaitRegistrySaved {
-            NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+            store.registryDidChangeSubject.send(())
             syncManager.save(for: account)
         }
 
         XCTAssertEqual(RegistryFileRecovery.schemaVersion(from: try? Data(contentsOf: url)),
                        RegistryFileRecovery.currentSchemaVersion,
-                       "the barrier must wait for save()'s disk write, not for an unrelated .TPPBookRegistryDidChange")
+                       "the barrier must wait for save()'s disk write, not for an unrelated registry-change event")
     }
 
     func testSchemaMigration_unversionedFileLoads_thenSaveWritesVersion() {

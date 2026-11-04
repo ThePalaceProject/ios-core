@@ -16,7 +16,24 @@ import PalaceBookModel
 public protocol TPPBookRegistryProvider: Sendable {
     var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> { get }
     var bookStatePublisher: AnyPublisher<(String, TPPBookState), Never> { get }
-    var syncStatePublisher: AnyPublisher<Bool, Never> { get }
+    /// Sync lifecycle events, delivered on the main queue: `.began` and `.ended`
+    /// on each change of `isSyncing`, `.failed` when a sync reports an error.
+    var syncEventPublisher: AnyPublisher<RegistrySyncEvent, Never> { get }
+    /// Fires on the main queue when the stored records are announced as changed
+    /// (an announced mutation, a load, a shelf save). It does not fire when the
+    /// account-change observer clears the in-memory records: Holds reads this
+    /// event as an answered sync, and a new library's first sync must still show
+    /// its placeholder (PP-5468).
+    var registryDidChangePublisher: AnyPublisher<Void, Never> { get }
+    /// Publishes `.failed` for a sync that ran outside `sync()`, such as the
+    /// post-return sync, so Holds can show its sync-error banner.
+    func reportSyncFailure(errorDocument: [AnyHashable: Any]?)
+    /// Publishes `.ended` without a sync. Sign-in sends it when DRM activation
+    /// fails, so screens waiting on a sync stop showing progress.
+    func reportSyncEnded()
+    /// Publishes a registry change that did not come from the stored records,
+    /// such as a change to the debug test-holds configuration.
+    func notifyRegistryChanged()
     /// Registry LIFECYCLE stream (unloaded → loading → loaded → syncing → synced).
     /// Distinct from `bookStatePublisher`: it fires on load/sync transitions even
     /// when NO per-book state changes — so lifecycle-driven consumers (launch
@@ -147,7 +164,7 @@ private final class SyncCompletionBox: @unchecked Sendable {
 }
 
 /// A `Bool` that auto-resets to `false` after `delay` seconds, firing `onChange`
-/// on every edge. Used by `TPPBookRegistry` to post `TPPSyncBegan`/`TPPSyncEnded`.
+/// on every edge. Used by `TPPBookRegistry` to publish `.began`/`.ended`.
 ///
 /// `@unchecked Sendable` invariant: `_value` and `resetTask` are the only mutable
 /// state and BOTH are guarded by `lock`. The setter's edge callback (`onChange`)
@@ -217,7 +234,7 @@ private final class BoolWithDelay: @unchecked Sendable {
 ///
 /// The facade keeps:
 ///   - the `RegistryState` enum + public `state` getter
-///   - the `BoolWithDelay` that posts `TPPSyncBegan` / `TPPSyncEnded`
+///   - the `BoolWithDelay` that publishes the sync `.began` / `.ended` events
 ///   - the `TPPCurrentAccountDidChange` observer
 ///   - the `TPPBookRegistrySyncing` / `TPPBookRegistryProvider` conformance
 ///   - the shared singleton + account-scoped temporary-instance factory
@@ -237,15 +254,13 @@ private final class BoolWithDelay: @unchecked Sendable {
 /// whose every stored property is an immutable `let` that routes all mutation
 /// through `store`'s barriers, thread-safe though not itself annotated
 /// `Sendable`), the external deps
-/// (`accountsManager`, `imageLoader`), and `syncStateSubject`. The one remaining
+/// (`accountsManager`, `imageLoader`), and `syncEventSubject`. The one remaining
 /// `var accountDidChangeCancellable` is written once during `init`'s
 /// `setupAccountDidChangeObserver()` (on the constructing thread, before the
 /// instance escapes) and only read/torn-down thereafter, so it carries no
 /// cross-thread write race.
 // Not an NSObject: no Objective-C code references this class or its notifications.
 public class TPPBookRegistry: @unchecked Sendable {
-    public static let syncFailureErrorDocumentKey = "TPPBookRegistrySyncFailureErrorDocument"
-
     public enum RegistryState: Int, Sendable {
         case unloaded, loading, loaded, syncing, synced
     }
@@ -321,10 +336,10 @@ public class TPPBookRegistry: @unchecked Sendable {
     ///   `@unchecked Sendable`.
     ///
     ///   The lock is held ONLY for the trivial get/set of `_state`; no store call,
-    ///   disk I/O, notification post, or `syncState` access happens inside it. The
-    ///   `syncState.value` derivation and the `NotificationCenter.post` both run
+    ///   disk I/O, event send, or `syncState` access happens inside it. The
+    ///   `syncState.value` derivation and the sync-event send both run
     ///   AFTER the lock is released, preserving the former `didSet` ordering
-    ///   (`_state` write → derive syncState → async-post) while keeping the
+    ///   (`_state` write → derive syncState → send) while keeping the
     ///   critical section incapable of deadlocking against
     ///   `BookRegistryStore.syncQueue` or `BoolWithDelay.lock`.
     private let stateLock = NSLock()
@@ -363,11 +378,12 @@ public class TPPBookRegistry: @unchecked Sendable {
         }
     }
 
-    private let syncState = BoolWithDelay { value in
-        if value {
-            NotificationCenter.default.post(name: .TPPSyncBegan, object: nil, userInfo: nil)
-        } else {
-            NotificationCenter.default.post(name: .TPPSyncEnded, object: nil, userInfo: nil)
+    private let syncState: BoolWithDelay
+
+    /// Sends `.began`/`.ended` only when the syncing flag actually changes.
+    private static func makeSyncState(sendingTo events: PassthroughSubject<RegistrySyncEvent, Never>) -> BoolWithDelay {
+        BoolWithDelay { value in
+            events.send(value ? .began : .ended)
         }
     }
 
@@ -376,10 +392,46 @@ public class TPPBookRegistry: @unchecked Sendable {
         set { }
     }
 
-    private let syncStateSubject = CurrentValueSubject<Bool, Never>(false)
+    /// `syncState` edges, failures from `sync()`, and the `report…` calls all
+    /// feed this one subject, so listeners see them in the order they happened.
+    private let syncEventSubject: PassthroughSubject<RegistrySyncEvent, Never>
 
-    public var syncStatePublisher: AnyPublisher<Bool, Never> {
-        syncStateSubject.eraseToAnyPublisher()
+    // PUBLIC_INTENT: witness for the public TPPBookRegistryProvider requirement; the app target subscribes to it.
+    public var syncEventPublisher: AnyPublisher<RegistrySyncEvent, Never> {
+        syncEventSubject
+            .receive(on: DispatchQueue.main)
+            .eraseToAnyPublisher()
+    }
+
+    // PUBLIC_INTENT: witness for the public TPPBookRegistryProvider requirement; the app target subscribes to it.
+    public var registryDidChangePublisher: AnyPublisher<Void, Never> {
+        store.registryDidChangeSubject
+            .receive(on: DispatchQueue.main)
+            .eraseToAnyPublisher()
+    }
+
+    // PUBLIC_INTENT: witness for a public TPPBookRegistryProvider requirement; called from app-target services across the package boundary.
+    public func reportSyncFailure(errorDocument: [AnyHashable: Any]?) {
+        syncEventSubject.send(.failed(detail: Self.syncFailureDetail(from: errorDocument)))
+    }
+
+    // PUBLIC_INTENT: witness for a public TPPBookRegistryProvider requirement; called from app-target services across the package boundary.
+    public func reportSyncEnded() {
+        syncEventSubject.send(.ended)
+    }
+
+    // PUBLIC_INTENT: witness for a public TPPBookRegistryProvider requirement; called from app-target services across the package boundary.
+    public func notifyRegistryChanged() {
+        store.registryDidChangeSubject.send(())
+    }
+
+    /// The patron-facing text of a sync error document: `detail`, else `title`.
+    static func syncFailureDetail(from errorDocument: [AnyHashable: Any]?) -> String? {
+        guard let errorDocument,
+              let text = (errorDocument["detail"] as? String) ?? (errorDocument["title"] as? String),
+              !text.isEmpty
+        else { return nil }
+        return text
     }
 
     /// Lifecycle stream, fed from the `state` setter on every transition.
@@ -464,6 +516,9 @@ public class TPPBookRegistry: @unchecked Sendable {
         self.imageLoader = imageLoader
         self.dependencies = dependencies
         self.onIllegalTransition = onIllegalTransition
+        let syncEvents = PassthroughSubject<RegistrySyncEvent, Never>()
+        self.syncEventSubject = syncEvents
+        self.syncState = Self.makeSyncState(sendingTo: syncEvents)
         let store = BookRegistryStore(onAvailabilityChange: dependencies.onAvailabilityChange)
         let sync = BookRegistrySync(
             store: store,
@@ -496,6 +551,9 @@ public class TPPBookRegistry: @unchecked Sendable {
         self.imageLoader = imageLoader
         self.dependencies = dependencies
         self.onIllegalTransition = TPPBookRegistry.defaultIllegalTransitionHandler
+        let syncEvents = PassthroughSubject<RegistrySyncEvent, Never>()
+        self.syncEventSubject = syncEvents
+        self.syncState = Self.makeSyncState(sendingTo: syncEvents)
         let store = BookRegistryStore(onAvailabilityChange: dependencies.onAvailabilityChange)
         let sync = BookRegistrySync(
             store: store,
@@ -608,7 +666,7 @@ public class TPPBookRegistry: @unchecked Sendable {
             self?.state = newState
         }, completion: { [weak self] errorDocument, newBooks in
             if let errorDocument {
-                self?.postSyncFailure(errorDocument)
+                self?.reportSyncFailure(errorDocument: errorDocument)
             }
             completion?(errorDocument, newBooks)
         })
@@ -627,14 +685,6 @@ public class TPPBookRegistry: @unchecked Sendable {
     public func saveSync() {
         guard let account = accountScope.currentAccountID else { return }
         syncEngine.saveSync(for: account)
-    }
-
-    private func postSyncFailure(_ errorDocument: [AnyHashable: Any]?) {
-        var userInfo: [AnyHashable: Any] = [:]
-        if let errorDocument {
-            userInfo[TPPBookRegistry.syncFailureErrorDocumentKey] = errorDocument
-        }
-        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: userInfo)
     }
 
     // MARK: - Read-only queries (delegate directly to store — thread-safe via its sync queue)
@@ -812,8 +862,8 @@ public class TPPBookRegistry: @unchecked Sendable {
     /// race-free. Order is load-bearing: drain the store-write barrier FIRST (so
     /// each mutation's `onComplete` has run and ENQUEUED its `save(...)` disk
     /// write), THEN drain the disk-write queue (so those writes have flushed).
-    /// Deterministic replacement for a `.TPPBookRegistryDidChange` deadline wait
-    /// in the account-capture persistence contract tests (STARVE-001).
+    /// Deterministic replacement for a registry-changed deadline wait in the
+    /// account-capture persistence contract tests.
     @_spi(Testing) public func _awaitPendingPersistenceForTesting() async {
         await _awaitPendingWritesForTesting()
         await syncEngine._awaitPendingDiskWritesForTesting()

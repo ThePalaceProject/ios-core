@@ -625,20 +625,18 @@ final class BookmarkManagerTests: XCTestCase {
 
     // MARK: - Shelf broadcast (PP-5268)
 
-    /// Counts `TPPBookRegistryDidChange` posts and `registrySubject` emissions
-    /// caused by `work`, after the barrier and the main queue have drained.
+    /// Counts registry-change events and `registrySubject` emissions caused by
+    /// `work`, after the barrier and the main queue have drained.
     private func shelfBroadcasts(during work: () -> Void) -> (posts: Int, emissions: Int) {
         drainMainQueue()
         var posts = 0
         var emissions = 0
-        let token = NotificationCenter.default.addObserver(
-            forName: .TPPBookRegistryDidChange, object: nil, queue: nil
-        ) { _ in posts += 1 }
+        let changeSubscription = store.registryDidChangeSubject.sink { posts += 1 }
         let subscription = store.registrySubject.dropFirst().sink { _ in emissions += 1 }
         work()
         waitForBarrier()
         drainMainQueue()
-        NotificationCenter.default.removeObserver(token)
+        changeSubscription.cancel()
         subscription.cancel()
         return (posts, emissions)
     }
@@ -654,7 +652,7 @@ final class BookmarkManagerTests: XCTestCase {
             manager.setLocation(makeLocation(page: 3), forIdentifier: book.identifier, account: testAccount)
         }
 
-        XCTAssertEqual(counts.posts, 0, "a location change must not post TPPBookRegistryDidChange")
+        XCTAssertEqual(counts.posts, 0, "a location change must not announce a registry change")
         XCTAssertEqual(counts.emissions, 0, "a location change must not re-publish the whole registry")
         XCTAssertTrue(manager.location(forIdentifier: book.identifier)?.locationString.contains("3") ?? false,
                       "the location is still stored — only the announcement is withheld")

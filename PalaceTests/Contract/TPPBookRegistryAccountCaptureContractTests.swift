@@ -130,7 +130,7 @@ final class TPPBookRegistryAccountCaptureContractTests: PalaceWiringTestCase {
     /// barrier (so each mutation's `onComplete` has enqueued its `save(...)`) and
     /// then the sync engine's disk-write queue (so the bytes have flushed), so a
     /// subsequent on-disk assertion is race-free. Replaces a
-    /// `.TPPBookRegistryDidChange` deadline wait — no wall-clock timeout to starve
+    /// registry-changed deadline wait — no wall-clock timeout to starve
     /// under parallel sim clones (STARVE-001).
     private func awaitPersisted(_ registry: TPPBookRegistry) async {
         await registry._awaitPendingPersistenceForTesting()

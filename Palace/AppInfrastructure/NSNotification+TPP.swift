@@ -15,16 +15,13 @@ extension Notification.Name {
     static let TPPCurrentAccountDidChange = Notification.Name("TPPCurrentAccountDidChange")
     static let TPPCatalogDidLoad = Notification.Name("TPPCatalogDidLoad")
     static let TPPCrawlProgressDidUpdate = Notification.Name("TPPCrawlProgressDidUpdate")
-    // TPPSyncBegan / TPPSyncEnded / TPPSyncFailed / TPPBookRegistryDidChange
-    // live in PalaceBookRegistry, which posts them. Do not re-declare.
     static let TPPUserAccountDidChange = Notification.Name("TPPUserAccountDidChangeNotification")
     static let TPPDidSignOut = Notification.Name("TPPDidSignOut")
     static let TPPIsSigningIn = Notification.Name("TPPIsSigningIn")
     static let TPPAppDelegateDidReceiveCleverRedirectURL = Notification.Name("TPPAppDelegateDidReceiveCleverRedirectURL")
-    // .TPPBookRegistryDidChange relocated to PalaceBookRegistry (see note above).
-    // .TPPBookRegistryStateDidChange was replaced by the registry's Combine
-    // publishers (bookStatePublisher / registryStatePublisher /
-    // holdsDidChangePublisher). Do not re-introduce this name.
+    // Registry sync and change events are the registry's Combine publishers
+    // (syncEventPublisher / registryDidChangePublisher / bookStatePublisher /
+    // registryStatePublisher / holdsDidChangePublisher), not notifications.
 
     /// The `userInfo` dictionary contains the following key-value pairs:
     /// - an `bookProcessingBookIDKey` key whose value is a String indicating
@@ -43,15 +40,11 @@ extension Notification.Name {
     public static let TPPSettingsDidChange = Notification.Name.TPPSettingsDidChange
     public static let TPPCurrentAccountDidChange = Notification.Name.TPPCurrentAccountDidChange
     public static let TPPCatalogDidLoad = Notification.Name.TPPCatalogDidLoad
-    public static let TPPSyncBegan = Notification.Name.TPPSyncBegan
-    public static let TPPSyncEnded = Notification.Name.TPPSyncEnded
-    public static let TPPSyncFailed = Notification.Name.TPPSyncFailed
     public static let TPPUseBetaDidChange = Notification.Name.TPPUseBetaDidChange
     public static let TPPUserAccountDidChange = Notification.Name.TPPUserAccountDidChange
     public static let TPPDidSignOut = Notification.Name.TPPDidSignOut
     public static let TPPIsSigningIn = Notification.Name.TPPIsSigningIn
     public static let TPPAppDelegateDidReceiveCleverRedirectURL = Notification.Name.TPPAppDelegateDidReceiveCleverRedirectURL
-    public static let TPPBookRegistryDidChange = Notification.Name.TPPBookRegistryDidChange
     public static let TPPBookProcessingDidChange = Notification.Name.TPPBookProcessingDidChange
     public static let TPPMyBooksDownloadCenterDidChange = Notification.Name.TPPMyBooksDownloadCenterDidChange
     public static let TPPBookDetailDidClose = Notification.Name.TPPBookDetailDidClose

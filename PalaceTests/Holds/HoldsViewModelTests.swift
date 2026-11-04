@@ -81,16 +81,14 @@ final class HoldsViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.visibleBooks.isEmpty)
     }
 
-    // MARK: - Sync Notification Tests
+    // MARK: - Sync Event Tests
 
     func testSyncBeganSetsLoadingTrue() async {
         let viewModel = createViewModel()
 
-        NotificationCenter.default.post(name: .TPPSyncBegan, object: nil)
+        mockRegistry.sendSyncEvent(.began)
 
-        // The `.TPPSyncBegan` observer hops through `.receive(on: .main)` before
-        // dispatching `.syncBegan`; draining the main queue lands that hop
-        // deterministically — no wall-clock race against dispatch saturation.
+        // Lets any store update queued on main land before the assert.
         await drainMainQueueAsync()
 
         XCTAssertTrue(viewModel.isLoading)
@@ -104,7 +102,7 @@ final class HoldsViewModelTests: XCTestCase {
         let viewModel = createViewModel()
         XCTAssertEqual(viewModel.visibleBooks.count, 1, "precondition: the held book is on screen")
 
-        NotificationCenter.default.post(name: .TPPSyncBegan, object: nil)
+        mockRegistry.sendSyncEvent(.began)
         await drainMainQueueAsync()
 
         XCTAssertFalse(viewModel.isLoading, "A refresh behind visible holds must not swap them for a skeleton")
@@ -115,11 +113,11 @@ final class HoldsViewModelTests: XCTestCase {
     /// state rather than flashing the skeleton over it.
     func testSyncBegan_AfterFirstSyncAnswered_DoesNotRaiseLoading() async {
         let viewModel = createViewModel()
-        NotificationCenter.default.post(name: .TPPSyncEnded, object: nil)
+        mockRegistry.sendSyncEvent(.ended)
         await drainMainQueueAsync()
         await viewModel._awaitRefreshForTesting()
 
-        NotificationCenter.default.post(name: .TPPSyncBegan, object: nil)
+        mockRegistry.sendSyncEvent(.began)
         await drainMainQueueAsync()
 
         XCTAssertFalse(viewModel.isLoading)
@@ -130,26 +128,61 @@ final class HoldsViewModelTests: XCTestCase {
     func testSyncBegan_AfterAccountChange_RaisesLoading() async {
         let accountDidChange = PassthroughSubject<Void, Never>()
         let viewModel = createViewModel(accountDidChange: accountDidChange.eraseToAnyPublisher())
-        NotificationCenter.default.post(name: .TPPSyncEnded, object: nil)
+        mockRegistry.sendSyncEvent(.ended)
         await drainMainQueueAsync()
         await viewModel._awaitRefreshForTesting()
 
         accountDidChange.send(())
         await drainMainQueueAsync()
-        NotificationCenter.default.post(name: .TPPSyncBegan, object: nil)
+        mockRegistry.sendSyncEvent(.began)
         await drainMainQueueAsync()
 
         XCTAssertTrue(viewModel.isLoading)
+    }
+
+    /// The registry re-publishes its records without a sync (a library switch
+    /// clears them). That must not count as an answered sync, or the new
+    /// library's first sync would show an empty state instead of the
+    /// placeholder (PP-5468).
+    func testRecordsRepublishedWithoutSync_DoNotCountAsAnsweredSync() async {
+        let viewModel = createViewModel()
+        // `removeBook` re-publishes the records without a registry-change event.
+        mockRegistry.removeBook(forIdentifier: "absent-book")
+        await drainMainQueueAsync()
+        await viewModel._awaitRefreshForTesting()
+
+        mockRegistry.sendSyncEvent(.began)
+        await drainMainQueueAsync()
+
+        XCTAssertTrue(viewModel.isLoading)
+    }
+
+    /// A failure carries the registry's patron-facing text to the banner.
+    func testSyncFailedEvent_ShowsItsDetail() async {
+        let viewModel = HoldsViewModel(
+            bookRegistry: mockRegistry,
+            accountsManager: appContainer.accountsManager,
+            settings: TPPSettings(),
+            debugSettings: appContainer.debugSettings,
+            hasCredentials: { true },
+            currentLibraryNeedsAuth: { true },
+            debounceInterval: 0,
+            accountDidChange: Empty().eraseToAnyPublisher()
+        )
+
+        mockRegistry.sendSyncEvent(.failed(detail: "Your card has expired."))
+        await drainMainQueueAsync()
+
+        XCTAssertEqual(viewModel.syncError?.message, "Your card has expired.")
     }
 
     func testSyncEndedSetsLoadingFalse() async {
         let viewModel = createViewModel()
         viewModel.isLoading = true // Set initial state
 
-        NotificationCenter.default.post(name: .TPPSyncEnded, object: nil)
+        mockRegistry.sendSyncEvent(.ended)
 
-        // `.TPPSyncEnded` feeds the merged debounce: the `.receive(on: .main)`
-        // hop schedules the refresh Task, which we then JOIN via the S7 seam.
+        // `.ended` schedules the debounced refresh Task, which we then join.
         // `debounceInterval` is 0 in tests, so the join settles immediately.
         await drainMainQueueAsync()
         await viewModel._awaitRefreshForTesting()
@@ -330,7 +363,7 @@ final class HoldsViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.reservedBookVMs.count, 2, "Both reserved and ready books should be in reservedBookVMs")
     }
 
-    // MARK: - Registry Change Notification Tests
+    // MARK: - Registry Change Tests
 
     func testRegistryDidChange_ReloadsData() async {
         let viewModel = createViewModel()
@@ -342,10 +375,9 @@ final class HoldsViewModelTests: XCTestCase {
         let book = TPPBookMocker.snapshotReservedBook(identifier: "new-book", title: "New Book")
         mockRegistry.addBook(book, state: .holding)
 
-        // Post registry change notification (which triggers reloadData through
-        // the merged debounce). Drain the scheduling main-hop, then JOIN the
-        // refresh Task via the S7 seam — deterministic, no timeout.
-        NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+        // A registry change triggers reloadData through the debounce; join the
+        // refresh Task rather than waiting on a timeout.
+        mockRegistry.sendRegistryDidChange()
         await drainMainQueueAsync()
         await viewModel._awaitRefreshForTesting()
 
@@ -441,24 +473,23 @@ final class HoldsViewModelTests: XCTestCase {
     func testIsLoading_PublishesChanges() async {
         let viewModel = createViewModel()
 
-        // Trigger loading state change via notification, then drain the
-        // `.receive(on: .main)` hop so the published change lands deterministically.
-        NotificationCenter.default.post(name: .TPPSyncBegan, object: nil)
+        // Trigger the loading state through the registry's sync event.
+        mockRegistry.sendSyncEvent(.began)
         await drainMainQueueAsync()
 
         XCTAssertTrue(viewModel.isLoading,
-                      "isLoading must be true after TPPSyncBegan is processed")
+                      "isLoading must be true after the sync-began event is processed")
     }
 
     func testVisibleBooks_PublishesChanges() async {
         let viewModel = createViewModel()
 
-        // Add a book, then post the registry-change notification that drives the
-        // merged debounce. Drain the scheduling hop, JOIN the refresh Task.
+        // Add a book, then send the registry change that drives the debounced
+        // refresh, and join the refresh Task.
         let book = TPPBookMocker.snapshotReservedBook()
         mockRegistry.addBook(book, state: .holding)
 
-        NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
+        mockRegistry.sendRegistryDidChange()
         await drainMainQueueAsync()
         await viewModel._awaitRefreshForTesting()
 
@@ -516,13 +547,12 @@ final class HoldsSyncFailureTests: XCTestCase {
         let viewModel = makeSignedInViewModel()
         XCTAssertNil(viewModel.syncError, "No error initially")
 
-        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
+        mockRegistry.sendSyncEvent(.failed(detail: nil))
 
-        // `.TPPSyncFailed` dispatches through `.receive(on: .main)`; draining the
-        // main queue lands the reducer update deterministically, no timeout.
+        // Lets any store update queued on main land before the assert.
         await drainMainQueueAsync()
 
-        XCTAssertNotNil(viewModel.syncError, "syncError should be set after TPPSyncFailed")
+        XCTAssertNotNil(viewModel.syncError, "syncError should be set after a sync-failed event")
         XCTAssertFalse(viewModel.syncError!.message.isEmpty, "Error message should not be empty")
     }
 
@@ -534,11 +564,7 @@ final class HoldsSyncFailureTests: XCTestCase {
             "title": "Invalid Credentials",
             "detail": "Your library card has expired. Please contact your library."
         ]
-        NotificationCenter.default.post(
-            name: .TPPSyncFailed,
-            object: nil,
-            userInfo: [TPPBookRegistry.syncFailureErrorDocumentKey: errorDoc]
-        )
+        mockRegistry.reportSyncFailure(errorDocument: errorDoc)
         await drainMainQueueAsync()
 
         XCTAssertEqual(
@@ -551,7 +577,7 @@ final class HoldsSyncFailureTests: XCTestCase {
     func testSyncFailure_WithoutProblemDocument_ShowsGenericMessage() async {
         let viewModel = makeSignedInViewModel()
 
-        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
+        mockRegistry.sendSyncEvent(.failed(detail: nil))
         await drainMainQueueAsync()
 
         XCTAssertEqual(
@@ -565,7 +591,7 @@ final class HoldsSyncFailureTests: XCTestCase {
         let viewModel = makeSignedInViewModel()
         viewModel.isLoading = true
 
-        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
+        mockRegistry.sendSyncEvent(.failed(detail: nil))
         await drainMainQueueAsync()
 
         XCTAssertFalse(viewModel.isLoading, "Loading should stop on sync failure")
@@ -584,7 +610,7 @@ final class HoldsSyncFailureTests: XCTestCase {
             .sink { _ in errorSet.fulfill() }
             .store(in: &cancellables)
 
-        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
+        mockRegistry.sendSyncEvent(.failed(detail: nil))
         await fulfillment(of: [errorSet], timeout: 1.0)
         XCTAssertNotNil(viewModel.syncError)
 
@@ -596,7 +622,7 @@ final class HoldsSyncFailureTests: XCTestCase {
             .sink { _ in errorCleared.fulfill() }
             .store(in: &cancellables)
 
-        NotificationCenter.default.post(name: .TPPSyncBegan, object: nil)
+        mockRegistry.sendSyncEvent(.began)
         await fulfillment(of: [errorCleared], timeout: 1.0)
         XCTAssertNil(viewModel.syncError, "Error should be cleared when new sync begins (retry)")
     }
@@ -604,7 +630,7 @@ final class HoldsSyncFailureTests: XCTestCase {
     func testDismissSyncError_ClearsError() async {
         // With the Store-backed VM, dismissSyncError flows through the reducer,
         // so we first put the reducer state into the error condition via the
-        // real code path (TPPSyncFailed for an authenticated, uncached user).
+        // real code path (a sync failure for an authenticated, uncached user).
         let viewModel = HoldsViewModel(
             bookRegistry: mockRegistry,
             accountsManager: appContainer.accountsManager,
@@ -619,7 +645,7 @@ final class HoldsSyncFailureTests: XCTestCase {
             .first { $0 != nil }
             .sink { _ in errorSet.fulfill() }
             .store(in: &cancellables)
-        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
+        mockRegistry.sendSyncEvent(.failed(detail: nil))
         await fulfillment(of: [errorSet], timeout: 1.0)
         XCTAssertNotNil(viewModel.syncError, "Precondition: error surfaced")
 
@@ -647,9 +673,9 @@ final class HoldsSyncFailureTests: XCTestCase {
 
         // Sync fails, but cached holds are visible — error is intentionally suppressed
         // to avoid alarming the user when stale data is still useful.
-        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
+        mockRegistry.sendSyncEvent(.failed(detail: nil))
 
-        // Drain the main queue so the notification observer's main-queue
+        // Drain the main queue so the sync event's main-queue
         // dispatch lands before we assert. FIFO guarantees ordering. Async
         // variant required — sync `drainMainQueue()` deadlocks inside async
         // test methods (CI on PR #989 surfaced this).
@@ -675,7 +701,7 @@ final class HoldsSyncFailureTests: XCTestCase {
         )
         XCTAssertTrue(viewModel.visibleBooks.isEmpty, "Precondition: no cached holds")
 
-        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
+        mockRegistry.sendSyncEvent(.failed(detail: nil))
 
         await drainMainQueueAsync()
 
@@ -712,7 +738,7 @@ final class HoldsSyncFailureTests: XCTestCase {
         )
         XCTAssertTrue(viewModel.visibleBooks.isEmpty, "Precondition: no cached holds on freshly-switched library")
 
-        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
+        mockRegistry.sendSyncEvent(.failed(detail: nil))
 
         await drainMainQueueAsync()
 
@@ -742,7 +768,7 @@ final class HoldsSyncFailureTests: XCTestCase {
             .sink { _ in errorExpectation.fulfill() }
             .store(in: &cancellables)
 
-        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
+        mockRegistry.sendSyncEvent(.failed(detail: nil))
         await fulfillment(of: [errorExpectation], timeout: 1.0)
 
         XCTAssertNotNil(viewModel.syncError,
@@ -766,7 +792,7 @@ final class HoldsSyncFailureTests: XCTestCase {
             .sink { _ in errorExpectation.fulfill() }
             .store(in: &cancellables)
 
-        NotificationCenter.default.post(name: .TPPSyncFailed, object: nil, userInfo: nil)
+        mockRegistry.sendSyncEvent(.failed(detail: nil))
         await fulfillment(of: [errorExpectation], timeout: 1.0)
 
         XCTAssertNotNil(viewModel.syncError, "Authenticated users still see the error")
@@ -785,11 +811,7 @@ final class HoldsSyncFailureTests: XCTestCase {
         let errorDoc: [AnyHashable: Any] = [
             "title": "Authentication Required"
         ]
-        NotificationCenter.default.post(
-            name: .TPPSyncFailed,
-            object: nil,
-            userInfo: [TPPBookRegistry.syncFailureErrorDocumentKey: errorDoc]
-        )
+        mockRegistry.reportSyncFailure(errorDocument: errorDoc)
 
         await fulfillment(of: [errorExpectation], timeout: 1.0)
         XCTAssertEqual(viewModel.syncError?.message, "Authentication Required")

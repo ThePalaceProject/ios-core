@@ -67,7 +67,7 @@ struct LibrariesView: View {
         .onAppear {
             viewModel.refresh()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange)) { _ in
+        .onReceive(appContainer.bookRegistry.registryDidChangePublisher) { _ in
             viewModel.refresh()
         }
         .sheet(isPresented: $viewModel.showAddLibrarySheet) {

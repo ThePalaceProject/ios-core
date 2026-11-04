@@ -191,7 +191,7 @@ enum Group: Int {
         let newBooks = active
 
         // Skip re-publish when nothing visible changed. The registry fires
-        // TPPBookRegistryDidChange on every sync — even when the response is
+        // a registry change on every sync — even when the response is
         // structurally identical to what we already have — and each such
         // reload forces a new allBooks assignment, which in turn swaps the
         // TPPBook instances in BookCellModelCache. SwiftUI sees new object
@@ -350,12 +350,13 @@ enum Group: Int {
 
     // MARK: - Notification Handling
     private func registerNotifications() {
-        // Per-book state changes come from the registry's `bookStatePublisher`;
-        // registry and sync changes are still notifications. All three map to
-        // `Void` so they merge into one refresh trigger.
+        // Per-book state changes, registry changes and the end of a sync all
+        // map to `Void` so they merge into one refresh trigger.
         let stateChange = bookRegistry.bookStatePublisher.map { _ in () }
-        let registryChange = NotificationCenter.default.publisher(for: .TPPBookRegistryDidChange).map { _ in () }
-        let syncEnd = NotificationCenter.default.publisher(for: .TPPSyncEnded).map { _ in () }
+        let registryChange = bookRegistry.registryDidChangePublisher
+        let syncEnd = bookRegistry.syncEventPublisher
+            .filter { $0 == .ended }
+            .map { _ in () }
 
         stateChange
             .merge(with: registryChange)
@@ -388,7 +389,7 @@ enum Group: Int {
         // post-sign-in `bookRegistry.sync()` wired into
         // `TPPSignInBusinessLogic.updateUserAccount` is supposed to
         // repopulate loans, but in practice the propagation through
-        // `TPPBookRegistryDidChange` doesn't always reach this view model
+        // the registry-changed event doesn't always reach this view model
         // in time — especially when the registry is in the `.unloaded`
         // race window between sign-out and sign-in (handled at the
         // TPPBookRegistry.sync wrapper level, but the safety net here
