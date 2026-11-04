@@ -260,8 +260,12 @@ final class TPPAdobeActivationSkipTests: XCTestCase {
         let userAccount = businessLogic.userAccount as! TPPUserAccountMock
         userAccount._credentials = .barcodeAndPin(barcode: "test", pin: "1234")
         userAccount.setAuthState(.credentialsStale)
-        userAccount.setUserID("adobeUser")
-        userAccount.setDeviceID("adobeDevice")
+        // Paired through setAdobeActivation so the activation carries a
+        // generation: the skip requires an activation made by the linked
+        // connector, not merely identifiers that exist.
+        userAccount.setAdobeActivation(userID: "adobeUser",
+                                       deviceID: "adobeDevice",
+                                       generation: AdobeConnectorGeneration.current)
         drmAuthorizer.isUserAuthorizedReturnValue = true
 
         // Then: Should skip activation
@@ -286,8 +290,12 @@ final class TPPAdobeActivationSkipTests: XCTestCase {
         let userAccount = businessLogic.userAccount as! TPPUserAccountMock
         userAccount._credentials = .barcodeAndPin(barcode: "test", pin: "1234")
         userAccount.setAuthState(.credentialsStale)
-        userAccount.setUserID("adobeUser")
-        userAccount.setDeviceID("adobeDevice")
+        // A matching generation, so the connector's own verdict below is the
+        // only thing that can refuse the skip. Without it the generation gate
+        // refuses first and this passes without consulting isUserAuthorized.
+        userAccount.setAdobeActivation(userID: "adobeUser",
+                                       deviceID: "adobeDevice",
+                                       generation: AdobeConnectorGeneration.current)
         drmAuthorizer.isUserAuthorizedReturnValue = false  // Adobe says not authorized
 
         // Then: Should NOT skip activation (Adobe needs re-activation)
@@ -456,8 +464,9 @@ final class TPPSAMLReauthFlowTests: XCTestCase {
         // Step 1: User is initially logged in with valid Adobe credentials
         userAccount._credentials = .barcodeAndPin(barcode: "library_card", pin: "1234")
         userAccount.setAuthState(.loggedIn)
-        userAccount.setUserID("adobe_user_123")
-        userAccount.setDeviceID("adobe_device_456")
+        userAccount.setAdobeActivation(userID: "adobe_user_123",
+                                       deviceID: "adobe_device_456",
+                                       generation: AdobeConnectorGeneration.current)
         drmAuthorizer.isUserAuthorizedReturnValue = true
 
         XCTAssertEqual(userAccount.authState, .loggedIn)
