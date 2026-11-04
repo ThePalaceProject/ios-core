@@ -91,6 +91,35 @@ final class HoldsViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.isLoading)
     }
 
+    /// Every visit to the Reservations tab syncs the registry. With holds already
+    /// on screen the list must stay put; `HoldsView` replaces it with a skeleton
+    /// whenever `isLoading` is true, so raising it here is a visible flash.
+    func testSyncBegan_WithHoldsOnScreen_DoesNotRaiseLoading() async {
+        _ = addHeldBook()
+        let viewModel = createViewModel()
+        XCTAssertEqual(viewModel.visibleBooks.count, 1, "precondition: the held book is on screen")
+
+        NotificationCenter.default.post(name: .TPPSyncBegan, object: nil)
+        await drainMainQueueAsync()
+
+        XCTAssertFalse(viewModel.isLoading, "A refresh behind visible holds must not swap them for a skeleton")
+        XCTAssertEqual(viewModel.visibleBooks.count, 1)
+    }
+
+    /// Once a sync has answered, a later sync on an empty shelf keeps the empty
+    /// state rather than flashing the skeleton over it.
+    func testSyncBegan_AfterFirstSyncAnswered_DoesNotRaiseLoading() async {
+        let viewModel = createViewModel()
+        NotificationCenter.default.post(name: .TPPSyncEnded, object: nil)
+        await drainMainQueueAsync()
+        await viewModel._awaitRefreshForTesting()
+
+        NotificationCenter.default.post(name: .TPPSyncBegan, object: nil)
+        await drainMainQueueAsync()
+
+        XCTAssertFalse(viewModel.isLoading)
+    }
+
     func testSyncEndedSetsLoadingFalse() async {
         let viewModel = createViewModel()
         viewModel.isLoading = true // Set initial state

@@ -41,6 +41,89 @@ final class HoldsReducerTests: XCTestCase {
         XCTAssertFalse(state.isLoading)
     }
 
+    // MARK: - Skeleton gating: syncBegan × (holds on screen, first sync done)
+    //
+    // `HoldsView` replaces the whole list with a skeleton while `isLoading` is
+    // true, and the registry syncs on every visit to the tab. The skeleton is
+    // therefore for the cold start only: once holds are on screen, or once a
+    // first sync has answered, a later sync must leave the list in place.
+    //
+    //   holds shown | first sync done | isLoading after syncBegan
+    //   ------------+-----------------+--------------------------
+    //   no          | no              | true   (cold start)
+    //   yes         | no              | false  (cached holds visible)
+    //   no          | yes             | false  (empty state stays)
+    //   yes         | yes             | false
+
+    func testSyncBegan_whenHoldsAlreadyOnScreen_keepsListVisible() {
+        let held = [TPPBookMocker.snapshotReservedBook(identifier: "h1", title: "Held")]
+        var state = HoldsState(
+            reservedBooks: held, heldBooks: [], visibleBooks: held,
+            isLoading: false, syncErrorMessage: nil, searchQuery: ""
+        )
+        _ = HoldsReducer.reduce(&state, .syncBegan)
+        XCTAssertFalse(state.isLoading,
+                       "A sync with holds already on screen must not swap the list for a skeleton")
+        XCTAssertEqual(state.visibleBooks.map(\.identifier), ["h1"])
+    }
+
+    func testSyncBegan_whenHeldButNotReservedOnScreen_keepsListVisible() {
+        let held = [TPPBookMocker.snapshotReservedBook(identifier: "h2", title: "Held")]
+        var state = HoldsState(
+            reservedBooks: [], heldBooks: held, visibleBooks: held,
+            isLoading: false, syncErrorMessage: nil, searchQuery: ""
+        )
+        _ = HoldsReducer.reduce(&state, .syncBegan)
+        XCTAssertFalse(state.isLoading)
+    }
+
+    func testSyncBegan_afterFirstSyncWithNoHolds_keepsEmptyStateVisible() {
+        var state = HoldsState(
+            reservedBooks: [], heldBooks: [], visibleBooks: [],
+            isLoading: false, syncErrorMessage: nil, searchQuery: ""
+        )
+        _ = HoldsReducer.reduce(&state, .syncEnded)
+        _ = HoldsReducer.reduce(&state, .syncBegan)
+        XCTAssertFalse(state.isLoading,
+                       "After a first sync answered, a later sync must not flash the skeleton over the empty state")
+    }
+
+    func testSyncBegan_afterFailedFirstSync_keepsEmptyStateVisible() {
+        var state = HoldsState()
+        _ = HoldsReducer.reduce(&state, .syncFailed(errorMessage: "offline", cached: false, anonymous: false))
+        _ = HoldsReducer.reduce(&state, .syncBegan)
+        XCTAssertFalse(state.isLoading,
+                       "A failed first sync still counts as an answer; the retry must not flash the skeleton")
+        XCTAssertNil(state.syncErrorMessage, "syncBegan still clears the stale banner")
+    }
+
+    func testSyncBegan_beforeAnySyncWithNoHolds_showsSkeleton() {
+        var state = HoldsState()
+        _ = HoldsReducer.reduce(&state, .syncBegan)
+        XCTAssertTrue(state.isLoading, "Cold start with nothing to show is the one case that wants a skeleton")
+    }
+
+    func testSyncBegan_whenHoldsOnScreenAndFirstSyncDone_keepsListVisible() {
+        let held = [TPPBookMocker.snapshotReservedBook(identifier: "h3", title: "Held")]
+        var state = HoldsState(
+            reservedBooks: held, heldBooks: [], visibleBooks: held,
+            isLoading: false, syncErrorMessage: nil, searchQuery: ""
+        )
+        _ = HoldsReducer.reduce(&state, .syncEnded)
+        _ = HoldsReducer.reduce(&state, .syncBegan)
+        XCTAssertFalse(state.isLoading)
+    }
+
+    func testRegistryChanged_doesNotCountAsAFirstSyncAnswer() {
+        // The view model dispatches `.registryChanged` from `init` with whatever
+        // the registry holds (possibly nothing, before load). That must not
+        // suppress the cold-start skeleton.
+        var state = HoldsState()
+        _ = HoldsReducer.reduce(&state, .registryChanged(held: []))
+        _ = HoldsReducer.reduce(&state, .syncBegan)
+        XCTAssertTrue(state.isLoading)
+    }
+
     // MARK: - Sync failure error-banner suppression rules
     //
     // The legacy HoldsViewModel.handleSyncFailure encoded three rules that
