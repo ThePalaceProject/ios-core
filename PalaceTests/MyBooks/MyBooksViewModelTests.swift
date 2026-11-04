@@ -1080,19 +1080,22 @@ final class MyBooksViewModelDownloadStateTests: XCTestCase {
 @MainActor
 final class MyBooksViewModelNotificationTests: XCTestCase {
 
-    /// Tests that ViewModel can receive registry change notifications
-    func testRegistryChangeNotification_IsRegistered() {
+    /// A registry-change event alone reloads the shelf. The initial reload from
+    /// the mock's replayed book state lands first so it cannot pick up the new
+    /// book on its own.
+    func testRegistryDidChangeEvent_AfterInitialReload_LoadsNewBooks() {
         let mock = TPPBookRegistryMock()
-        mock.myBooks = [TPPBookMocker.mockBook(identifier: "notif1", title: "Notif Book")]
+        mock.myBooks = []
         let appContainer = makeTestAppContainer()
         let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
-        let bookCountBefore = viewModel.books.count
+        viewModel.isVisible = true
+        awaitPublished(viewModel.$isLoading.dropFirst()) { !$0 }
+        mock.myBooks = [TPPBookMocker.mockBook(identifier: "rc1", title: "Changed Book")]
 
         mock.sendRegistryDidChange()
 
-        // The ViewModel must not crash and must still reflect the registry state
-        XCTAssertEqual(viewModel.books.count, bookCountBefore,
-                       "Book count must remain consistent after registry-change notification")
+        awaitPublished(viewModel.$books) { $0.count == 1 }
+        XCTAssertEqual(viewModel.books.map(\.identifier), ["rc1"])
     }
 
     /// Tests that the ViewModel reacts to a per-book state change through the
@@ -1108,20 +1111,6 @@ final class MyBooksViewModelNotificationTests: XCTestCase {
 
         // ViewModel must not crash; loading state must be well-defined afterward.
         XCTAssertFalse(viewModel.isLoading, "isLoading must be false after a book-state change with no pending sync")
-    }
-
-    /// Tests that ViewModel can receive sync ended notifications
-    func testSyncEndedNotification_IsRegistered() {
-        let mock = TPPBookRegistryMock()
-        mock.myBooks = []
-        let appContainer = makeTestAppContainer()
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
-
-        mock.sendSyncEvent(.ended)
-
-        // ViewModel must not crash; book list must reflect (possibly empty) registry
-        XCTAssertEqual(viewModel.books.count, mock.myBooks.count,
-                       "Books must match registry after sync-ended notification")
     }
 
     /// The sync-ended event alone reloads the shelf. The mock replays its last
