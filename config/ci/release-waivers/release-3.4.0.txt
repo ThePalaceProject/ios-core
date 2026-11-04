@@ -2,6 +2,7 @@
 #1730   build number 516 for the first 3.4.0 release candidate; develop takes the next number
 f54fb0761 build number 517 for the 3.4.0 release candidate; develop takes the next number
 5f3934711 build number 518 for the 3.4.0 release candidate; develop takes the next number
+#1790   build number 519 for the 3.4.0 release candidate; develop takes the next number
 # Ported by merge here and squashed on develop, so commit-level matching cannot pair them.
 120a719be PP-5414 is on develop as 188205313 (#1766)
 59c178c97 on develop as 6dca5b02b
