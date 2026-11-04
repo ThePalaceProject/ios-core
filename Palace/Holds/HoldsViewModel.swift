@@ -89,7 +89,8 @@ final class HoldsViewModel: ObservableObject {
         hasCredentials: (() -> Bool)? = nil,
         currentLibraryNeedsAuth: (() -> Bool)? = nil,
         presentSignIn: ((@escaping () -> Void) -> Void)? = nil,
-        debounceInterval: TimeInterval = 0.3
+        debounceInterval: TimeInterval = 0.3,
+        accountDidChange: AnyPublisher<Void, Never>? = nil
     ) {
         self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager
@@ -150,7 +151,9 @@ final class HoldsViewModel: ObservableObject {
             .sink { [weak self] _ in self?.store.send(.syncBegan) }
             .store(in: &cancellables)
 
-        NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
+        (accountDidChange ?? NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
+            .map { _ in () }
+            .eraseToAnyPublisher())
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.store.send(.accountChanged) }
             .store(in: &cancellables)
