@@ -13,9 +13,14 @@
 
 set -eo pipefail
 
+# Use the same connector branch CI builds with, so the linked connector matches
+# AdobeConnectorGeneration.current.
+CONNECTOR_REF=$(awk '/^  ref:/{f=1} f && /^    default:/{gsub(/["[:space:]]/,"",$2); print $2; exit}' .github/actions/checkout-adobe/action.yml)
+[ -n "$CONNECTOR_REF" ] || { echo "Could not read the connector ref from .github/actions/checkout-adobe/action.yml" >&2; exit 1; }
+
 cd ..
 git clone git@github.com:ThePalaceProject/mobile-certificates.git
-git clone git@github.com:ThePalaceProject/ios-drm-adeptconnector.git
+git clone --branch "$CONNECTOR_REF" git@github.com:ThePalaceProject/ios-drm-adeptconnector.git
 git clone git@github.com:ThePalaceProject/ios-audiobook-overdrive.git
 
 cd ios-drm-adeptconnector
