@@ -573,9 +573,11 @@ final class BookRegistrySync: @unchecked Sendable {
         // listen to bookStateSubject, not the registry-wide change, so every
         // state the merge changes is sent there after the barrier releases.
         var stateChanges: [(identifier: String, state: TPPBookState)] = []
-        self.store.mutateRegistrySync { registry in
+        var feedIdentifiers = Set<String>()
+        // Only a record that differs from the stored one is replaced, so an
+        // unchanged sync keeps every instance and neither saves nor announces.
+        self.store.mutateRegistrySyncAnnouncingChanges { registry in
           let localIdentifiers = Set<String>(registry.keys)
-          var feedIdentifiers = Set<String>()
           for entry in feed.entries {
             guard let opdsEntry = entry as? TPPOPDSEntry,
                   let book = TPPBook(entry: opdsEntry)
@@ -600,7 +602,7 @@ final class BookRegistrySync: @unchecked Sendable {
               // later sync overwrites a previously-enriched record and MyBooks
               // cells lose their author line until a catalog visit refills it.
               let mergedBook = record.book.mergingPreservingMetadata(from: book)
-              registry[book.identifier] = TPPBookRegistryRecord(
+              let reconciled = TPPBookRegistryRecord(
                 book: mergedBook,
                 location: record.location,
                 state: nextState,
@@ -608,7 +610,10 @@ final class BookRegistrySync: @unchecked Sendable {
                 readiumBookmarks: record.readiumBookmarks,
                 genericBookmarks: record.genericBookmarks
               )
-              changesMade = true
+              if !Self.recordsMatch(record, reconciled) {
+                registry[book.identifier] = reconciled
+                changesMade = true
+              }
             } else {
               let initialState = TPPBookRegistryRecord.deriveInitialState(for: book)
               registry[book.identifier] = TPPBookRegistryRecord(
@@ -656,6 +661,7 @@ final class BookRegistrySync: @unchecked Sendable {
           // on it. That triggers a Swift exclusivity trap ("Simultaneous
           // accesses to registry, but modification requires exclusive access").
           // The save call lives below, after the barrier has released.
+          return changesMade
         }
 
         // Run the filesystem deletes outside the barrier. Using the book-based
@@ -665,10 +671,12 @@ final class BookRegistrySync: @unchecked Sendable {
           downloadService.deleteLocalContent(forBook: book, account: accountUUID)
         }
 
-        if changesMade {
-          // Server-authoritative: this snapshot is the result of reconciling
-          // against the loans feed (guarded by shouldSkipBulkDeletion), so it is
-          // allowed to persist an empty shelf and it clears needsRebuildFromServer.
+        // Server-authoritative: this snapshot is the result of reconciling
+        // against the loans feed (guarded by shouldSkipBulkDeletion), so it is
+        // allowed to persist an empty shelf and it clears needsRebuildFromServer.
+        // A pending rebuild is saved even when no record changed, so a feed that
+        // matches the in-memory shelf still ends the rebuild window.
+        if changesMade || (self.needsRebuildFromServer && !feedIdentifiers.isEmpty) {
           self.save(for: accountUUID, serverAuthoritative: true)
         }
 
@@ -682,6 +690,18 @@ final class BookRegistrySync: @unchecked Sendable {
       }
     }
     _syncTasks.retain(syncTask)
+  }
+
+  /// Whether two records hold the same data. The persisted form is the oracle;
+  /// duration and contributors are compared beside it because the persisted
+  /// form omits them and the in-memory book still shows them (PP-5503).
+  static func recordsMatch(_ lhs: TPPBookRegistryRecord, _ rhs: TPPBookRegistryRecord) -> Bool {
+    guard lhs.book.bookDuration == rhs.book.bookDuration,
+          NSDictionary(dictionary: lhs.book.contributors ?? [:])
+            .isEqual(to: rhs.book.contributors ?? [:])
+    else { return false }
+    return NSDictionary(dictionary: lhs.dictionaryRepresentation)
+      .isEqual(to: rhs.dictionaryRepresentation)
   }
 
   /// Persist the registry for the given account. The caller MUST pass the account
