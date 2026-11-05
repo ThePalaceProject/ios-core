@@ -433,6 +433,10 @@ final class AudiobookLoader {
         manager.skipForwardInterval = skipSettings.forwardTimeInterval
         manager.skipBackInterval = skipSettings.backTimeInterval
 
+        // `NowPlayingCoordinator` is the only Now Playing writer (PP-5504);
+        // the toolkit's own writes would race it on the lock screen and CarPlay.
+        manager.nowPlayingWriter = nil
+
         // PP-4963: watch the save path against the playback clock, so a locked
         // listen that stops saving becomes an event instead of an absence.
         let positionTrace = makePositionTrace(book: book, manager: manager)

@@ -322,16 +322,75 @@ final class NowPlayingCoordinatorBackgroundWriteTests: XCTestCase {
         XCTAssertEqual(lastWrittenElapsed ?? -1, latest, accuracy: 0.001)
     }
 
-    // MARK: - Foreground is unchanged
+    // MARK: - Foreground
 
-    /// In `.active` the existing debounce still decides; the background skip
-    /// must not apply.
     func testActive_firstWrite_isApplied() {
         appState.value = .active
 
         update(elapsed: 100)
 
         XCTAssertEqual(infoCenter.infoWrites.count, 1)
+    }
+
+    /// Foreground ticks the system can extrapolate are not written either, so a
+    /// patron with the app open does not cost a Now Playing write per tick.
+    func testActive_steadyPlayback_writesOnceThenSkipsExtrapolatedTicks() async {
+        appState.value = .active
+        update(elapsed: 100)
+
+        _ = steadyTicks(from: 100, count: 20)
+        await coordinator._awaitPendingUpdateForTesting()
+
+        XCTAssertEqual(infoCenter.infoWrites.count, 1)
+    }
+
+    func testActive_steadyPlayback_writesKeepAliveAfterTenSeconds() async {
+        appState.value = .active
+        update(elapsed: 100)
+
+        _ = steadyTicks(from: 100, count: 40)
+        await coordinator._awaitPendingUpdateForTesting()
+
+        XCTAssertEqual(infoCenter.infoWrites.count, 2)
+    }
+
+    /// A change two seconds or more after the last write lands at once.
+    func testActive_chapterChangeAfterTwoSeconds_isWrittenImmediately() {
+        appState.value = .active
+        update(elapsed: 100)
+        clock.withValue { $0 = $0.addingTimeInterval(2.0) }
+
+        update(title: "Chapter 2", elapsed: 0)
+
+        XCTAssertEqual(infoCenter.infoWrites.count, 2)
+        XCTAssertEqual(infoCenter.nowPlayingInfo?[MPMediaItemPropertyTitle] as? String, "Chapter 2")
+    }
+
+    /// A change sooner than two seconds after the last write waits for the
+    /// two-second mark, and then the latest values are written once.
+    func testActive_changesWithinTwoSeconds_areWrittenOnceWithLatestValues() async {
+        appState.value = .active
+        update(elapsed: 100)
+        clock.withValue { $0 = $0.addingTimeInterval(0.5) }
+
+        update(title: "Chapter 2", elapsed: 0)
+        update(title: "Chapter 3", elapsed: 0)
+        XCTAssertEqual(infoCenter.infoWrites.count, 1, "no second write before the two-second mark")
+        await coordinator._awaitPendingUpdateForTesting()
+
+        XCTAssertEqual(infoCenter.infoWrites.count, 2)
+        XCTAssertEqual(infoCenter.nowPlayingInfo?[MPMediaItemPropertyTitle] as? String, "Chapter 3")
+    }
+
+    func testActive_seekAfterTwoSeconds_isWrittenImmediately() {
+        appState.value = .active
+        update(elapsed: 100)
+        clock.withValue { $0 = $0.addingTimeInterval(2.5) }
+
+        update(elapsed: 400)
+
+        XCTAssertEqual(infoCenter.infoWrites.count, 2)
+        XCTAssertEqual(lastWrittenElapsed ?? -1, 400, accuracy: 0.001)
     }
 
     /// A chapter change on the first background tick after a foreground write
