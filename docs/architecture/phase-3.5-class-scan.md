@@ -33,17 +33,18 @@ script's header describes the class it targets.
 | `check-auth-challenge-async-form.py` | authentication-challenge delegate callbacks in `Palace/` not written in the async form (PP-4895) | block |
 | `check-raising-unarchiver.py` | `NSKeyedUnarchiver.unarchiveObject(with:)` and `(withFile:)`, which raise an ObjC exception Swift cannot catch | block |
 | `check-opaque-blob-egress.py` | a whole opaque payload interpolated into something that leaves the device | block |
+| `check-formatter-in-function.py` | a `DateFormatter()` or `ISO8601DateFormatter()` built inside a function, initializer, accessor or computed property in `Palace/` (PP-5498) | block |
 | `check-comment-hygiene.py` | source comments that break the writing conventions in `CLAUDE.md` | block |
 
 ## Where they run
 
-- **`scripts/verify-pr.sh`**, the pre-PR self-check, runs all seven. The first
-  six run through `run_phase35_detector`; comment hygiene has its own step.
+- **`scripts/verify-pr.sh`**, the pre-PR self-check, runs all eight. The first
+  seven run through `run_phase35_detector`; comment hygiene has its own step.
 - **CI** (`.github/workflows/tooling-checks.yml`) runs every pytest suite in
   `scripts/tests/` (step "pytest detector suite") and the hook fixture test
   `scripts/tests/test_pre_commit_phase35_detectors.sh`, and runs comment
   hygiene (`check-comment-hygiene.py`) over the whole tree on every pull
-  request. The other six detectors are tested in CI but not run against the
+  request. The other seven detectors are tested in CI but not run against the
   pull request's tree.
 - **`scripts/pre-commit-phase35-detectors.sh`** runs them against the staged
   diff on `git commit`. It reads a Claude Code PreToolUse hook payload on

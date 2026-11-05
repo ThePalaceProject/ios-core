@@ -17,9 +17,10 @@ import PalaceAudiobookToolkit
 ///   the Combine `Timer.publish(on: .main)` sink. Safe to share across those
 ///   boundaries because:
 ///   1. Every stored dependency (`dataManager`, `libraryId`, `bookId`,
-///      `timeTrackingUrl`, `syncQueue`, `minuteFormatter`, `tick`, `audiobookLogger`)
+///      `timeTrackingUrl`, `syncQueue`, `tick`, `audiobookLogger`)
 ///      is a `let` — immutable after `init`.
-///   2. The mutable counters (`duration`, `currentMinute`, `timeEntryId`) are read
+///   2. The mutable counters (`duration`, `currentMinute`, `currentMinuteIndex`,
+///      `timeEntryId`) are read
 ///      and written ONLY through the serial `syncQueue` (`.sync`/`.async`).
 ///   3. The playback-lifecycle state (`isPlaying`, `playbackTimer`, `subscriptions`)
 ///      is touched only from the `AudiobookPlaybackTrackerDelegate` callbacks and
@@ -35,12 +36,12 @@ class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate, @uncheck
     private let bookId: String
     private let timeTrackingUrl: URL
     private var currentMinute: String
+    private var currentMinuteIndex: Int64
     private var duration: TimeInterval = 0
     private var timeEntryId: ULID = ULID(timestamp: Date())
     // Serial queue for thread-safe access to duration and other mutable state
     private let syncQueue = DispatchQueue(label: "com.audiobook.timeTracker")
 
-    private let minuteFormatter: DateFormatter
     private let tick: TimeInterval = 1
     private var isPlaying = false
     private var playbackTimer: Cancellable?
@@ -54,10 +55,9 @@ class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate, @uncheck
         self.timeTrackingUrl = timeTrackingUrl
         self.dataManager = dataManager
         self.audiobookLogger = audiobookLogger
-        self.minuteFormatter = DateFormatter()
-        minuteFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm'Z'"
-        minuteFormatter.timeZone = TimeZone(identifier: "UTC")
-        currentMinute = minuteFormatter.string(from: Date())
+        let now = Date()
+        currentMinute = Self.minuteString(for: now)
+        currentMinuteIndex = Self.minuteIndex(of: now)
 
         super.init()
 
@@ -82,6 +82,26 @@ class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate, @uncheck
             timeTrackingUrl: timeTrackingUrl,
             dataManager: AudiobookDataManager()
         )
+    }
+
+    /// Locale left at the default, as the per-instance formatter had it.
+    private static let minuteFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm'Z'"
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter
+    }()
+
+    /// The UTC minute key a time entry is filed under, e.g. "2023-11-14T22:13Z".
+    static func minuteString(for date: Date) -> String {
+        minuteFormatter.string(from: date)
+    }
+
+    /// Whole UTC minutes since 1970. Changes exactly where `minuteString(for:)`
+    /// changes, so the 1 Hz tick compares integers and formats a string only
+    /// once per minute.
+    static func minuteIndex(of date: Date) -> Int64 {
+        Int64((date.timeIntervalSince1970 / 60).rounded(.down))
     }
 
     /// Thread-safe access to current time entry snapshot
@@ -128,10 +148,11 @@ class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate, @uncheck
         syncQueue.async { [weak self] in
             guard let self = self else { return }
 
-            let minute = self.minuteFormatter.string(from: value)
-            if minute != self.currentMinute {
+            let minuteIndex = Self.minuteIndex(of: value)
+            if minuteIndex != self.currentMinuteIndex {
                 self.saveCurrentDuration(date: value)
-                self.currentMinute = minute
+                self.currentMinute = Self.minuteString(for: value)
+                self.currentMinuteIndex = minuteIndex
             }
             self.duration += self.tick
         }

@@ -53,6 +53,7 @@ public struct OPDS2CatalogsFeed: Codable, Sendable {
     private static let fractionalDateFormatter = makeDateFormatter("yyyy-MM-dd'T'HH:mm:ss.SSSXXXXX")
 
     private static func makeDateFormatter(_ format: String) -> DateFormatter {
+        // formatter-in-function-ok: called only by the two static lets above
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .iso8601)
         formatter.locale = Locale(identifier: "en_US_POSIX")
