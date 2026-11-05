@@ -144,7 +144,6 @@ final class NSNotificationTPPTests: XCTestCase {
     // SRS: Notification.Name constants exist
     func testNotificationNames_exist() {
         XCTAssertEqual(Notification.Name.TPPSettingsDidChange.rawValue, "TPPSettingsDidChange")
-        XCTAssertEqual(Notification.Name.TPPCurrentAccountDidChange.rawValue, "TPPCurrentAccountDidChange")
         XCTAssertEqual(Notification.Name.TPPCatalogDidLoad.rawValue, "TPPCatalogDidLoad")
         XCTAssertEqual(Notification.Name.TPPUseBetaDidChange.rawValue, "TPPUseBetaDidChange")
         XCTAssertEqual(Notification.Name.TPPDidSignOut.rawValue, "TPPDidSignOut")
@@ -162,7 +161,6 @@ final class NSNotificationTPPTests: XCTestCase {
     // SRS: NSNotification static constants match Swift counterparts
     func testNSNotificationConstants_matchSwift() {
         XCTAssertEqual(NSNotification.TPPSettingsDidChange, Notification.Name.TPPSettingsDidChange)
-        XCTAssertEqual(NSNotification.TPPCurrentAccountDidChange, Notification.Name.TPPCurrentAccountDidChange)
     }
 
     // SRS: TPPNotificationKeys constants

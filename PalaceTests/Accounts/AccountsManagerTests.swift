@@ -164,54 +164,6 @@ final class AccountsManagerTests: XCTestCase {
                       "Stored account ID must preserve the URN prefix")
     }
 
-    // MARK: - Account Switching Notification Tests
-
-    func testCurrentAccount_WhenChanged_PostsNotification() {
-        // Given: A mock account provider
-        let provider = mockLibraryAccountProvider!
-
-        // When: Observing for the notification. `queue: .main` delivers the
-        // block asynchronously on the main queue regardless of the posting
-        // thread, so this needs a real main-queue barrier, not a fixed-delay
-        // wait.
-        var notificationReceived = false
-        let observer = NotificationCenter.default.addObserver(
-            forName: .TPPCurrentAccountDidChange,
-            object: nil,
-            queue: .main
-        ) { _ in
-            notificationReceived = true
-        }
-
-        // And: Triggering an account change via the mock's currentAccount
-        // (We can't directly set AppContainer.production().accountsManager.currentAccount without having loaded accounts)
-        // So we test that the notification exists and can be posted
-        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
-
-        // Then: Notification should be received. Deterministic main-queue
-        // barrier (see `XCTestCase+drainMainQueue.swift`) — the `.main`
-        // observer's dispatch is FIFO-ordered after the post above, so
-        // draining the queue guarantees it has landed.
-        drainMainQueue()
-        XCTAssertTrue(notificationReceived)
-
-        NotificationCenter.default.removeObserver(observer)
-    }
-
-    func testAccountChangeNotification_HasCorrectName() {
-        // Verify the notification name constant
-        XCTAssertEqual(
-            Notification.Name.TPPCurrentAccountDidChange.rawValue,
-            "TPPCurrentAccountDidChange"
-        )
-        // Should be non-empty and differ from the catalog-loaded notification
-        XCTAssertFalse(Notification.Name.TPPCurrentAccountDidChange.rawValue.isEmpty)
-        XCTAssertNotEqual(
-            Notification.Name.TPPCurrentAccountDidChange.rawValue,
-            Notification.Name.TPPCatalogDidLoad.rawValue
-        )
-    }
-
     // MARK: - TPP Account UUIDs Tests
 
     func testTPPAccountUUIDs_ContainsExpectedAccounts() {
@@ -263,12 +215,7 @@ final class AccountsManagerTests: XCTestCase {
             Notification.Name.TPPCatalogDidLoad.rawValue,
             "TPPCatalogDidLoad"
         )
-        // The name should be non-empty and distinct from the account-change notification
         XCTAssertFalse(Notification.Name.TPPCatalogDidLoad.rawValue.isEmpty)
-        XCTAssertNotEqual(
-            Notification.Name.TPPCatalogDidLoad.rawValue,
-            Notification.Name.TPPCurrentAccountDidChange.rawValue
-        )
     }
 
     func testLoadCatalogs_PostsCatalogDidLoadNotification() {
@@ -377,9 +324,6 @@ final class AccountsManagerTests: XCTestCase {
         )
         XCTAssertFalse(Notification.Name.TPPUseBetaDidChange.rawValue.isEmpty,
                        "TPPUseBetaDidChange notification name must not be empty")
-        XCTAssertNotEqual(Notification.Name.TPPUseBetaDidChange,
-                          Notification.Name.TPPCurrentAccountDidChange,
-                          "Beta and account-change notifications must be distinct names")
     }
 
     func testUseBetaDidChange_PostsNotificationWhenSettingChanges() {
@@ -562,101 +506,11 @@ final class AccountsManagerTests: XCTestCase {
         XCTAssertTrue(manager.ageCheck === AppContainer.production().accountsManager.ageCheck,
                       "ageCheck must be the same instance across multiple accesses to shared")
     }
-
-    // MARK: - Notification Integration Tests
-
-    func testNotificationObserver_ForAccountChange_CanBeAdded() {
-        // Given: an observer on the `.main` queue — its dispatch is
-        // asynchronous regardless of the posting thread.
-        var notificationCount = 0
-
-        let observer = NotificationCenter.default.addObserver(
-            forName: .TPPCurrentAccountDidChange,
-            object: nil,
-            queue: .main
-        ) { _ in
-            notificationCount += 1
-        }
-
-        // When: Posting the notification
-        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
-
-        // Then: deterministic main-queue barrier (see
-        // `XCTestCase+drainMainQueue.swift`) instead of an expectation —
-        // the observer's dispatch is FIFO-ordered after the post above.
-        drainMainQueue()
-
-        XCTAssertEqual(notificationCount, 1)
-
-        // Cleanup
-        NotificationCenter.default.removeObserver(observer)
-    }
-
-    func testMultipleNotificationObservers_AllReceiveAccountChange() {
-        // Given: multiple observers on the `.main` queue.
-        var observer1Count = 0
-        var observer2Count = 0
-
-        let observer1 = NotificationCenter.default.addObserver(
-            forName: .TPPCurrentAccountDidChange,
-            object: nil,
-            queue: .main
-        ) { _ in
-            observer1Count += 1
-        }
-
-        let observer2 = NotificationCenter.default.addObserver(
-            forName: .TPPCurrentAccountDidChange,
-            object: nil,
-            queue: .main
-        ) { _ in
-            observer2Count += 1
-        }
-
-        // When: Posting notification
-        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
-
-        // Deterministic main-queue barrier: both `.main`-queue observers were
-        // enqueued FIFO before this drain, so both have run by the time it
-        // returns.
-        drainMainQueue()
-
-        // Then: Both observers should receive notification
-        XCTAssertEqual(observer1Count, 1)
-        XCTAssertEqual(observer2Count, 1)
-
-        // Cleanup
-        NotificationCenter.default.removeObserver(observer1)
-        NotificationCenter.default.removeObserver(observer2)
-    }
 }
 
 // MARK: - Combine Publisher Tests
 
 extension AccountsManagerTests {
-
-    func testNotification_CanBeObservedWithCombine() {
-        // Given: A Combine publisher for the notification
-        let expectation = expectation(description: "Combine notification received")
-        var receivedNotification: Notification?
-
-        NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
-            .first()
-            .sink { notification in
-                receivedNotification = notification
-                expectation.fulfill()
-            }
-            .store(in: &cancellables)
-
-        // When: Posting notification
-        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
-
-        // Then: Should be received via Combine with the correct notification name
-        waitForExpectations(timeout: 1.0)
-        XCTAssertNotNil(receivedNotification, "Combine publisher must deliver the notification")
-        XCTAssertEqual(receivedNotification?.name, .TPPCurrentAccountDidChange,
-                       "Received notification name must match .TPPCurrentAccountDidChange")
-    }
 
     func testCatalogDidLoadNotification_CanBeObservedWithCombine() {
         // Given: A Combine publisher for catalog load notification

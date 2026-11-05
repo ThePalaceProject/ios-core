@@ -61,7 +61,7 @@ struct HoldsView: View {
                 .onDisappear {
                     model.isVisible = false
                 }
-                .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
+                .onReceive(appContainer.accountsManager.currentLibraryChangePublisher) { _ in
                     let account = appContainer.accountsManager.currentAccount
                     account?.logoDelegate = logoObserver
                     account?.loadLogo()

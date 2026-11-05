@@ -345,7 +345,7 @@ enum Group: Int {
 
         account.loadAuthenticationDocument { _ in }
 
-        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
+        accountsManager.requestCurrentLibraryRefresh()
     }
 
     // MARK: - Notification Handling

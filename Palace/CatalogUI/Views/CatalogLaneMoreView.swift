@@ -103,10 +103,8 @@ struct CatalogLaneMoreView: View {
 
     // MARK: - Publishers
 
-    private var accountChangePublisher: AnyPublisher<Notification, Never> {
-        NotificationCenter.default
-            .publisher(for: .TPPCurrentAccountDidChange)
-            .eraseToAnyPublisher()
+    private var accountChangePublisher: AnyPublisher<CurrentLibraryChange, Never> {
+        appContainer.accountsManager.currentLibraryChangePublisher
     }
 
     private var sampleTogglePublisher: AnyPublisher<Notification, Never> {

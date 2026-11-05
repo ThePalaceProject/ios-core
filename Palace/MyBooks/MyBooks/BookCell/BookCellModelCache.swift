@@ -125,18 +125,11 @@ final class BookCellModelCache: ObservableObject {
     }
 
     private func setupAccountChangeObserver() {
-        // `.receive(on: DispatchQueue.main)` guards a Swift 6 `swift_task_checkIsolated`
-        // SIGTRAP: this type is `@MainActor` and `handleAccountChange()` mutates
-        // main-actor-isolated `cache`/`accessOrder`. `NotificationCenter` delivers
-        // synchronously on the posting thread, and `.TPPCurrentAccountDidChange` is
-        // posted from the `AccountsManager.currentAccount` setter (line ~985), which
-        // runs on whatever thread performs the account switch — NOT guaranteed main
-        // (sign-in / account-switch completion callbacks fire off-main). Delivering
-        // the `@MainActor` closure off-main traps and restarts the process under
-        // Swift 6. Mirrors the sibling memory-warning observer above and the CarPlay
-        // `.TPPCurrentAccountDidChange` fix. Behavior-preserving: the cache clear
-        // still happens on every account change, just always on main.
-        NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
+        // `handleAccountChange()` mutates main-actor `cache`/`accessOrder`; running
+        // it off main traps under Swift 6 (`swift_task_checkIsolated`). The
+        // publisher already delivers on main; the hop also defers the clear to
+        // the next main-queue turn, after the switch flow that sent the change.
+        accountsManager.currentLibraryChangePublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.handleAccountChange()

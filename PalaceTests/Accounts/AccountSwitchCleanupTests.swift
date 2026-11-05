@@ -133,13 +133,14 @@ final class AccountSwitchCleanupTests: XCTestCase {
     func testBookCellModelCache_ClearsOnAccountChange() async {
         let mockImageCache = MockImageCache()
         let mockRegistry = TPPBookRegistryMock()
+        let accountsManager = makeTestAppContainer().accountsManager
 
         let cache = BookCellModelCache(
             configuration: .init(maxEntries: 50, unusedTTL: 60, observeRegistryChanges: false),
             imageCache: mockImageCache,
             bookRegistry: mockRegistry,
             downloadCenter: AppContainer.production().downloadCenter,
-            accountsManager: AppContainer.production().accountsManager,
+            accountsManager: accountsManager,
             samplePreviewManager: AppContainer.production().samplePreviewManager,
             readerService: AppContainer.production().readerService
         )
@@ -150,13 +151,12 @@ final class AccountSwitchCleanupTests: XCTestCase {
         _ = cache.model(for: book2)
         XCTAssertEqual(cache.count, 2, "Both books should be cached before account change")
 
-        // Simulate account change notification
-        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
+        accountsManager.requestCurrentLibraryRefresh()
 
         // BookCellModelCache's account-change observer hops to main via
         // `.receive(on: DispatchQueue.main)` (the Swift 6 off-main SIGTRAP guard),
         // so the clear lands on the NEXT main-queue turn, not synchronously with
-        // the post. Drain the main queue deterministically: the receive block was
+        // the send. Drain the main queue deterministically: the receive block was
         // enqueued by the post above, so a subsequent main-queue round-trip runs
         // strictly after it (FIFO) — no wall-clock sleep.
         await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in

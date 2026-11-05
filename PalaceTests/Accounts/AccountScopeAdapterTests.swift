@@ -84,28 +84,22 @@ final class AccountScopeAdapterTests: PalaceWiringTestCase {
                        "adapter must mirror the manager's current-account uuid")
     }
 
-    /// The change publisher fires on `.TPPCurrentAccountDidChange` — the signal
-    /// the registry's account-change observer (empty-store invalidation + reload)
-    /// subscribes to.
-    func testAccountDidChangePublisher_firesOnCurrentAccountDidChangeNotification() {
+    /// The registry's account-change observer (empty-store invalidation +
+    /// reload) hears both a library selection and a reload request on the
+    /// manager it was built with.
+    func testAccountDidChangePublisher_FiresForSelectionAndRefreshOnItsManager() {
         let manager = makeIsolatedManager()
         let adapter = AccountsManagerAccountScopeAdapter(accountsManager: manager)
 
-        var fired = false
+        var fired = 0
         adapter.accountDidChangePublisher
-            .sink { _ in fired = true }
+            .sink { _ in fired += 1 }
             .store(in: &cancellables)
 
-        // The adapter re-posts `.TPPCurrentAccountDidChange` through Combine's
-        // NotificationCenter publisher with NO `.receive(on:)`, so the sink runs
-        // SYNCHRONOUSLY during `post`. Drain the main queue to settle delivery,
-        // then assert synchronously — no wall-clock deadline to starve under
-        // parallel sim clones (STARVE-001).
-        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
-        drainMainQueue()
+        manager.currentAccount = makeAccount(uuid: "adapter-select-\(UUID().uuidString)")
+        manager.requestCurrentLibraryRefresh()
 
-        XCTAssertTrue(fired,
-                      "the adapter must forward .TPPCurrentAccountDidChange to accountDidChangePublisher")
+        XCTAssertEqual(fired, 2)
     }
 
     /// An unknown account resolves to nil (account-not-found) rather than throwing —

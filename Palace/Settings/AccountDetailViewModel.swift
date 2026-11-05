@@ -239,7 +239,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
             .store(in: &cancellables)
 
         // Listen for account switches to refresh sign-in state
-        NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
+        accountsManager.currentLibraryChangePublisher
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.accountDidChange() }
             .store(in: &cancellables)
@@ -568,7 +568,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
                     (self?.bookRegistry as? TPPBookRegistry)?.reset(account.uuid)
                 }
                 self?.setupTableData()
-                NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
+                self?.accountsManager.requestCurrentLibraryRefresh()
             }
         }
     }

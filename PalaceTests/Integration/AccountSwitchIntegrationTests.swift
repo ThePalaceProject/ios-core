@@ -79,22 +79,6 @@ final class AccountSwitchIntegrationTests: XCTestCase {
                      "Book 2 should be gone after reset")
     }
 
-    // SRS: REQ-ACCT-003 — Account switch posts notification
-    func testAccountSwitch_PostsCurrentAccountDidChangeNotification() {
-        // Given
-        var notificationReceived = false
-        let expectation = expectation(forNotification: .TPPCurrentAccountDidChange,
-                                      object: nil,
-                                      handler: { _ in notificationReceived = true; return true })
-
-        // When
-        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
-
-        // Then
-        wait(for: [expectation], timeout: 1.0)
-        XCTAssertTrue(notificationReceived, "TPPCurrentAccountDidChange must be received by observers")
-    }
-
     // SRS: REQ-ACCT-004 — Account switch cancels pending operations
     func testAccountSwitch_StopsPendingNetworkRequests() async throws {
         // Given: A slow catalog load in progress

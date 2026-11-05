@@ -12,7 +12,6 @@ import PalacePreferences
 import PalaceBookRegistry
 
 extension Notification.Name {
-    static let TPPCurrentAccountDidChange = Notification.Name("TPPCurrentAccountDidChange")
     static let TPPCatalogDidLoad = Notification.Name("TPPCatalogDidLoad")
     static let TPPCrawlProgressDidUpdate = Notification.Name("TPPCrawlProgressDidUpdate")
     static let TPPUserAccountDidChange = Notification.Name("TPPUserAccountDidChangeNotification")
@@ -22,6 +21,7 @@ extension Notification.Name {
     // Registry sync and change events are the registry's Combine publishers
     // (syncEventPublisher / registryDidChangePublisher / bookStatePublisher /
     // registryStatePublisher / holdsDidChangePublisher), not notifications.
+    // Current-library changes are `AccountsManager.currentLibraryChangePublisher`.
 
     /// The `userInfo` dictionary contains the following key-value pairs:
     /// - an `bookProcessingBookIDKey` key whose value is a String indicating
@@ -38,7 +38,6 @@ extension Notification.Name {
 
 @objc extension NSNotification {
     public static let TPPSettingsDidChange = Notification.Name.TPPSettingsDidChange
-    public static let TPPCurrentAccountDidChange = Notification.Name.TPPCurrentAccountDidChange
     public static let TPPCatalogDidLoad = Notification.Name.TPPCatalogDidLoad
     public static let TPPUseBetaDidChange = Notification.Name.TPPUseBetaDidChange
     public static let TPPUserAccountDidChange = Notification.Name.TPPUserAccountDidChange

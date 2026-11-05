@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import Combine
 import FirebaseDynamicLinks
 import PalaceBookRegistry
 
@@ -86,7 +87,7 @@ final class DLNavigator: Sendable {
             return
         }
         if newAccount.uuid != accountsManager.currentAccount?.uuid {
-            callOnce(on: .TPPCurrentAccountDidChange) { [weak self] in
+            callOnce(on: accountsManager.currentLibraryChangePublisher) { [weak self] in
                 self?.login(libraryId: libraryId, barcode: barcode)
             }
             DispatchQueue.main.async {
@@ -121,8 +122,8 @@ final class DLNavigator: Sendable {
     // `queue: .main`, so the block provably runs on the main actor — invoked via
     // `MainActor.assumeIsolated`, not a hop, so timing is unchanged.
     //
-    // `complete`: the block takes NO `Notification` argument. Both call sites
-    // ignore the payload (`{ _ in … }`), and passing the non-Sendable
+    // `complete`: the block takes NO `Notification` argument. The call site
+    // ignores the payload (`{ _ in … }`), and passing the non-Sendable
     // `Notification` into the `@MainActor` block was the "sending 'notification'
     // risks data races" diagnostic. Dropping the unused argument removes the only
     // non-Sendable value that crossed the boundary — behavior is unchanged.
@@ -144,6 +145,30 @@ final class DLNavigator: Sendable {
             }
         }
     }
+
+    /// Runs `block` on the first change `changes` emits, then unsubscribes.
+    /// `AccountsManager.currentLibraryChangePublisher` delivers on main, so
+    /// `block` runs on the main actor without a further hop.
+    private func callOnce(
+        on changes: AnyPublisher<CurrentLibraryChange, Never>,
+        block: @escaping @MainActor @Sendable () -> Void
+    ) {
+        // The subscription keeps the box, and so itself, alive until the first
+        // change, then releases both, matching the self-removing observer above.
+        let box = SubscriptionBox()
+        box.subscription = changes.first().sink { _ in
+            box.subscription = nil
+            MainActor.assumeIsolated {
+                block()
+            }
+        }
+    }
+}
+
+/// Holds the one-shot subscription made by `callOnce(on:block:)`. Written when
+/// the subscription is made and cleared when it fires, both on the main thread.
+private final class SubscriptionBox: @unchecked Sendable {
+    var subscription: AnyCancellable?
 }
 
 /// Sendable holder for a `NotificationCenter` observer token (see `callOnce`).

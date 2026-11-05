@@ -34,7 +34,10 @@ struct LibrariesView: View {
             accountsManager: appContainer.accountsManager,
             settings: appContainer.settings
         )
-        _viewModel = StateObject(wrappedValue: LibrariesSectionViewModel(environment: environment))
+        _viewModel = StateObject(wrappedValue: LibrariesSectionViewModel(
+            environment: environment,
+            currentLibraryChanges: appContainer.accountsManager.currentLibraryChangePublisher
+        ))
     }
 
     var body: some View {

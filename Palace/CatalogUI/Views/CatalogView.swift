@@ -43,7 +43,7 @@ struct CatalogView: View {
                 coordinator.clearAllCatalogFilterStates()
             }
             .task { await viewModel.load() }
-            .onReceive(NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)) { _ in
+            .onReceive(accountsManager.currentLibraryChangePublisher) { _ in
                 handleAccountChange()
             }
             .onReceive(NotificationCenter.default.publisher(for: .AppTabSelectionDidChange)) { _ in

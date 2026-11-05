@@ -50,6 +50,22 @@ final class AccountRegistryLoaderCompletionQueueTests: PalaceWiringTestCase {
         XCTAssertTrue(result.onMain, "the refusal path must complete on main, like the success path")
     }
 
+    /// A load that applies its feed asks the current library's listeners to
+    /// reload once, on main, after the main-feed URL is updated.
+    func testLoadAccountSets_WhenWriteApplies_RequestsOneRefreshOnMain() async throws {
+        let store = AccountRegistryStore(currentHash: "h")
+        let refreshes = RefreshRecorder()
+        let loader = makeLoader(store: store, announceCurrentLibraryRefresh: {
+            refreshes.record(onMain: Thread.isMainThread)
+        })
+        let feed = try feedData(uuids: ["a", "b"], declaring: 2)
+
+        let result = await completeFromBackground(loader: loader, data: feed, hash: "h", isCompleteFeed: true)
+
+        XCTAssertEqual(result.applied, true, "premise: the write must apply")
+        XCTAssertEqual(refreshes.onMainFlags, [true])
+    }
+
     /// An unparseable feed completed `false` synchronously on the caller's queue.
     func testLoadAccountSets_WhenFeedDoesNotParse_CompletesFalseOnMainQueue() async throws {
         let store = AccountRegistryStore(currentHash: "h")
@@ -218,7 +234,8 @@ final class AccountRegistryLoaderCompletionQueueTests: PalaceWiringTestCase {
     private func makeLoader(
         store: AccountRegistryStore,
         cache: any AccountRegistryCaching = FixedRegistryCache(data: nil),
-        networking: any AccountNetworking = ScriptedNetworking(body: nil)
+        networking: any AccountNetworking = ScriptedNetworking(body: nil),
+        announceCurrentLibraryRefresh: @escaping () -> Void = {}
     ) -> AccountRegistryLoader {
         let loader = AccountRegistryLoader(
             registryCache: cache,
@@ -236,7 +253,8 @@ final class AccountRegistryLoaderCompletionQueueTests: PalaceWiringTestCase {
             currentUserAccountProvider: { nil },
             driveCurrentAccountAuthDoc: {},
             fetchAuthDocumentWithStateMachine: { _, completion in completion(true) },
-            currentLibraryAccountProvider: { nil }
+            currentLibraryAccountProvider: { nil },
+            announceCurrentLibraryRefresh: announceCurrentLibraryRefresh
         )
         loader.snapshotResourceResolver = NoBundledSnapshot()
         loader.crawlerFetcher = FailingFetcher()
@@ -249,6 +267,13 @@ final class AccountRegistryLoaderCompletionQueueTests: PalaceWiringTestCase {
 private struct UncheckedBox<T>: @unchecked Sendable {
     let value: T
     init(_ value: T) { self.value = value }
+}
+
+private final class RefreshRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var flags: [Bool] = []
+    func record(onMain: Bool) { lock.withLock { flags.append(onMain) } }
+    var onMainFlags: [Bool] { lock.withLock { flags } }
 }
 
 private final class CompletionRecorder: @unchecked Sendable {

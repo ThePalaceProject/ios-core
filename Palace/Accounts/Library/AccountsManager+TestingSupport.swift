@@ -10,6 +10,17 @@ import Foundation
 
 #if DEBUG
 extension AccountsManager {
+    /// Forwards to `AccountRegistryStore.buildAccountIndex`; kept for
+    /// `AccountsManagerAccountIndexTests`.
+    static func buildAccountIndex(_ sets: [String: [Account]]) -> [String: Account] {
+        AccountRegistryStore.buildAccountIndex(sets)
+    }
+
+    /// Forwards to `AccountRegistryLoader`; kept for `AccountsManagerLaunchSnapshotTests`.
+    static func carveSlimFeed(fromFullCatalogData data: Data, keepUUIDs: Set<String>) -> Data? {
+        AccountRegistryLoader.carveSlimFeed(fromFullCatalogData: data, keepUUIDs: keepUUIDs)
+    }
+
     /// Skips the synchronous `preloadAccountsFromDiskCacheSync()` in `init()` while
     /// XCTest hosts the process. Defaults to `true`: with a registry cache on the
     /// simulator's disk, the test-host launch decoded ~1142 accounts before the

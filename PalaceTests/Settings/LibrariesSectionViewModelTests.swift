@@ -12,6 +12,7 @@
 //
 
 import XCTest
+import Combine
 import PalaceCatalog
 @testable import Palace
 
@@ -25,6 +26,27 @@ final class LibrariesSectionViewModelTests: XCTestCase {
             images: nil
         )
         return Account(publication: publication, imageCache: MockImageCache())
+    }
+
+    // MARK: - Current-library changes
+
+    /// A current-library change re-reads the list, so the newly selected
+    /// library moves to the top of MY LIBRARIES.
+    func test_currentLibraryChange_refreshesWithNewCurrentLibraryFirst() async {
+        let alpha = makeAccount(uuid: "alpha", name: "Alpha Library")
+        let beta = makeAccount(uuid: "beta", name: "Beta Library")
+        let env = FakeLibrariesEnvironment(currentUUID: alpha.uuid, persisted: [alpha, beta])
+        env.lookupResponses = [alpha.uuid: alpha, beta.uuid: beta]
+        let changes = PassthroughSubject<CurrentLibraryChange, Never>()
+        let sut = LibrariesSectionViewModel(environment: env, currentLibraryChanges: changes.eraseToAnyPublisher())
+        XCTAssertEqual(sut.accounts.map { $0.uuid }, ["alpha", "beta"], "precondition")
+
+        env.currentUUID = beta.uuid
+        changes.send(.selected)
+        await drainMainQueueAsync()
+
+        XCTAssertEqual(sut.accounts.map { $0.uuid }, ["beta", "alpha"])
+        XCTAssertEqual(sut.currentAccountUUID, "beta")
     }
 
     // MARK: - refresh()
@@ -43,7 +65,7 @@ final class LibrariesSectionViewModelTests: XCTestCase {
             bookshelf.uuid: bookshelf, zebra.uuid: zebra, alpha.uuid: alpha, mid.uuid: mid
         ]
 
-        let sut = LibrariesSectionViewModel(environment: env, observeNotifications: false)
+        let sut = LibrariesSectionViewModel(environment: env)
 
         XCTAssertEqual(sut.accounts.map { $0.uuid }, ["bookshelf", "alpha", "mid", "zebra"],
                        "Current account first; remaining sorted case-insensitively by name (Alpha < main street < Zebra).")
@@ -62,7 +84,7 @@ final class LibrariesSectionViewModelTests: XCTestCase {
         // ghost does NOT resolve via lookup — it's stale.
         env.lookupResponses = [bookshelf.uuid: bookshelf, kept.uuid: kept]
 
-        let sut = LibrariesSectionViewModel(environment: env, observeNotifications: false)
+        let sut = LibrariesSectionViewModel(environment: env)
 
         XCTAssertEqual(sut.accounts.map { $0.uuid }, ["bookshelf", "kept"])
         XCTAssertEqual(env.persistedIds, ["bookshelf", "kept"],
@@ -75,7 +97,7 @@ final class LibrariesSectionViewModelTests: XCTestCase {
         let env = FakeLibrariesEnvironment(currentUUID: a.uuid, persisted: [a, b])
         env.lookupResponses = [a.uuid: a, b.uuid: b]
 
-        _ = LibrariesSectionViewModel(environment: env, observeNotifications: false)
+        _ = LibrariesSectionViewModel(environment: env)
 
         XCTAssertNil(env.persistedIds, "No churn → no UserDefaults write.")
     }
@@ -86,7 +108,7 @@ final class LibrariesSectionViewModelTests: XCTestCase {
         let env = FakeLibrariesEnvironment(currentUUID: nil, persisted: [zebra, alpha])
         env.lookupResponses = [zebra.uuid: zebra, alpha.uuid: alpha]
 
-        let sut = LibrariesSectionViewModel(environment: env, observeNotifications: false)
+        let sut = LibrariesSectionViewModel(environment: env)
 
         XCTAssertEqual(sut.accounts.map { $0.uuid }, ["alpha", "zebra"])
         XCTAssertNil(sut.currentAccountUUID)
@@ -99,7 +121,7 @@ final class LibrariesSectionViewModelTests: XCTestCase {
     func test_isLoading_true_whenNoAccountsResolveAndCatalogNotLoaded() {
         let env = FakeLibrariesEnvironment(currentUUID: nil, persisted: [], accountsLoaded: false)
 
-        let sut = LibrariesSectionViewModel(environment: env, observeNotifications: false)
+        let sut = LibrariesSectionViewModel(environment: env)
 
         XCTAssertTrue(sut.isLoading,
                       "During hydration (no resolved accounts, catalog not loaded) the section is loading.")
@@ -115,7 +137,7 @@ final class LibrariesSectionViewModelTests: XCTestCase {
                                            accountsLoaded: false)
         env.lookupResponses = [bookshelf.uuid: bookshelf]
 
-        let sut = LibrariesSectionViewModel(environment: env, observeNotifications: false)
+        let sut = LibrariesSectionViewModel(environment: env)
 
         XCTAssertFalse(sut.isLoading,
                        "A resolved library means real content is available — no skeleton.")
@@ -128,7 +150,7 @@ final class LibrariesSectionViewModelTests: XCTestCase {
     func test_isLoading_false_whenEmptyButCatalogHasLoaded() {
         let env = FakeLibrariesEnvironment(currentUUID: nil, persisted: [], accountsLoaded: true)
 
-        let sut = LibrariesSectionViewModel(environment: env, observeNotifications: false)
+        let sut = LibrariesSectionViewModel(environment: env)
 
         XCTAssertFalse(sut.isLoading,
                        "An empty list after the catalog loaded is a real empty state, not a skeleton.")
@@ -144,7 +166,7 @@ final class LibrariesSectionViewModelTests: XCTestCase {
                                            persisted: [bookshelf],
                                            accountsLoaded: false)
         // Account is persisted but does NOT resolve yet (pre-hydration).
-        let sut = LibrariesSectionViewModel(environment: env, observeNotifications: false)
+        let sut = LibrariesSectionViewModel(environment: env)
         XCTAssertTrue(sut.isLoading, "Sanity: persisted account not yet resolvable ⇒ loading.")
 
         // Hydration completes: the lookup now resolves.
@@ -180,7 +202,7 @@ final class LibrariesSectionViewModelTests: XCTestCase {
         let toDelete = makeAccount(uuid: "to_delete", name: "To Delete")
         let env = FakeLibrariesEnvironment(currentUUID: bookshelf.uuid, persisted: [bookshelf, toDelete])
         env.lookupResponses = [bookshelf.uuid: bookshelf, toDelete.uuid: toDelete]
-        let sut = LibrariesSectionViewModel(environment: env, observeNotifications: false)
+        let sut = LibrariesSectionViewModel(environment: env)
         env.persistedIds = nil // reset after the initial refresh churn
 
         sut.deleteSecondary(toDelete)
@@ -196,7 +218,7 @@ final class LibrariesSectionViewModelTests: XCTestCase {
         let other = makeAccount(uuid: "other", name: "Other")
         let env = FakeLibrariesEnvironment(currentUUID: bookshelf.uuid, persisted: [bookshelf, other])
         env.lookupResponses = [bookshelf.uuid: bookshelf, other.uuid: other]
-        let sut = LibrariesSectionViewModel(environment: env, observeNotifications: false)
+        let sut = LibrariesSectionViewModel(environment: env)
         env.persistedIds = nil
         env.tokensDeleted = []
 
@@ -215,7 +237,7 @@ final class LibrariesSectionViewModelTests: XCTestCase {
         let toDelete = makeAccount(uuid: "to_delete", name: "To Delete")
         let env = FakeLibrariesEnvironment(currentUUID: bookshelf.uuid, persisted: [bookshelf, toDelete])
         env.lookupResponses = [bookshelf.uuid: bookshelf, toDelete.uuid: toDelete]
-        let sut = LibrariesSectionViewModel(environment: env, observeNotifications: false)
+        let sut = LibrariesSectionViewModel(environment: env)
 
         sut.deleteSecondary(toDelete)
 
@@ -228,7 +250,7 @@ final class LibrariesSectionViewModelTests: XCTestCase {
         let other = makeAccount(uuid: "other", name: "Other")
         let env = FakeLibrariesEnvironment(currentUUID: bookshelf.uuid, persisted: [bookshelf, other])
         env.lookupResponses = [bookshelf.uuid: bookshelf, other.uuid: other]
-        let sut = LibrariesSectionViewModel(environment: env, observeNotifications: false)
+        let sut = LibrariesSectionViewModel(environment: env)
 
         sut.deleteSecondary(bookshelf)
 
@@ -258,7 +280,7 @@ final class LibrariesSectionViewModelTests: XCTestCase {
         let other = makeAccount(uuid: "other", name: "Other Library")
         let env = FakeLibrariesEnvironment(currentUUID: bookshelf.uuid, persisted: [bookshelf, other])
         env.lookupResponses = [bookshelf.uuid: bookshelf, other.uuid: other]
-        let sut = LibrariesSectionViewModel(environment: env, observeNotifications: false)
+        let sut = LibrariesSectionViewModel(environment: env)
         XCTAssertEqual(sut.accounts.first?.uuid, "bookshelf", "Sanity: bookshelf starts on top.")
 
         sut.switchToAccount(other)
@@ -276,7 +298,7 @@ final class LibrariesSectionViewModelTests: XCTestCase {
         let other = makeAccount(uuid: "other", name: "Other Library")
         let env = FakeLibrariesEnvironment(currentUUID: bookshelf.uuid, persisted: [bookshelf, other])
         env.lookupResponses = [bookshelf.uuid: bookshelf, other.uuid: other]
-        let sut = LibrariesSectionViewModel(environment: env, observeNotifications: false)
+        let sut = LibrariesSectionViewModel(environment: env)
 
         let exp = expectation(description: "switch completion fires once auth doc reports ready")
         sut.switchToAccount(other) { exp.fulfill() }
@@ -297,7 +319,7 @@ final class LibrariesSectionViewModelTests: XCTestCase {
         let added = makeAccount(uuid: "added", name: "Freshly Added Library")
         let env = FakeLibrariesEnvironment(currentUUID: bookshelf.uuid, persisted: [bookshelf])
         env.lookupResponses = [bookshelf.uuid: bookshelf]
-        let sut = LibrariesSectionViewModel(environment: env, observeNotifications: false)
+        let sut = LibrariesSectionViewModel(environment: env)
         XCTAssertEqual(sut.accounts.map { $0.uuid }, ["bookshelf"], "Sanity: added isn't in the list yet.")
 
         let exp = expectation(description: "completion fires so the view can jump to the Catalog tab")
@@ -318,7 +340,7 @@ final class LibrariesSectionViewModelTests: XCTestCase {
         let bookshelf = makeAccount(uuid: "bookshelf", name: "Palace Bookshelf")
         let env = FakeLibrariesEnvironment(currentUUID: bookshelf.uuid, persisted: [bookshelf])
         env.lookupResponses = [bookshelf.uuid: bookshelf]
-        let sut = LibrariesSectionViewModel(environment: env, observeNotifications: false)
+        let sut = LibrariesSectionViewModel(environment: env)
 
         let exp = expectation(description: "completion still fires synchronously for the no-op path")
         sut.switchToAccount(bookshelf) { exp.fulfill() }
@@ -333,7 +355,7 @@ final class LibrariesSectionViewModelTests: XCTestCase {
 
     func test_presentAddLibrary_flipsSheetBool() {
         let env = FakeLibrariesEnvironment(currentUUID: nil, persisted: [])
-        let sut = LibrariesSectionViewModel(environment: env, observeNotifications: false)
+        let sut = LibrariesSectionViewModel(environment: env)
 
         XCTAssertFalse(sut.showAddLibrarySheet)
         sut.presentAddLibrary()

@@ -103,17 +103,16 @@ struct AudiobookDataManagerStore: Codable {
 
 /// - Sendable invariant: `AudiobookDataManager` is captured by the `@Sendable`
 ///   closures it schedules onto `syncQueue` (barrier writes + the sync loop),
-///   the `beginBackgroundTask` expiration handler, the `.TPPCurrentAccountDidChange`
-///   observer, and the `networkService.POST` completion. It is safe to share
+///   the `beginBackgroundTask` expiration handler, the current-library change
+///   subscription, and the `networkService.POST` completion. It is safe to share
 ///   across those boundaries because:
 ///   1. Every stored dependency (`syncTimeInterval`, `syncQueue`, `audiobookLogger`,
 ///      `networkService`, `currentAccountIdProvider`) is a `let` — immutable after
 ///      `init`.
 ///   2. The only mutable persisted state (`store`) is read and written EXCLUSIVELY
 ///      through the serial `syncQueue` (`.async`/`.async(flags:.barrier)`/`.sync`),
-///      so there is no unsynchronized shared mutation. `subscriptions` and
-///      `accountChangeObserver` are written once during `init` (before any escape)
-///      and only read afterwards (the observer in `deinit`).
+///      so there is no unsynchronized shared mutation. `subscriptions` is
+///      written only during `init`, before any escape.
 ///   Hence `@unchecked Sendable` rather than a compiler-checked conformance — the
 ///   `syncQueue` discipline is the invariant the compiler cannot see, and
 ///   `TPPNetworkExecutor` is not Sendable-audited.
@@ -133,14 +132,10 @@ class AudiobookDataManager: @unchecked Sendable {
     /// and skips uploads whose library is not the active one; the entries
     /// stay in the queue and flush after the user switches back.
     private let currentAccountIdProvider: @Sendable () -> String?
-    /// Observer token for `.TPPCurrentAccountDidChange` posted by
-    /// `AccountsManager.currentAccount.didSet`. Held so the observer is
-    /// removed at dealloc; the notification only logs (no queue mutation)
-    /// because the scope guard above is the actual enforcement mechanism.
-    private var accountChangeObserver: NSObjectProtocol?
     init(syncTimeInterval: TimeInterval = 60,
          networkService: TPPNetworkExecutor = AppContainer.production().networkExecutor,
-         currentAccountIdProvider: @escaping @Sendable () -> String? = { AppContainer.production().accountsManager.currentAccountId }) {
+         currentAccountIdProvider: @escaping @Sendable () -> String? = { AppContainer.production().accountsManager.currentAccountId },
+         currentLibraryChanges: AnyPublisher<CurrentLibraryChange, Never> = AppContainer.production().accountsManager.currentLibraryChangePublisher) {
         self.syncTimeInterval = syncTimeInterval
         self.networkService = networkService
         self.currentAccountIdProvider = currentAccountIdProvider
@@ -157,32 +152,24 @@ class AudiobookDataManager: @unchecked Sendable {
             .store(in: &subscriptions)
 
         loadStore()
-        subscribeToAccountChanges()
+        subscribeToAccountChanges(currentLibraryChanges)
     }
 
-    deinit {
-        if let observer = accountChangeObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
-    }
-
-    /// Observes `.TPPCurrentAccountDidChange` for diagnostic logging only.
+    /// Observes current-library changes for diagnostic logging only.
     /// The actual cross-account scope decision lives in `syncValues()`'s
     /// per-`libraryBook` guard, so on account change there is NOTHING to
     /// mutate here — entries queued for the prior library MUST be preserved
     /// so they flush when the user switches back. Destructive queue clear
     /// on switch would lose playtimes for any book the user toggles between.
-    private func subscribeToAccountChanges() {
-        accountChangeObserver = NotificationCenter.default.addObserver(
-            forName: .TPPCurrentAccountDidChange,
-            object: nil,
-            queue: nil
-        ) { [weak self] _ in
-            self?.audiobookLogger.logEvent(
-                forBookId: "",
-                event: "Account changed — cross-account playtimes uploads will be deferred to next foreground sync"
-            )
-        }
+    private func subscribeToAccountChanges(_ changes: AnyPublisher<CurrentLibraryChange, Never>) {
+        changes
+            .sink { [weak self] _ in
+                self?.audiobookLogger.logEvent(
+                    forBookId: "",
+                    event: "Account changed — cross-account playtimes uploads will be deferred to next foreground sync"
+                )
+            }
+            .store(in: &subscriptions)
     }
 
     func save(time: AudiobookTimeEntry) {

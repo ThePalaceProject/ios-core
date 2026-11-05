@@ -5,7 +5,7 @@
 //  Owns state for the inline MY LIBRARIES section on the Settings screen
 //  (PP-917): sorted accounts, current-account identification, stale-uuid
 //  filter, secondary-library deletion with FCM token cleanup, and refresh
-//  on TPPCurrentAccountDidChange.
+//  on current-library changes.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -38,7 +38,7 @@ protocol LibrariesSectionEnvironment {
     /// Switches the active library to `account`. Mirrors
     /// `MyBooksViewModel.updateFeed` — adds to the persisted accounts list,
     /// updates the main-feed URL, assigns `accountsManager.currentAccount`,
-    /// loads the auth document, and posts `TPPCurrentAccountDidChange`.
+    /// and loads the auth document.
     /// `completion` fires once the auth document has loaded (success or
     /// failure) — that's the readiness signal the catalog needs before
     /// rendering the new library, so the view uses it to time both the
@@ -69,37 +69,20 @@ final class LibrariesSectionViewModel: ObservableObject {
 
     private let environment: LibrariesSectionEnvironment
 
-    /// Reference box holding the notification-observer token so `deinit`
-    /// (nonisolated) can read it without hopping the main actor. Safe as
-    /// `@unchecked Sendable`: `token` is written once during `init` on the
-    /// main actor and read once in `deinit`, never concurrently.
-    private final class ObserverTokenBox: @unchecked Sendable {
-        var token: NSObjectProtocol?
-    }
-    private let observerBox = ObserverTokenBox()
+    private var currentLibraryChangeSubscription: AnyCancellable?
 
-    init(environment: LibrariesSectionEnvironment, observeNotifications: Bool = true) {
+    /// - Parameter currentLibraryChanges: re-reads the list on each change;
+    ///   nil leaves the list as `refresh()` last built it.
+    init(environment: LibrariesSectionEnvironment, currentLibraryChanges: AnyPublisher<CurrentLibraryChange, Never>? = nil) {
         self.environment = environment
         refresh()
 
-        if observeNotifications {
-            observerBox.token = NotificationCenter.default.addObserver(
-                forName: .TPPCurrentAccountDidChange,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                // Hop to the main actor explicitly — the observer block is
-                // delivered on .main queue but isn't statically isolated.
-                Task { @MainActor [weak self] in
-                    self?.refresh()
-                }
+        // `refresh()` runs in a later main-actor turn, after the sender returns,
+        // so a switch flow finishes before the list is re-read.
+        currentLibraryChangeSubscription = currentLibraryChanges?.sink { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.refresh()
             }
-        }
-    }
-
-    deinit {
-        if let token = observerBox.token {
-            NotificationCenter.default.removeObserver(token)
         }
     }
 
@@ -259,12 +242,10 @@ struct ProductionLibrariesSectionEnvironment: LibrariesSectionEnvironment {
             settings.accountMainFeedURL = url
         }
         accountsManager.currentAccount = account
-        // Posting the notification BEFORE the auth-doc callback fires lets
-        // downstream observers (catalog, MyBooks) start their own refresh
-        // off the new currentAccount in parallel — by the time the auth
-        // doc resolves the receivers have already kicked off their work,
-        // shaving visible latency off the user-facing transition.
-        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
+        // Announcing BEFORE the auth-doc callback fires lets listeners
+        // (catalog, MyBooks) start their own refresh off the new
+        // currentAccount in parallel with the auth-doc load.
+        accountsManager.requestCurrentLibraryRefresh()
         // `loadAuthenticationDocument`'s completion fires on the URLSession
         // delegate queue (off-main — `TPPNetworkExecutor` uses `delegateQueue:
         // nil`). `completion` is supplied by `@MainActor` callers that touch

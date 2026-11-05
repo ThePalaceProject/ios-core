@@ -162,7 +162,7 @@ final class HoldsViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        (accountDidChange ?? NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
+        (accountDidChange ?? accountsManager.currentLibraryChangePublisher
             .map { _ in () }
             .eraseToAnyPublisher())
             .receive(on: DispatchQueue.main)
@@ -349,7 +349,7 @@ final class HoldsViewModel: ObservableObject {
 
         account.loadAuthenticationDocument { _ in }
 
-        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
+        accountsManager.requestCurrentLibraryRefresh()
     }
 
     var openSearchDescription: TPPOpenSearchDescription {

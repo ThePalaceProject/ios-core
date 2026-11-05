@@ -1014,6 +1014,23 @@ final class MyBooksViewModelLoadAccountTests: XCTestCase {
         XCTAssertNil(viewModel.alert,
             "loadAccount must not show the sync alert when registry is idle")
     }
+
+    /// Picking a library from My Books selects it, then asks listeners to
+    /// reload once its authentication document load has started.
+    func testLoadAccount_WhenNotSyncing_AnnouncesSelectionThenRefresh() {
+        let mock = TPPBookRegistryMock()
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
+        let account = appContainer.accountsManager.currentAccount ?? TPPLibraryAccountMock().tppAccount
+        var received: [CurrentLibraryChange] = []
+        let subscription = appContainer.accountsManager.currentLibraryChangePublisher
+            .sink { received.append($0) }
+
+        viewModel.loadAccount(account)
+
+        XCTAssertEqual(received, [.selected, .refreshRequested])
+        subscription.cancel()
+    }
 }
 
 // MARK: - Download State Tests
