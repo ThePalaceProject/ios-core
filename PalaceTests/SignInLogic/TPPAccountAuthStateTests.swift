@@ -247,8 +247,10 @@ final class TPPAdobeActivationSkipTests: XCTestCase {
         let userAccount = businessLogic.userAccount as! TPPUserAccountMock
         userAccount._credentials = .barcodeAndPin(barcode: "test", pin: "1234")
         userAccount.setAuthState(.loggedIn)
-        userAccount.setUserID("adobeUser")
-        userAccount.setDeviceID("adobeDevice")
+        // A matching generation, so only the logged-in state can refuse the skip.
+        userAccount.setAdobeActivation(userID: "adobeUser",
+                                       deviceID: "adobeDevice",
+                                       generation: AdobeConnectorGeneration.current)
 
         // Then: Should NOT skip activation (already logged in, not re-authing)
         XCTAssertFalse(businessLogic.shouldSkipAdobeActivation())

@@ -136,9 +136,8 @@ final class AdobeActivationGenerationGateTests: XCTestCase {
     /// operation failed with `E_ACT_NOT_READY`.
     func testStaleGeneration_ReActivates_EvenThoughTheConnectorSaysAuthorized() async throws {
         drm.isUserAuthorizedReturnValue = true
-        // One generation BELOW current — with current == 1 that is 0, a value
-        // nothing writes. It stands for any recorded-but-mismatched generation;
-        // the Adobe-era-on-Wipro cell proper is (1, 2), tabled in
+        // One generation BELOW current: with current == 2 that is 1, the
+        // Adobe-era activation on the Wipro connector, also tabled in
         // testNeedsReactivation_EveryCombination. Distinct from an absent
         // marker, which is backfilled.
         let account = GenerationAccount(licensor: Self.validLicensor,
