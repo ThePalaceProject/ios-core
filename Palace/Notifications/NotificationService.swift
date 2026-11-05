@@ -176,15 +176,16 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         // Resolved here rather than as a default argument: default arguments
         // are evaluated at the call site, which can re-enter AppContainer's
         // lock and abort launch.
-        self.accountsManager = accountsManager ?? AppContainer.production().accountsManager
-        self.networkExecutor = AppContainer.production().networkExecutor
-        self.bookRegistry = AppContainer.production().bookRegistry
+        let container = AppContainer.production()
+        self.accountsManager = accountsManager ?? container.accountsManager
+        self.networkExecutor = container.networkExecutor
+        self.bookRegistry = container.bookRegistry
         self.skipsProductionAuthSubscription = true
         super.init()
 
         installNotificationObservers(
             currentLibraryChanges: currentLibraryChanges
-                ?? AppContainer.production().accountsManager.currentLibraryChangePublisher
+                ?? container.accountsManager.currentLibraryChangePublisher
         )
         subscribeToAuthStateChanges(authStatePublisher, retry: onAuthStateRetryRequested)
     }
