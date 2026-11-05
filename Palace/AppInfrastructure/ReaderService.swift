@@ -40,6 +40,9 @@ final class ReaderService {
     ///   - presentAlert: shows a title and message to the patron.
     ///   - redownloadAndReopen: replaces the delete, re-download and reopen
     ///     step; nil runs the real one.
+    ///   - imageCache: the cover cache released before an LCP PDF open. A
+    ///     closure so the container is not resolved while it is still being
+    ///     built.
     nonisolated init(
         rootViewController: @escaping @MainActor () -> UIViewController? = {
             UIApplication.shared.mainKeyWindow?.rootViewController
@@ -49,18 +52,21 @@ final class ReaderService {
             let alert = TPPAlertUtils.alert(title: title, message: message)
             TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
         },
-        redownloadAndReopen: (@MainActor (TPPBook, LibraryServiceError) -> Void)? = nil
+        redownloadAndReopen: (@MainActor (TPPBook, LibraryServiceError) -> Void)? = nil,
+        imageCache: @escaping @MainActor () -> ImageCacheType = { AppContainer.production().imageCache }
     ) {
         self.rootViewController = rootViewController
         self.isConnected = isConnected
         self.presentAlert = presentAlert
         self.redownloadAndReopenOverride = redownloadAndReopen
+        self.imageCache = imageCache
     }
 
     private let rootViewController: @MainActor () -> UIViewController?
     private let isConnected: @MainActor () -> Bool
     private let presentAlert: @MainActor (String, String?) -> Void
     private let redownloadAndReopenOverride: (@MainActor (TPPBook, LibraryServiceError) -> Void)?
+    private let imageCache: @MainActor () -> ImageCacheType
 
     private lazy var r3Owner: TPPR3Owner = TPPR3Owner()
 
@@ -255,6 +261,14 @@ final class ReaderService {
     /// mmapping with PDFKit is ~25k linear decrypts for a 50 MB book, and the
     /// Readium publication is released the instant extraction completes. A
     /// cached on-disk extract lets re-opens skip the decrypt entirely.
+    /// Releases decoded covers before an LCP PDF open, so Readium has more
+    /// headroom during the license check on smaller-RAM devices. A direct call
+    /// rather than a posted memory warning: the warning also paused every
+    /// download and dropped the catalog and network caches app-wide.
+    func releaseMemoryBeforeLCPPDFOpen() {
+        imageCache().evictDecodedImages()
+    }
+
     private func openLCPPDF(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
         guard let presenter = topPresenter() else { onFinish?(); return }
 
@@ -279,15 +293,7 @@ final class ReaderService {
         LCPPDFOpenProgress.shared.begin(bookIdentifier: book.identifier)
         LCPPDFOpenProgress.shared.setPhase(.openingPublication)
 
-        // Pre-emptive memory release for the catalog / cell / cover caches.
-        // The extraction itself is bounded (one chunk at a time + the
-        // temp file) but giving Readium more headroom up front reduces
-        // the chance of an OOM during the initial license-check phase
-        // on smaller-RAM devices.
-        NotificationCenter.default.post(
-            name: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil
-        )
+        releaseMemoryBeforeLCPPDFOpen()
 
         Log.info(#file, "[PERF] [LCP-PDF] T1 route pushed (+\(Self.ms(since: openStartedAt))ms)")
         onFinish?()
