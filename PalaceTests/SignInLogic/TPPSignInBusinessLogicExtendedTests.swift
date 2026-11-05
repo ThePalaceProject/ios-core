@@ -969,8 +969,10 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
     func testShouldSkipAdobeActivation_WhenNotCredentialsStale_ReturnsFalse() {
         let acct = businessLogic.userAccount as! TPPUserAccountMock
         acct.markLoggedIn()
-        acct.setUserID("adobe-user-id")
-        acct.setDeviceID("adobe-device-id")
+        // A matching generation, so only the missing credentialsStale can refuse.
+        acct.setAdobeActivation(userID: "adobe-user-id",
+                                deviceID: "adobe-device-id",
+                                generation: AdobeConnectorGeneration.current)
 
         XCTAssertFalse(
             businessLogic.shouldSkipAdobeActivation(),
