@@ -7,10 +7,10 @@
 
 import XCTest
 @testable import Palace
+#if LCP
+import ReadiumLCP
+#endif
 
-/// PP-5431 — what a failed book open does next. The first failure deletes the
-/// local copy and re-downloads it, which needs the network; offline it must
-/// leave the copy and its state alone and say a connection is needed.
 /// Records what the failure handler did. Main-actor isolated so the
 /// service's `@MainActor` closures can capture it.
 @MainActor
@@ -20,6 +20,9 @@ private final class OpenFailureSpy {
     var redownloads: [String] = []
 }
 
+/// PP-5431 — what a failed book open does next. The first failure deletes the
+/// local copy and re-downloads it, which needs the network; offline it must
+/// leave the copy and its state alone and say a connection is needed.
 @MainActor
 final class ReaderServiceOpenFailureRecoveryTests: XCTestCase {
 
@@ -51,7 +54,7 @@ final class ReaderServiceOpenFailureRecoveryTests: XCTestCase {
     // MARK: - Decision table
 
     /// Every (retry, definitive license error, connected) cell, so a change to
-    /// one branch cannot silently move another.
+    /// one branch cannot move another without a failing cell.
     func testOpenFailureRecovery_EveryCombination() {
         typealias R = ReaderService.OpenFailureRecovery
         let cases: [(isRetry: Bool, definitive: Bool, connected: Bool, expected: R)] = [
@@ -112,4 +115,21 @@ final class ReaderServiceOpenFailureRecoveryTests: XCTestCase {
         XCTAssertTrue(spy.redownloads.isEmpty)
         XCTAssertEqual(spy.alerts.map(\.title), ["Content Protection Error"])
     }
+
+    #if LCP
+    /// An expired, returned or revoked LCP license cannot be fixed by
+    /// downloading again, so it shows the Content Protection Error even
+    /// offline, and nothing is re-downloaded.
+    func testDefinitiveLicenseError_WhenOffline_ShowsContentProtectionError() {
+        spy.connected = false
+        let expired = LibraryServiceError.openFailed(
+            LCPError.licenseStatus(.expired(start: Date(timeIntervalSince1970: 0), end: Date(timeIntervalSince1970: 1)))
+        )
+
+        service.presentOpenFailureAlert(for: expired, book: book, isRetry: false)
+
+        XCTAssertTrue(spy.redownloads.isEmpty)
+        XCTAssertEqual(spy.alerts.map(\.title), ["Content Protection Error"])
+    }
+    #endif
 }
