@@ -8,6 +8,7 @@ import PalaceBookRegistry
 // `TPPLastReadPositionSynchronizer`, etc. Honest ceiling until Readium annotates.
 @preconcurrency import ReadiumShared
 import PalaceLogging
+import PalaceNetwork
 import PalaceBookModel
 #if LCP
 import ReadiumLCP
@@ -32,16 +33,34 @@ final class ReaderService {
     /// service without a `MainActor.assumeIsolated` hop. The initializer
     /// stores only the root lookup and touches no main-actor state.
     ///
-    /// - Parameter rootViewController: where reader UI is presented from.
-    ///   Tests pass a stub so opening a book never reaches the host app's
-    ///   window.
-    nonisolated init(rootViewController: @escaping @MainActor () -> UIViewController? = {
-        UIApplication.shared.mainKeyWindow?.rootViewController
-    }) {
+    /// - Parameters:
+    ///   - rootViewController: where reader UI is presented from. Tests pass a
+    ///     stub so opening a book never reaches the host app's window.
+    ///   - isConnected: whether a failed open may re-download.
+    ///   - presentAlert: shows a title and message to the patron.
+    ///   - redownloadAndReopen: replaces the delete, re-download and reopen
+    ///     step; nil runs the real one.
+    nonisolated init(
+        rootViewController: @escaping @MainActor () -> UIViewController? = {
+            UIApplication.shared.mainKeyWindow?.rootViewController
+        },
+        isConnected: @escaping @MainActor () -> Bool = { Reachability().isConnectedToNetwork() },
+        presentAlert: @escaping @MainActor (String, String?) -> Void = { title, message in
+            let alert = TPPAlertUtils.alert(title: title, message: message)
+            TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+        },
+        redownloadAndReopen: (@MainActor (TPPBook, LibraryServiceError) -> Void)? = nil
+    ) {
         self.rootViewController = rootViewController
+        self.isConnected = isConnected
+        self.presentAlert = presentAlert
+        self.redownloadAndReopenOverride = redownloadAndReopen
     }
 
     private let rootViewController: @MainActor () -> UIViewController?
+    private let isConnected: @MainActor () -> Bool
+    private let presentAlert: @MainActor (String, String?) -> Void
+    private let redownloadAndReopenOverride: (@MainActor (TPPBook, LibraryServiceError) -> Void)?
 
     private lazy var r3Owner: TPPR3Owner = TPPR3Owner()
 
@@ -659,29 +678,61 @@ final class ReaderService {
         }
     }
 
+    /// What a failed open does next.
+    enum OpenFailureRecovery: Equatable {
+        /// Delete the local copy, download it again and reopen.
+        case redownload
+        /// Leave the copy and its state alone and ask the patron to reconnect.
+        case requireConnection
+        /// Show the Content Protection Error.
+        case showError
+    }
+
+    /// Definitive license errors and failures after the re-download are final.
+    /// Otherwise the first failure re-downloads, which needs the network.
+    nonisolated static func openFailureRecovery(
+        isRetry: Bool,
+        isDefinitiveLicenseError: Bool,
+        isConnected: Bool
+    ) -> OpenFailureRecovery {
+        if isDefinitiveLicenseError || isRetry { return .showError }
+        return isConnected ? .redownload : .requireConnection
+    }
+
     /// Presents the appropriate response for a failed book open.
     ///
     /// Priority order:
     /// 1. Definitive DRM status errors (expired/returned/revoked/cancelled) → show error
     ///    immediately; re-downloading cannot fix a genuinely revoked license.
-    /// 2. First open attempt for any other error → log to Crashlytics, transparently delete
-    ///    the local file and trigger a fresh download, then retry opening once.
-    /// 3. Retry attempt or download failure → show "Content Protection Error" alert.
+    /// 2. First open attempt for any other error, online → log to Crashlytics, transparently
+    ///    delete the local file and trigger a fresh download, then retry opening once.
+    /// 3. First open attempt while offline → keep the local file and ask the patron to
+    ///    reconnect.
+    /// 4. Retry attempt or download failure → show "Content Protection Error" alert.
     @MainActor
-    private func presentOpenFailureAlert(for error: LibraryServiceError, book: TPPBook, isRetry: Bool = false) {
+    func presentOpenFailureAlert(for error: LibraryServiceError, book: TPPBook, isRetry: Bool = false) {
         let inner: Error?
         if case .openFailed(let e) = error { inner = e } else { inner = nil }
 
         // Definitive license status errors (expired, returned, revoked, cancelled) cannot
         // be resolved by re-downloading — the server will reject the request. Show the
         // error immediately and let the patron manage the loan manually.
+        var isDefinitiveLicenseError = false
         #if LCP
         if let lcpError = inner as? LCPError,
            case .licenseStatus = lcpError {
+            isDefinitiveLicenseError = true
+        }
+        #endif
+        let recovery = Self.openFailureRecovery(
+            isRetry: isRetry,
+            isDefinitiveLicenseError: isDefinitiveLicenseError,
+            isConnected: isConnected()
+        )
+        if isDefinitiveLicenseError {
             showContentProtectionError(for: error)
             return
         }
-        #endif
 
         // Log every Content Protection Error to Crashlytics so future occurrences are
         // traceable with the specific LCPError type.
@@ -696,16 +747,22 @@ final class ReaderService {
             ]
         )
 
-        // On the first attempt, transparently clear the local file and re-download before
-        // surfacing the error. This resolves corrupted or missing local EPUB/LCPL files
-        // without requiring any action from the patron.
-        if !isRetry {
+        switch recovery {
+        case .redownload:
             Log.info(#file, "Content Protection Error on first open — attempting transparent re-download for '\(book.title)'")
-            attemptRedownloadAndReopen(book: book, originalError: error)
-            return
+            if let redownloadAndReopenOverride {
+                redownloadAndReopenOverride(book, error)
+            } else {
+                attemptRedownloadAndReopen(book: book, originalError: error)
+            }
+        case .requireConnection:
+            // The re-download deletes the local copy before it fetches a new
+            // one, so offline it would leave the patron with neither.
+            Log.info(#file, "Content Protection Error while offline — keeping the local copy of '\(book.title)'")
+            presentAlert(Strings.MyDownloadCenter.noConnectionTitle, Strings.MyDownloadCenter.noConnectionMessage)
+        case .showError:
+            showContentProtectionError(for: error)
         }
-
-        showContentProtectionError(for: error)
     }
 
     /// Deletes the local file, resets the book state to `.downloadNeeded`, starts a fresh
@@ -764,8 +821,7 @@ final class ReaderService {
 
     @MainActor
     private func showContentProtectionError(for error: LibraryServiceError) {
-        let alert = TPPAlertUtils.alert(title: "Content Protection Error", message: error.localizedDescription)
-        TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
+        presentAlert("Content Protection Error", error.localizedDescription)
     }
 
     /// PP-5022 — the last resort when an open cannot reach a navigation stack.

@@ -136,9 +136,8 @@ final class AdobeActivationGenerationGateTests: XCTestCase {
     /// operation failed with `E_ACT_NOT_READY`.
     func testStaleGeneration_ReActivates_EvenThoughTheConnectorSaysAuthorized() async throws {
         drm.isUserAuthorizedReturnValue = true
-        // One generation BELOW current — with current == 1 that is 0, a value
-        // nothing writes. It stands for any recorded-but-mismatched generation;
-        // the Adobe-era-on-Wipro cell proper is (1, 2), tabled in
+        // One generation BELOW current: with current == 2 that is 1, the
+        // Adobe-era activation on the Wipro connector, also tabled in
         // testNeedsReactivation_EveryCombination. Distinct from an absent
         // marker, which is backfilled.
         let account = GenerationAccount(licensor: Self.validLicensor,
@@ -162,6 +161,10 @@ final class AdobeActivationGenerationGateTests: XCTestCase {
     /// succeeded. `AdobeConnectorGeneration.preMarker` carries the reasoning;
     /// `testNeedsReactivation_EveryCombination` pins the Wipro side, where the
     /// same absent marker does re-activate.
+    ///
+    /// The unchanged connector is passed explicitly rather than taken from
+    /// `AdobeConnectorGeneration.current`, so this keeps pinning the fast path
+    /// after a swap moves that constant past the pre-marker generation.
     func testAbsentGeneration_KeepsTheFastPath_WhileTheConnectorIsUnchanged() async throws {
         drm.isUserAuthorizedReturnValue = true
         let account = GenerationAccount(licensor: Self.validLicensor,
@@ -169,11 +172,12 @@ final class AdobeActivationGenerationGateTests: XCTestCase {
                                         deviceID: "old-device",
                                         generation: nil)
 
-        try await activate(account)
+        try await activate(account, connectorGeneration: AdobeConnectorGeneration.preMarker)
 
         XCTAssertEqual(drm.authorizeCallCount, 0,
                        "an unmarked activation is backfilled to the pre-marker "
-                       + "generation, which equals current on this build")
+                       + "generation, so a connector still on that generation "
+                       + "keeps the fast path")
     }
 
     /// The gate cell nothing covered: identifiers present, generation current,

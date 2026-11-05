@@ -190,8 +190,8 @@ final class AdobeConnectorGenerationTests: XCTestCase {
 
     /// `needsReactivation` decides whether a patron's device gets re-activated,
     /// so the whole table is walked rather than the three cells the gate happens
-    /// to reach. `current` is injected because the shipped constant is 1 today
-    /// and the Wipro cases are the ones that matter most.
+    /// to reach. `current` is injected so both connector generations are walked
+    /// whichever one ships.
     func testNeedsReactivation_EveryCombination() {
         // recorded, current, expected
         let cases: [(Int?, Int, Bool, String)] = [
