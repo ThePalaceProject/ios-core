@@ -67,6 +67,7 @@ Refresh the relevant one before changing code in that area.
 | [`ws3-overdrive-refulfill-loader-seam.md`](./ws3-overdrive-refulfill-loader-seam.md) | The loader seam that lets an expired OverDrive URL re-fulfill instead of failing. Accepted. |
 | [`hermeticity-accountdetail-hang-fix-design.md`](./hermeticity-accountdetail-hang-fix-design.md) | Design for the AccountDetail hang, with the hermeticity problem that caused it. Investigation complete; design for review. |
 | [`ipad-on-mac-exit-static-destructor-bypass.md`](./ipad-on-mac-exit-static-destructor-bypass.md) | Why iPad-on-Mac exits via `_exit(0)` to bypass static destructors, and what that costs. |
+| [`adobe-drm-connector-linking.md`](./adobe-drm-connector-linking.md) | Where the Adobe DRM connector generation is actually chosen (the CI action's `ref` default, the one shared `adobe-rmsdk` symlink, the `ADEPT_RMSDK` override), why there is no runtime switch, the test that keeps `AdobeConnectorGeneration.current` honest against the linked binaries, and what has to move together to replace a drop. |
 | [`ws4-mac-validation-runbook.md`](./ws4-mac-validation-runbook.md) | How to validate the Mac/iPad-on-Mac path, including the static-destructor bypass above. |
 
 ## Triage bot
