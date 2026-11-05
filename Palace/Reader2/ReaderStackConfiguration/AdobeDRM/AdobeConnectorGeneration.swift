@@ -24,7 +24,7 @@ enum AdobeConnectorGeneration {
     /// vendor's build number moves. `AdobeConnectorGenerationTests` ties the value
     /// to a known build number so a drop that moves it fails a test rather than
     /// silently mis-targeting the migration.
-    static let current = 1
+    static let current = 2
 
     /// Known connector builds, as reported by `hobbes.build` in `libhobbes-iOS.a`.
     ///
@@ -87,10 +87,9 @@ extension TPPDRMAuthorizing {
     /// operation with `E_ACT_NOT_READY` (PP-5026).
     ///
     /// Every site that decides whether to SKIP activation must ask this instead.
-    /// Three did not when the gate was first added — `shouldSkipAdobeActivation`,
-    /// `logInIfUserAuthorized` and `didSelectRead` — and because the shipped
-    /// generation equals `preMarker`, nothing would have failed at the bump: the
-    /// migration would simply never fire on those paths.
+    /// A site that skips on `isUserAuthorized` alone keeps an Adobe-era
+    /// activation on the Wipro connector, so the migration never fires on that
+    /// path.
     ///
     /// The generation is tested first so a decision already known does not enter
     /// the non-thread-safe RMSDK.
