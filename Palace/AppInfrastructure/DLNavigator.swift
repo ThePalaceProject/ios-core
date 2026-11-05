@@ -87,7 +87,7 @@ final class DLNavigator: Sendable {
             return
         }
         if newAccount.uuid != accountsManager.currentAccount?.uuid {
-            callOnce(on: accountsManager.currentLibraryChangePublisher) { [weak self] in
+            Self.callOnce(on: accountsManager.currentLibraryChangePublisher) { [weak self] in
                 self?.login(libraryId: libraryId, barcode: barcode)
             }
             DispatchQueue.main.async {
@@ -148,8 +148,9 @@ final class DLNavigator: Sendable {
 
     /// Runs `block` on the first change `changes` emits, then unsubscribes.
     /// `AccountsManager.currentLibraryChangePublisher` delivers on main, so
-    /// `block` runs on the main actor without a further hop.
-    private func callOnce(
+    /// `block` runs on the main actor without a further hop. Callers do not
+    /// keep the subscription; the helper does, until the first change.
+    static func callOnce(
         on changes: AnyPublisher<CurrentLibraryChange, Never>,
         block: @escaping @MainActor @Sendable () -> Void
     ) {

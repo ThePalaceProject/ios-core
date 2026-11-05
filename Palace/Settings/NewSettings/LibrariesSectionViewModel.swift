@@ -71,15 +71,15 @@ final class LibrariesSectionViewModel: ObservableObject {
 
     private var currentLibraryChangeSubscription: AnyCancellable?
 
-    /// - Parameter currentLibraryChanges: re-reads the list on each change;
-    ///   nil leaves the list as `refresh()` last built it.
-    init(environment: LibrariesSectionEnvironment, currentLibraryChanges: AnyPublisher<CurrentLibraryChange, Never>? = nil) {
+    /// - Parameter currentLibraryChanges: re-reads the list on each change.
+    ///   Required, so a new caller cannot leave the list stale by omission.
+    init(environment: LibrariesSectionEnvironment, currentLibraryChanges: AnyPublisher<CurrentLibraryChange, Never>) {
         self.environment = environment
         refresh()
 
         // `refresh()` runs in a later main-actor turn, after the sender returns,
         // so a switch flow finishes before the list is re-read.
-        currentLibraryChangeSubscription = currentLibraryChanges?.sink { [weak self] _ in
+        currentLibraryChangeSubscription = currentLibraryChanges.sink { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.refresh()
             }

@@ -183,6 +183,27 @@ final class NotificationServiceReadinessGateTests: XCTestCase {
                       "the claim never released after the account went terminal — the Task was never running, so the assertion above proved nothing")
     }
 
+    /// A library change starts token registration for the current library.
+    /// The service keeps its own subscription; if it lets go, a switch never
+    /// re-registers and the new library sends no hold notifications.
+    func testCurrentLibraryChange_StartsTokenRegistration() {
+        let account = makeLoadingAccount()
+        let changes = PassthroughSubject<CurrentLibraryChange, Never>()
+        let service = NotificationService(
+            authStatePublisher: PassthroughSubject<TPPAccountAuthState, Never>().eraseToAnyPublisher(),
+            onAuthStateRetryRequested: {},
+            accountsManager: GateAccountsProvider(account: account),
+            currentLibraryChanges: changes.eraseToAnyPublisher()
+        )
+        XCTAssertFalse(service.isRegistrationClaimed(account.uuid),
+                       "precondition: nothing has started registration yet")
+
+        changes.send(.selected)
+
+        XCTAssertTrue(service.isRegistrationClaimed(account.uuid),
+                      "a library change must start token registration for the current library")
+    }
+
     /// The top guard: an account already registered must not start an attempt
     /// at all. This change lengthened the window that guard protects, so it is
     /// worth a cell.
