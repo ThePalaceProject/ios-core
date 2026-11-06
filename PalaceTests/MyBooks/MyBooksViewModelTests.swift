@@ -2370,4 +2370,28 @@ final class MyBooksViewModelUnchangedSyncTests: XCTestCase {
         XCTAssertGreaterThan(published, 0,
             "a registry state change must republish even when the book list is the same")
     }
+
+    /// The empty-state label follows the shelf: hidden for a shelf with books,
+    /// shown again once a sync empties it.
+    func testSync_FromShelfToEmpty_ShowsInstructions() async {
+        await completeSync(with: shelf())
+        XCTAssertFalse(viewModel.showInstructionsLabel)
+
+        await completeSync(with: [])
+
+        XCTAssertTrue(viewModel.showInstructionsLabel)
+        XCTAssertTrue(viewModel.books.isEmpty)
+    }
+
+    /// An unloaded registry shows the instructions even with an unchanged
+    /// shelf, so the gate must not skip that sync.
+    func testSync_UnchangedShelfWithUnloadedRegistry_ShowsInstructions() async {
+        await completeSync(with: shelf())
+        XCTAssertFalse(viewModel.showInstructionsLabel)
+
+        mock.state = .unloaded
+        await completeSync(with: shelf())
+
+        XCTAssertTrue(viewModel.showInstructionsLabel)
+    }
 }
