@@ -67,7 +67,12 @@ final class GeneralCacheDiskWriteTests: XCTestCase {
         }
         XCTAssertTrue(gate.waitUntilEntered(timeout: 10))
 
-        cache.remove(for: "key")
+        let removed = expectation(description: "remove returns while the write is held")
+        DispatchQueue.global().async {
+            cache.remove(for: "key")
+            removed.fulfill()
+        }
+        wait(for: [removed], timeout: 5) // STARVE-001-OK: a remove stuck behind the write never returns, so detecting it needs a bound
         gate.openAll()
         wait(for: [writeDone], timeout: 10) // STARVE-001-OK: bounded join on a background write
 
@@ -89,7 +94,12 @@ final class GeneralCacheDiskWriteTests: XCTestCase {
         }
         XCTAssertTrue(gate.waitUntilEntered(timeout: 10))
 
-        cache.set(newer, for: "key", expiresIn: 3600)
+        let newerSet = expectation(description: "newer set returns while the older write is held")
+        DispatchQueue.global().async {
+            cache.set(newer, for: "key", expiresIn: 3600)
+            newerSet.fulfill()
+        }
+        wait(for: [newerSet], timeout: 5) // STARVE-001-OK: a set stuck behind the write never returns, so detecting it needs a bound
         gate.openAll()
         wait(for: [olderDone], timeout: 10) // STARVE-001-OK: bounded join on a background write
 
