@@ -86,6 +86,10 @@ public final class NowPlayingCoordinator {
     /// position MediaPlayer extrapolates on its own.
     private var lastWrite: (at: Date, elapsed: TimeInterval, rate: Double)?
     private var pendingUpdate: Task<Void, Never>?
+    /// The values `pendingUpdate` will write. A direct write (pause, rate,
+    /// artwork) starts from these and cancels the pending one, so a write that
+    /// was scheduled earlier cannot replace a newer playback state.
+    private var pendingInfo: [String: Any]?
     /// Foreground-notification observer token. Held in a nonisolated
     /// `@unchecked Sendable` box so the nonisolated `deinit` can remove it
     /// WITHOUT reading a `@MainActor`-isolated stored property (which
@@ -210,7 +214,7 @@ public final class NowPlayingCoordinator {
     /// Updates only the playback state (playing/paused)
     /// Use this for quick state toggles without full info update
     public func setPlaybackState(playing: Bool) {
-        var info = currentInfo
+        var info = takePendingInfo()
 
         // Update rate based on playing state
         let currentRate = info[MPNowPlayingInfoPropertyDefaultPlaybackRate] as? Double ?? 1.0
@@ -228,7 +232,7 @@ public final class NowPlayingCoordinator {
 
     /// Updates playback rate
     public func updatePlaybackRate(_ rate: PlaybackRate) {
-        var info = currentInfo
+        var info = takePendingInfo()
         let rateValue = Double(PlaybackRate.convert(rate: rate))
 
         info[MPNowPlayingInfoPropertyDefaultPlaybackRate] = rateValue
@@ -269,7 +273,7 @@ public final class NowPlayingCoordinator {
         let artwork = MPMediaItemArtwork(boundsSize: image.size) { @Sendable _ in capturedImage }
         currentArtwork = artwork
 
-        var info = currentInfo
+        var info = takePendingInfo()
         info[MPMediaItemPropertyArtwork] = artwork
         currentInfo = info
         recordWrite(info)
@@ -280,8 +284,7 @@ public final class NowPlayingCoordinator {
 
     /// Clears all Now Playing info
     public func clearNowPlaying() {
-        pendingUpdate?.cancel()
-        pendingUpdate = nil
+        cancelPendingUpdate()
 
         currentInfo = [:]
         currentArtwork = nil
@@ -308,8 +311,7 @@ public final class NowPlayingCoordinator {
         // MPNowPlayingInfoCenter diverge and the patron sees stale info
         // briefly on foreground return.
         if applicationStateProvider() != .active {
-            pendingUpdate?.cancel()
-            pendingUpdate = nil
+            cancelPendingUpdate()
             // PP-4970: playback ticks arrive four times a second; skip the
             // ones whose elapsed time MediaPlayer extrapolates from the rate.
             guard writeIsNeeded(info, isPlaying: isPlaying) else {
@@ -329,8 +331,7 @@ public final class NowPlayingCoordinator {
             currentInfo = info
             return
         }
-        pendingUpdate?.cancel()
-        pendingUpdate = nil
+        cancelPendingUpdate()
 
         let sinceLastWrite = now().timeIntervalSince(lastUpdateTime)
         if sinceLastWrite >= Configuration.foregroundWriteInterval {
@@ -342,6 +343,7 @@ public final class NowPlayingCoordinator {
         // cancel after the sleep returns but before the write is caught by
         // the `Task.isCancelled` guard.
         let delay = Configuration.foregroundWriteInterval - sinceLastWrite
+        pendingInfo = info
         pendingUpdate = Task { @MainActor [weak self] in
             do {
                 try await Task.sleep(for: .seconds(delay))
@@ -350,8 +352,23 @@ public final class NowPlayingCoordinator {
             }
             guard !Task.isCancelled, let self else { return }
             pendingUpdate = nil
+            pendingInfo = nil
             performUpdate(info, isPlaying: isPlaying)
         }
+    }
+
+    private func cancelPendingUpdate() {
+        pendingUpdate?.cancel()
+        pendingUpdate = nil
+        pendingInfo = nil
+    }
+
+    /// Cancels the pending write and returns the values it carried, or the
+    /// last written values when nothing is pending.
+    private func takePendingInfo() -> [String: Any] {
+        let info = pendingInfo ?? currentInfo
+        cancelPendingUpdate()
+        return info
     }
 
     /// MediaPlayer advances the lock-screen time from the last written elapsed
