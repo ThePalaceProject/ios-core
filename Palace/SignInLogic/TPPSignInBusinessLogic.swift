@@ -766,9 +766,6 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         guard !isAwaitingReadinessForLogIn else { return }
         guard let account = libraryAccount else { return }
         isAwaitingReadinessForLogIn = true
-        // Held strongly so the finished report still goes out if this object is
-        // released while readiness is awaited.
-        let progressReporter = libraryAccountsProvider
 
         // The post-`awaitReady()` work touches main-actor-only state
         // (`selectedAuthentication`, `logIn`, the sign-in progress report) on a
@@ -789,7 +786,9 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         // `TPPSignInBusinessLogic: @MainActor`. Runtime is
         // correct: `awaitReady()` is awaited, then all state mutation hops to the
         // main thread via the non-`@Sendable` `asyncIfNeeded`.
-        Task { [weak self] in
+        // `progressReporter` is held strongly so the finished report still goes
+        // out if this object is released while readiness is awaited.
+        Task { [weak self, progressReporter = libraryAccountsProvider] in
             do {
                 _ = try await account.awaitReady()
             } catch {
