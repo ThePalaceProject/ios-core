@@ -6,7 +6,7 @@
 //    1. `registry.setLocation` runs synchronously before the async writer hop, so a
 //       local save survives a failed upload;
 //    2. `writer.save` follows with `format == .audiobook` and the book's identifier;
-//    3. on success, a second `registry.setLocation` commits the server `annotationId`;
+//    3. on success, `registry.setLocationDeferringSave` commits the `annotationId` (PP-5500);
 //    4. the `isAtBeginning` and `timestampNewerRace` guards suppress that commit.
 //  First run records `__Snapshots__/AudiobookPositionAdapterContractTests/<scenario>.json`
 //  and fails; set `CONTRACT_SNAPSHOT_RECORD=1` to re-record.
@@ -93,7 +93,7 @@ private final class CallLogPositionWriter: PositionWriter, @unchecked Sendable {
 
 // MARK: - Recording registry adapter (decorates a real mock)
 
-/// Wraps `TPPBookRegistryMock` to record every `setLocation` call into a
+/// Wraps `TPPBookRegistryMock` to record every location write into a
 /// `CallLog` while still updating the underlying mock for the SUT's
 /// guards to read from. We don't subclass `TPPBookRegistryMock` because
 /// the SUT uses `TPPBookRegistryProvider` directly — we conform to the
@@ -107,8 +107,8 @@ private final class RecordingRegistry: NSObject, TPPBookRegistryProvider, @unche
         self.inner = inner
     }
 
-    // MARK: TPPBookRegistryProvider (recording the ONLY two methods the
-    // audiobook save path touches)
+    // MARK: TPPBookRegistryProvider (recording the location writes the
+    // audiobook save path makes, each under its own name)
 
     func setLocation(_ location: TPPBookLocation?, forIdentifier identifier: String) {
         log.record(
@@ -120,6 +120,18 @@ private final class RecordingRegistry: NSObject, TPPBookRegistryProvider, @unche
             ]
         )
         inner.setLocation(location, forIdentifier: identifier)
+    }
+
+    func setLocationDeferringSave(_ location: TPPBookLocation?, forIdentifier identifier: String) {
+        log.record(
+            "registry.setLocationDeferringSave",
+            args: [
+                "bookID": identifier,
+                "hasLocation": location != nil,
+                "renderer": location?.renderer ?? "nil",
+            ]
+        )
+        inner.setLocationDeferringSave(location, forIdentifier: identifier)
     }
 
     func location(forIdentifier identifier: String) -> TPPBookLocation? {
@@ -295,17 +307,19 @@ final class AudiobookPositionAdapterContractTests: XCTestCase {
         return serverID
     }
 
-    // MARK: - 1. Local-first → writer.save → registry-second commit
+    // MARK: - 1. Local-first → writer.save → annotation-id commit
 
     /// Pins the canonical happy-path call order:
     ///   1. `registry.setLocation(localBookmark)` (synchronous, before the
     ///      async hop)
     ///   2. `writer.save(snapshot)` with `format == .audiobook`
-    ///   3. `registry.setLocation(serverEnrichedBookmark)` after `.success`
+    ///   3. `registry.setLocationDeferringSave(serverEnrichedBookmark)` after
+    ///      `.success`, so the autosave writes the registry once (PP-5500)
     ///
     /// Regression caught: swapping #1 and #2 (a refactor that defers the
     /// local save into the async Task) deletes line #1 from the snapshot
-    /// and a failed upload would then lose the patron's position.
+    /// and a failed upload would then lose the patron's position. A #3 that
+    /// goes back to `setLocation` shows here as a second save.
     func test_audiobookSave_localFirstThenWriter() {
         writer.outcome = .success("server-canonical-id")
         let p = position(trackIndex: 1, time: 100.0)
@@ -341,14 +355,14 @@ final class AudiobookPositionAdapterContractTests: XCTestCase {
         XCTAssertEqual(serverID, "server-delivered-id")
     }
 
-    // MARK: - 2. isAtBeginning guard — second registry write is suppressed
+    // MARK: - 2. isAtBeginning guard — annotation-id commit is suppressed
 
     /// Pins the `isAtBeginning` guard predicate:
     ///   When (incoming trackIndex == 0 AND playbackTime == 0) AND the
     ///   current local bookmark is in a LATER track, the post-save commit
     ///   MUST be suppressed — the snapshot shows ONE `registry.setLocation`
     ///   (the initial local save) and ONE `writer.save`, with NO follow-up
-    ///   `registry.setLocation`.
+    ///   `registry.setLocationDeferringSave`.
     ///
     /// The predicate is STRICT ZERO (`BeginningPositionPolicy.isAtBeginning`
     /// returns true iff `trackIndex == 0 && playbackTime == 0`); the 30s grace
@@ -360,8 +374,8 @@ final class AudiobookPositionAdapterContractTests: XCTestCase {
     /// not have caught the inversion it claims to catch.
     ///
     /// Regression caught: if the predicate inverts (e.g. `trackIndex == 0`
-    /// → `trackIndex != 0`) the snapshot grows a second
-    /// `registry.setLocation` line — the user's later-chapter position
+    /// → `trackIndex != 0`) the snapshot grows a
+    /// `registry.setLocationDeferringSave` line — the user's later-chapter position
     /// gets clobbered by a stale beginning-of-book save.
     func test_audiobookSave_preservesIsAtBeginningGuard() throws {
         // Pre-seed a later-track bookmark. The guard reads the chapter
@@ -399,7 +413,7 @@ final class AudiobookPositionAdapterContractTests: XCTestCase {
         ContractSnapshot.assert(log, named: "audiobookSave_preservesIsAtBeginningGuard")
     }
 
-    // MARK: - 3. Timestamp-newer race-check — second registry write suppressed
+    // MARK: - 3. Timestamp-newer race-check — annotation-id commit suppressed
 
     /// Pins the timestamp-newer race check:
     ///   When the post-save guard reads the current local bookmark and
@@ -407,7 +421,7 @@ final class AudiobookPositionAdapterContractTests: XCTestCase {
     ///   than the 1.0s grace window, the post-save commit MUST be
     ///   suppressed. The snapshot records ONE initial `registry.setLocation`
     ///   (the local-first invariant), ONE `writer.save`, and NO follow-up
-    ///   `registry.setLocation`.
+    ///   `registry.setLocationDeferringSave`.
     ///
     /// We trigger the race by mutating the registry inside the spy
     /// writer's `save` hook — between the SUT's synchronous local save

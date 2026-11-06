@@ -105,6 +105,9 @@ struct NavigationHostView<Content: View>: View {
                         if let model = coordinator.resolveAudioModel(for: bookRoute) {
                             AudiobookPlayerView(model: model)
                                 .toolbar(.hidden, for: .tabBar)
+                                // The toolkit's player cannot reach the app's
+                                // announcement center, so the host signals for it.
+                                .onAppear { appContainer.accessibilityAnnouncer.notifyScreenTransition() }
                         } else {
                             EmptyView()
                         }

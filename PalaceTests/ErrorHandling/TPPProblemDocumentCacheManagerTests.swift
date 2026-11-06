@@ -222,24 +222,4 @@ final class TPPProblemDocumentCacheManagerTests: XCTestCase {
         XCTAssertNotNil(cacheManager.getLastCachedDoc("race-key"),
                         "Cache must accept new writes after concurrent race")
     }
-
-    // MARK: - Notification
-
-    func testCacheProblemDocument_postsNotification() {
-        let expectation = XCTNSNotificationExpectation(
-            name: NSNotification.Name.TPPProblemDocumentWasCached
-        )
-
-        let doc = TPPProblemDocument.fromDictionary([
-            "title": "Notification Test",
-            "detail": "Should post notification"
-        ])
-
-        cacheManager.cacheProblemDocument(doc, key: "notif-key")
-
-        wait(for: [expectation], timeout: 2.0)
-        // Additionally verify the doc was actually stored (post-notification side effect).
-        XCTAssertEqual(cacheManager.getLastCachedDoc("notif-key")?.title, "Notification Test",
-                       "Cached doc must be retrievable after notification fires")
-    }
 }

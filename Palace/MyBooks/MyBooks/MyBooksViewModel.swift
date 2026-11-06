@@ -49,6 +49,11 @@ enum Group: Int {
     /// Default reads production reachability.
     private let isOnline: () -> Bool
     private var allBooks: [TPPBook] = []
+    /// Content signature of the shelf last published to `books`; nil until the
+    /// first publish. Captured at publish time because `contentSignature` reads
+    /// the registry's current state, so recomputing it from `allBooks` later
+    /// would hide a state-only change.
+    private var publishedSignature: [String]?
 
     /// Decides whether `loadData()` may show the registry contents. Defaults
     /// to consulting the injected `accountsManager`: if the current account
@@ -133,6 +138,7 @@ enum Group: Int {
             Log.info(#file, "User not logged in - showing empty My Books")
             self.allBooks = []
             self.books = []
+            self.publishedSignature = nil
             self.showInstructionsLabel = true
             self.isLoading = false
             return
@@ -190,18 +196,14 @@ enum Group: Int {
 
         let newBooks = active
 
-        // Skip re-publish when nothing visible changed. The registry fires
-        // a registry change on every sync — even when the response is
-        // structurally identical to what we already have — and each such
-        // reload forces a new allBooks assignment, which in turn swaps the
-        // TPPBook instances in BookCellModelCache. SwiftUI sees new object
-        // identity and re-evaluates every cell; any book whose coverImage is
-        // not yet assigned on the new instance shows a skeleton flash before
-        // the cache lookup resolves. Gate on a content signature so pure
-        // no-op refreshes don't touch the UI at all.
-        if !isLoading && Self.contentSignature(for: newBooks, registry: bookRegistry)
-            == Self.contentSignature(for: allBooks, registry: bookRegistry)
-        {
+        // Skip re-publish when nothing visible changed. Every sync builds new
+        // TPPBook instances, so a republish swaps every cell's model and reloads
+        // its cover even when the response is identical (PP-5497). Compare
+        // against the signature captured at the last publish; `isLoading` is
+        // always true here, so it cannot take part in this check.
+        let signature = Self.contentSignature(for: newBooks, registry: bookRegistry)
+        let showInstructions = newBooks.isEmpty || bookRegistry.state == .unloaded
+        if signature == publishedSignature && showInstructions == showInstructionsLabel {
             self.isLoading = false
             return
         }
@@ -209,16 +211,17 @@ enum Group: Int {
         // Update published properties
         self.allBooks = newBooks
         self.books = newBooks
-        self.showInstructionsLabel = newBooks.isEmpty || bookRegistry.state == .unloaded
+        self.showInstructionsLabel = showInstructions
         self.sortData()
+        self.publishedSignature = signature
         self.isLoading = false
     }
 
     /// Stable per-book signature for deciding whether a registry update is
     /// actually worth re-publishing to the view. Includes only the fields
     /// that visibly affect a MyBooks cell — identifier (for ordering +
-    /// identity), registry state (drives the action button), and the two
-    /// metadata fields we currently render in the cell body.
+    /// identity), registry state (drives the action button), the two
+    /// metadata fields rendered in the cell body, and the loan due date.
     ///
     /// Intentionally excludes fields like `updated` and `acquisitions` that
     /// can change on the registry record without altering the visible row —
@@ -227,11 +230,14 @@ enum Group: Int {
         for books: [TPPBook],
         registry: TPPBookRegistryProvider
     ) -> [String] {
+        // Sorted because `myBooks` comes from a dictionary and its order is
+        // not stable between reads; display order comes from `sortData()`.
         books.map { book in
             let state = registry.state(for: book.identifier).rawValue
             let authors = book.authors ?? ""
-            return "\(book.identifier)|\(state)|\(book.title)|\(authors)"
-        }
+            let due = book.getExpirationDate()?.timeIntervalSince1970.description ?? ""
+            return "\(book.identifier)|\(state)|\(book.title)|\(authors)|\(due)"
+        }.sorted()
     }
 
     func reloadData() {

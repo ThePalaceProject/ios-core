@@ -197,12 +197,9 @@ final class RegistryPositionOnlySaveTests: PalaceWiringTestCase {
 
     // MARK: - Facade wiring
 
-    /// Drives the production `TPPBookRegistry.setLocation` end to end: the facade
-    /// wires `BookmarkManager.savePosition` to the position-only save. Wired to
-    /// the shelf save instead, this test sees the backup rewritten and a change event.
-    func test_registrySetLocation_persists_withoutAnnouncingOrRewritingTheBackup() async throws {
+    private func makeFacadeRegistry() -> TPPBookRegistry {
         let container = appContainer!
-        let registry = TPPBookRegistry(
+        return TPPBookRegistry(
             accountScope: FixedAccountScope(account),
             imageLoader: MockImageLoader(),
             dependencies: RegistryExternalDependencies(
@@ -213,6 +210,13 @@ final class RegistryPositionOnlySaveTests: PalaceWiringTestCase {
                 onAvailabilityChange: { _, _ in }
             )
         )
+    }
+
+    /// Drives the production `TPPBookRegistry.setLocation` end to end: the facade
+    /// wires `BookmarkManager.savePosition` to the position-only save. Wired to
+    /// the shelf save instead, this test sees the backup rewritten and a change event.
+    func test_registrySetLocation_persists_withoutAnnouncingOrRewritingTheBackup() async throws {
+        let registry = makeFacadeRegistry()
         let primary = try XCTUnwrap(registry.registryUrl(for: account))
         defer { try? FileManager.default.removeItem(at: primary.deletingLastPathComponent()) }
 
@@ -230,5 +234,29 @@ final class RegistryPositionOnlySaveTests: PalaceWiringTestCase {
         XCTAssertEqual(try persistedLocation(in: primary), "after", "setLocation through the registry must persist")
         XCTAssertEqual(try Data(contentsOf: backup), backupBefore,
                        "setLocation through the registry must not rewrite the backup")
+    }
+
+    /// PP-5500: the audiobook autosave's annotation-id commit goes through
+    /// `setLocationDeferringSave`. It must not write the registry file, and the
+    /// next save must carry the new location to disk.
+    func test_registrySetLocationDeferringSave_writesNothing_untilTheNextSave() async throws {
+        let registry = makeFacadeRegistry()
+        let primary = try XCTUnwrap(registry.registryUrl(for: account))
+        defer { try? FileManager.default.removeItem(at: primary.deletingLastPathComponent()) }
+
+        registry.addBook(makeBook(), location: makeLocation("before"), state: .downloadSuccessful)
+        await registry._awaitPendingPersistenceForTesting()
+        let fileBefore = try Data(contentsOf: primary)
+
+        registry.setLocationDeferringSave(makeLocation("with-id"), forIdentifier: bookID)
+        await registry._awaitPendingPersistenceForTesting()
+
+        XCTAssertEqual(try Data(contentsOf: primary), fileBefore, "the deferred update must not write the registry file")
+        XCTAssertEqual(registry.location(forIdentifier: bookID)?.locationString, "with-id")
+
+        registry.setState(.downloadSuccessful, for: bookID)
+        await registry._awaitPendingPersistenceForTesting()
+
+        XCTAssertEqual(try persistedLocation(in: primary), "with-id", "the next save must persist the deferred location")
     }
 }

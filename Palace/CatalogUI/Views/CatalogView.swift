@@ -46,7 +46,7 @@ struct CatalogView: View {
             .onReceive(accountsManager.currentLibraryChangePublisher) { _ in
                 handleAccountChange()
             }
-            .onReceive(NotificationCenter.default.publisher(for: .AppTabSelectionDidChange)) { _ in
+            .onReceive(appContainer.tabRouterHub.selectionChanges) { _ in
                 handleTabChange()
             }
     }

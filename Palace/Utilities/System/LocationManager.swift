@@ -8,10 +8,6 @@
 
 import CoreLocation
 
-extension Notification.Name {
-    static let locationAuthorizationDidChange = Notification.Name("LocationAuthorizationDidChange")
-}
-
 // `@unchecked Sendable`: the type has no mutable stored state — `locationManager`
 // is an immutable `let` set once in `init`; the computed properties only read
 // `authorizationStatus`. Safe to share the `.shared` singleton across isolation
@@ -33,9 +29,5 @@ final class LocationManager: NSObject, CLLocationManagerDelegate, @unchecked Sen
     var locationAccessDenied: Bool {
         let status = locationManager.authorizationStatus
         return status == .denied
-    }
-
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        NotificationCenter.default.post(name: .locationAuthorizationDidChange, object: nil)
     }
 }
