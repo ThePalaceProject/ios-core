@@ -332,6 +332,14 @@ struct AppContainer: @unchecked Sendable {
         return api
     }
 
+    /// The app's one VoiceOver announcement center. Screens signal transitions
+    /// on it, and downloads and search announce through it, so announcements
+    /// wait for a transition to settle and share one deduplication window.
+    /// Read from the download center so the two cannot be different instances.
+    var accessibilityAnnouncer: TPPAccessibilityAnnouncementCenter {
+        downloadCenter.accessibilityAnnouncements
+    }
+
     @MainActor
     var catalogRepository: CatalogRepositoryProtocol {
         let storage = ownedServices

@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 enum AppTab: Hashable {
     case catalog
@@ -16,7 +17,27 @@ final class AppTabRouter: ObservableObject {
 
 final class AppTabRouterHub {
     init() {}
-    weak var router: AppTabRouter?
+    @MainActor
+    weak var router: AppTabRouter? {
+        didSet { observeSelection(of: router) }
+    }
+
+    /// Each tab switch of the registered router, delivered on main. Registering
+    /// a router and re-selecting the current tab are not switches.
+    var selectionChanges: AnyPublisher<AppTab, Never> {
+        selectionSubject.eraseToAnyPublisher()
+    }
+
+    private let selectionSubject = PassthroughSubject<AppTab, Never>()
+    private var routerSelection: AnyCancellable?
+
+    @MainActor
+    private func observeSelection(of router: AppTabRouter?) {
+        routerSelection = router?.$selected
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] tab in self?.selectionSubject.send(tab) }
+    }
 
     /// Pending tab selection that survives router deallocation.
     /// When the app is backgrounded, SwiftUI may release the view hierarchy
