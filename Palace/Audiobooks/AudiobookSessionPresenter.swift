@@ -526,8 +526,8 @@ class AudiobookSessionPresenter: ObservableObject {
             .store(in: &playbackModelCancellables)
     }
 
-    /// The root player view observes `progress`, so every write re-evaluates
-    /// the whole player. In the background (including a locked screen) nothing
+    /// The player's progress views observe `progress`, so every write
+    /// re-evaluates them. In the background (including a locked screen) nothing
     /// is on screen to read it, so the latest tick is held and applied on
     /// foreground entry instead (PP-4970).
     func applyPlaybackTick(_ tick: PlaybackTick) {

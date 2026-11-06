@@ -10,6 +10,7 @@ import SwiftUI
 import XCTest
 @testable import Palace
 import PalaceBookModel
+@testable import PalaceAudiobookToolkit
 
 @MainActor
 final class AudiobookPlayerProgressRedrawTests: XCTestCase {
@@ -63,6 +64,16 @@ final class AudiobookPlayerProgressRedrawTests: XCTestCase {
 
         XCTAssertEqual(Self.observedProgressProperties(of: root), [],
                        "the player root re-evaluates on every playback tick")
+    }
+
+    /// Control for the test above: the same probe finds the progress
+    /// observation on the leaf that shows the timecodes.
+    func testSeekBarLeaf_observesThePlaybackProgress() {
+        let leaf = AudiobookPlayerSeekBar(
+            progress: AudiobookPlaybackProgress(), audioWaitPhase: .none, bookTitle: nil,
+            forwardStepSeconds: 30, backStepSeconds: 30, onSeek: { _ in })
+
+        XCTAssertEqual(Self.observedProgressProperties(of: leaf), ["_progress"])
     }
 
     /// Stored properties that subscribe the view to `AudiobookPlaybackProgress`.
@@ -125,5 +136,77 @@ final class AudiobookPlayerProgressRedrawTests: XCTestCase {
 
         XCTAssertFalse(labels(in: host).contains(Strings.Generic.audiobookLoading),
                        "the skeleton stayed after the player loaded")
+    }
+}
+
+/// The values the progress leaves show, moved out of the player root
+/// unchanged (PP-5505).
+@MainActor
+final class AudiobookPlayerProgressTextTests: XCTestCase {
+    private typealias Text = AudiobookPlayerProgressText
+
+    func testClampedChapterProgress_keepsValuesInsideTheChapter() {
+        XCTAssertEqual(Text.clampedChapterProgress(0.4), 0.4)
+        XCTAssertEqual(Text.clampedChapterProgress(-0.2), 0)
+        XCTAssertEqual(Text.clampedChapterProgress(1.3), 1)
+    }
+
+    /// A NaN or infinite fraction would put the thumb off the track.
+    func testClampedChapterProgress_nonFinite_isZero() {
+        XCTAssertEqual(Text.clampedChapterProgress(.nan), 0)
+        XCTAssertEqual(Text.clampedChapterProgress(.infinity), 0)
+    }
+
+    func testChapterDuration_addsElapsedAndRemaining_ignoringNegatives() {
+        XCTAssertEqual(Text.chapterDuration(offset: 120, timeLeft: 480), 600)
+        XCTAssertEqual(Text.chapterDuration(offset: -5, timeLeft: 300), 300)
+        XCTAssertEqual(Text.chapterDuration(offset: 90, timeLeft: -1), 90)
+    }
+
+    func testElapsedAndRemainingText_matchTheTimecodeFormat() {
+        XCTAssertEqual(Text.elapsedText(offset: 125), "2:05")
+        XCTAssertEqual(Text.remainingText(timeLeft: 475), "-7:55")
+        XCTAssertEqual(Text.remainingText(timeLeft: -3), "-0:00")
+    }
+
+    /// At the live position the spoken value is the live timecode.
+    func testSeekValue_atTheLivePosition_readsTheLiveTimecode() {
+        XCTAssertEqual(
+            Text.seekAccessibilityValue(fraction: 0.25, liveFraction: 0.25, chapterDuration: 600, liveElapsed: "2:31"),
+            "25%, 2:31")
+    }
+
+    /// After a VoiceOver step the value names the step's target.
+    func testSeekValue_afterAStep_readsTheTargetTimecode() {
+        XCTAssertEqual(
+            Text.seekAccessibilityValue(fraction: 0.5, liveFraction: 0.25, chapterDuration: 600, liveElapsed: "2:30"),
+            "50%, 5:00")
+    }
+
+    func testSeekValue_withUnknownChapterLength_readsOnlyThePercentage() {
+        XCTAssertEqual(
+            Text.seekAccessibilityValue(fraction: 0.5, liveFraction: 0.5, chapterDuration: 0, liveElapsed: "0:00"),
+            "50%")
+    }
+
+    func testWholeBookRemaining_withoutAPosition_isEmpty() {
+        XCTAssertEqual(Text.wholeBookRemaining(position: nil, rate: .normalTime), "")
+    }
+
+    /// Book time left is the total less the playhead, phrased at the patron's speed.
+    func testWholeBookRemaining_fromThePlayhead_usesTheRemainingBookTime() throws {
+        let manifest = try Manifest.from(jsonFileName: ManifestJSON.snowcrash.rawValue, bundle: Bundle(for: type(of: self)))
+        let tracks = Tracks(manifest: manifest, audiobookID: "remaining", token: nil)
+        let position = TrackPosition(track: tracks.tracks[1], timestamp: 100, tracks: tracks)
+        let remaining = tracks.totalDuration - position.durationToSelf()
+        XCTAssertGreaterThan(position.durationToSelf(), 120, "precondition: the playhead is minutes into the book")
+
+        XCTAssertEqual(
+            Text.wholeBookRemaining(position: position, rate: .doubleTime),
+            AudiobookMorphingPlayerView.wholeBookRemainingText(bookTimeRemaining: remaining, rate: .doubleTime))
+        XCTAssertNotEqual(
+            Text.wholeBookRemaining(position: position, rate: .doubleTime),
+            AudiobookMorphingPlayerView.wholeBookRemainingText(bookTimeRemaining: tracks.totalDuration, rate: .doubleTime),
+            "the figure must count from the playhead, not from the start")
     }
 }
