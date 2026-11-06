@@ -137,6 +137,35 @@ final class AudiobookPlayerProgressRedrawTests: XCTestCase {
         XCTAssertFalse(labels(in: host).contains(Strings.Generic.audiobookLoading),
                        "the skeleton stayed after the player loaded")
     }
+
+    /// On a first open the transport's wait for data is also unpublished; a
+    /// tick must bring the skeleton back over controls that would play silence.
+    func testPlaybackTick_whenTheTransportStartsWaiting_showsTheLoadingSkeleton() {
+        let (host, presenter, session) = mountExpandedPlayer()
+        XCTAssertFalse(labels(in: host).contains(Strings.Generic.audiobookLoading), "precondition: player usable")
+
+        session.transportIsWaitingForData = true
+        tick(presenter, offset: 1, timeLeft: 599, title: "Chapter One")
+        host.settle(0.6)
+
+        XCTAssertTrue(labels(in: host).contains(Strings.Generic.audiobookLoading),
+                      "the controls stayed up while the transport waited for data")
+    }
+
+    /// A slow chapter start reported by the session alone (the open itself was
+    /// not slow) must still swap the skeleton for the download explanation.
+    func testPlaybackTick_whenTheSessionExpectsASlowStart_showsTheDownloadingPanel() {
+        let (host, presenter, session) = mountExpandedPlayer { $0.isLoaded = false }
+        XCTAssertTrue(labels(in: host).contains(Strings.Generic.audiobookLoading), "precondition: skeleton shown")
+
+        session.expectsSlowChapterStart = true
+        tick(presenter, offset: 0, timeLeft: 600, title: "Chapter One")
+        host.settle(0.6)
+
+        let shown = labels(in: host)
+        XCTAssertTrue(shown.contains { $0.hasPrefix(Strings.Generic.audiobookDownloading) },
+                      "no download explanation for a slow chapter start: \(shown)")
+    }
 }
 
 /// The values the progress leaves show, moved out of the player root
