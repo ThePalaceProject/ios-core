@@ -151,7 +151,6 @@ final class NSNotificationTPPTests: XCTestCase {
         // registry's Combine publishers, so there is no longer a name to assert.
         XCTAssertEqual(Notification.Name.TPPBookProcessingDidChange.rawValue, "TPPBookProcessingDidChange")
         XCTAssertEqual(Notification.Name.TPPMyBooksDownloadCenterDidChange.rawValue, "TPPMyBooksDownloadCenterDidChange")
-        XCTAssertEqual(Notification.Name.TPPBookDetailDidClose.rawValue, "TPPBookDetailDidClose")
         XCTAssertEqual(Notification.Name.TPPAccountSetDidLoad.rawValue, "TPPAccountSetDidLoad")
         XCTAssertEqual(Notification.Name.TPPReachabilityChanged.rawValue, "TPPReachabilityChanged")
     }

@@ -17,16 +17,12 @@ struct MyBooksView: View {
     private let appContainer: AppContainer
     let accountsManager: AccountsManager
     let settings: TPPSettings
-    let bookRegistry: TPPBookRegistryProvider
-    let samplePreviewManager: SamplePreviewManager
 
     init(model: MyBooksViewModel, appContainer: AppContainer) {
         self.model = model
         self.appContainer = appContainer
         self.accountsManager = appContainer.accountsManager
         self.settings = appContainer.settings
-        self.bookRegistry = appContainer.bookRegistry
-        self.samplePreviewManager = appContainer.samplePreviewManager
     }
     // Centralized sample preview manager overlay
 
@@ -89,17 +85,6 @@ struct MyBooksView: View {
             currentAccountUUID = account?.uuid ?? ""
         }
         .actionSheet(isPresented: $showSortSheet) { sortActionSheet }
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ToggleSampleNotification")).receive(on: RunLoop.main)) { note in
-            guard let info = note.userInfo as? [String: Any], let identifier = info["bookIdentifier"] as? String else { return }
-            let action = (info["action"] as? String) ?? "toggle"
-            if action == "close" {
-                samplePreviewManager.close()
-                return
-            }
-            if let book = bookRegistry.book(forIdentifier: identifier) ?? model.books.first(where: { $0.identifier == identifier }) {
-                samplePreviewManager.toggle(for: book)
-            }
-        }
     }
 
     private var mainContent: some View {
