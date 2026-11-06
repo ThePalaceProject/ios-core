@@ -15,6 +15,14 @@ set -euo pipefail
 
 echo "Running optimized unit tests for Palace..."
 
+# Xcode 27 needs build-setting overrides for nested submodule projects; see
+# Xcode27.xcconfig. XCODE_XCCONFIG_FILE applies it to every xcodebuild below.
+XCODE_MAJOR="$(xcodebuild -version | sed -n 's/^Xcode \([0-9]*\).*/\1/p')"
+if [ "${XCODE_MAJOR:-0}" -ge 27 ] && [ -z "${XCODE_XCCONFIG_FILE:-}" ]; then
+    export XCODE_XCCONFIG_FILE="$(cd "$(dirname "$0")/.." && pwd)/Xcode27.xcconfig"
+    echo "Xcode $XCODE_MAJOR: using $XCODE_XCCONFIG_FILE"
+fi
+
 # Opt-in clean. The local paths below ran `xcodebuild clean` UNCONDITIONALLY,
 # discarding warm DerivedData and forcing a full cold rebuild (tens of minutes)
 # on every "CI-parity" local run. Off by default — set PALACE_TEST_CLEAN=1 (or
