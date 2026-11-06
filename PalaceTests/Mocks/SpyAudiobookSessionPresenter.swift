@@ -165,6 +165,9 @@ final class SpyShimSession: AudiobookSessionManaging {
     var hasActiveManager: Bool = false
     /// False keeps the full player on its loading overlay.
     var isLoaded: Bool = true
+    /// Unpublished, like `isLoaded`; the full player re-reads both on each playback tick.
+    var expectsSlowChapterStart: Bool = false
+    var transportIsWaitingForData: Bool = false
 
     let playbackStatePublisher = PassthroughSubject<AudiobookSessionState, Never>()
     let chapterUpdatePublisher = PassthroughSubject<(chapters: [Chapter], current: Chapter?), Never>()
