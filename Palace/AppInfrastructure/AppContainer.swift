@@ -604,7 +604,10 @@ struct AppContainer: @unchecked Sendable {
             imageLoader: imageLoader,
             userAccountPublisher: userAccountPublisher,
             opdsFeedService: OPDSFeedService(),
-            readerService: ReaderService(isConnected: { reachability.isConnectedToNetwork() }),
+            readerService: ReaderService(
+              isConnected: { reachability.isConnectedToNetwork() },
+              imageCache: { imageCache }
+            ),
             navigationCoordinatorHub: navigationCoordinatorHub,
             tabRouterHub: tabRouterHub,
             drmAuthorizerProvider: {

@@ -40,9 +40,7 @@ final class ReaderService {
     ///   - presentAlert: shows a title and message to the patron.
     ///   - redownloadAndReopen: replaces the delete, re-download and reopen
     ///     step; nil runs the real one.
-    ///   - imageCache: the cover cache released before an LCP PDF open. A
-    ///     closure so the container is not resolved while it is still being
-    ///     built.
+    ///   - imageCache: the cover cache released before an LCP PDF open.
     nonisolated init(
         rootViewController: @escaping @MainActor () -> UIViewController? = {
             UIApplication.shared.mainKeyWindow?.rootViewController
@@ -53,7 +51,7 @@ final class ReaderService {
             TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
         },
         redownloadAndReopen: (@MainActor (TPPBook, LibraryServiceError) -> Void)? = nil,
-        imageCache: @escaping @MainActor () -> ImageCacheType = { AppContainer.production().imageCache }
+        imageCache: @escaping @MainActor () -> ImageCacheType = { ImageCache.shared }
     ) {
         self.rootViewController = rootViewController
         self.isConnected = isConnected
