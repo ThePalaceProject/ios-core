@@ -68,6 +68,7 @@ final class BookRegistrySyncDiffContractTests: XCTestCase {
         var title: String = "Title"
         var updated: String = "2026-07-01T00:00:00Z"
         var until: String = "2026-08-01T00:00:00Z"
+        var status: String = "available"
         var author: String?
         var summary: String?
     }
@@ -86,7 +87,7 @@ final class BookRegistrySyncDiffContractTests: XCTestCase {
               \(author)
               \(summary)
               <link href="http://example.com/\(entry.id).epub" type="application/epub+zip" rel="http://opds-spec.org/acquisition">
-                <opds:availability status="available" since="2026-07-01T00:00:00Z" until="\(entry.until)"/>
+                <opds:availability status="\(entry.status)" since="2026-07-01T00:00:00Z" until="\(entry.until)"/>
                 <opds:copies available="1" total="1"/>
               </link>
             </entry>
@@ -342,7 +343,111 @@ final class BookRegistrySyncDiffContractTests: XCTestCase {
         XCTAssertEqual(writes.steps, [])
     }
 
+    // MARK: - Relaunch
+
+    private var registryURL: URL {
+        tempDirectory.appendingPathComponent("registry").appendingPathComponent("registry.json")
+    }
+
+    /// A cold launch: a new store and engine that read the shelf back from disk.
+    private func relaunchAndLoad() async -> BookRegistrySync {
+        store = BookRegistryStore()
+        let sut = makeSync()
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            sut.load(account: Self.accountID, setState: { _ in }, completion: { cont.resume() })
+        }
+        writes.reset()
+        return sut
+    }
+
+    /// The persisted form of a ready hold has no dates, so after a relaunch the
+    /// first sync must restore the pickup deadline the Holds list shows.
+    func testSync_AfterRelaunchWithReadyHold_RestoresThePickupDeadline() async {
+        let deadline = "2026-08-20T00:00:00Z"
+        let readyHold = [Entry(id: "hold-a", until: deadline, status: "ready")]
+        await seedBySync(makeSync(), readyHold)
+        let sut = await relaunchAndLoad()
+        XCTAssertNil(records()["hold-a"]?.book.getExpirationDate(), "precondition: the disk form drops the deadline")
+
+        await runSync(sut, feed: Self.feed(readyHold))
+
+        XCTAssertEqual(records()["hold-a"]?.book.getExpirationDate(),
+                       NSDate.date(withRFC3339String: deadline) as Date?)
+    }
+
+    /// A corrupt primary recovered from `.bak` is only copied aside, so an
+    /// unchanged first sync must rewrite it; otherwise every launch quarantines again.
+    func testSync_AfterRecoveryFromBackup_UnchangedSyncRewritesThePrimary() async throws {
+        await seedBySync(makeSync(), shelf)
+        let backupURL = RegistryFileRecovery.backupURL(for: registryURL)
+        let backup = try Data(contentsOf: registryURL)
+        try backup.write(to: backupURL)
+        try Data("{not json".utf8).write(to: registryURL)
+        let sut = await relaunchAndLoad()
+        XCTAssertEqual(records().count, 3, "precondition: the shelf is recovered from the backup")
+
+        await runSync(sut, feed: Self.feed(shelf))
+
+        let primary = try Data(contentsOf: registryURL)
+        guard case .valid(let saved) = RegistryFileRecovery.classify(data: primary) else {
+            return XCTFail("the primary must be valid after the first sync")
+        }
+        XCTAssertEqual(saved.count, 3)
+        XCTAssertEqual(writes.steps.filter { $0 == "primary" }.count, 1)
+    }
+
+    /// A legacy file with no schema version is migrated by the first sync even
+    /// when the feed matches the shelf.
+    func testSync_AfterLoadingLegacyFile_UnchangedSyncWritesTheCurrentSchema() async throws {
+        await seedBySync(makeSync(), shelf)
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: registryURL)) as? [String: Any])
+        json.removeValue(forKey: RegistryFileRecovery.schemaVersionKey)
+        try JSONSerialization.data(withJSONObject: json).write(to: registryURL)
+        let sut = await relaunchAndLoad()
+
+        await runSync(sut, feed: Self.feed(shelf))
+
+        let primary = try Data(contentsOf: registryURL)
+        XCTAssertEqual(RegistryFileRecovery.schemaVersion(from: primary), RegistryFileRecovery.currentSchemaVersion)
+    }
+
+    /// Once the primary has been rewritten, a later unchanged sync writes nothing.
+    func testSync_AfterRecoveredPrimaryIsRewritten_NextUnchangedSyncWritesNothing() async throws {
+        await seedBySync(makeSync(), shelf)
+        try Data(contentsOf: registryURL).write(to: RegistryFileRecovery.backupURL(for: registryURL))
+        try Data("{not json".utf8).write(to: registryURL)
+        let sut = await relaunchAndLoad()
+        await runSync(sut, feed: Self.feed(shelf))
+        writes.reset()
+
+        await runSync(sut, feed: Self.feed(shelf))
+
+        XCTAssertEqual(writes.steps, [])
+    }
+
     // MARK: - Record comparison
+
+    /// A ready hold read back from disk has no deadline; it must not match the
+    /// feed record that carries one, or the sync keeps the dateless record.
+    func testRecordsMatch_WhenReadyHoldWasReadFromDisk_DoesNotMatchTheFeedDeadline() throws {
+        let until = try XCTUnwrap(NSDate.date(withRFC3339String: "2026-08-20T00:00:00Z") as Date?)
+        let book = TPPBookMocker.mockBook(identifier: "ready", title: "Ready", distributorType: .EpubZip)
+        let acquisition = try XCTUnwrap(book.defaultAcquisition)
+        let ready = TPPOPDSAcquisition(
+            relation: acquisition.relation,
+            type: acquisition.type,
+            hrefURL: acquisition.hrefURL,
+            indirectAcquisitions: acquisition.indirectAcquisitions,
+            availability: TPPOPDSAcquisitionAvailabilityReady(since: nil, until: until)
+        )
+        let feedBook = book.mergingPreservingMetadata(from: book)
+        feedBook.acquisitions = [ready]
+        let feedRecord = TPPBookRegistryRecord(book: feedBook, state: .holding)
+        let fromDisk = try XCTUnwrap(TPPBook(dictionary: feedBook.dictionaryRepresentation()))
+        XCTAssertNil(fromDisk.getExpirationDate(), "precondition: the disk form drops the deadline")
+
+        XCTAssertFalse(BookRegistrySync.recordsMatch(TPPBookRegistryRecord(book: fromDisk, state: .holding), feedRecord))
+    }
 
     /// Duration and contributors are not persisted, so the comparison checks them
     /// beside the persisted form.

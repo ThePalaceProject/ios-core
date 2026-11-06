@@ -96,6 +96,17 @@ final class BookRegistrySync: @unchecked Sendable {
     set { rebuildFlagLock.lock(); defer { rebuildFlagLock.unlock() }; _needsRebuildFromServer = newValue }
   }
 
+  /// Set when `load` read the shelf from somewhere other than a current-schema
+  /// primary: a corrupt primary recovered from `.bak` (quarantine copies the
+  /// corrupt bytes and leaves them in place) or a legacy unversioned file. The
+  /// next sync saves even when no record changed, and any successful primary
+  /// write clears it. Guarded by `rebuildFlagLock`.
+  private var _needsPrimaryRewrite = false
+  var needsPrimaryRewrite: Bool {
+    get { rebuildFlagLock.lock(); defer { rebuildFlagLock.unlock() }; return _needsPrimaryRewrite }
+    set { rebuildFlagLock.lock(); defer { rebuildFlagLock.unlock() }; _needsPrimaryRewrite = newValue }
+  }
+
   /// Resolved-on-demand accessors. Tests inject fakes via `dependencies`;
   /// production wires the live download center + OPDS feed service through the
   /// composition root. Same lazy-resolution timing as before the extraction.
@@ -243,6 +254,7 @@ final class BookRegistrySync: @unchecked Sendable {
 
       var newRegistry = [String: TPPBookRegistryRecord]()
       var needsRebuild = false
+      var needsRewrite = false
 
       // Reliability WS-B / INV-1: distinguish an ABSENT registry file from an
       // existing-but-CORRUPT one. The old code conflated both into a single
@@ -269,6 +281,7 @@ final class BookRegistrySync: @unchecked Sendable {
         recordsToParse = records
         if RegistryFileRecovery.needsMigration(data: fileData) {
           Log.info(#file, "  Registry file is unversioned (legacy) — will migrate to schema v\(RegistryFileRecovery.currentSchemaVersion) on next save")
+          needsRewrite = true
         }
       case .empty:
         Log.info(#file, "  No existing registry file found — starting with an empty registry")
@@ -280,6 +293,7 @@ final class BookRegistrySync: @unchecked Sendable {
         if let recovered = RegistryFileRecovery.recoverFromBackup(for: url) {
           Log.info(#file, "  Recovered \(recovered.count) record(s) from last-good .bak backup")
           recordsToParse = recovered
+          needsRewrite = true
         } else {
           Log.error(#file, "  No usable .bak backup — leaving registry empty and flagging needsRebuildFromServer (next authenticated sync repopulates from the loans feed)")
           needsRebuild = true
@@ -353,6 +367,7 @@ final class BookRegistrySync: @unchecked Sendable {
         // save() refuses to persist an empty snapshot over a non-empty backup
         // until an authoritative server sync repopulates the shelf.
         self.needsRebuildFromServer = needsRebuild
+        self.needsPrimaryRewrite = needsRewrite
 
         // Register the delayed recovery work BEFORE announcing the load.
         //
@@ -675,8 +690,12 @@ final class BookRegistrySync: @unchecked Sendable {
         // against the loans feed (guarded by shouldSkipBulkDeletion), so it is
         // allowed to persist an empty shelf and it clears needsRebuildFromServer.
         // A pending rebuild is saved even when no record changed, so a feed that
-        // matches the in-memory shelf still ends the rebuild window.
-        if changesMade || (self.needsRebuildFromServer && !feedIdentifiers.isEmpty) {
+        // matches the in-memory shelf still ends the rebuild window. A shelf
+        // recovered from `.bak` or read from a legacy file is saved too, so the
+        // primary on disk is replaced with a current-schema copy.
+        if changesMade
+            || self.needsPrimaryRewrite
+            || (self.needsRebuildFromServer && !feedIdentifiers.isEmpty) {
           self.save(for: accountUUID, serverAuthoritative: true)
         }
 
@@ -693,15 +712,21 @@ final class BookRegistrySync: @unchecked Sendable {
   }
 
   /// Whether two records hold the same data. The persisted form is the oracle;
-  /// duration and contributors are compared beside it because the persisted
-  /// form omits them and the in-memory book still shows them (PP-5503).
+  /// duration, contributors and availability dates are compared beside it
+  /// because the persisted form omits them (a ready hold is stored without its
+  /// pickup deadline) and the in-memory book still shows them (PP-5503).
   static func recordsMatch(_ lhs: TPPBookRegistryRecord, _ rhs: TPPBookRegistryRecord) -> Bool {
     guard lhs.book.bookDuration == rhs.book.bookDuration,
+          availabilityDates(of: lhs.book) == availabilityDates(of: rhs.book),
           NSDictionary(dictionary: lhs.book.contributors ?? [:])
             .isEqual(to: rhs.book.contributors ?? [:])
     else { return false }
     return NSDictionary(dictionary: lhs.dictionaryRepresentation)
       .isEqual(to: rhs.dictionaryRepresentation)
+  }
+
+  private static func availabilityDates(of book: TPPBook) -> [[Date?]] {
+    book.acquisitions.map { [$0.availability.since, $0.availability.until] }
   }
 
   /// Persist the registry for the given account. The caller MUST pass the account
@@ -786,6 +811,7 @@ final class BookRegistrySync: @unchecked Sendable {
         }
         try dependencies.beforeRegistryWrite(.primary, registryUrl)
         try registryData.write(to: registryUrl, options: .atomic)
+        needsPrimaryRewrite = false
         if !isEmpty || serverAuthoritative {
           needsRebuildFromServer = false
         }
@@ -850,6 +876,7 @@ final class BookRegistrySync: @unchecked Sendable {
         }
         try self.dependencies.beforeRegistryWrite(.primary, registryUrl)
         try registryData.write(to: registryUrl, options: .atomic)
+        self.needsPrimaryRewrite = false
         if !isEmpty {
           self.needsRebuildFromServer = false
         }
@@ -923,6 +950,7 @@ final class BookRegistrySync: @unchecked Sendable {
       RegistryFileRecovery.purgeSidecars(for: registryUrl)
     }
     needsRebuildFromServer = false
+    needsPrimaryRewrite = false
   }
 
   /// Decides whether a sync() reconciliation should skip deleting books that
