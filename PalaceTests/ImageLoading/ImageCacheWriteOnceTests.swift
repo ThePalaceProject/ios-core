@@ -151,7 +151,57 @@ final class ImageCacheWriteOnceTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: cache._diskURLForTesting(for: "queued-read-write").path))
     }
 
+    /// A cover already on disk keeps the in-hand image as the decoded copy when
+    /// it is within the size cap, so the next read skips a disk decode.
+    func testSet_whenAlreadyOnDisk_keepsAnImageAtTheSizeCapAsTheDecodedCopy() async throws {
+        let cache = Self.smallTierCache()
+        defer { Self.drain(cache); cache.clear() }
+        let image = Self.image(width: 200, height: 1)
+        cache.set(image, for: "at-cap", expiresIn: nil)
+        Self.drain(cache)
+        cache.evictDecodedImages()
+
+        cache.set(image, for: "at-cap", expiresIn: nil)
+        Self.drain(cache)
+        let read = await cache.getAsync(for: "at-cap")
+
+        XCTAssertTrue(read === image, "an image at the cap must be kept as the decoded copy")
+    }
+
+    func testSet_whenAlreadyOnDisk_doesNotKeepAnImageOverTheSizeCap() async throws {
+        let cache = Self.smallTierCache()
+        defer { Self.drain(cache); cache.clear() }
+        let image = Self.image(width: 201, height: 1)
+        cache.set(image, for: "over-cap", expiresIn: nil)
+        Self.drain(cache)
+        cache.evictDecodedImages()
+
+        cache.set(image, for: "over-cap", expiresIn: nil)
+        Self.drain(cache)
+        let read = await cache.getAsync(for: "over-cap")
+
+        XCTAssertNotNil(read)
+        XCTAssertFalse(read === image, "an image over the cap must be read back resized from disk")
+    }
+
     // MARK: - Helpers
+
+    /// The 1 GB tier caps stored images at 200 px.
+    private static func smallTierCache() -> ImageCache {
+        ImageCache._makeIsolatedForTesting(
+            deviceMemoryMB: 1024,
+            cacheName: "ImageCacheWriteOnceTests-cap-\(UUID().uuidString)"
+        )
+    }
+
+    private static func image(width: Int, height: Int) -> UIImage {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: CGSize(width: width, height: height), format: format).image { context in
+            UIColor.systemOrange.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        }
+    }
 
     private static func image() -> UIImage {
         let format = UIGraphicsImageRendererFormat()
