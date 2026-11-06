@@ -191,6 +191,22 @@ final class AudiobookTimeTrackerEdgeTests: XCTestCase {
         XCTAssertEqual(saved.map(\.1), [3, 2])
     }
 
+    /// A tick under a millisecond before a minute ends is filed under that
+    /// minute. DateFormatter rounds to the millisecond, so a key formatted from
+    /// the tick itself would name the next minute and file it twice.
+    func testReceiveValue_tickJustBeforeMinuteEnds_isFiledUnderItsOwnMinute() {
+        // 22:13:50, then 22:14:59.9997 after a gap, then 22:15:00.5.
+        for t in [1_700_000_030.0, 1_700_000_099.9997, 1_700_000_100.5] {
+            tracker.receiveValue(Date(timeIntervalSince1970: t))
+        }
+        tracker.stopAndSave()
+        mockDataManager.flush()
+
+        let saved = mockDataManager.savedTimeEntries.map { ($0.duringMinute, $0.duration) }
+        XCTAssertEqual(saved.map(\.0), ["2023-11-14T22:13Z", "2023-11-14T22:14Z", "2023-11-14T22:15Z"])
+        XCTAssertEqual(saved.map(\.1), [1, 1, 1])
+    }
+
     /// SRS: AUDIO-003 -- Time tracking accumulates and persists correctly
     func testZeroDuration_isNotSaved() {
         // Don't send any receiveValue calls

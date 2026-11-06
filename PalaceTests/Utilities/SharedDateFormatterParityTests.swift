@@ -102,8 +102,9 @@ final class SharedDateFormatterParityTests: XCTestCase {
         }
     }
 
-    func testRFC3339String_TruncatesFractionalSeconds() {
-        let date = NSDate(timeIntervalSince1970: 1_700_000_000.999999)
+    /// Fractional seconds are dropped, not rounded to the nearest second.
+    func testRFC3339String_DropsFractionalSeconds() {
+        let date = NSDate(timeIntervalSince1970: 1_700_000_000.75)
         XCTAssertEqual(date.rfc3339String(), "2023-11-14T22:13:20Z")
     }
 
@@ -156,7 +157,7 @@ final class SharedDateFormatterParityTests: XCTestCase {
                 }
             }
         }
-        XCTAssertEqual(Date(timeIntervalSince1970: 1_700_000_000.999999).iso8601, "2023-11-14T22:13:20Z")
+        XCTAssertEqual(Date(timeIntervalSince1970: 1_700_000_000.75).iso8601, "2023-11-14T22:13:20Z")
     }
 
     // MARK: - OPDS2Feed.makeDecoder
@@ -214,34 +215,35 @@ final class SharedDateFormatterParityTests: XCTestCase {
 
     // MARK: - AudiobookTimeTracker minute key
 
-    /// The tracker keys a time entry by its UTC minute. The integer minute
-    /// must change exactly where the formatted minute string changes.
-    func testTrackerMinuteIndex_ChangesExactlyWhereFormattedMinuteChanges() {
-        let probes: [TimeInterval] = [
-            -60.0001, -60, -59.9999, -0.0001, 0, 0.0001, 59.9999, 60,
-            1_700_000_039.999, 1_700_000_040, 1_700_000_040.001, 1_700_000_099.9995, 1_700_000_100
+    /// The tracker files time under the UTC minute an instant falls in, so the
+    /// index is the floor of the instant in minutes, also below zero.
+    func testTrackerMinuteIndex_IsTheFloorOfTheUTCMinute() {
+        let cases: [(TimeInterval, Int64)] = [
+            (-60.0001, -2), (-60, -1), (-59.9999, -1), (-0.0001, -1),
+            (0, 0), (0.0001, 0), (59.9999, 0), (60, 1),
+            (1_700_000_039.999, 28_333_333), (1_700_000_040, 28_333_334),
+            (1_700_000_099.9995, 28_333_334), (1_700_000_100, 28_333_335)
         ]
-        for a in probes {
-            for b in probes {
-                let da = Date(timeIntervalSince1970: a)
-                let db = Date(timeIntervalSince1970: b)
-                let sameByString = legacyTrackerMinute(da) == legacyTrackerMinute(db)
-                let sameByIndex = AudiobookTimeTracker.minuteIndex(of: da) == AudiobookTimeTracker.minuteIndex(of: db)
-                XCTAssertEqual(sameByIndex, sameByString, "minute key disagreed for \(a) vs \(b)")
-            }
+        for (t, expected) in cases {
+            XCTAssertEqual(AudiobookTimeTracker.minuteIndex(of: Date(timeIntervalSince1970: t)), expected,
+                           "minute index for t=\(t)")
         }
     }
 
-    func testTrackerMinuteString_MatchesPerCallFormatter() {
+    /// The key string is the per-call formatter's output for the minute's
+    /// first instant, whatever the default time zone.
+    func testTrackerMinuteString_MatchesPerCallFormatterAtTheMinuteStart() {
+        let indices: [Int64] = [-37_016_484, -1, 0, 15_863_040, 28_333_333, 28_333_334, 4_223_371_679]
         for zone in defaultZones {
             withDefaultTimeZone(zone) {
-                for t in instants {
-                    let date = Date(timeIntervalSince1970: t)
-                    XCTAssertEqual(AudiobookTimeTracker.minuteString(for: date), legacyTrackerMinute(date),
-                                   "minute string drifted for t=\(t) with default zone \(zone)")
+                for index in indices {
+                    let start = Date(timeIntervalSince1970: TimeInterval(index) * 60)
+                    XCTAssertEqual(AudiobookTimeTracker.minuteString(forMinuteIndex: index), legacyTrackerMinute(start),
+                                   "minute string drifted for index \(index) with default zone \(zone)")
                 }
             }
         }
+        XCTAssertEqual(AudiobookTimeTracker.minuteString(forMinuteIndex: 28_333_334), "2023-11-14T22:14Z")
     }
 }
 

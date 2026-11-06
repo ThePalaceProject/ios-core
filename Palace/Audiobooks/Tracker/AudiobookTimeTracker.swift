@@ -56,8 +56,8 @@ class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate, @uncheck
         self.dataManager = dataManager
         self.audiobookLogger = audiobookLogger
         let now = Date()
-        currentMinute = Self.minuteString(for: now)
         currentMinuteIndex = Self.minuteIndex(of: now)
+        currentMinute = Self.minuteString(forMinuteIndex: currentMinuteIndex)
 
         super.init()
 
@@ -93,13 +93,14 @@ class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate, @uncheck
     }()
 
     /// The UTC minute key a time entry is filed under, e.g. "2023-11-14T22:13Z".
-    static func minuteString(for date: Date) -> String {
-        minuteFormatter.string(from: date)
+    /// Formatted from the minute's first instant: DateFormatter rounds to the
+    /// millisecond, so formatting the tick itself could name the next minute.
+    static func minuteString(forMinuteIndex index: Int64) -> String {
+        minuteFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(index) * 60))
     }
 
-    /// Whole UTC minutes since 1970. Changes exactly where `minuteString(for:)`
-    /// changes, so the 1 Hz tick compares integers and formats a string only
-    /// once per minute.
+    /// Whole UTC minutes since 1970, so the 1 Hz tick compares integers and
+    /// formats a string only once per minute.
     static func minuteIndex(of date: Date) -> Int64 {
         Int64((date.timeIntervalSince1970 / 60).rounded(.down))
     }
@@ -151,7 +152,7 @@ class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate, @uncheck
             let minuteIndex = Self.minuteIndex(of: value)
             if minuteIndex != self.currentMinuteIndex {
                 self.saveCurrentDuration(date: value)
-                self.currentMinute = Self.minuteString(for: value)
+                self.currentMinute = Self.minuteString(forMinuteIndex: minuteIndex)
                 self.currentMinuteIndex = minuteIndex
             }
             self.duration += self.tick
