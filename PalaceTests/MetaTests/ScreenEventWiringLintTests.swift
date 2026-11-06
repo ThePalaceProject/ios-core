@@ -20,24 +20,10 @@ final class ScreenEventWiringLintTests: XCTestCase {
         "Palace/AppInfrastructure/NavigationHostView.swift"
     ]
 
-    private func sourceURL(_ relativePath: String) -> URL {
-        URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()  // MetaTests/
-            .deletingLastPathComponent()  // PalaceTests/
-            .deletingLastPathComponent()  // repo root
-            .appendingPathComponent(relativePath)
-    }
-
-    /// Drops `//` comment tails so a comment that names the call does not count.
-    private func code(of source: String) -> String {
-        source.components(separatedBy: .newlines).map { line in
-            guard let range = line.range(of: "//") else { return line }
-            return String(line[line.startIndex..<range.lowerBound])
-        }.joined(separator: "\n")
-    }
-
+    /// Comments are blanked so a commented-out call does not count.
     private func code(at relativePath: String) throws -> String {
-        code(of: try String(contentsOf: sourceURL(relativePath), encoding: .utf8))
+        let url = LintSourceText.repoRoot.appendingPathComponent(relativePath)
+        return LintSourceText.strippingComments(try String(contentsOf: url, encoding: .utf8))
     }
 
     func testEveryTransitionScreen_SignalsTheSharedCenter() throws {
@@ -49,7 +35,8 @@ final class ScreenEventWiringLintTests: XCTestCase {
 
     func testCatalog_DismissesSearchOnTabSwitchesFromTheHub() throws {
         XCTAssertTrue(try code(at: "Palace/CatalogUI/Views/CatalogView.swift")
-            .contains(".onReceive(appContainer.tabRouterHub.selectionChanges)"))
+            .contains(".onReceive(appContainer.tabRouterHub.selectionChanges)"),
+                      "CatalogView no longer dismisses an open search when the patron switches tabs.")
     }
 
     /// Proves the scan can fail: a call that survives only in a comment is not
@@ -58,9 +45,10 @@ final class ScreenEventWiringLintTests: XCTestCase {
         let commentedOut = """
         .onAppear {
             // appContainer.accessibilityAnnouncer.notifyScreenTransition()
+            /* appContainer.accessibilityAnnouncer.notifyScreenTransition() */
         }
         """
 
-        XCTAssertFalse(code(of: commentedOut).contains(Self.transitionCall))
+        XCTAssertFalse(LintSourceText.strippingComments(commentedOut).contains(Self.transitionCall))
     }
 }
