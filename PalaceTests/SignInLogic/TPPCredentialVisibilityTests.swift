@@ -267,8 +267,8 @@ final class TPPDRMFailureCredentialPreservationTests: XCTestCase {
                       "PP-3784: hasCredentials must still be true after DRM failure")
     }
 
-    /// A failed DRM sign-in still reports the attempt finished, once, so the
-    /// sign-in spinner stops and listeners do not wait for an end that never comes.
+    /// A failed DRM sign-in still reports the attempt finished, once, so
+    /// listeners do not wait for an end that never comes.
     func testUpdateUserAccount_drmFailure_reportsSignInFinishedOnce() {
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 

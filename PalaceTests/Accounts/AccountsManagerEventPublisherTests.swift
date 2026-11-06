@@ -16,7 +16,8 @@ import PalaceCatalog
 final class AccountsManagerEventPublisherTests: PalaceWiringTestCase {
 
     /// A catalog load from the disk cache tells the manager's listeners once,
-    /// so the library picker refreshes its list.
+    /// so the library picker refreshes its list. Once holds here because the
+    /// fixture starts no background refresh; in the app that refresh announces again.
     func testLoadCatalogsFromCache_EmitsCatalogLoadedOnce() async throws {
         let uuids = ["urn:uuid:cat-loaded-a-\(UUID().uuidString)", "urn:uuid:cat-loaded-b-\(UUID().uuidString)"]
         let manager = makeFreshAccountsManager(
@@ -47,6 +48,10 @@ final class AccountsManagerEventPublisherTests: PalaceWiringTestCase {
             crawlScheduler: .neverStarts
         )
         let other = makeFreshAccountsManager(defaults: Self.testUserDefaults())
+        var loadingLoads = 0
+        loading.catalogLoadedPublisher
+            .sink { loadingLoads += 1 }
+            .store(in: &cancellables)
         var otherLoads = 0
         other.catalogLoadedPublisher
             .sink { otherLoads += 1 }
@@ -57,6 +62,7 @@ final class AccountsManagerEventPublisherTests: PalaceWiringTestCase {
         await drainMainQueueAsync()
 
         XCTAssertTrue(completed, "premise: the cached load must complete")
+        XCTAssertEqual(loadingLoads, 1, "premise: the loading manager must announce its load")
         XCTAssertEqual(otherLoads, 0)
         uuids.forEach { AccountStateStore.shared.reset(for: $0) }
     }

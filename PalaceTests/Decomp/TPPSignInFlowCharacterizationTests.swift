@@ -709,6 +709,8 @@ final class SignInCredentialSideEffectCharacterizationTests: SignInFlowFixture {
 
         XCTAssertEqual(libraryMock.reportedSignInProgress.last, .finished,
                        "The last sign-in progress report after a successful persist must be .finished")
+        XCTAssertEqual(libraryMock.reportedSignInProgress.filter { $0 == .finished }.count, 1,
+                       "A persist reports the attempt finished exactly once")
     }
 
     // S4 — after the canonical store (TPPUserAccount) has the credentials,
