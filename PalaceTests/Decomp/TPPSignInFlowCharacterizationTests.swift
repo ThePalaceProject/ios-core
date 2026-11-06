@@ -138,36 +138,6 @@ final class FlowTokenRefresherMock: TokenRefreshing, @unchecked Sendable {
     }
 }
 
-/// Collects `.TPPIsSigningIn` posts as their `Bool` payloads, in order.
-/// Registered against `NotificationCenter.default` because the production
-/// code posts there unconditionally; the observer is removed in `stop()`
-/// so nothing leaks into a sibling test.
-///
-/// `queue: nil` (the idiom the rest of the sign-in suite uses) delivers the
-/// block synchronously on the posting thread, so a test can post-and-assert
-/// in one turn. A non-nil queue enqueues instead, which would make every
-/// assertion below depend on a drain the test never performs.
-final class SigningInNotificationRecorder {
-    private var token: NSObjectProtocol?
-    private let lock = NSLock()
-    private var _payloads: [Bool] = []
-    var payloads: [Bool] { lock.withLock { _payloads } }
-
-    init() {
-        token = NotificationCenter.default.addObserver(
-            forName: .TPPIsSigningIn, object: nil, queue: nil
-        ) { [weak self] note in
-            guard let self, let flag = note.object as? Bool else { return }
-            self.lock.withLock { self._payloads.append(flag) }
-        }
-    }
-
-    func stop() {
-        if let token { NotificationCenter.default.removeObserver(token) }
-        token = nil
-    }
-}
-
 // MARK: - Shared fixture scaffolding
 
 @MainActor
@@ -255,8 +225,6 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
     // hand-written mutant that drops the `guard let wrapped = selectedAuthentication`
     // and falls through to the auth-type switch on a nil auth.
     func test_logIn_beforeDetailsLoaded_firesNoRequest_andDoesNotAnnounceSigningIn() async {
-        let recorder = SigningInNotificationRecorder()
-        defer { recorder.stop() }
         setLoading()
 
         await businessLogic.logIn()
@@ -264,8 +232,8 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
 
         XCTAssertTrue(networkExecutor.executedRequestURLs.isEmpty,
                       "A tap that races the auth-document load must not issue the /patrons/me request yet")
-        XCTAssertFalse(recorder.payloads.contains(true),
-                       "TPPIsSigningIn(true) is posted only once an auth method is resolved")
+        XCTAssertFalse(libraryMock.reportedSignInProgress.contains(.started),
+                       "Sign-in start is reported only once an auth method is resolved")
     }
 
     // R2 — the retry itself: once readiness resolves AND an auth method is
@@ -319,19 +287,17 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
     }
 
     // R4 — readiness resolving to `.detailsFailed` clears the spinner rather
-    // than leaving the UI hanging: TPPIsSigningIn(false) is posted and no
-    // request is made. Targets a hand-written mutant that removes the catch-arm post.
+    // than leaving the UI hanging: sign-in finished is reported and no
+    // request is made. Targets a hand-written mutant that removes the catch-arm report.
     func test_logIn_whenReadinessFails_announcesNotSigningIn_andFiresNoRequest() async {
-        let recorder = SigningInNotificationRecorder()
-        defer { recorder.stop() }
         setLoading()
 
         await businessLogic.logIn()
         setFailed()
 
-        await awaitConditionAsync(timeout: 5.0) { recorder.payloads.contains(false) }
-        XCTAssertTrue(recorder.payloads.contains(false),
-                      "A failed readiness gate must post TPPIsSigningIn(false) so the sign-in UI stops spinning")
+        await awaitConditionAsync(timeout: 5.0) { self.libraryMock.reportedSignInProgress.contains(.finished) }
+        XCTAssertTrue(libraryMock.reportedSignInProgress.contains(.finished),
+                      "A failed readiness gate must report sign-in finished so the sign-in UI stops spinning")
         XCTAssertTrue(networkExecutor.executedRequestURLs.isEmpty,
                       "No credential request may be issued when the auth document never loaded")
     }
@@ -345,12 +311,10 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
     // consequence: a SECOND tap that once more arrives before details load
     // must still be honored when readiness finally resolves.
     func test_logIn_afterReadinessFailure_aSubsequentDeferredTapStillSignsIn() async {
-        let recorder = SigningInNotificationRecorder()
-        defer { recorder.stop() }
         setLoading()
         await businessLogic.logIn()
         setFailed()
-        await awaitConditionAsync(timeout: 5.0) { recorder.payloads.contains(false) }
+        await awaitConditionAsync(timeout: 5.0) { self.libraryMock.reportedSignInProgress.contains(.finished) }
 
         // Second tap, again while not loaded — this can only be deferred if
         // the guard was released by the first attempt's failure arm.
@@ -368,7 +332,7 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
     // R6 — readiness resolves, but `selectedAuthentication` is STILL nil
     // because the NYPL fixture advertises more than one auth method and the
     // getter deliberately returns nil in that case. Current behaviour: give
-    // up quietly with TPPIsSigningIn(false), no request, no error surfaced
+    // up quietly with sign-in finished, no request, no error surfaced
     // to the delegate.
     //
     // SUSPECT (reported, not fixed here): the patron sees the spinner stop
@@ -376,16 +340,14 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
     // multi-auth library where `selectPreferredAuthIfNeeded()` found neither
     // SAML nor OIDC, a sign-in tap is a silent dead end.
     func test_logIn_whenAuthStillUnresolvedAfterLoad_givesUpQuietly() async {
-        let recorder = SigningInNotificationRecorder()
-        defer { recorder.stop() }
         setLoading()
 
         await businessLogic.logIn()                       // no selectedAuthentication set
         setLoaded()
 
-        await awaitConditionAsync(timeout: 5.0) { recorder.payloads.contains(false) }
-        XCTAssertTrue(recorder.payloads.contains(false),
-                      "The give-up path posts TPPIsSigningIn(false)")
+        await awaitConditionAsync(timeout: 5.0) { self.libraryMock.reportedSignInProgress.contains(.finished) }
+        XCTAssertTrue(libraryMock.reportedSignInProgress.contains(.finished),
+                      "The give-up path reports sign-in finished")
         XCTAssertTrue(networkExecutor.executedRequestURLs.isEmpty,
                       "No request when the multi-auth fixture leaves selectedAuthentication nil")
         XCTAssertEqual(uiDelegate.validationErrorCount, 0,
@@ -406,8 +368,6 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
             drmAuthorizer: TPPDRMAuthorizingMock())
-        let recorder = SigningInNotificationRecorder()
-        defer { recorder.stop() }
 
         await orphan.logIn()
         for _ in 0..<5 { await Task.yield() }
@@ -415,7 +375,7 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
         XCTAssertNil(orphan.libraryAccount, "fixture precondition: the empty UUID resolves to no account")
         XCTAssertTrue(networkExecutor.executedRequestURLs.isEmpty,
                       "No account means no request")
-        XCTAssertTrue(recorder.payloads.isEmpty,
+        XCTAssertTrue(libraryMock.reportedSignInProgress.isEmpty,
                       "No account means the sign-in state is never announced in either direction")
     }
 
@@ -742,15 +702,13 @@ final class SignInCredentialSideEffectCharacterizationTests: SignInFlowFixture {
     }
 
     // S3 — the "signing in" announcement is closed out after persistence, so
-    // observers of TPPIsSigningIn (spinner, tab badges) settle.
+    // sign-in progress listeners settle.
     func test_updateUserAccount_announcesSigningInFinished() {
-        let recorder = SigningInNotificationRecorder()
-        defer { recorder.stop() }
 
         persistBasic()
 
-        XCTAssertEqual(recorder.payloads.last, false,
-                       "The last TPPIsSigningIn post after a successful persist must be false")
+        XCTAssertEqual(libraryMock.reportedSignInProgress.last, .finished,
+                       "The last sign-in progress report after a successful persist must be .finished")
     }
 
     // S4 — after the canonical store (TPPUserAccount) has the credentials,

@@ -831,6 +831,7 @@ final class NetworkQueueTokenRefreshTests: XCTestCase {
 /// Two libraries with token auth, plus two that cannot refresh. Each has its
 /// own `TPPUserAccountMock`, so reading the wrong library is observable.
 private final class TwoLibraries: NSObject, TPPLibraryAccountsProvider, @unchecked Sendable {
+    func reportSignInProgress(_ progress: SignInProgress) {}
     let uuidA = "urn:uuid:queue-library-a"
     let uuidB = "urn:uuid:queue-library-b"
     let uuidNoAuth = "urn:uuid:queue-library-no-auth"

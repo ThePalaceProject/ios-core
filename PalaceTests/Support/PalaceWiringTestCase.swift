@@ -260,6 +260,7 @@ class PalaceWiringTestCase: PalaceTestCase {
     nonisolated func makeFreshAccountsManager(
         defaults: UserDefaults,
         registryCache: any AccountRegistryCaching,
+        crawlScheduler: CrawlTaskScheduler = .production,
         processEnvironment: [String: String] = ProcessInfo.processInfo.environment,
         _ configure: (AccountsManager) -> Void = { _ in }
     ) -> AccountsManager {
@@ -268,6 +269,7 @@ class PalaceWiringTestCase: PalaceTestCase {
         #endif
         let manager = AccountsManager(
             defaults: defaults,
+            crawlScheduler: crawlScheduler,
             registryCache: registryCache,
             processEnvironment: processEnvironment
         )

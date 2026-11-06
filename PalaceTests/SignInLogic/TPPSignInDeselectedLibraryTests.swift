@@ -189,6 +189,7 @@ final class TPPSignInDeselectedLibraryTests: XCTestCase {
 /// Serves one account for every UUID, so a test can bind the business logic to
 /// a library whose authentication document it chose.
 private final class SingleDocumentAccountsProviderMock: NSObject, TPPLibraryAccountsProvider, @unchecked Sendable {
+    func reportSignInProgress(_ progress: SignInProgress) {}
     private let account: Account
 
     init(account: Account) {

@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import os
 import FirebaseCore
 import FirebaseAnalytics
@@ -19,20 +20,14 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
     var window: UIWindow?
     let audiobookLifecycleManager = AudiobookLifecycleManager()
-    var isSigningIn = false
 
-    // PP-4329: state for the first-run library picker. Without these,
-    // presentFirstRunFlowIfNeeded leaked a new .TPPCatalogDidLoad observer
-    // on every recursive call (AccountsManager posts that notification
-    // from 8 sites — main catalog load, fallback GET, beta/prod hash
-    // switch, etc.). Each observer re-invoked presentFirstRunFlowIfNeeded,
-    // which presented another TPPAccountList modal, stacking 2-4 selectors
-    // on a fresh install depending on how many posts fired before the
-    // user picked. The token lets us remove the previous observer before
-    // adding a new one (and after we've successfully gone past the
-    // deferred-load state); the flag prevents re-presentation once a
-    // selector is already on screen.
-    private var firstRunFlowObserver: NSObjectProtocol?
+    // PP-4329: state for the first-run library picker. The catalog-loaded
+    // publisher fires from several load paths, and every listener re-invokes
+    // presentFirstRunFlowIfNeeded, so more than one live listener stacks
+    // library pickers on a fresh install. Holding one subscription and
+    // replacing it keeps a single listener; the flag prevents re-presentation
+    // once a picker is on screen.
+    private var firstRunFlowSubscription: AnyCancellable?
     private var hasPresentedFirstRunFlow = false
 
     /// PP-5070 — when the first pre-configuration attempt of a launch began.
@@ -70,7 +65,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
     /// PP-5070 — armed ONLY when the picker was shown while a managed
     /// configuration was still pending, so a registry that arrives after the
     /// wait expired can still be honoured. Unmanaged installs never arm it.
-    private var managedRegistryRetryObserver: NSObjectProtocol?
+    private var managedRegistryRetrySubscription: AnyCancellable?
 
     // MARK: - Application Lifecycle
 
@@ -225,21 +220,6 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
             // This would prevent iOS from purging downloaded audiobook files
         }
 
-        // `queue: .main` + `Task { @MainActor }`: `signingIn` mutates the
-        // `@MainActor` `isSigningIn` flag. Post can arrive off-main, so hop to the
-        // main actor before touching main-actor state (previously `queue: nil`
-        // fired on the posting thread — a `complete`-mode data race on `isSigningIn`).
-        //
-        // `complete`: snapshot the Sendable `Bool` payload out of the non-Sendable
-        // `Notification` BEFORE the `@MainActor` Task so we don't `send` the whole
-        // notification across the boundary. `signingIn` only ever reads
-        // `notification.object as? Bool`, so this is behavior-preserving.
-        NotificationCenter.default.addObserver(forName: .TPPIsSigningIn, object: nil, queue: .main) { [weak self] notification in
-            let isSigningIn = notification.object as? Bool
-            Task { @MainActor in
-                self?.setSigningIn(isSigningIn)
-            }
-        }
     }
 
     // `nonisolated`: called only from the nonisolated `performBackgroundStartupTasks`;
@@ -528,18 +508,6 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         }
     }
 
-    // MARK: - User Sign-in Tracking
-
-    /// Updates the `@MainActor` `isSigningIn` flag from the Sendable `Bool`
-    /// snapshotted out of the `.TPPIsSigningIn` notification's `object` at the
-    /// observer boundary (see `addObserver` above). Taking the `Bool` rather than
-    /// the `Notification` keeps a non-Sendable value off the `@MainActor` hop.
-    func setSigningIn(_ isSigningIn: Bool?) {
-        if let isSigningIn {
-            self.isSigningIn = isSigningIn
-        }
-    }
-
     // MARK: - UI Configuration
 
     private func setupWindow() {
@@ -641,10 +609,10 @@ extension TPPAppDelegate {
             deferFirstRunFlowUntilRegistryChanges()
             return
         case .nothingToDo:
-            clearFirstRunFlowObserver()
+            clearFirstRunFlowSubscription()
             return
         case .presentPicker:
-            clearFirstRunFlowObserver()
+            clearFirstRunFlowSubscription()
             presentLibraryPicker(accountsManager: accountsManager)
             return
         }
@@ -688,11 +656,8 @@ extension TPPAppDelegate {
         return step
     }
 
-    private func clearFirstRunFlowObserver() {
-        if let token = firstRunFlowObserver {
-            NotificationCenter.default.removeObserver(token)
-            firstRunFlowObserver = nil
-        }
+    private func clearFirstRunFlowSubscription() {
+        firstRunFlowSubscription = nil
     }
 
     /// The pre-existing wait for the library list, unchanged in behaviour.
@@ -701,22 +666,16 @@ extension TPPAppDelegate {
     }
 
     private func legacyDeferFirstRunFlow(accountsManager: AccountsManager) {
-        // PP-4329: remove the previous deferred observer (if any) before adding
-        // a new one — otherwise observers accumulate every time this method
-        // re-enters itself, which is how a fresh install on iOS 26.4.2 ended up
-        // with four stacked TPPAccountList modals.
-        clearFirstRunFlowObserver()
-        firstRunFlowObserver = NotificationCenter.default.addObserver(
-            forName: .TPPCatalogDidLoad,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            // Registered with `queue: .main`; `assumeIsolated` to call the
-            // `@MainActor` `presentFirstRunFlowIfNeeded()` without a re-hop.
-            MainActor.assumeIsolated {
-                self?.presentFirstRunFlowIfNeeded()
+        // PP-4329: replace, never add, so re-entering this method keeps a
+        // single listener (four stacked library pickers on iOS 26.4.2).
+        firstRunFlowSubscription = accountsManager.catalogLoadedPublisher
+            .sink { [weak self] in
+                // The publisher delivers on main; `assumeIsolated` calls the
+                // `@MainActor` method without a re-hop.
+                MainActor.assumeIsolated {
+                    self?.presentFirstRunFlowIfNeeded()
+                }
             }
-        }
         accountsManager.loadCatalogs(completion: nil)
     }
 
@@ -766,32 +725,26 @@ extension TPPAppDelegate {
     /// unmanaged install never registers this observer at all. Disarms itself
     /// the moment it succeeds.
     private func retryManagedPreconfigurationWhenRegistryChanges() {
-        guard managedRegistryRetryObserver == nil else { return }
+        guard managedRegistryRetrySubscription == nil else { return }
         guard managedLibraryConfigurationEnabled else {
             return
         }
-        managedRegistryRetryObserver = NotificationCenter.default.addObserver(
-            forName: .TPPCatalogDidLoad,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                let decision = ManagedLibraryPreconfigurator.production().applyIfNeeded()
-                guard case .apply = decision else { return }
-                self.disarmManagedRegistryRetry()
-                guard let picker = self.presentedFirstRunPicker else { return }
-                self.presentedFirstRunPicker = nil
-                picker.dismiss(animated: true)
+        managedRegistryRetrySubscription = AppContainer.production().accountsManager.catalogLoadedPublisher
+            .sink { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    let decision = ManagedLibraryPreconfigurator.production().applyIfNeeded()
+                    guard case .apply = decision else { return }
+                    self.disarmManagedRegistryRetry()
+                    guard let picker = self.presentedFirstRunPicker else { return }
+                    self.presentedFirstRunPicker = nil
+                    picker.dismiss(animated: true)
+                }
             }
-        }
     }
 
     private func disarmManagedRegistryRetry() {
-        if let token = managedRegistryRetryObserver {
-            NotificationCenter.default.removeObserver(token)
-        }
-        managedRegistryRetryObserver = nil
+        managedRegistryRetrySubscription = nil
     }
 
     /// PP-5070 — starts watching for a managed configuration that arrives after
@@ -856,24 +809,17 @@ extension TPPAppDelegate {
         }
     }
 
-    /// Re-arms the `.TPPCatalogDidLoad` observer so `presentFirstRunFlowIfNeeded`
+    /// Re-arms the catalog-loaded listener so `presentFirstRunFlowIfNeeded`
     /// runs again when the registry changes, and schedules one deadline check so
     /// a device whose network never delivers a further load still reaches the
     /// picker instead of sitting on an empty catalog forever.
     private func deferFirstRunFlowUntilRegistryChanges() {
-        if let token = firstRunFlowObserver {
-            NotificationCenter.default.removeObserver(token)
-            firstRunFlowObserver = nil
-        }
-        firstRunFlowObserver = NotificationCenter.default.addObserver(
-            forName: .TPPCatalogDidLoad,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            MainActor.assumeIsolated {
-                self?.presentFirstRunFlowIfNeeded()
+        firstRunFlowSubscription = AppContainer.production().accountsManager.catalogLoadedPublisher
+            .sink { [weak self] in
+                MainActor.assumeIsolated {
+                    self?.presentFirstRunFlowIfNeeded()
+                }
             }
-        }
 
         guard !hasScheduledManagedPreconfigurationDeadline else { return }
         hasScheduledManagedPreconfigurationDeadline = true

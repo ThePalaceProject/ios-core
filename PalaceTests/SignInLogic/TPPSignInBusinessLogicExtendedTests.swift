@@ -1124,18 +1124,12 @@ final class TPPSignInErrorHandlingTests: XCTestCase {
         networkExecutor.shouldFail = true
         networkExecutor.errorStatusCode = 401
 
-        var signInNotificationPosted = false
-        let observer = NotificationCenter.default.addObserver(
-            forName: .TPPIsSigningIn, object: nil, queue: nil
-        ) { _ in signInNotificationPosted = true }
-        defer { NotificationCenter.default.removeObserver(observer) }
-
         await businessLogic.validateCredentials()
 
         XCTAssertFalse(businessLogic.isSignedIn(),
                        "a rejected validation must not leave a signed-in account")
-        XCTAssertFalse(signInNotificationPosted,
-                       "a rejected validation must not announce a sign-in")
+        XCTAssertEqual(libraryAccountMock.reportedSignInProgress, [],
+                       "a rejected validation must not report sign-in progress")
     }
 
     /// The companion case, and the reason the test above names the server. A CM

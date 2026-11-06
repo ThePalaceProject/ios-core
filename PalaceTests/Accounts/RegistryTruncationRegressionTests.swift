@@ -121,7 +121,8 @@ final class RegistryTruncationRegressionTests: PalaceWiringTestCase {
             driveCurrentAccountAuthDoc: {},
             fetchAuthDocumentWithStateMachine: { _, completion in completion(true) },
             currentLibraryAccountProvider: { nil },
-            announceCurrentLibraryRefresh: {}
+            announceCurrentLibraryRefresh: {},
+            announceCatalogLoaded: {}
         )
         loader.snapshotResourceResolver = StubBundleResolver(url: bundledURL)
         loader.crawlerFetcher = fetcher
@@ -355,7 +356,8 @@ final class RegistryTruncationRegressionTests: PalaceWiringTestCase {
             driveCurrentAccountAuthDoc: {},
             fetchAuthDocumentWithStateMachine: { _, completion in completion(true) },
             currentLibraryAccountProvider: { nil },
-            announceCurrentLibraryRefresh: { refreshRequests.increment() }
+            announceCurrentLibraryRefresh: { refreshRequests.increment() },
+            announceCatalogLoaded: {}
         )
 
         // A lossy partial write: one library, declaring far more, over a resident three.

@@ -144,10 +144,8 @@ final class NSNotificationTPPTests: XCTestCase {
     // SRS: Notification.Name constants exist
     func testNotificationNames_exist() {
         XCTAssertEqual(Notification.Name.TPPSettingsDidChange.rawValue, "TPPSettingsDidChange")
-        XCTAssertEqual(Notification.Name.TPPCatalogDidLoad.rawValue, "TPPCatalogDidLoad")
         XCTAssertEqual(Notification.Name.TPPUseBetaDidChange.rawValue, "TPPUseBetaDidChange")
         XCTAssertEqual(Notification.Name.TPPDidSignOut.rawValue, "TPPDidSignOut")
-        XCTAssertEqual(Notification.Name.TPPIsSigningIn.rawValue, "TPPIsSigningIn")
         // .TPPBookRegistryStateDidChange was removed with the registry
         // dual-write — its lifecycle/per-book signal moved to the
         // registry's Combine publishers, so there is no longer a name to assert.

@@ -207,42 +207,6 @@ final class AccountsManagerTests: XCTestCase {
         }
     }
 
-    // MARK: - Catalog Loading Notification Tests
-
-    func testCatalogDidLoad_NotificationExists() {
-        // Verify the notification name constant
-        XCTAssertEqual(
-            Notification.Name.TPPCatalogDidLoad.rawValue,
-            "TPPCatalogDidLoad"
-        )
-        XCTAssertFalse(Notification.Name.TPPCatalogDidLoad.rawValue.isEmpty)
-    }
-
-    func testLoadCatalogs_PostsCatalogDidLoadNotification() {
-        // Given: An expectation for the notification
-        // Test that the notification name exists and is correct
-        XCTAssertEqual(Notification.Name.TPPCatalogDidLoad.rawValue, "TPPCatalogDidLoad")
-
-        // Test that we can observe the notification (without actually triggering network)
-        var notificationReceived = false
-        let observer = NotificationCenter.default.addObserver(
-            forName: .TPPCatalogDidLoad,
-            object: nil,
-            queue: nil
-        ) { _ in
-            notificationReceived = true
-        }
-
-        // Post the notification manually to verify observation works
-        NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
-
-        // Verify the notification was received
-        XCTAssertTrue(notificationReceived, "Should receive the catalog notification")
-
-        // Clean up
-        NotificationCenter.default.removeObserver(observer)
-    }
-
     // MARK: - Mock Library Provider Integration Tests
 
     func testMockLibraryAccountProvider_CurrentAccount_ReturnsTPPAccount() {
@@ -505,34 +469,6 @@ final class AccountsManagerTests: XCTestCase {
         // The same manager accessed twice must return the same ageCheck instance (not create new ones)
         XCTAssertTrue(manager.ageCheck === AppContainer.production().accountsManager.ageCheck,
                       "ageCheck must be the same instance across multiple accesses to shared")
-    }
-}
-
-// MARK: - Combine Publisher Tests
-
-extension AccountsManagerTests {
-
-    func testCatalogDidLoadNotification_CanBeObservedWithCombine() {
-        // Given: A Combine publisher for catalog load notification
-        let expectation = expectation(description: "Combine catalog notification received")
-        var receivedCount = 0
-
-        NotificationCenter.default.publisher(for: .TPPCatalogDidLoad)
-            .first()
-            .sink { _ in
-                receivedCount += 1
-                expectation.fulfill()
-            }
-            .store(in: &cancellables)
-
-        // When: Posting notification twice (first() should deliver only one)
-        NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
-        NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
-
-        // Then: Should be received exactly once via Combine's .first() operator
-        waitForExpectations(timeout: 1.0)
-        XCTAssertEqual(receivedCount, 1,
-                       "Combine publisher with .first() must deliver exactly one notification")
     }
 }
 

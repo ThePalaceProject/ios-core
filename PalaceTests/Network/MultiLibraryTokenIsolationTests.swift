@@ -20,6 +20,7 @@ import PalaceCatalog
 /// request the executor builds while library B is current), the
 /// production isolation contract is broken.
 private final class TwoLibraryAccountsProviderMock: NSObject, TPPLibraryAccountsProvider {
+    func reportSignInProgress(_ progress: SignInProgress) {}
     let uuidA = "urn:uuid:library-aaa"
     let uuidB = "urn:uuid:library-bbb"
 

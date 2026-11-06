@@ -23,6 +23,9 @@ let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
     var tppAccountUUID: String { get }
     var currentAccountId: String? { get }
     func account(_ uuid: String) -> Account?
+    /// Announces where the current sign-in attempt is. Required, so every
+    /// provider a sign-in can run against decides what to do with it.
+    func reportSignInProgress(_ progress: SignInProgress)
 }
 
 /// Lock-backed holder for `AccountsManager`'s test-only `Bool` flags so they
@@ -82,6 +85,10 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
     let ageCheck: TPPAgeCheckVerifying
     /// Backs `currentLibraryChangePublisher`. The `currentAccount` setter sends `.selected`.
     let currentLibraryChanges = CurrentLibraryChangeBroadcaster()
+    /// Backs `catalogLoadedPublisher`. The registry loader sends after each catalog load.
+    let catalogLoads = MainThreadBroadcaster<Void>()
+    /// Backs `signInProgressPublisher`.
+    let signInProgress = MainThreadBroadcaster<SignInProgress>()
     private let settings: TPPSettings
 
     /// `UserDefaults` backing store for the persisted
@@ -132,7 +139,8 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
             self.fetchAuthDocumentWithStateMachine(for: account, completion: completion)
         },
         currentLibraryAccountProvider: { [weak self] in self },
-        announceCurrentLibraryRefresh: { [weak self] in self?.requestCurrentLibraryRefresh() }
+        announceCurrentLibraryRefresh: { [weak self] in self?.requestCurrentLibraryRefresh() },
+        announceCatalogLoaded: { [weak self] in self?.catalogLoads.send(()) }
     )
     /// On-disk catalog cache (`DiskAccountRegistryCache` by default).
     private let registryCache: any AccountRegistryCaching
