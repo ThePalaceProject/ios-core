@@ -274,8 +274,12 @@ final class ActivityPolicyTests: XCTestCase {
 
     // MARK: - AppContainer
 
+    /// The main scene and CarPlay resolve the policy through separate container
+    /// reads; both must reach the same instance.
     func testAppContainer_handsOutOnePolicyPerProcess() {
-        let container = AppContainer.production()
-        XCTAssertTrue(container.activityPolicy === AppContainer.production().activityPolicy)
+        let first = makeTestAppContainer()
+        let second = makeTestAppContainer()
+
+        XCTAssertTrue(first.activityPolicy === second.activityPolicy)
     }
 }
