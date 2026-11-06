@@ -9,6 +9,7 @@
 import UIKit
 import SwiftUI
 import PalaceLogging
+import PalaceBookRegistry
 
 /// Scene delegate for the main app window.
 /// Required when using UIApplicationSceneManifest for CarPlay support.
@@ -33,6 +34,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             registry: { AppContainer.production().bookRegistry },
             updateBadge: { NotificationService.updateAppIconBadge(heldBooks: $0) }
         ))
+
+    /// Registry whose coalesced EPUB positions are written on background entry
+    /// (PP-5507). UIKit reports background entry here, not to the app delegate.
+    var positionRegistry: () -> TPPBookRegistryProvider = { AppContainer.production().bookRegistry }
 
     private static let isRunningUnderXCTest =
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
@@ -113,7 +118,9 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {
-        // Save data, release resources, store scene state
+        // A suspended app can be ended without `applicationWillTerminate`, so
+        // write positions still inside their 15 s interval now.
+        positionRegistry().flushPendingPositions()
     }
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {

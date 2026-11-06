@@ -144,6 +144,24 @@ final class RegistryPositionCoalescingTests: XCTestCase {
 
     // MARK: - Flush
 
+    /// The app is scene-based, so background entry reaches `SceneDelegate`, not
+    /// `applicationDidEnterBackground`; a pending page turn must be on disk after it.
+    func testSceneDidEnterBackground_PendingPosition_IsOnDisk() async throws {
+        await fixture.addBooks(["a1"])
+        await setPosition("p0", for: "a1", .coalesced)
+        fixture.clock.advance(1)
+        await setPosition("p1", for: "a1", .coalesced)
+        XCTAssertEqual(fixture.persistedLocations(accountA)?["a1"], "p0", "premise: p1 is pending")
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.first)
+        let sceneDelegate = SceneDelegate()
+        let registry = registry
+        sceneDelegate.positionRegistry = { registry }
+
+        sceneDelegate.sceneDidEnterBackground(scene)
+
+        XCTAssertEqual(fixture.persistedLocations(accountA)?["a1"], "p1")
+    }
+
     func testFlush_PendingPosition_IsOnDiskWhenFlushReturns() async {
         await fixture.addBooks(["a1"])
         await setPosition("p0", for: "a1", .coalesced)
