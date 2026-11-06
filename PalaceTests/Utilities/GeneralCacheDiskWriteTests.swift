@@ -79,6 +79,9 @@ final class GeneralCacheDiskWriteTests: XCTestCase {
         cache.clearMemory()
         XCTAssertNil(cache.get(for: "key"))
         XCTAssertFalse(FileManager.default.fileExists(atPath: cache.fileURL(for: "key").path))
+        let directory = cache.fileURL(for: "key").deletingLastPathComponent()
+        let leftovers = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+        XCTAssertEqual(leftovers.filter { $0.hasPrefix(".staged-") }, [], "an unpublished staging file must be deleted")
     }
 
     /// When an older write finishes after a newer one, the newer value stays.
@@ -144,6 +147,41 @@ final class GeneralCacheDiskWriteTests: XCTestCase {
         XCTAssertTrue(cache.hasUnexpiredDiskEntry(for: "fresh"))
         XCTAssertFalse(cache.hasUnexpiredDiskEntry(for: "stale"))
         XCTAssertFalse(cache.hasUnexpiredDiskEntry(for: "missing"))
+    }
+
+    /// A key whose write is still in progress counts as on disk, so a second
+    /// store does not encode and write it again.
+    func testHasUnexpiredDiskEntry_whileTheWriteIsInProgress_isTrue() throws {
+        let cache = try XCTUnwrap(cache)
+        let slow = Data("slow".utf8)
+        gate.hold(slow)
+        let writeDone = expectation(description: "set returns")
+        DispatchQueue.global().async {
+            cache.set(slow, for: "key", expiresIn: 3600)
+            writeDone.fulfill()
+        }
+        XCTAssertTrue(gate.waitUntilEntered(timeout: 10))
+
+        let inProgress = cache.hasUnexpiredDiskEntry(for: "key")
+        gate.openAll()
+        wait(for: [writeDone], timeout: 10) // STARVE-001-OK: bounded join on a background write
+
+        XCTAssertTrue(inProgress)
+    }
+
+    func testHasUnexpiredDiskEntry_byMode() {
+        let diskOnly = GeneralCache<String, Data>(cacheName: "GeneralCacheDiskOnly-\(UUID().uuidString)", mode: .diskOnly)
+        let memoryOnly = GeneralCache<String, Data>(cacheName: "GeneralCacheMemoryOnly-\(UUID().uuidString)", mode: .memoryOnly)
+        defer {
+            diskOnly.clear()
+            memoryOnly.clear()
+        }
+
+        diskOnly.set(Data("d".utf8), for: "key", expiresIn: 3600)
+        memoryOnly.set(Data("m".utf8), for: "key", expiresIn: 3600)
+
+        XCTAssertTrue(diskOnly.hasUnexpiredDiskEntry(for: "key"))
+        XCTAssertFalse(memoryOnly.hasUnexpiredDiskEntry(for: "key"), "a memory-only cache has nothing on disk")
     }
 }
 
