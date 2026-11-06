@@ -70,6 +70,8 @@ final class AccountRegistryLoader: @unchecked Sendable {
     /// COPPA age-check needs the owning manager as a `TPPCurrentLibraryAccountProvider`
     /// (the loader is not that type).
     private let currentLibraryAccountProvider: () -> TPPCurrentLibraryAccountProvider?
+    /// Asks current-library listeners to reload after a load applies its feed.
+    private let announceCurrentLibraryRefresh: () -> Void
 
     /// Resolves the build-time bundled registry snapshot resource. Production binds
     /// `Bundle.main`; tests inject a stub to observe the first-launch bundled decode's
@@ -137,7 +139,8 @@ final class AccountRegistryLoader: @unchecked Sendable {
         currentUserAccountProvider: @escaping () -> TPPUserAccount?,
         driveCurrentAccountAuthDoc: @escaping () -> Void,
         fetchAuthDocumentWithStateMachine: @escaping (Account, @escaping (Bool) -> Void) -> Void,
-        currentLibraryAccountProvider: @escaping () -> TPPCurrentLibraryAccountProvider?
+        currentLibraryAccountProvider: @escaping () -> TPPCurrentLibraryAccountProvider?,
+        announceCurrentLibraryRefresh: @escaping () -> Void
     ) {
         self.registryCache = registryCache
         self.registryStore = registryStore
@@ -155,6 +158,7 @@ final class AccountRegistryLoader: @unchecked Sendable {
         self.driveCurrentAccountAuthDoc = driveCurrentAccountAuthDoc
         self.fetchAuthDocumentWithStateMachineImpl = fetchAuthDocumentWithStateMachine
         self.currentLibraryAccountProvider = currentLibraryAccountProvider
+        self.announceCurrentLibraryRefresh = announceCurrentLibraryRefresh
     }
 
     // MARK: - Owned-task spawning + join seams
@@ -930,7 +934,7 @@ final class AccountRegistryLoader: @unchecked Sendable {
                 MainActor.assumeIsolated {
                     UIApplication.shared.delegate?.window??.tintColor = TPPConfiguration.mainColor()
                 }
-                NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
+                announceCurrentLibraryRefresh()
                 completionBox.handler(true)
             }
 

@@ -7,6 +7,7 @@
 
 import XCTest
 import Combine
+import PalaceCatalog
 @testable import Palace
 
 @MainActor
@@ -31,6 +32,24 @@ final class FacetViewModelTests: XCTestCase {
     private func makeViewModel(groupName: String, facets: [Facet]) -> FacetViewModel {
         let appContainer = makeTestAppContainer()
         return FacetViewModel(groupName: groupName, facets: facets, accountsManager: appContainer.accountsManager)
+    }
+
+    /// The facet header shows the library its accounts manager reports after
+    /// a change, without waiting for a main-queue hop.
+    func testCurrentLibraryChange_UpdatesAccountFromItsManager() {
+        let appContainer = makeTestAppContainer()
+        let viewModel = FacetViewModel(groupName: "g", facets: [.title], accountsManager: appContainer.accountsManager)
+        let uuid = "urn:uuid:facet-\(UUID().uuidString)"
+        let account = Account(
+            publication: OPDS2Publication(links: [], metadata: .init(id: uuid, title: "Facet"), images: nil),
+            imageCache: MockImageCache()
+        )
+        let restore = appContainer.accountsManager._seedAccountForTesting(account)
+        defer { restore() }
+
+        appContainer.accountsManager.requestCurrentLibraryRefresh()
+
+        XCTAssertEqual(viewModel.currentAccount?.uuid, uuid)
     }
 
     // MARK: - Facet Enum Tests

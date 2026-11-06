@@ -26,8 +26,9 @@ final class AccountsManagerAccountScopeAdapter: AccountScopeProviding, @unchecke
     /// (PP-4129 capture discipline); `currentAccount?.uuid` == `currentAccountId`.
     var currentAccountID: String? { accountsManager.currentAccount?.uuid }
 
+    /// Both a selection and a reload request clear and reload the registry.
     var accountDidChangePublisher: AnyPublisher<Void, Never> {
-        NotificationCenter.default.publisher(for: .TPPCurrentAccountDidChange)
+        accountsManager.currentLibraryChangePublisher
             .map { _ in () }
             .eraseToAnyPublisher()
     }

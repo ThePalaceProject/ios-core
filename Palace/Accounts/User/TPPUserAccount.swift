@@ -188,7 +188,7 @@ private enum StorageKey: String {
                     UIApplication.shared.delegate?.window??.tintColor = TPPConfiguration.mainColor()
 
                     if self.notifyAccountChange {
-                        NotificationCenter.default.post(name: NSNotification.Name.TPPCurrentAccountDidChange, object: nil)
+                        accountsManager.requestCurrentLibraryRefresh()
                     }
 
                     self.notifyAccountChange = true

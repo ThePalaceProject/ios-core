@@ -389,9 +389,7 @@ extension ManagedLibraryApplyDependencies {
             setMainFeedURL: { settings.accountMainFeedURL = $0 },
             selectLibrary: { accountsManager.currentAccount = $0 },
             loadAuthenticationDocument: { $0.loadAuthenticationDocument { _ in } },
-            announceLibraryChanged: {
-                NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
-            }
+            announceLibraryChanged: { accountsManager.requestCurrentLibraryRefresh() }
         )
     }
 }

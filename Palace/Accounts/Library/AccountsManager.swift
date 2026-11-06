@@ -80,6 +80,8 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
     }
 
     let ageCheck: TPPAgeCheckVerifying
+    /// Backs `currentLibraryChangePublisher`. The `currentAccount` setter sends `.selected`.
+    let currentLibraryChanges = CurrentLibraryChangeBroadcaster()
     private let settings: TPPSettings
 
     /// `UserDefaults` backing store for the persisted
@@ -129,7 +131,8 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
             guard let self else { completion(false); return }
             self.fetchAuthDocumentWithStateMachine(for: account, completion: completion)
         },
-        currentLibraryAccountProvider: { [weak self] in self }
+        currentLibraryAccountProvider: { [weak self] in self },
+        announceCurrentLibraryRefresh: { [weak self] in self?.requestCurrentLibraryRefresh() }
     )
     /// On-disk catalog cache (`DiskAccountRegistryCache` by default).
     private let registryCache: any AccountRegistryCaching
@@ -331,19 +334,6 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
         registryLoader.preloadAccountsFromDiskCacheSync()
     }
 
-    // MARK: – Account index (static shim)
-
-    /// Forwards to `AccountRegistryStore.buildAccountIndex`; kept for
-    /// `AccountsManagerAccountIndexTests`.
-    static func buildAccountIndex(_ sets: [String: [Account]]) -> [String: Account] {
-        AccountRegistryStore.buildAccountIndex(sets)
-    }
-
-    /// Forwards to `AccountRegistryLoader`; kept for `AccountsManagerLaunchSnapshotTests`.
-    static func carveSlimFeed(fromFullCatalogData data: Data, keepUUIDs: Set<String>) -> Data? {
-        AccountRegistryLoader.carveSlimFeed(fromFullCatalogData: data, keepUUIDs: keepUUIDs)
-    }
-
     // MARK: - Account Retrieval
     var currentAccount: Account? {
         get {
@@ -416,7 +406,7 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
             // the new current account; otherwise the next cold launch resolves
             // `currentAccount` nil until the full catalog loads.
             registryLoader.refreshSlimLaunchSnapshotOffMain(hash: registryStore.currentHash)
-            NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
+            currentLibraryChanges.send(.selected)
         }
     }
 

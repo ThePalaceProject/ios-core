@@ -18,16 +18,20 @@ final class BookCellModelCacheInvalidationTests: XCTestCase {
     var mockImageCache: MockImageCache!
     var cache: BookCellModelCache!
     var cancellables: Set<AnyCancellable>!
+    /// The cache's own manager, so a library change sent here reaches only
+    /// this cache and not the host app's listeners.
+    var accountsManager: AccountsManager!
 
     override func setUp() {
         super.setUp()
         mockRegistry = TPPBookRegistryMock()
         mockImageCache = MockImageCache()
+        accountsManager = makeTestAppContainer().accountsManager
         cache = BookCellModelCache(
             imageCache: mockImageCache,
             bookRegistry: mockRegistry,
             downloadCenter: AppContainer.production().downloadCenter,
-            accountsManager: AppContainer.production().accountsManager,
+            accountsManager: accountsManager,
             samplePreviewManager: AppContainer.production().samplePreviewManager,
             readerService: AppContainer.production().readerService
         )
@@ -38,6 +42,7 @@ final class BookCellModelCacheInvalidationTests: XCTestCase {
         cache.clear()
         cancellables = nil
         cache = nil
+        accountsManager = nil
         mockRegistry = nil
         mockImageCache = nil
         super.tearDown()
@@ -188,46 +193,33 @@ final class BookCellModelCacheInvalidationTests: XCTestCase {
 
     // MARK: - Off-main account-change regression (Swift 6 checkIsolated SIGTRAP)
 
-    /// Regression for the wandering CI test-host crash. `.TPPCurrentAccountDidChange`
-    /// is posted from whatever thread performs an account switch — often OFF-MAIN
-    /// (sign-in / account-switch completions fire on the URLSession delegate queue
-    /// because `TPPNetworkExecutor` uses `delegateQueue: nil`). `BookCellModelCache`
-    /// is `@MainActor` and its account-change handler mutates main-actor
-    /// `cache`/`accessOrder`. Before the `.receive(on: DispatchQueue.main)` fix on
-    /// the observer, an off-main post delivered that handler OFF-MAIN → Swift 6
-    /// `swift_task_checkIsolated` SIGTRAP → the whole sim-clone process died,
-    /// surfacing as an innocent `(0.000s)` collateral failure elsewhere.
-    ///
-    /// This drives the exact scenario (post off-main) and asserts the cache was
-    /// cleared on main — a NEW model instance proves the `@MainActor` handler ran
-    /// to completion instead of trapping. With the pre-fix bare `.sink` this test
-    /// would crash the host rather than fail.
+    /// A library change sent off the main thread clears the `@MainActor` cache
+    /// on main. Running the handler off main traps under Swift 6
+    /// (`swift_task_checkIsolated`) and takes the test host down. A NEW model
+    /// instance proves the handler ran to completion.
     func testAccountChange_postedOffMain_clearsCacheOnMain_withoutTrapping() async {
         let book = createTestBook()
         mockRegistry.addBook(book, state: .downloadSuccessful)
         let modelBefore = cache.model(for: book)
 
-        // Post from a background thread — the off-main crash scenario. `async`
-        // (NOT `sync`, which runs on the calling/main thread) guarantees off-main;
-        // the continuation resumes only after the post has been delivered into the
-        // Combine subscription (and the `.receive(on: .main)` hop enqueued).
+        // `async`, not `sync`: `sync` runs the block on the calling (main) thread.
+        let manager: AccountsManager = accountsManager
         let bg = DispatchQueue(label: "regression.offmain.accountchange")
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             bg.async {
-                XCTAssertFalse(Thread.isMainThread, "precondition: the post must be off-main")
-                NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
+                XCTAssertFalse(Thread.isMainThread, "precondition: the send must be off-main")
+                manager.requestCurrentLibraryRefresh()
                 cont.resume()
             }
         }
 
-        // The `.receive(on: .main)` block was enqueued during the sync post above,
-        // so subsequent main hops run strictly after it (FIFO) — a deterministic
-        // drain, not a wall-clock poll.
-        await Task { @MainActor in }.value
-        await Task { @MainActor in }.value
+        // Two main-queue hops follow the send: the broadcaster's and the cache's
+        // own `.receive(on:)`. Each drain runs after everything already queued.
+        await drainMainQueueAsync()
+        await drainMainQueueAsync()
 
         let modelAfter = cache.model(for: book)
         XCTAssertFalse(modelBefore === modelAfter,
-                       "an account change posted off-main must clear the cache on main; a new model proves the @MainActor handler ran without trapping")
+                       "a library change sent off-main must clear the cache on main; a new model proves the @MainActor handler ran without trapping")
     }
 }

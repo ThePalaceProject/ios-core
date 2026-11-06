@@ -18,11 +18,8 @@ final class BookCellModelProcessingStateTests: XCTestCase {
     private var mockRegistry: TPPBookRegistryMock!
     private var mockImageCache: MockImageCache!
     private var mockReachability: MockReachability!
-    /// ONE container for the suite, not one per model. Each
-    /// `makeTestAppContainer()` builds an `AccountsManager`, and an extra
-    /// `AccountsManager` is an extra source of `.TPPCurrentAccountDidChange`
-    /// posts outliving this suite — the shape `AccountsManagerTests`'
-    /// observer-count assertions read as a spurious second notification.
+    /// ONE container for the suite, not one per model: each
+    /// `makeTestAppContainer()` builds an `AccountsManager` that outlives it.
     private var container: AppContainer!
 
     override func setUp() {

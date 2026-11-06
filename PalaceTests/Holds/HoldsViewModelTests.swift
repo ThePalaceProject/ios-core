@@ -140,6 +140,49 @@ final class HoldsViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.isLoading)
     }
 
+    /// Without an injected publisher, Holds resets on its accounts manager's
+    /// library changes, so the new library's first sync shows the placeholder
+    /// (PP-5468).
+    func testDefaultAccountChangeSource_IsTheAccountsManager() async {
+        let viewModel = HoldsViewModel(
+            bookRegistry: mockRegistry,
+            accountsManager: appContainer.accountsManager,
+            settings: TPPSettings(),
+            debugSettings: appContainer.debugSettings,
+            debounceInterval: 0
+        )
+        mockRegistry.sendSyncEvent(.ended)
+        await drainMainQueueAsync()
+        await viewModel._awaitRefreshForTesting()
+
+        appContainer.accountsManager.requestCurrentLibraryRefresh()
+        await drainMainQueueAsync()
+        mockRegistry.sendSyncEvent(.began)
+        await drainMainQueueAsync()
+
+        XCTAssertTrue(viewModel.isLoading)
+    }
+
+    /// Picking a library from Holds selects it, then asks listeners to reload
+    /// once its authentication document load has started.
+    func testLoadAccount_AnnouncesSelectionThenRefresh() {
+        let viewModel = createViewModel()
+        var received: [CurrentLibraryChange] = []
+        appContainer.accountsManager.currentLibraryChangePublisher
+            .sink { received.append($0) }
+            .store(in: &cancellables)
+        let uuid = "urn:uuid:holds-load-\(UUID().uuidString)"
+        let account = Account(
+            publication: OPDS2Publication(links: [], metadata: .init(id: uuid, title: "Holds load"), images: nil),
+            imageCache: MockImageCache()
+        )
+
+        viewModel.loadAccount(account)
+
+        XCTAssertEqual(received, [.selected, .refreshRequested])
+        XCTAssertEqual(appContainer.accountsManager.currentAccountId, uuid)
+    }
+
     /// The registry re-publishes its records without a sync (a library switch
     /// clears them). That must not count as an answered sync, or the new
     /// library's first sync would show an empty state instead of the

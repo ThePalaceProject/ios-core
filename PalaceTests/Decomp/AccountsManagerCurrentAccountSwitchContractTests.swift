@@ -3,11 +3,11 @@
 //  PalaceTests
 //
 //  Pins the publication order of the `AccountsManager.currentAccount` setter: when
-//  `.TPPCurrentAccountDidChange` posts, `currentAccountId` already names the new
+//  `currentLibraryChangePublisher` emits, `currentAccountId` already names the new
 //  account, the prior account is evicted, and `isAccountSwitching` is set. Observers
 //  that re-read `currentAccount` would otherwise see mid-switch state
 //  (docs/architecture/god-class-decomposition-plan.md §3a-2).
-//  The notification posts synchronously, so one `log.snapshot()` after the
+//  The publisher delivers synchronously on main, so one `log.snapshot()` after the
 //  assignment is race-free. Per-test isolated `UserDefaults`.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
@@ -15,6 +15,7 @@
 
 import XCTest
 import UIKit
+import Combine
 import PalaceCatalog
 import PalaceBookModel
 @testable import Palace
@@ -25,12 +26,12 @@ final class AccountsManagerCurrentAccountSwitchContractTests: PalaceWiringTestCa
     // MARK: - Contract 1: real switch A → B
 
     /// Contract: on a real library switch (prior ≠ new, prior ≠ nil), by the time
-    /// `.TPPCurrentAccountDidChange` publishes, `currentAccountId == B`, the prior
+    /// `currentLibraryChangePublisher` emits, `currentAccountId == B`, the prior
     /// account A is `.detailsEvicted(.libraryDeselected)`, and `isAccountSwitching`
     /// is `true` (its reset is deferred to the async cleanup, NOT the setter).
     ///
     /// Regressions caught:
-    ///  - Publishing `.TPPCurrentAccountDidChange` BEFORE `currentAccountId = new`
+    ///  - Emitting `.selected` BEFORE `currentAccountId = new`
     ///    → observer reads currentAccountId == A → record mismatch.
     ///  - Moving the prior-account eviction AFTER the publish → observer reads A as
     ///    `.notLoaded` → mismatch.
@@ -52,19 +53,14 @@ final class AccountsManagerCurrentAccountSwitchContractTests: PalaceWiringTestCa
 
         let log = CallLog()
         let token = Self.observePublication(log: log, manager: manager, priorUUID: aUUID)
-        defer { NotificationCenter.default.removeObserver(token) }
+        defer { token.cancel() }
 
         // Act — synchronous; the observer fires inside this assignment.
-        // VERIFY: on the A→B path the setter's `cleanupActiveContentBeforeAccountSwitch`
-        // touches the computed `networkExecutor` (→ `AppContainer.production()`); this
-        // test assumes that build emits NO second `.TPPCurrentAccountDidChange` (so
-        // the log holds exactly one record). The wiring suite's reselect test drives
-        // the identical path today, so this holds — re-confirm if AppContainer
-        // construction ever starts posting account-change notifications.
         manager.currentAccount = accountB
 
         let expected = [
             CallRecord(method: "currentAccountDidChangePublished", args: [
+                "change": "selected",
                 "currentAccountId": bUUID,
                 "priorAccountState": "detailsEvicted.libraryDeselected",
                 "isAccountSwitching": "true",
@@ -80,7 +76,7 @@ final class AccountsManagerCurrentAccountSwitchContractTests: PalaceWiringTestCa
     // MARK: - Contract 2: redundant reassignment B → B
 
     /// Contract: reassigning the SAME account (prior == new) still publishes
-    /// `.TPPCurrentAccountDidChange`, but does NOT evict the (unchanged) account
+    /// `.selected`, but does NOT evict the (unchanged) account
     /// and does NOT enter the switching state. Pins the `prev != newAccountId`
     /// eviction guard and the `shouldFinishSwitchingImmediately` fast-finish.
     ///
@@ -99,12 +95,13 @@ final class AccountsManagerCurrentAccountSwitchContractTests: PalaceWiringTestCa
 
         let log = CallLog()
         let token = Self.observePublication(log: log, manager: manager, priorUUID: bUUID)
-        defer { NotificationCenter.default.removeObserver(token) }
+        defer { token.cancel() }
 
         manager.currentAccount = accountB
 
         let expected = [
             CallRecord(method: "currentAccountDidChangePublished", args: [
+                "change": "selected",
                 "currentAccountId": bUUID,
                 "priorAccountState": "basicInfoLoaded",
                 "isAccountSwitching": "false",
@@ -136,12 +133,13 @@ final class AccountsManagerCurrentAccountSwitchContractTests: PalaceWiringTestCa
         let log = CallLog()
         // No prior uuid → record only currentAccountId + switching flag.
         let token = Self.observePublication(log: log, manager: manager, priorUUID: nil)
-        defer { NotificationCenter.default.removeObserver(token) }
+        defer { token.cancel() }
 
         manager.currentAccount = accountB
 
         let expected = [
             CallRecord(method: "currentAccountDidChangePublished", args: [
+                "change": "selected",
                 "currentAccountId": bUUID,
                 "isAccountSwitching": "false",
             ])
@@ -287,29 +285,17 @@ final class AccountsManagerCurrentAccountSwitchContractTests: PalaceWiringTestCa
 
     // MARK: - Helpers
 
-    /// Register a synchronous (`queue: nil`) `.TPPCurrentAccountDidChange`
-    /// observer that records the observable state AT PUBLICATION TIME into `log`.
-    ///
-    /// SEAM: the setter hard-codes `NotificationCenter.default` for publication and
-    /// `AccountStateStore.shared` for the prior-account eviction. The extraction's
-    /// `CurrentAccountStore` / `UserAccountPublisher` should expose a typed Combine
-    /// publisher and take an injected state store so this ordering can be observed
-    /// without a process-wide `NotificationCenter` round-trip.
-    ///
-    /// The closure is `@Sendable`; it captures only Sendable values
-    /// (`AccountsManager` is `@unchecked Sendable`, `CallLog` is `@unchecked
-    /// Sendable`, uuids are `String`) — never `self`.
+    /// Subscribe to `manager.currentLibraryChangePublisher` and record the
+    /// observable state AT PUBLICATION TIME into `log`. The prior-account state
+    /// is read from `AccountStateStore.shared`, which the setter writes by default.
     private static func observePublication(
         log: CallLog,
         manager: AccountsManager,
         priorUUID: String?
-    ) -> NSObjectProtocol {
-        return NotificationCenter.default.addObserver(
-            forName: .TPPCurrentAccountDidChange,
-            object: nil,
-            queue: nil
-        ) { _ in
+    ) -> AnyCancellable {
+        return manager.currentLibraryChangePublisher.sink { change in
             var args: [String: Any] = [
+                "change": "\(change)",
                 "currentAccountId": manager.currentAccountId ?? "nil",
                 "isAccountSwitching": manager.isAccountSwitching ? "true" : "false",
             ]

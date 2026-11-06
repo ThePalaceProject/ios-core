@@ -37,6 +37,7 @@ class FacetViewModel: ObservableObject {
     }
 
     private let accountsManager: AccountsManager
+    private var currentLibraryChangeSubscription: AnyCancellable?
 
     init(groupName: String, facets: [Facet], accountsManager: AccountsManager) {
         self.facets = facets
@@ -48,12 +49,11 @@ class FacetViewModel: ObservableObject {
     }
 
     private func registerForNotifications() {
-        NotificationCenter.default.addObserver(self, selector: #selector(updateAccount),
-                                               name: .TPPCurrentAccountDidChange,
-                                               object: nil)
+        currentLibraryChangeSubscription = accountsManager.currentLibraryChangePublisher
+            .sink { [weak self] _ in self?.updateAccount() }
     }
 
-    @objc private func updateAccount() {
+    private func updateAccount() {
         currentAccount = accountsManager.currentAccount
         currentAccount?.logoDelegate = self
         accountScreenURL = currentAccountURL

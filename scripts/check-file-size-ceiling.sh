@@ -105,7 +105,8 @@ read -r -d '' ALLOWLIST <<'EOF'
 # AccountsManager is 363 under this metric: it was pinned at 367 after #1520
 # landed `_ = registryLoader` in init, then lowered when #1624 moved the DEBUG
 # disk-cache preload flag into AccountsManager+TestingSupport.swift. Measured
-# with this gate's own import-excluding counter.
+# with this gate's own import-excluding counter. 362 -> 358 when PP-5471 moved
+# the test-only static shims to AccountsManager+TestingSupport.swift.
 #
 # Carried over from the retired six-file freeze at their MEASURED sizes, not the
 # freeze's stale numbers. Without these three the swap would LOOSEN exactly the
@@ -113,7 +114,7 @@ read -r -d '' ALLOWLIST <<'EOF'
 # 429 lines of headroom, TPPSignInBusinessLogic 162 and BorrowOperation 279 —
 # 870 in total, on two CLAUDE.md critical paths (sign-in, borrow). The allowlist
 # only ratchets down, so pinning them costs nothing and closes the regression.
-362  Palace/Accounts/Library/AccountsManager.swift
+358  Palace/Accounts/Library/AccountsManager.swift
 602  Palace/SignInLogic/TPPSignInBusinessLogic.swift
 471  Palace/MyBooks/BorrowOperation.swift
 # Package source is in scope (see THE RULE). This one was already over the

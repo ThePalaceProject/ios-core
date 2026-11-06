@@ -235,7 +235,7 @@ private final class BoolWithDelay: @unchecked Sendable {
 /// The facade keeps:
 ///   - the `RegistryState` enum + public `state` getter
 ///   - the `BoolWithDelay` that publishes the sync `.began` / `.ended` events
-///   - the `TPPCurrentAccountDidChange` observer
+///   - the account-change observer (`accountScope.accountDidChangePublisher`)
 ///   - the `TPPBookRegistrySyncing` / `TPPBookRegistryProvider` conformance
 ///   - the shared singleton + account-scoped temporary-instance factory
 ///

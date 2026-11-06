@@ -57,7 +57,7 @@ final class SpyAudiobookNetworkExecutor: TPPNetworkExecutor, @unchecked Sendable
     /// values, so AudiobookDataManager's `removeSynchronizedEntries(ids:)`
     /// runs and the queue empties. When false, the executor still records
     /// the call but does not invoke the completion — useful for "in-flight"
-    /// scenarios where the test wants to fire `.TPPCurrentAccountDidChange`
+    /// scenarios where the test wants to announce a library change
     /// before the response lands.
     var autoRespondSuccess: Bool = true
 

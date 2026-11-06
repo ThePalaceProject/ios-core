@@ -120,7 +120,8 @@ final class RegistryTruncationRegressionTests: PalaceWiringTestCase {
             currentUserAccountProvider: { nil },
             driveCurrentAccountAuthDoc: {},
             fetchAuthDocumentWithStateMachine: { _, completion in completion(true) },
-            currentLibraryAccountProvider: { nil }
+            currentLibraryAccountProvider: { nil },
+            announceCurrentLibraryRefresh: {}
         )
         loader.snapshotResourceResolver = StubBundleResolver(url: bundledURL)
         loader.crawlerFetcher = fetcher
@@ -336,6 +337,7 @@ final class RegistryTruncationRegressionTests: PalaceWiringTestCase {
         }
         XCTAssertTrue(store.replaceBucket(hash: "h", accounts: resident, isCompleteFeed: true))
 
+        let refreshRequests = RefreshRequestCounter()
         let loader = AccountRegistryLoader(
             registryCache: InMemoryRegistryCache(),
             registryStore: store,
@@ -352,14 +354,9 @@ final class RegistryTruncationRegressionTests: PalaceWiringTestCase {
             currentUserAccountProvider: { nil },
             driveCurrentAccountAuthDoc: {},
             fetchAuthDocumentWithStateMachine: { _, completion in completion(true) },
-            currentLibraryAccountProvider: { nil }
+            currentLibraryAccountProvider: { nil },
+            announceCurrentLibraryRefresh: { refreshRequests.increment() }
         )
-
-        var accountChangedPosts = 0
-        let token = NotificationCenter.default.addObserver(
-            forName: .TPPCurrentAccountDidChange, object: nil, queue: nil
-        ) { _ in accountChangedPosts += 1 }
-        defer { NotificationCenter.default.removeObserver(token) }
 
         // A lossy partial write: one library, declaring far more, over a resident three.
         let lossy = try feedData(uuids: [intruderUUID], declaring: 1457)
@@ -390,12 +387,19 @@ final class RegistryTruncationRegressionTests: PalaceWiringTestCase {
         } else {
             XCTFail("A refused write must not drive the state machine for accounts that never entered the bucket — `AccountStateStore` would then hold .basicInfoLoaded for a uuid `account(_:)` cannot resolve, which reads from every consumer's side exactly like a successful load.")
         }
-        XCTAssertEqual(accountChangedPosts, 0,
-                       "…and it must not announce an account change that did not happen")
+        XCTAssertEqual(refreshRequests.count, 0,
+                       "…and it must not ask listeners to reload for a change that did not happen")
     }
 }
 
 // MARK: - Test doubles
+
+private final class RefreshRequestCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+    func increment() { lock.withLock { value += 1 } }
+    var count: Int { lock.withLock { value } }
+}
 
 private final class StubBundleResolver: BundleResourceResolving {
     private let url: URL?

@@ -20,7 +20,7 @@ public protocol AccountScopeProviding: Sendable {
     /// Fires when the current library changes. No delivery-thread promise —
     /// the registry keeps its own `.receive(on: RunLoop.main)`, exactly as
     /// before the inversion.
-    /// (adapter: `NotificationCenter.publisher(for: .TPPCurrentAccountDidChange).map { _ in }`.)
+    /// (adapter: `accountsManager.currentLibraryChangePublisher.map { _ in }`.)
     var accountDidChangePublisher: AnyPublisher<Void, Never> { get }
 
     /// True when stored credentials exist for the given library.

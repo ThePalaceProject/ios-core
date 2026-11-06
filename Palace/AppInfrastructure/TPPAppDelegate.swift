@@ -739,7 +739,7 @@ extension TPPAppDelegate {
 
             account.loadAuthenticationDocument { _ in }
 
-            NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
+            accountsManager.requestCurrentLibraryRefresh()
             nav?.dismiss(animated: true)
             // The patron has chosen. Stop trying to apply a pending managed
             // configuration over the top of their choice.
@@ -887,11 +887,6 @@ extension TPPAppDelegate {
         if let host = window?.rootViewController as? UIHostingController<AppTabHostView> {
             _ = host
         }
-    }
-
-    private func reloadCatalogForCurrentAccount() {
-        // Notify observers again in case catalog view needs a kick
-        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
     }
 }
 

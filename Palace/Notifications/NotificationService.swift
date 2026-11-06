@@ -98,7 +98,7 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     // `@unchecked Sendable`: `self` is captured into Firebase Messaging `@Sendable`
     // completions, `@MainActor` Tasks, and `.main` NotificationCenter observers.
     // Dependencies are `let`s (`accountsManager` is constrained `& Sendable`); the
-    // two mutable `var`s are guarded by `authStateLock`. Class-level `@MainActor` is
+    // three mutable `var`s are guarded by `authStateLock`. Class-level `@MainActor` is
     // not used because Firebase callbacks run off-main.
 
     private let notificationCenter = UNUserNotificationCenter.current()
@@ -110,8 +110,12 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     private let networkExecutor: TPPNetworkExecutor
     private let bookRegistry: TPPBookRegistryProvider
 
-    /// Guards `authStateSubscription` and `lastObservedAuthState`.
+    /// Guards `authStateSubscription`, `lastObservedAuthState` and
+    /// `currentLibraryChangeSubscription`.
     private let authStateLock = NSLock()
+    /// Re-registers the library token on each current-library change. Held for
+    /// the lifetime of the service. Guarded by `authStateLock`.
+    private var currentLibraryChangeSubscription: AnyCancellable?
     /// Subscription to the auth-state-change publisher. Set in
     /// `subscribeToAuthStateChanges(_:retry:)`. Held to keep the
     /// subscription alive for the lifetime of the service. Guarded by `authStateLock`.
@@ -134,7 +138,9 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
         self.skipsProductionAuthSubscription = false
         super.init()
 
-        installNotificationObservers()
+        installNotificationObservers(
+            currentLibraryChanges: AppContainer.production().accountsManager.currentLibraryChangePublisher
+        )
 
         // Re-attempt FCM token registration when stale credentials recover to
         // `.loggedIn`. Otherwise a patron who passed through `.credentialsStale`
@@ -164,18 +170,23 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     init(
         authStatePublisher: AnyPublisher<TPPAccountAuthState, Never>,
         onAuthStateRetryRequested: @escaping () -> Void,
-        accountsManager: (any TPPLibraryAccountsProvider & Sendable)? = nil
+        accountsManager: (any TPPLibraryAccountsProvider & Sendable)? = nil,
+        currentLibraryChanges: AnyPublisher<CurrentLibraryChange, Never>? = nil
     ) {
         // Resolved here rather than as a default argument: default arguments
         // are evaluated at the call site, which can re-enter AppContainer's
         // lock and abort launch.
-        self.accountsManager = accountsManager ?? AppContainer.production().accountsManager
-        self.networkExecutor = AppContainer.production().networkExecutor
-        self.bookRegistry = AppContainer.production().bookRegistry
+        let container = AppContainer.production()
+        self.accountsManager = accountsManager ?? container.accountsManager
+        self.networkExecutor = container.networkExecutor
+        self.bookRegistry = container.bookRegistry
         self.skipsProductionAuthSubscription = true
         super.init()
 
-        installNotificationObservers()
+        installNotificationObservers(
+            currentLibraryChanges: currentLibraryChanges
+                ?? container.accountsManager.currentLibraryChangePublisher
+        )
         subscribeToAuthStateChanges(authStatePublisher, retry: onAuthStateRetryRequested)
     }
 
@@ -190,13 +201,13 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
     /// double-fire / re-init leak class doesn't apply here. The
     /// `// no-observer-storage:` annotations below opt out of the D5-1
     /// detector explicitly.
-    private func installNotificationObservers() {
-        // no-observer-storage: NotificationService.shared is an app-lifetime
-        // singleton; this observer is meant to live until process exit.
-        // Update library token when the user changes library account.
-        NotificationCenter.default.addObserver(forName: NSNotification.Name.TPPCurrentAccountDidChange, object: nil, queue: .main) { [weak self] _ in
+    private func installNotificationObservers(currentLibraryChanges: AnyPublisher<CurrentLibraryChange, Never>) {
+        // Update library token when the user changes library account. The
+        // publisher delivers on main.
+        let subscription = currentLibraryChanges.sink { [weak self] _ in
             self?.updateToken()
         }
+        authStateLock.withLock { currentLibraryChangeSubscription = subscription }
         // no-observer-storage: NotificationService.shared is an app-lifetime
         // singleton; this observer is meant to live until process exit.
         // Update library token when the user signs in (but has already added the library)

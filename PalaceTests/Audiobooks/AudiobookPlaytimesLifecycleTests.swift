@@ -6,6 +6,7 @@
 //  `LibraryBook.libraryId`, so one round trip covers all vendors.
 
 import XCTest
+import Combine
 @testable import Palace
 
 private func clearAudiobookTimeTrackerStore() {
@@ -27,6 +28,8 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
     /// of `AccountsManager.currentAccount.didSet` writing
     /// `currentAccountId`.
     private var activeAccountIdBox: AccountIdBox!
+    /// Stands in for the accounts manager's current-library change publisher.
+    private var libraryChanges: PassthroughSubject<CurrentLibraryChange, Never>!
 
     private let libraryA = "urn:uuid:LIBRARY_A_for_playtimes_test"
     private let libraryB = "urn:uuid:LIBRARY_B_for_playtimes_test"
@@ -40,10 +43,12 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
         spyExecutor = SpyAudiobookNetworkExecutor()
         activeAccountIdBox = AccountIdBox(value: libraryA)
         let box = activeAccountIdBox!
+        libraryChanges = PassthroughSubject()
         sut = AudiobookDataManager(
             syncTimeInterval: 3600,
             networkService: spyExecutor,
-            currentAccountIdProvider: { box.value }
+            currentAccountIdProvider: { box.value },
+            currentLibraryChanges: libraryChanges.eraseToAnyPublisher()
         )
         sut.store.queue.removeAll()
         sut.store.urls.removeAll()
@@ -60,6 +65,7 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
         sut = nil
         spyExecutor = nil
         activeAccountIdBox = nil
+        libraryChanges = nil
         clearAudiobookTimeTrackerStore()
         super.tearDown()
     }
@@ -204,7 +210,7 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
 
     // MARK: - Test 4: notification observer is non-destructive
 
-    /// SRS: PLAYTIMES-4 — `.TPPCurrentAccountDidChange` observer must NOT
+    /// SRS: PLAYTIMES-4 — the current-library change listener must NOT
     /// clear the queue. Destructive clear-on-switch is the obvious-and-wrong
     /// implementation that loses playtimes for any toggled-between book.
     func testPlaytimes_accountSwitchNotification_doesNotClearQueue() {
@@ -221,7 +227,7 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
         XCTAssertEqual(sut.store.queue.count, 1)
 
         activeAccountIdBox.value = libraryB
-        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
+        libraryChanges.send(.selected)
         drainMainQueue()
 
         XCTAssertEqual(sut.store.queue.count, 1,
@@ -311,7 +317,7 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
 
         // Switch account mid-flight.
         activeAccountIdBox.value = libraryB
-        NotificationCenter.default.post(name: .TPPCurrentAccountDidChange, object: nil)
+        libraryChanges.send(.selected)
         drainMainQueue()
 
         // The in-flight POST count must not grow — no replay path.
