@@ -32,6 +32,7 @@ struct AudiobookMorphingPlayerView: View {
     /// we then fall back to the window-safe-area + default-height math, which
     /// is exactly the historical hardcoded behavior. See `TabBarModernization`.
     @Environment(\.miniPlayerTabBarInset) private var injectedTabBarInset
+    @Environment(\.appContainer) private var appContainer
 
     /// PP-4712: the patron's configured skip intervals, read reactively from the
     /// same UserDefaults keys the settings screen writes — so the transport
@@ -367,10 +368,7 @@ struct AudiobookMorphingPlayerView: View {
                 isBound: audiobookSession.hasActiveManager,
                 fallback: currentRate
             )
-            NotificationCenter.default.post(
-                name: Notification.Name("TPPAccessibilityScreenTransition"),
-                object: nil
-            )
+            appContainer.accessibilityAnnouncer.notifyScreenTransition()
             UIAccessibility.post(notification: .layoutChanged, argument: nil)
         }
         .modifier(AudiobookPlayerOpeningFocus(

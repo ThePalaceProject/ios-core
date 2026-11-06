@@ -109,7 +109,7 @@ struct BookDetailView: View {
                 Task { await viewModel.hydrateMetadataIfNeeded() }
                 self.descriptionText = viewModel.book.summary ?? ""
 
-                NotificationCenter.default.post(name: .TPPAccessibilityScreenTransition, object: nil)
+                appContainer.accessibilityAnnouncer.notifyScreenTransition()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                     isTitleFocused = true
                 }

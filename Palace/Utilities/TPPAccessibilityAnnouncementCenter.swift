@@ -8,13 +8,6 @@
 import UIKit
 import PalaceCatalog
 
-extension Notification.Name {
-    /// Posted by views when a screen transition occurs (sheet presented, page navigated).
-    /// The announcement center listens for this to delay announcements until the transition settles
-    /// and VoiceOver finishes reading the new screen's elements.
-    static let TPPAccessibilityScreenTransition = Notification.Name("TPPAccessibilityScreenTransition")
-}
-
 /// Centralized VoiceOver announcements for background events.
 ///
 /// Provides a single place to post `UIAccessibility.announcement`
@@ -24,8 +17,8 @@ extension Notification.Name {
 /// avoid flooding the user with repeated announcements (PP-3673).
 ///
 /// **Transition-aware queuing (PP-3839):**
-/// When a screen transition is signaled (via `notifyScreenTransition()` or the
-/// `TPPAccessibilityScreenTransition` notification), announcements are queued
+/// When a screen calls `notifyScreenTransition()` on the app's shared center
+/// (`AppContainer.accessibilityAnnouncer`), announcements are queued
 /// and delivered sequentially after the transition settles, so they don't get
 /// cut off by VoiceOver reading new screen elements. Outside transition windows,
 /// announcements are delivered immediately (preserving existing behavior).
@@ -63,7 +56,6 @@ final class TPPAccessibilityAnnouncementCenter: @unchecked Sendable {
     private var queuedAnnouncements: [String] = []
     private var isProcessingQueue = false
     private var pendingDrainWorkItem: DispatchWorkItem?
-    private var transitionObserver: NSObjectProtocol?
     private var announcementFinishedObserver: NSObjectProtocol?
     private var voiceOverStatusObserver: NSObjectProtocol?
 
@@ -116,9 +108,6 @@ final class TPPAccessibilityAnnouncementCenter: @unchecked Sendable {
     }
 
     deinit {
-        if let observer = transitionObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
         if let observer = announcementFinishedObserver {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -357,14 +346,6 @@ final class TPPAccessibilityAnnouncementCenter: @unchecked Sendable {
     // MARK: - Private — Observer Setup
 
     private func setupObservers() {
-        transitionObserver = NotificationCenter.default.addObserver(
-            forName: .TPPAccessibilityScreenTransition,
-            object: nil,
-            queue: nil
-        ) { [weak self] _ in
-            self?.notifyScreenTransition()
-        }
-
         announcementFinishedObserver = NotificationCenter.default.addObserver(
             forName: UIAccessibility.announcementDidFinishNotification,
             object: nil,
