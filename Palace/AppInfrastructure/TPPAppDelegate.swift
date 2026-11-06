@@ -412,6 +412,10 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         // This helps prevent the "recursive_mutex lock failed" crash
         FirebaseManager.shared.applicationDidEnterBackground()
 
+        // Write EPUB positions still inside their 15 s coalescing interval before
+        // iOS can suspend or end the app.
+        AppContainer.production().bookRegistry.flushPendingPositions()
+
         #if FEATURE_DRM_CONNECTOR
         // iPad-on-Mac watchdog-exit guard. Once Adobe DRM has been used
         // this session (reader decrypt → its static recursive_mutex dtor is
@@ -442,6 +446,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         #endif
 
         audiobookLifecycleManager.willTerminate()
+        AppContainer.production().bookRegistry.flushPendingPositions()
         NotificationCenter.default.removeObserver(self)
         AppContainer.production().reachability.stopMonitoring()
 

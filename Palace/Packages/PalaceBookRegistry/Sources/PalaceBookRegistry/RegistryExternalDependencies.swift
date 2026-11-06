@@ -117,6 +117,14 @@ public struct RegistryExternalDependencies: Sendable {
     /// production bundle leaves this as a no-op; tests use it to fail a write
     /// deterministically while the rest of the save runs unchanged.
     let beforeRegistryWrite: @Sendable (_ step: RegistryWriteStep, _ url: URL) throws -> Void
+    /// The clock that times coalesced position writes (`RegistryPositionPersistence`).
+    /// Production uses the wall clock; tests step it.
+    let positionClock: @Sendable () -> Date
+    /// Runs on the saving thread after a save has captured its account and
+    /// snapshot and before it hands the write to the disk queue. Production
+    /// leaves it as a no-op; tests hold a save here to place a sign-out inside
+    /// that window.
+    let afterSaveSnapshot: @Sendable (_ accountID: String) -> Void
 
     public init(
         downloadService: @escaping @Sendable () -> any RegistryDownloadServicing,
@@ -124,7 +132,9 @@ public struct RegistryExternalDependencies: Sendable {
         sideloadedIdentifiers: @escaping @Sendable () -> Set<String>,
         registryDirectory: @escaping @Sendable (_ accountID: String) -> URL?,
         onAvailabilityChange: @escaping @Sendable (_ cachedRecord: TPPBookRegistryRecord, _ newBook: TPPBook) -> Void,
-        beforeRegistryWrite: @escaping @Sendable (_ step: RegistryWriteStep, _ url: URL) throws -> Void = { _, _ in }
+        beforeRegistryWrite: @escaping @Sendable (_ step: RegistryWriteStep, _ url: URL) throws -> Void = { _, _ in },
+        positionClock: @escaping @Sendable () -> Date = { Date() },
+        afterSaveSnapshot: @escaping @Sendable (_ accountID: String) -> Void = { _ in }
     ) {
         self.downloadService = downloadService
         self.loansFeedFetcher = loansFeedFetcher
@@ -132,5 +142,7 @@ public struct RegistryExternalDependencies: Sendable {
         self.registryDirectory = registryDirectory
         self.onAvailabilityChange = onAvailabilityChange
         self.beforeRegistryWrite = beforeRegistryWrite
+        self.positionClock = positionClock
+        self.afterSaveSnapshot = afterSaveSnapshot
     }
 }

@@ -18,17 +18,35 @@ class BookmarkManager {
   /// Persists a change that only moved a reading position. See `setLocation`.
   private let savePosition: (String) -> Void
   private let saveSync: (String) -> Void
+  private let now: () -> Date
+
+  /// A `.coalesced` position reaches disk at most this often per book.
+  static let coalescedPositionWriteInterval: TimeInterval = 15
+
+  private struct PositionKey: Hashable {
+    let account: String
+    let identifier: String
+  }
+
+  /// Guards `lastPositionWrite` and `pendingPositions`. Held only for dictionary
+  /// access, never while saving.
+  private let positionLock = NSLock()
+  private var lastPositionWrite: [PositionKey: Date] = [:]
+  /// Account to identifiers whose newest position is in memory but not on disk.
+  private var pendingPositions: [String: Set<String>] = [:]
 
   init(
     store: BookRegistryStore,
     save: @escaping (String) -> Void,
     savePosition: @escaping (String) -> Void,
-    saveSync: @escaping (String) -> Void
+    saveSync: @escaping (String) -> Void,
+    now: @escaping () -> Date = { Date() }
   ) {
     self.store = store
     self.save = save
     self.savePosition = savePosition
     self.saveSync = saveSync
+    self.now = now
   }
 
   // MARK: - Location tracking
@@ -38,11 +56,77 @@ class BookmarkManager {
   /// persisted, but not announced as a shelf change and not copied to the
   /// last-good backup: every reader of a location pulls it on demand, and
   /// nothing that observes the shelf renders one (PP-5268).
-  func setLocation(_ location: TPPBookLocation?, forIdentifier identifier: String, account: String?) {
+  ///
+  /// The in-memory record changes on every call in both modes; `persistence`
+  /// decides only when the registry file is written (PP-5507).
+  func setLocation(
+    _ location: TPPBookLocation?,
+    forIdentifier identifier: String,
+    account: String?,
+    persistence: RegistryPositionPersistence = .immediate
+  ) {
     guard !identifier.isEmpty else { return }
     store.mutateRegistry({ registry in
       registry[identifier]?.location = location
-    }, announce: false, onComplete: { [savePosition] in if let account { savePosition(account) } })
+    }, announce: false, onComplete: { [self] in
+      // Runs as a store barrier, so the write-or-defer decisions follow mutation order.
+      guard let account, positionWriteIsDue(account: account, identifier: identifier, persistence: persistence) else { return }
+      savePosition(account)
+    })
+  }
+
+  /// Returns true when this change is written now, and records the write.
+  /// Otherwise marks the book's position as pending for its account.
+  private func positionWriteIsDue(account: String, identifier: String, persistence: RegistryPositionPersistence) -> Bool {
+    let key = PositionKey(account: account, identifier: identifier)
+    let now = self.now()
+    positionLock.lock()
+    defer { positionLock.unlock() }
+    if persistence == .coalesced, let last = lastPositionWrite[key],
+       now.timeIntervalSince(last) < Self.coalescedPositionWriteInterval {
+      pendingPositions[account, default: []].insert(identifier)
+      return false
+    }
+    lastPositionWrite[key] = now
+    // The save stores the account's whole in-memory shelf, pending positions included.
+    pendingPositions[account] = nil
+    return true
+  }
+
+  /// Writes the pending positions of `loadedAccount`, the account whose shelf the
+  /// store holds. Pending positions of any other account are dropped: their shelf
+  /// is no longer in memory, and saving under that account would write the loaded
+  /// shelf into its file. Runs as a store barrier, after every change already queued.
+  func flushPendingPositions(loadedAccount: String?) {
+    store.performBarrierSync({ [self] in
+      let now = self.now()
+      positionLock.lock()
+      let pending = pendingPositions
+      pendingPositions.removeAll()
+      let due = loadedAccount.flatMap { pending[$0] } ?? []
+      if let loadedAccount {
+        for identifier in due {
+          lastPositionWrite[PositionKey(account: loadedAccount, identifier: identifier)] = now
+        }
+      }
+      positionLock.unlock()
+
+      let dropped = pending.filter { $0.key != loadedAccount }.values.reduce(0) { $0 + $1.count }
+      if dropped > 0 {
+        Log.warn(#file, "Dropped \(dropped) pending reading position(s) of a library that is no longer loaded")
+      }
+      if let loadedAccount, !due.isEmpty {
+        savePosition(loadedAccount)
+      }
+    }, operation: "flushPendingPositions")
+  }
+
+  /// Forgets pending positions and write times of a signed-out account.
+  func dropPendingPositions(for account: String) {
+    positionLock.lock()
+    defer { positionLock.unlock() }
+    pendingPositions[account] = nil
+    lastPositionWrite = lastPositionWrite.filter { $0.key.account != account }
   }
 
   func setLocationSync(_ location: TPPBookLocation?, forIdentifier identifier: String, account: String?) {

@@ -96,6 +96,28 @@ final class BookRegistrySync: @unchecked Sendable {
     set { rebuildFlagLock.lock(); defer { rebuildFlagLock.unlock() }; _needsRebuildFromServer = newValue }
   }
 
+  /// Per-account sign-out count. A save reads it before its snapshot and writes
+  /// only if it has not changed, so a save that captured a shelf before `reset`
+  /// cannot write that shelf back after it (PP-5507).
+  private let resetGenerationLock = NSLock()
+  private var resetGenerations: [String: UInt64] = [:]
+
+  private func resetGeneration(for account: String) -> UInt64 {
+    resetGenerationLock.lock(); defer { resetGenerationLock.unlock() }
+    return resetGenerations[account, default: 0]
+  }
+
+  private func advanceResetGeneration(for account: String) {
+    resetGenerationLock.lock(); defer { resetGenerationLock.unlock() }
+    resetGenerations[account, default: 0] &+= 1
+  }
+
+  private func isStale(_ generation: UInt64, for account: String) -> Bool {
+    guard resetGeneration(for: account) != generation else { return false }
+    Log.info(#file, "Skipping a registry save scheduled before the account was reset")
+    return true
+  }
+
   /// Resolved-on-demand accessors. Tests inject fakes via `dependencies`;
   /// production wires the live download center + OPDS feed service through the
   /// composition root. Same lazy-resolution timing as before the extraction.
@@ -716,6 +738,7 @@ final class BookRegistrySync: @unchecked Sendable {
   private func save(for account: String, serverAuthoritative: Bool, scope: RegistrySaveScope) {
     guard let registryUrl = registryUrl(for: account) else { return }
 
+    let generation = resetGeneration(for: account)
     let snapshot = store.registrySnapshot()
     let isEmpty = snapshot.isEmpty
     let needsRebuild = needsRebuildFromServer
@@ -728,8 +751,10 @@ final class BookRegistrySync: @unchecked Sendable {
       RegistryFileRecovery.schemaVersionKey: RegistryFileRecovery.currentSchemaVersion,
       TPPBookRegistryKey.records.rawValue: snapshot
     ])
+    dependencies.afterSaveSnapshot(account)
 
     diskWriteQueue.async { [self] in
+      if isStale(generation, for: account) { return }
       // INV-1: during the post-corrupt-load rebuild window, only an authoritative
       // server sync may persist an empty shelf. Refuse any other empty save — the
       // corrupt original is quarantined and the last-good `.bak` (if present) still
@@ -793,6 +818,7 @@ final class BookRegistrySync: @unchecked Sendable {
     // barrier → deadlock (8afb1c66 — the hang #1061 traded for the disk-write
     // race). The in-memory snapshot is independent of disk-flush ordering, so
     // reading it here is behavior-equivalent for persistence.
+    let generation = resetGeneration(for: account)
     let snapshot = store.registrySnapshot()
     let isEmpty = snapshot.isEmpty
     let needsRebuild = needsRebuildFromServer
@@ -800,6 +826,7 @@ final class BookRegistrySync: @unchecked Sendable {
       RegistryFileRecovery.schemaVersionKey: RegistryFileRecovery.currentSchemaVersion,
       TPPBookRegistryKey.records.rawValue: snapshot
     ]
+    dependencies.afterSaveSnapshot(account)
 
     // Serialize the disk write through `diskWriteQueue` so a sync save can't run
     // its `.atomic` rename-replace concurrently with an in-flight async write to
@@ -807,6 +834,7 @@ final class BookRegistrySync: @unchecked Sendable {
     // ALREADY executing on `diskWriteQueue`, run inline — a nested
     // `diskWriteQueue.sync` would deadlock against itself.
     let write = {
+      if self.isStale(generation, for: account) { return }
       // INV-1: saveSync is teardown persistence (bookmarks/location), never a
       // server reconciliation — so it is always non-authoritative. Refuse an
       // empty snapshot over a non-empty backup during the rebuild window.
@@ -839,11 +867,22 @@ final class BookRegistrySync: @unchecked Sendable {
       }
     }
 
+    runOnDiskWriteQueue(write)
+  }
+
+  /// Runs `work` on `diskWriteQueue` and returns after it, inline when already
+  /// on that queue (a nested `sync` would deadlock).
+  private func runOnDiskWriteQueue(_ work: () -> Void) {
     if DispatchQueue.getSpecific(key: diskWriteQueueKey) != nil {
-      write()
+      work()
     } else {
-      diskWriteQueue.sync(execute: write)
+      diskWriteQueue.sync(execute: work)
     }
+  }
+
+  /// Returns after every disk write scheduled before this call has finished.
+  func waitForPendingDiskWrites() {
+    runOnDiskWriteQueue {}
   }
 
   // MARK: - Test-only deterministic-join seam
@@ -887,20 +926,27 @@ final class BookRegistrySync: @unchecked Sendable {
     }
   }
 
+  /// Order matters (PP-5507): the store is emptied first, so a save that reads the
+  /// new generation can only snapshot an empty shelf; the generation then changes,
+  /// so a save that snapshotted the old shelf skips its write; the files are
+  /// deleted on `diskWriteQueue`, after every write already queued.
   func reset(_ account: String) {
     syncUrl = nil
     store.removeAll()
+    advanceResetGeneration(for: account)
     if let registryUrl = registryUrl(for: account) {
-      do {
-        try FileManager.default.removeItem(at: registryUrl)
-      } catch {
-        Log.error(#file, "Error deleting registry data: \(error.localizedDescription)")
+      runOnDiskWriteQueue {
+        do {
+          try FileManager.default.removeItem(at: registryUrl)
+        } catch {
+          Log.error(#file, "Error deleting registry data: \(error.localizedDescription)")
+        }
+        // Also drop the sidecars (last-good `.bak` + `.corrupt-<ts>` quarantine
+        // copies). Deleting only the primary left the signed-out patron's whole
+        // shelf readable on disk and recoverable into the next patron's session
+        // at the same library. Ported from the 3.2.3 build-490 hotfix.
+        RegistryFileRecovery.purgeSidecars(for: registryUrl)
       }
-      // Also drop the sidecars (last-good `.bak` + `.corrupt-<ts>` quarantine
-      // copies). Deleting only the primary left the signed-out patron's whole
-      // shelf readable on disk and recoverable into the next patron's session
-      // at the same library. Ported from the 3.2.3 build-490 hotfix.
-      RegistryFileRecovery.purgeSidecars(for: registryUrl)
     }
     needsRebuildFromServer = false
   }

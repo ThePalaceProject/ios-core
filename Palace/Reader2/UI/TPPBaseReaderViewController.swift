@@ -397,9 +397,7 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        if let locator = navigator.currentLocation {
-            lastReadPositionPoster.storeReadPosition(locator: locator)
-        }
+        lastReadPositionPoster.storeFinalPositionAndFlush(locator: navigator.currentLocation)
     }
 
     // MARK: - Navigation bar
