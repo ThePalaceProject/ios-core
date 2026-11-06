@@ -72,6 +72,8 @@ final class BookRegistrySyncDiffContractTests: XCTestCase {
         var summary: String?
     }
 
+    /// Each loan carries `opds:copies`: without it the parser reads the loan as
+    /// unlimited and drops `until`, so a due-date change would not reach the record.
     private static func feed(_ entries: [Entry]) -> TPPOPDSFeed {
         let body = entries.map { entry in
             let author = entry.author.map { "<author><name>\($0)</name></author>" } ?? ""
@@ -85,6 +87,7 @@ final class BookRegistrySyncDiffContractTests: XCTestCase {
               \(summary)
               <link href="http://example.com/\(entry.id).epub" type="application/epub+zip" rel="http://opds-spec.org/acquisition">
                 <opds:availability status="available" since="2026-07-01T00:00:00Z" until="\(entry.until)"/>
+                <opds:copies available="1" total="1"/>
               </link>
             </entry>
             """
