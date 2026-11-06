@@ -22,6 +22,7 @@ import PalaceCatalog
 /// Minimal provider returning one account. Deliberately not added to the shared
 /// `TPPLibraryAccountMock`, which many suites use.
 private final class GateAccountsProvider: NSObject, TPPLibraryAccountsProvider, @unchecked Sendable {
+    func reportSignInProgress(_ progress: SignInProgress) {}
     private let account: Account
     init(account: Account) { self.account = account; super.init() }
 
@@ -110,11 +111,15 @@ final class NotificationServiceReadinessGateTests: XCTestCase {
         return account
     }
 
-    private func makeService(account: Account) -> NotificationService {
+    private func makeService(
+        account: Account,
+        signInProgress: PassthroughSubject<SignInProgress, Never> = PassthroughSubject()
+    ) -> NotificationService {
         NotificationService(
             authStatePublisher: PassthroughSubject<TPPAccountAuthState, Never>().eraseToAnyPublisher(),
             onAuthStateRetryRequested: {},
-            accountsManager: GateAccountsProvider(account: account)
+            accountsManager: GateAccountsProvider(account: account),
+            signInProgress: signInProgress.eraseToAnyPublisher()
         )
     }
 
@@ -202,6 +207,33 @@ final class NotificationServiceReadinessGateTests: XCTestCase {
 
         XCTAssertTrue(service.isRegistrationClaimed(account.uuid),
                       "a library change must start token registration for the current library")
+    }
+
+    /// A finished sign-in starts token registration, so a patron who signs in
+    /// to a library they already added gets hold notifications.
+    func testSignInFinished_StartsTokenRegistration() {
+        let account = makeLoadingAccount()
+        let progress = PassthroughSubject<SignInProgress, Never>()
+        let service = makeService(account: account, signInProgress: progress)
+        XCTAssertFalse(service.isRegistrationClaimed(account.uuid),
+                       "precondition: nothing has started registration yet")
+
+        progress.send(.finished)
+
+        XCTAssertTrue(service.isRegistrationClaimed(account.uuid),
+                      "a finished sign-in must start token registration")
+    }
+
+    /// A sign-in that has only started has no credentials to register with yet.
+    func testSignInStarted_DoesNotStartTokenRegistration() {
+        let account = makeLoadingAccount()
+        let progress = PassthroughSubject<SignInProgress, Never>()
+        let service = makeService(account: account, signInProgress: progress)
+
+        progress.send(.started)
+
+        XCTAssertFalse(service.isRegistrationClaimed(account.uuid),
+                       "a sign-in that has only started must not register a token")
     }
 
     /// The top guard: an account already registered must not start an attempt

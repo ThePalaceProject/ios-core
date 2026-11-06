@@ -12,16 +12,16 @@ import PalacePreferences
 import PalaceBookRegistry
 
 extension Notification.Name {
-    static let TPPCatalogDidLoad = Notification.Name("TPPCatalogDidLoad")
     static let TPPCrawlProgressDidUpdate = Notification.Name("TPPCrawlProgressDidUpdate")
     static let TPPUserAccountDidChange = Notification.Name("TPPUserAccountDidChangeNotification")
     static let TPPDidSignOut = Notification.Name("TPPDidSignOut")
-    static let TPPIsSigningIn = Notification.Name("TPPIsSigningIn")
     static let TPPAppDelegateDidReceiveCleverRedirectURL = Notification.Name("TPPAppDelegateDidReceiveCleverRedirectURL")
     // Registry sync and change events are the registry's Combine publishers
     // (syncEventPublisher / registryDidChangePublisher / bookStatePublisher /
     // registryStatePublisher / holdsDidChangePublisher), not notifications.
-    // Current-library changes are `AccountsManager.currentLibraryChangePublisher`.
+    // Current-library changes, catalog loads and sign-in progress are
+    // `AccountsManager`'s `currentLibraryChangePublisher`,
+    // `catalogLoadedPublisher` and `signInProgressPublisher`.
 
     /// The `userInfo` dictionary contains the following key-value pairs:
     /// - an `bookProcessingBookIDKey` key whose value is a String indicating
@@ -38,11 +38,9 @@ extension Notification.Name {
 
 @objc extension NSNotification {
     public static let TPPSettingsDidChange = Notification.Name.TPPSettingsDidChange
-    public static let TPPCatalogDidLoad = Notification.Name.TPPCatalogDidLoad
     public static let TPPUseBetaDidChange = Notification.Name.TPPUseBetaDidChange
     public static let TPPUserAccountDidChange = Notification.Name.TPPUserAccountDidChange
     public static let TPPDidSignOut = Notification.Name.TPPDidSignOut
-    public static let TPPIsSigningIn = Notification.Name.TPPIsSigningIn
     public static let TPPAppDelegateDidReceiveCleverRedirectURL = Notification.Name.TPPAppDelegateDidReceiveCleverRedirectURL
     public static let TPPBookProcessingDidChange = Notification.Name.TPPBookProcessingDidChange
     public static let TPPMyBooksDownloadCenterDidChange = Notification.Name.TPPMyBooksDownloadCenterDidChange

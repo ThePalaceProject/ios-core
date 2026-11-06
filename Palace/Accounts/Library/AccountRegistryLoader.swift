@@ -72,6 +72,9 @@ final class AccountRegistryLoader: @unchecked Sendable {
     private let currentLibraryAccountProvider: () -> TPPCurrentLibraryAccountProvider?
     /// Asks current-library listeners to reload after a load applies its feed.
     private let announceCurrentLibraryRefresh: () -> Void
+    /// Tells catalog listeners a load finished. Called on main, from each
+    /// load's completion, whether or not the feed parsed.
+    private let announceCatalogLoaded: () -> Void
 
     /// Resolves the build-time bundled registry snapshot resource. Production binds
     /// `Bundle.main`; tests inject a stub to observe the first-launch bundled decode's
@@ -140,7 +143,8 @@ final class AccountRegistryLoader: @unchecked Sendable {
         driveCurrentAccountAuthDoc: @escaping () -> Void,
         fetchAuthDocumentWithStateMachine: @escaping (Account, @escaping (Bool) -> Void) -> Void,
         currentLibraryAccountProvider: @escaping () -> TPPCurrentLibraryAccountProvider?,
-        announceCurrentLibraryRefresh: @escaping () -> Void
+        announceCurrentLibraryRefresh: @escaping () -> Void,
+        announceCatalogLoaded: @escaping () -> Void
     ) {
         self.registryCache = registryCache
         self.registryStore = registryStore
@@ -159,6 +163,7 @@ final class AccountRegistryLoader: @unchecked Sendable {
         self.fetchAuthDocumentWithStateMachineImpl = fetchAuthDocumentWithStateMachine
         self.currentLibraryAccountProvider = currentLibraryAccountProvider
         self.announceCurrentLibraryRefresh = announceCurrentLibraryRefresh
+        self.announceCatalogLoaded = announceCatalogLoaded
     }
 
     // MARK: - Owned-task spawning + join seams
@@ -487,7 +492,7 @@ final class AccountRegistryLoader: @unchecked Sendable {
             if addLoadingHandler(for: hash, completion) { return }
 
             loadAccountSetsAndAuthDoc(fromCatalogData: cachedData, key: hash) { [weak self] success in
-                NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+                self?.announceCatalogLoaded()
                 self?.callAndClearLoadingHandlers(for: hash, success)
             }
 
@@ -512,7 +517,7 @@ final class AccountRegistryLoader: @unchecked Sendable {
                 Log.info(#file, "First launch — loading bundled registry snapshot for hash \(hash), dataSize=\(bundledData.count)")
                 self.registryCache.writeCatalogData(bundledData, hash: hash, isBundled: true)
                 self.loadAccountSetsAndAuthDoc(fromCatalogData: bundledData, key: hash) { _ in
-                    NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+                    self.announceCatalogLoaded()
                 }
             }
 
@@ -581,7 +586,7 @@ final class AccountRegistryLoader: @unchecked Sendable {
                         }
                     }
                 ) { success in
-                    NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+                    self.announceCatalogLoaded()
                     self.callAndClearLoadingHandlers(for: hash, success)
                 }
 
@@ -626,7 +631,7 @@ final class AccountRegistryLoader: @unchecked Sendable {
                                 self.registryCache.writeCatalogData(fullData, hash: hash)
                             }
                         ) { _ in
-                            NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+                            self.announceCatalogLoaded()
                         }
                     }
                     self.triggerCatalogPreload()
@@ -660,7 +665,7 @@ final class AccountRegistryLoader: @unchecked Sendable {
                         self.registryCache.writeCatalogData(data, hash: hash)
                     }
                 ) { success in
-                    NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+                    self.announceCatalogLoaded()
                     self.callAndClearLoadingHandlers(for: hash, success)
                 }
             } catch {
@@ -669,7 +674,7 @@ final class AccountRegistryLoader: @unchecked Sendable {
                 if let data = self.registryCache.readCatalogData(hash: hash) {
                     Log.info(#file, "Using cached catalog data as fallback after network failure")
                     self.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash) { success in
-                        NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+                        self.announceCatalogLoaded()
                         self.callAndClearLoadingHandlers(for: hash, success)
                     }
                 } else {
@@ -723,7 +728,7 @@ final class AccountRegistryLoader: @unchecked Sendable {
                         self.registryCache.writeCatalogData(data, hash: hash)
                     }
                 ) { [weak self] _ in
-                    NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+                    self?.announceCatalogLoaded()
                     self?.triggerCatalogPreload()
                 }
 
@@ -757,7 +762,7 @@ final class AccountRegistryLoader: @unchecked Sendable {
                         self.registryCache.writeCatalogData(data, hash: hash)
                     }
                 ) { _ in
-                    NotificationCenter.default.post(name: .TPPCatalogDidLoad, object: nil)
+                    self.announceCatalogLoaded()
                 }
             } catch {
                 Log.debug(#file, "Fallback direct refresh also failed for hash \(hash): \(error.localizedDescription)")
@@ -825,8 +830,8 @@ final class AccountRegistryLoader: @unchecked Sendable {
     ///     Separate from `completion` (PP-5191), whose `Bool` means "the feed parsed":
     ///     a refused write still parsed and still completes `true`.
     ///   - completion: always runs asynchronously on the main queue, on every path.
-    ///     Callers post `.TPPCatalogDidLoad` from it, and that notification's
-    ///     `@MainActor` observers (`TPPAccountList.catalogDidLoad`) trap off main.
+    ///     Callers announce the catalog load from it, and that announcement's
+    ///     `@MainActor` listeners (`TPPAccountList`) trap off main.
     func loadAccountSetsAndAuthDoc(
         fromCatalogData data: Data,
         key hash: String,

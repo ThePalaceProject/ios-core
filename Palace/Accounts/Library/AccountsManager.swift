@@ -6,25 +6,6 @@ import PalaceBookRegistry
 
 let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
 
-@objc protocol TPPCurrentLibraryAccountProvider: NSObjectProtocol {
-    var currentAccount: Account? { get }
-}
-
-/// Resolves per-library `TPPUserAccount` instances. Prefer this over
-/// `TPPUserAccount.sharedAccount(libraryUUID:)` — instances returned by
-/// this protocol have immutable keychain keys and are not subject to the
-/// TOCTOU race in the singleton's mutable `libraryUUID` pattern.
-@objc protocol TPPUserAccountResolving: NSObjectProtocol {
-    func userAccount(for libraryUUID: String) -> TPPUserAccount
-    var currentUserAccount: TPPUserAccount { get }
-}
-
-@objc protocol TPPLibraryAccountsProvider: TPPCurrentLibraryAccountProvider, TPPUserAccountResolving {
-    var tppAccountUUID: String { get }
-    var currentAccountId: String? { get }
-    func account(_ uuid: String) -> Account?
-}
-
 /// Lock-backed holder for `AccountsManager`'s test-only `Bool` flags so they
 /// can be concurrency-safe global state without `nonisolated(unsafe)`.
 /// `@unchecked Sendable` invariant: the only mutable state is `storage`, read
@@ -82,6 +63,10 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
     let ageCheck: TPPAgeCheckVerifying
     /// Backs `currentLibraryChangePublisher`. The `currentAccount` setter sends `.selected`.
     let currentLibraryChanges = CurrentLibraryChangeBroadcaster()
+    /// Backs `catalogLoadedPublisher`. The registry loader sends after each catalog load.
+    let catalogLoads = MainThreadBroadcaster<Void>()
+    /// Backs `signInProgressPublisher`.
+    let signInProgress = MainThreadBroadcaster<SignInProgress>()
     private let settings: TPPSettings
 
     /// `UserDefaults` backing store for the persisted
@@ -132,7 +117,8 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
             self.fetchAuthDocumentWithStateMachine(for: account, completion: completion)
         },
         currentLibraryAccountProvider: { [weak self] in self },
-        announceCurrentLibraryRefresh: { [weak self] in self?.requestCurrentLibraryRefresh() }
+        announceCurrentLibraryRefresh: { [weak self] in self?.requestCurrentLibraryRefresh() },
+        announceCatalogLoaded: { [weak self] in self?.catalogLoads.send(()) }
     )
     /// On-disk catalog cache (`DiskAccountRegistryCache` by default).
     private let registryCache: any AccountRegistryCaching

@@ -253,39 +253,23 @@ final class TPPSignInAdobeSkipTests: XCTestCase {
         // logIn must early-return when no auth method is selected — attempting
         // a login without knowing which method to use would send blank creds.
         // Verify both the early-return contract (no validation kicked off) and
-        // that no sign-in notification was posted downstream.
-        var signInNotificationPosted = false
-        let observer = NotificationCenter.default.addObserver(
-            forName: .TPPIsSigningIn, object: nil, queue: nil
-        ) { _ in signInNotificationPosted = true }
-        defer { NotificationCenter.default.removeObserver(observer) }
-
+        // that no sign-in progress was reported.
         businessLogic.selectedAuthentication = nil
         await businessLogic.logIn()
 
         XCTAssertFalse(businessLogic.isValidatingCredentials,
                        "logIn without a selected auth must not enter the validating state")
-        XCTAssertFalse(signInNotificationPosted,
-                       "logIn without a selected auth must not post TPPIsSigningIn")
+        XCTAssertEqual(libraryAccountMock.reportedSignInProgress, [],
+                       "logIn without a selected auth must not report sign-in progress")
     }
 
-    func testLogIn_postsSigningInNotification() async {
-        let expectation = expectation(
-            forNotification: .TPPIsSigningIn,
-            object: nil
-        ) { notification in
-            if let isSigningIn = notification.object as? Bool {
-                return isSigningIn == true
-            }
-            return false
-        }
-
+    func testLogIn_reportsSignInStarted() async {
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
         await businessLogic.logIn()
 
-        await fulfillment(of: [expectation], timeout: 1.0)
+        XCTAssertEqual(libraryAccountMock.reportedSignInProgress.first, .started)
         XCTAssertGreaterThanOrEqual(networkExecutor.executedRequestURLs.count, 1,
-                                    "logIn() must reach credential validation after the notification")
+                                    "logIn() must reach credential validation after reporting the start")
     }
 
     func testLogIn_notifiesUIDelegateWillSignIn() async {

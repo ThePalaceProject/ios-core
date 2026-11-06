@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 /// List of available Libraries/Accounts to select as patron's primary
 /// when going through Welcome Screen flow.
@@ -20,21 +21,14 @@ import Foundation
     var requiresSelectionBeforeDismiss: Bool = false
 
     private var accountsLoadingLogos = Set<String>()
+    private var catalogLoadSubscription: AnyCancellable?
 
     @objc required init(completion: @escaping (Account) -> Void, accountsManager: AccountsManager = AppContainer.production().accountsManager) {
         self.completion = completion
         self.accountsManager = accountsManager
         super.init(nibName: nil, bundle: nil)
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(catalogDidLoad),
-            name: .TPPCatalogDidLoad,
-            object: nil
-        )
-    }
-
-    deinit {
-        NotificationCenter.default.removeObserver(self)
+        catalogLoadSubscription = accountsManager.catalogLoadedPublisher
+            .sink { [weak self] in self?.catalogDidLoad() }
     }
 
     @available(*, unavailable)
@@ -72,7 +66,7 @@ import Foundation
         }
     }
 
-    @objc private func catalogDidLoad() {
+    private func catalogDidLoad() {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.isViewLoaded else { return }
             self.datasource.loadData()

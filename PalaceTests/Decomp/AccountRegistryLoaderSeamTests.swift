@@ -85,7 +85,8 @@ final class AccountRegistryLoaderSeamTests: XCTestCase {
             driveCurrentAccountAuthDoc: {},
             fetchAuthDocumentWithStateMachine: { _, completion in completion(true) },
             currentLibraryAccountProvider: { nil },
-            announceCurrentLibraryRefresh: {}
+            announceCurrentLibraryRefresh: {},
+            announceCatalogLoaded: {}
         )
     }
 }

@@ -54,7 +54,7 @@ final class AccountRegistryLoaderCompletionQueueTests: PalaceWiringTestCase {
     /// reload once, on main, after the main-feed URL is updated.
     func testLoadAccountSets_WhenWriteApplies_RequestsOneRefreshOnMain() async throws {
         let store = AccountRegistryStore(currentHash: "h")
-        let refreshes = RefreshRecorder()
+        let refreshes = MainThreadRecorder()
         let loader = makeLoader(store: store, announceCurrentLibraryRefresh: {
             refreshes.record(onMain: Thread.isMainThread)
         })
@@ -109,11 +109,13 @@ final class AccountRegistryLoaderCompletionQueueTests: PalaceWiringTestCase {
     }
 
     /// No cache, the crawl fails, and the direct GET returns bytes that do not parse:
-    /// the handler and `.TPPCatalogDidLoad` both came from the fetch Task, and the
-    /// `@MainActor` `TPPAccountList.catalogDidLoad` observer trapped.
-    func testLoadCatalogs_WhenDirectGETBytesDoNotParse_CompletesAndPostsOnMainQueue() async throws {
-        let loader = makeLoader(store: AccountRegistryStore(), networking: ScriptedNetworking(body: Data("<html>".utf8)))
-        let posts = PostRecorder()
+    /// the handler and the catalog-loaded announcement both came from the fetch
+    /// Task, and the `@MainActor` `TPPAccountList` listener trapped.
+    func testLoadCatalogs_WhenDirectGETBytesDoNotParse_CompletesAndAnnouncesOnMainQueue() async throws {
+        let announcements = MainThreadRecorder()
+        let loader = makeLoader(store: AccountRegistryStore(),
+                                networking: ScriptedNetworking(body: Data("<html>".utf8)),
+                                announceCatalogLoaded: { announcements.record(onMain: Thread.isMainThread) })
         let recorder = CompletionRecorder()
 
         loader.loadCatalogs { @Sendable success in
@@ -124,19 +126,20 @@ final class AccountRegistryLoaderCompletionQueueTests: PalaceWiringTestCase {
 
         XCTAssertEqual(recorder.success, false)
         XCTAssertEqual(recorder.onMain, true)
-        XCTAssertGreaterThan(posts.count, 0, "premise: the parse failure must post .TPPCatalogDidLoad")
-        XCTAssertEqual(posts.offMainCount, 0, ".TPPCatalogDidLoad must be posted on main")
+        XCTAssertGreaterThan(announcements.onMainFlags.count, 0, "premise: the parse failure must announce a catalog load")
+        XCTAssertFalse(announcements.onMainFlags.contains(false), "the catalog load must be announced on main")
     }
 
     /// Disk cache and background refresh both yield bytes that do not parse: the
-    /// cache-load post ran on the caller's queue and the refresh fallback's post on
-    /// its Task, matching the second trapping stack.
-    func testLoadCatalogs_WhenCachedAndRefreshedBytesDoNotParse_PostsCatalogDidLoadOnMainQueue() async throws {
+    /// cache-load announcement ran on the caller's queue and the refresh fallback's
+    /// on its Task, matching the second trapping stack.
+    func testLoadCatalogs_WhenCachedAndRefreshedBytesDoNotParse_AnnouncesCatalogLoadedOnMainQueue() async throws {
         let garbage = Data("not json".utf8)
+        let announcements = MainThreadRecorder()
         let loader = makeLoader(store: AccountRegistryStore(),
                                 cache: FixedRegistryCache(data: garbage),
-                                networking: ScriptedNetworking(body: garbage))
-        let posts = PostRecorder()
+                                networking: ScriptedNetworking(body: garbage),
+                                announceCatalogLoaded: { announcements.record(onMain: Thread.isMainThread) })
         let recorder = CompletionRecorder()
         let box = UncheckedBox(loader)
 
@@ -152,8 +155,8 @@ final class AccountRegistryLoaderCompletionQueueTests: PalaceWiringTestCase {
 
         XCTAssertEqual(recorder.success, false)
         XCTAssertEqual(recorder.onMain, true)
-        XCTAssertGreaterThanOrEqual(posts.count, 2, "premise: the cache load and the refresh fallback must both post")
-        XCTAssertEqual(posts.offMainCount, 0, ".TPPCatalogDidLoad must be posted on main")
+        XCTAssertGreaterThanOrEqual(announcements.onMainFlags.count, 2, "premise: the cache load and the refresh fallback must both announce")
+        XCTAssertFalse(announcements.onMainFlags.contains(false), "every catalog load must be announced on main")
     }
 
     // MARK: - Helpers
@@ -235,7 +238,8 @@ final class AccountRegistryLoaderCompletionQueueTests: PalaceWiringTestCase {
         store: AccountRegistryStore,
         cache: any AccountRegistryCaching = FixedRegistryCache(data: nil),
         networking: any AccountNetworking = ScriptedNetworking(body: nil),
-        announceCurrentLibraryRefresh: @escaping () -> Void = {}
+        announceCurrentLibraryRefresh: @escaping () -> Void = {},
+        announceCatalogLoaded: @escaping () -> Void = {}
     ) -> AccountRegistryLoader {
         let loader = AccountRegistryLoader(
             registryCache: cache,
@@ -254,7 +258,8 @@ final class AccountRegistryLoaderCompletionQueueTests: PalaceWiringTestCase {
             driveCurrentAccountAuthDoc: {},
             fetchAuthDocumentWithStateMachine: { _, completion in completion(true) },
             currentLibraryAccountProvider: { nil },
-            announceCurrentLibraryRefresh: announceCurrentLibraryRefresh
+            announceCurrentLibraryRefresh: announceCurrentLibraryRefresh,
+            announceCatalogLoaded: announceCatalogLoaded
         )
         loader.snapshotResourceResolver = NoBundledSnapshot()
         loader.crawlerFetcher = FailingFetcher()
@@ -269,7 +274,7 @@ private struct UncheckedBox<T>: @unchecked Sendable {
     init(_ value: T) { self.value = value }
 }
 
-private final class RefreshRecorder: @unchecked Sendable {
+private final class MainThreadRecorder: @unchecked Sendable {
     private let lock = NSLock()
     private var flags: [Bool] = []
     func record(onMain: Bool) { lock.withLock { flags.append(onMain) } }
@@ -324,23 +329,4 @@ private final class FixedRegistryCache: AccountRegistryCaching, @unchecked Senda
     func isCatalogStale(hash: String) -> Bool { true }
     func slimSnapshotURL(hash: String) -> URL? { nil }
     func clearFileCaches() {}
-}
-
-/// Records the thread of every `.TPPCatalogDidLoad` post while it is alive.
-private final class PostRecorder: @unchecked Sendable {
-    private let lock = NSLock()
-    private var threads: [Bool] = []
-    private var token: NSObjectProtocol?
-
-    init() {
-        token = NotificationCenter.default.addObserver(forName: .TPPCatalogDidLoad, object: nil, queue: nil) { [weak self] _ in
-            guard let self else { return }
-            let onMain = Thread.isMainThread
-            self.lock.withLock { self.threads.append(onMain) }
-        }
-    }
-    deinit { token.map(NotificationCenter.default.removeObserver) }
-
-    var count: Int { lock.withLock { threads.count } }
-    var offMainCount: Int { lock.withLock { threads.filter { !$0 }.count } }
 }

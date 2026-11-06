@@ -59,6 +59,7 @@ final class MyBooksDownloadCenterAccountIdThreadingTests: XCTestCase {
     /// state is NSLock-guarded; hence `@unchecked Sendable`. This also removes a
     /// real (previously-tolerated-under-Swift-4.2) data race in the test.
     private final class ControllableAccountsManagerMock: NSObject, TPPLibraryAccountsProvider, @unchecked Sendable {
+        func reportSignInProgress(_ progress: SignInProgress) {}
         private let lock = NSLock()
         private var _mockedCurrentAccountId: String?
         private var _userAccountsByUUID: [String: TPPUserAccount] = [:]

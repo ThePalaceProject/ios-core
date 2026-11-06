@@ -21,31 +21,8 @@ enum CurrentLibraryChange: Equatable, Sendable {
     case refreshRequested
 }
 
-/// Fan-out for `CurrentLibraryChange`, delivered on the main thread.
-///
-/// A send from the main thread reaches every subscriber before `send` returns,
-/// so a subscriber reads the state the sender set just before it (the setter's
-/// new `currentAccountId`, the prior account's eviction). A send from another
-/// thread is re-sent on the main queue, because most subscribers update
-/// main-actor UI state.
-///
-/// `@unchecked Sendable`: the only stored state is the subject, and `send`
-/// reaches it only on the main thread.
-final class CurrentLibraryChangeBroadcaster: @unchecked Sendable {
-    private let subject = PassthroughSubject<CurrentLibraryChange, Never>()
-
-    var publisher: AnyPublisher<CurrentLibraryChange, Never> {
-        subject.eraseToAnyPublisher()
-    }
-
-    func send(_ change: CurrentLibraryChange) {
-        if Thread.isMainThread {
-            subject.send(change)
-        } else {
-            DispatchQueue.main.async { [subject] in subject.send(change) }
-        }
-    }
-}
+/// Fan-out for `CurrentLibraryChange`; see `MainThreadBroadcaster`.
+typealias CurrentLibraryChangeBroadcaster = MainThreadBroadcaster<CurrentLibraryChange>
 
 extension AccountsManager {
     /// Emits when the current library is selected or asks listeners to reload.

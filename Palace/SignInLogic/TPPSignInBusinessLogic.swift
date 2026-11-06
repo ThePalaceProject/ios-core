@@ -712,7 +712,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
             return
         }
 
-        NotificationCenter.default.post(name: .TPPIsSigningIn, object: true)
+        libraryAccountsProvider.reportSignInProgress(.started)
 
         dispatch(.credentialCaptureStarted(barcode: uiDelegate?.username, pin: uiDelegate?.pin))
 
@@ -768,7 +768,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         isAwaitingReadinessForLogIn = true
 
         // The post-`awaitReady()` work touches main-actor-only state
-        // (`selectedAuthentication`, `logIn`, the `.TPPIsSigningIn` post) on a
+        // (`selectedAuthentication`, `logIn`, the sign-in progress report) on a
         // class that is NOT `@MainActor`. Hopping back via `await MainActor.run {
         // … self … }` captures non-Sendable `self` in that `@Sendable` body and
         // trips the `targeted` "capture of 'self' in @Sendable closure"
@@ -786,12 +786,14 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         // `TPPSignInBusinessLogic: @MainActor`. Runtime is
         // correct: `awaitReady()` is awaited, then all state mutation hops to the
         // main thread via the non-`@Sendable` `asyncIfNeeded`.
-        Task { [weak self] in
+        // `progressReporter` is held strongly so the finished report still goes
+        // out if this object is released while readiness is awaited.
+        Task { [weak self, progressReporter = libraryAccountsProvider] in
             do {
                 _ = try await account.awaitReady()
             } catch {
                 Log.warn(#file, "Sign-in awaited readiness but the auth document did not load: \(error)")
-                NotificationCenter.default.post(name: .TPPIsSigningIn, object: false)
+                progressReporter.reportSignInProgress(.finished)
                 self?.isAwaitingReadinessForLogIn = false
                 return
             }
@@ -811,7 +813,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
                 if self.selectedAuthentication != nil {
                     await self.logIn(with: tokenURL)
                 } else {
-                    NotificationCenter.default.post(name: .TPPIsSigningIn, object: false)
+                    progressReporter.reportSignInProgress(.finished)
                 }
                 self.isAwaitingReadinessForLogIn = false
             }
@@ -1053,7 +1055,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         #if FEATURE_DRM_CONNECTOR
         guard drmSuccess else {
             Log.warn(#file, "DRM authorization failed — preserving existing credentials")
-            NotificationCenter.default.post(name: .TPPIsSigningIn, object: false)
+            libraryAccountsProvider.reportSignInProgress(.finished)
             return
         }
         #endif
@@ -1093,7 +1095,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         // in-flight reducer state (token, captured creds, ignoreSignedIn).
         dispatch(.userAccountUpdated)
 
-        NotificationCenter.default.post(name: .TPPIsSigningIn, object: false)
+        libraryAccountsProvider.reportSignInProgress(.finished)
     }
 
     // MARK: - Available Features Checks

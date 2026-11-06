@@ -140,4 +140,14 @@ class TPPLibraryAccountMock: NSObject, TPPLibraryAccountsProvider, @unchecked Se
     var currentUserAccount: TPPUserAccount {
         return userAccount(for: currentAccountId ?? tppAccountUUID)
     }
+
+    // MARK: - Sign-in progress
+
+    private var _reportedSignInProgress: [SignInProgress] = []
+    /// Every sign-in progress report, in order.
+    var reportedSignInProgress: [SignInProgress] { lock.withLock { _reportedSignInProgress } }
+
+    func reportSignInProgress(_ progress: SignInProgress) {
+        lock.withLock { _reportedSignInProgress.append(progress) }
+    }
 }
