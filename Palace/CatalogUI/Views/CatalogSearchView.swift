@@ -52,16 +52,31 @@ struct CatalogSearchView: View {
         onBookSelected: @escaping (TPPBook) -> Void,
         appContainer: AppContainer
     ) {
-        self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(
+        self._viewModel = StateObject(wrappedValue: Self.makeViewModel(
             repository: repository,
             baseURL: baseURL,
-            bookRegistry: appContainer.bookRegistry,
-            bookCellModelCache: appContainer.bookCellModelCache
+            appContainer: appContainer
         ))
         self.books = books
         self.onBookSelected = onBookSelected
         self.downloadCenter = appContainer.downloadCenter
         self.bookRegistry = appContainer.bookRegistry
+    }
+
+    /// Search announces through the container's center, which screens tell
+    /// about transitions, so its results wait for a transition to settle.
+    static func makeViewModel(
+        repository: CatalogRepositoryProtocol,
+        baseURL: @escaping () -> URL?,
+        appContainer: AppContainer
+    ) -> CatalogSearchViewModel {
+        CatalogSearchViewModel(
+            repository: repository,
+            baseURL: baseURL,
+            announcements: appContainer.accessibilityAnnouncer,
+            bookRegistry: appContainer.bookRegistry,
+            bookCellModelCache: appContainer.bookCellModelCache
+        )
     }
 
     /// Searches through `appContainer`'s catalog repository, so results share
