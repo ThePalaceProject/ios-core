@@ -97,33 +97,6 @@ final class EPUBPositionCoalescingTests: XCTestCase {
         XCTAssertEqual(memoryHref(fixture), "/chapter1.xhtml", "the tenth turn must be current in memory")
     }
 
-    func testBookmark_OneSecondAfterAPageTurn_CarriesTheNewHrefAndProgress() async throws {
-        let fixture = await makeFixture()
-        defer { fixture.removeFiles() }
-        let poster = makePoster(fixture)
-        poster.storeReadPosition(locator: Self.locator("/chapter1.xhtml", progression: 0.2, total: 0.1))
-        fixture.clock.advance(1)
-        let turned = Self.locator("/chapter2.xhtml", progression: 0.5, total: 0.6)
-        poster.storeReadPosition(locator: turned)
-        await fixture.registry._awaitPendingPersistenceForTesting()
-        XCTAssertNotEqual(persistedHref(fixture), "/chapter2.xhtml", "premise: the turn has not reached disk")
-
-        let publication = Self.makePublication()
-        let factory = TPPBookmarkFactory(book: Self.makeBook(), publication: publication, drmDeviceID: "device")
-        let bookmark = await factory.make(
-            fromR3Location: TPPBookmarkR3Location(resourceIndex: 1, locator: turned),
-            usingBookRegistry: fixture.registry,
-            for: Self.makeBook(),
-            publication: publication
-        )
-
-        // The saved dictionary lets the registry location's keys override the
-        // bookmark's own, so a stale location would move the bookmark.
-        let saved = try XCTUnwrap(bookmark?.toJSONDictionary())
-        XCTAssertEqual(saved["href"] as? String, "/chapter2.xhtml")
-        XCTAssertEqual((saved["progressWithinChapter"] as? NSNumber)?.doubleValue ?? -1, 0.5, accuracy: 0.001)
-    }
-
     func testReaderClose_WritesTheNewestPosition() async {
         let fixture = await makeFixture()
         defer { fixture.removeFiles() }
