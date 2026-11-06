@@ -1,0 +1,19 @@
+// Command-line overrides for building with Xcode 27 or later. Pass with
+// `xcodebuild -xcconfig Xcode27.xcconfig` or XCODE_XCCONFIG_FILE;
+// scripts/xcode-test-optimized.sh sets the latter on Xcode 27+. Settings here
+// apply to every target in every nested project, so they cover submodule
+// projects that cannot be changed here. Xcode can reuse a cached build
+// description after this file changes; build into fresh DerivedData then.
+
+// Xcode 27 supports iOS 15.0 or later; TenPrintCover, OverdriveProcessor and
+// other nested projects declare 10.0 to 16.6. No target declares more than the
+// app's 17.0.
+IPHONEOS_DEPLOYMENT_TARGET = 17.0
+
+// ADEPT.xcconfig is the base of both the ADEPT project and its target, so
+// `$(inherited)` passes each Adobe library to libtool twice and libADEPT.a holds
+// every member twice. The classic linker accepted that; Xcode 27 has only the
+// new linker, which fails on the duplicate Objective-C classes. ADEPT is the
+// only target that sets OTHER_LIBTOOLFLAGS, so every other target gets none.
+OTHER_LIBTOOLFLAGS = $(PALACE_XCODE27_LIBTOOLFLAGS_$(TARGET_NAME))
+PALACE_XCODE27_LIBTOOLFLAGS_ADEPT = -lhobbes-iOS -lcts-iOS -lt3-iOS -ldatacollector-iOS -lpng-iOS -lfonts-iOS -lhyphen-iOS -ladept-iOS -lcrypt-openssl-iOS -ldp-iOS -lexpat-iOS -lxml-iOS -lzlib-iOS -lssl -lcrypto -lcurl
