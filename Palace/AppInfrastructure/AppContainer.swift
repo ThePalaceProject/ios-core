@@ -312,6 +312,21 @@ struct AppContainer: @unchecked Sendable {
         return presenter
     }
 
+    /// Process-wide visibility, thermal and power state (PP-5508). The scene
+    /// delegates and CarPlay push into it; it reads nothing from the container.
+    @MainActor
+    var activityPolicy: ActivityPolicy {
+        if let cached = AppContainer._activityPolicy { return cached }
+        let policy = ActivityPolicy(
+            notificationCenter: .default,
+            thermalState: { ProcessInfo.processInfo.thermalState },
+            isLowPowerModeEnabled: { ProcessInfo.processInfo.isLowPowerModeEnabled },
+            scheduler: TimerTickScheduler()
+        )
+        AppContainer._activityPolicy = policy
+        return policy
+    }
+
     // MARK: - Catalog Repository / API
     //
     // One `DefaultCatalogAPI` + `CatalogRepository` per container, so the
@@ -351,6 +366,7 @@ struct AppContainer: @unchecked Sendable {
     @MainActor private static var _playbackBootstrapper: PlaybackBootstrapper?
     @MainActor private static var _appRatingService: AppRatingService?
     @MainActor private static var _ratingPromptPresenter: RatingPromptPresenter?
+    @MainActor private static var _activityPolicy: ActivityPolicy?
 
     init(
         bookRegistry: TPPBookRegistryProvider,

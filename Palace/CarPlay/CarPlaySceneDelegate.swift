@@ -36,6 +36,7 @@ final class CarPlaySceneDelegate: UIResponder, @preconcurrency CPTemplateApplica
     private var templateManager: CarPlayTemplateManager?
     private var cancellables = Set<AnyCancellable>()
     private let bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry
+    private lazy var activityPolicy: ActivityPolicy = AppContainer.production().activityPolicy
 
     // MARK: - CPTemplateApplicationSceneDelegate
 
@@ -44,6 +45,9 @@ final class CarPlaySceneDelegate: UIResponder, @preconcurrency CPTemplateApplica
         didConnect interfaceController: CPInterfaceController
     ) {
         self.interfaceController = interfaceController
+        // A connected head unit counts as visible even when it only shows the
+        // "coming soon" template.
+        activityPolicy.setCarPlayConnected(true)
 
         // Check feature flag - if CarPlay is disabled, show coming soon message
         guard AppContainer.production().featureFlags.isCarPlayEnabledCached else {
@@ -78,6 +82,7 @@ final class CarPlaySceneDelegate: UIResponder, @preconcurrency CPTemplateApplica
         didDisconnect interfaceController: CPInterfaceController
     ) {
         Log.info(#file, "🚗 CarPlay disconnected")
+        activityPolicy.setCarPlayConnected(false)
 
         cancellables.removeAll()
         // Remove the Now Playing observer on the main actor BEFORE releasing the
