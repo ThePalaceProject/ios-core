@@ -31,6 +31,9 @@ final class AudiobookBookmarkBusinessLogicConcurrencyTests: XCTestCase {
         override func setLocation(_ location: TPPBookLocation?, forIdentifier identifier: String) {
             sync { super.setLocation(location, forIdentifier: identifier) }
         }
+        override func setLocationDeferringSave(_ location: TPPBookLocation?, forIdentifier identifier: String) {
+            sync { super.setLocationDeferringSave(location, forIdentifier: identifier) }
+        }
         override func location(forIdentifier identifier: String) -> TPPBookLocation? {
             sync { super.location(forIdentifier: identifier) }
         }

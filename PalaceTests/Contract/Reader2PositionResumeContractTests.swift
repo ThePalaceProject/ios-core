@@ -98,6 +98,18 @@ private final class RecordingResumeRegistry: NSObject, TPPBookRegistryProvider, 
         inner.setLocation(location, forIdentifier: identifier)
     }
 
+    func setLocationDeferringSave(_ location: TPPBookLocation?, forIdentifier identifier: String) {
+        log.record(
+            "registry.setLocationDeferringSave",
+            args: [
+                "bookID": identifier,
+                "hasLocation": location != nil,
+                "renderer": location?.renderer ?? "nil",
+            ]
+        )
+        inner.setLocationDeferringSave(location, forIdentifier: identifier)
+    }
+
     func location(forIdentifier identifier: String) -> TPPBookLocation? {
         let result = inner.location(forIdentifier: identifier)
         log.record(
