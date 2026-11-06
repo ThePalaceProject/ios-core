@@ -2303,18 +2303,25 @@ final class MyBooksViewModelUnchangedSyncTests: XCTestCase {
         ]
     }
 
-    /// Ends one sync and waits for the reload it triggers to finish.
-    private func completeSync(with books: [TPPBook]) async {
+    /// Ends one sync, waits for the reload it triggers to finish, and returns
+    /// how many times `books` emitted during it. One publish emits more than
+    /// once (assignment, then the in-place sort), so callers compare against 0.
+    @discardableResult
+    private func completeSync(with books: [TPPBook]) async -> Int {
+        let before = bookPublications.count
         mock.myBooks = books
         mock.sendSyncEvent(.ended)
         await awaitPublishedAsync(viewModel.$isLoading.dropFirst()) { !$0 }
+        return bookPublications.count - before
     }
 
-    func testSync_TwiceWithIdenticalShelf_PublishesBooksOnce() async {
-        await completeSync(with: shelf())
-        await completeSync(with: shelf())
+    func testSync_TwiceWithIdenticalShelf_SecondSyncDoesNotPublish() async {
+        let first = await completeSync(with: shelf())
 
-        XCTAssertEqual(bookPublications.count, 1,
+        let second = await completeSync(with: shelf())
+
+        XCTAssertGreaterThan(first, 0, "the first sync must publish the shelf")
+        XCTAssertEqual(second, 0,
             "an unchanged second sync must not republish books; got \(bookPublications)")
         XCTAssertEqual(Set(viewModel.books.map(\.identifier)), ["u1", "u2"])
     }
@@ -2322,18 +2329,18 @@ final class MyBooksViewModelUnchangedSyncTests: XCTestCase {
     func testSync_WithChangedTitle_PublishesAgain() async {
         await completeSync(with: shelf())
 
-        await completeSync(with: shelf(secondTitle: "Second, Revised"))
+        let published = await completeSync(with: shelf(secondTitle: "Second, Revised"))
 
-        XCTAssertEqual(bookPublications.count, 2)
+        XCTAssertGreaterThan(published, 0)
         XCTAssertTrue(viewModel.books.contains { $0.title == "Second, Revised" })
     }
 
     func testSync_WithRemovedBook_PublishesAgain() async {
         await completeSync(with: shelf())
 
-        await completeSync(with: [TPPBookMocker.mockBook(identifier: "u1", title: "First", authors: "Author A")])
+        let published = await completeSync(with: [TPPBookMocker.mockBook(identifier: "u1", title: "First", authors: "Author A")])
 
-        XCTAssertEqual(bookPublications.count, 2)
+        XCTAssertGreaterThan(published, 0)
         XCTAssertEqual(viewModel.books.map(\.identifier), ["u1"])
     }
 
@@ -2344,9 +2351,9 @@ final class MyBooksViewModelUnchangedSyncTests: XCTestCase {
         await completeSync(with: [TPPBookMocker.mockBookWithLimitedAvailability(identifier: "u1", until: now.addingTimeInterval(7 * 86_400))])
 
         let renewedUntil = now.addingTimeInterval(14 * 86_400)
-        await completeSync(with: [TPPBookMocker.mockBookWithLimitedAvailability(identifier: "u1", until: renewedUntil)])
+        let published = await completeSync(with: [TPPBookMocker.mockBookWithLimitedAvailability(identifier: "u1", until: renewedUntil)])
 
-        XCTAssertEqual(bookPublications.count, 2)
+        XCTAssertGreaterThan(published, 0)
         XCTAssertEqual(viewModel.books.first?.getExpirationDate(), renewedUntil)
     }
 
@@ -2356,12 +2363,11 @@ final class MyBooksViewModelUnchangedSyncTests: XCTestCase {
         let books = shelf()
         books.forEach { mock.addBook($0, state: .downloadNeeded) }
         await completeSync(with: books)
-        let publicationsAfterFirstSync = bookPublications.count
 
         mock.setState(.downloadSuccessful, for: "u1")
-        await completeSync(with: shelf())
+        let published = await completeSync(with: shelf())
 
-        XCTAssertEqual(bookPublications.count, publicationsAfterFirstSync + 1,
+        XCTAssertGreaterThan(published, 0,
             "a registry state change must republish even when the book list is the same")
     }
 }
