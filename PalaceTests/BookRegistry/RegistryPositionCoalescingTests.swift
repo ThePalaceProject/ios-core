@@ -156,6 +156,12 @@ final class RegistryPositionCoalescingTests: XCTestCase {
         let sceneDelegate = SceneDelegate()
         let registry = registry
         sceneDelegate.positionRegistry = { registry }
+        sceneDelegate.activityPolicy = ActivityPolicy(
+            notificationCenter: NotificationCenter(),
+            thermalState: { .nominal },
+            isLowPowerModeEnabled: { false },
+            scheduler: TimerTickScheduler()
+        )
 
         sceneDelegate.sceneDidEnterBackground(scene)
 
