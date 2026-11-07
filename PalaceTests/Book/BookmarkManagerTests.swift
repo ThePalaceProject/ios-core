@@ -206,6 +206,21 @@ final class BookmarkManagerTests: XCTestCase {
                       "Empty-id setLocation must NOT cross-contaminate another book's location")
     }
 
+    /// PP-5500: the autosave's annotation-id commit refines a position that was
+    /// just persisted, so it must store the location without asking for a save.
+    func test_setLocationDeferringSave_storesTheLocationWithoutAnySave() {
+        let book = makeBook()
+        addBookToStore(book)
+
+        manager.setLocationDeferringSave(makeLocation(page: 7), forIdentifier: book.identifier)
+        waitForBarrier()
+
+        XCTAssertTrue(manager.location(forIdentifier: book.identifier)?.locationString.contains("7") ?? false)
+        XCTAssertEqual(savePositionCallCount, 0)
+        XCTAssertEqual(saveCallCount, 0)
+        XCTAssertEqual(saveSyncCallCount, 0)
+    }
+
     func test_setLocation_nil_clearsLocation() {
         let book = makeBook()
         addBookToStore(book)

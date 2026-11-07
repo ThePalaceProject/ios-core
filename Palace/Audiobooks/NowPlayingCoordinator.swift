@@ -90,8 +90,7 @@ public final class NowPlayingCoordinator {
     /// `@unchecked Sendable` box so the nonisolated `deinit` can remove it
     /// WITHOUT reading a `@MainActor`-isolated stored property (which
     /// `complete` mode rejects, and `MainActor.assumeIsolated` is banned in
-    /// deinit). Mirrors the codebase `ObserverTokenBox` pattern
-    /// (DLNavigator / TPPBookRegistry).
+    /// deinit).
     private let foregroundObserverBox = ObserverTokenBox()
 
     /// Injectable seam for `UIApplication.shared.applicationState`. Tests
@@ -449,8 +448,7 @@ public final class NowPlayingCoordinator {
 }
 
 /// Nonisolated `Sendable` holder for the foreground-notification observer
-/// token. Mirrors the codebase `ObserverTokenBox` pattern (DLNavigator /
-/// TPPBookRegistry): the `@MainActor`-isolated `NowPlayingCoordinator` cannot
+/// token. The `@MainActor`-isolated `NowPlayingCoordinator` cannot
 /// read an isolated stored property from its nonisolated `deinit`, so the
 /// token lives here instead. `token` is written exactly once (right after
 /// `addObserver` returns in `init`) and read only by `removeObserver()` —

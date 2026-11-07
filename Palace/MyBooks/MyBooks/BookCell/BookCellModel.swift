@@ -285,8 +285,7 @@ class BookCellModel: ObservableObject {
     private func setImageAndCache(_ image: UIImage) {
         let simpleKey = book.identifier
         let thumbnailKey = "\(book.identifier)_thumbnail"
-        imageCache.set(image, for: simpleKey)
-        imageCache.set(image, for: thumbnailKey)
+        imageCache.set(image, for: [simpleKey, thumbnailKey])
         self.image = image
     }
 

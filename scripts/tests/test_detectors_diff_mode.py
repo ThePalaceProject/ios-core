@@ -33,6 +33,7 @@ _FIXTURES = _SCRIPTS / "tests" / "fixtures"
 _CASES = [
     ("check-swiftui-placeholder-a11y.py",            "swiftui_a11y",        "violation.swift",                    "Palace/CatalogUI",         "PP-4421", "warn"),
     ("check-raising-unarchiver.py",                   "raising_unarchiver",  "violation_raising_unarchive.swift",  "Palace/Keychain",          "RUA-1",   "block"),
+    ("check-formatter-in-function.py",                "formatter_in_function", "violation_formatter_in_function.swift", "Palace/Reader2",     "DFF-1",   "block"),
 ]
 
 _IDS = [c[0].removeprefix("check-").removesuffix(".py") for c in _CASES]

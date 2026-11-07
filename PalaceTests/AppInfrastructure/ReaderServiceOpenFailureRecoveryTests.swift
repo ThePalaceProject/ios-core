@@ -41,7 +41,8 @@ final class ReaderServiceOpenFailureRecoveryTests: XCTestCase {
             rootViewController: { nil },
             isConnected: { spy.connected },
             presentAlert: { title, message in spy.alerts.append((title, message)) },
-            redownloadAndReopen: { book, _ in spy.redownloads.append(book.identifier) }
+            redownloadAndReopen: { book, _ in spy.redownloads.append(book.identifier) },
+            imageCache: { MockImageCache() }
         )
     }
 

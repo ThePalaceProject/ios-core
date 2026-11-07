@@ -109,7 +109,7 @@ struct BookDetailView: View {
                 Task { await viewModel.hydrateMetadataIfNeeded() }
                 self.descriptionText = viewModel.book.summary ?? ""
 
-                NotificationCenter.default.post(name: .TPPAccessibilityScreenTransition, object: nil)
+                appContainer.accessibilityAnnouncer.notifyScreenTransition()
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                     isTitleFocused = true
                 }
@@ -225,19 +225,6 @@ struct BookDetailView: View {
         }
         .toolbarBackground(.hidden, for: .navigationBar)
         .modifier(BookStateModifier(viewModel: viewModel, showHalfSheet: $viewModel.showHalfSheet))
-        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ToggleSampleNotification")).receive(on: RunLoop.main)) { note in
-            guard let info = note.userInfo as? [String: Any], let identifier = info["bookIdentifier"] as? String else { return }
-            let action = (info["action"] as? String) ?? "toggle"
-            if action == "close" {
-                appContainer.samplePreviewManager.close()
-                return
-            }
-            if let book = viewModel.registry.book(forIdentifier: identifier) ?? (viewModel.relatedBooksByLane.values.flatMap { $0.books }).first(where: { $0.identifier == identifier }) {
-                appContainer.samplePreviewManager.toggle(for: book)
-            } else if viewModel.book.identifier == identifier {
-                appContainer.samplePreviewManager.toggle(for: viewModel.book)
-            }
-        }
         .onDisappear { appContainer.samplePreviewManager.close() }
     }
 

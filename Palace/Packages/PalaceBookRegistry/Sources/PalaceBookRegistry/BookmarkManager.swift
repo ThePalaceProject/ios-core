@@ -45,6 +45,14 @@ class BookmarkManager {
     }, announce: false, onComplete: { [savePosition] in if let account { savePosition(account) } })
   }
 
+  /// Same mutation as `setLocation`, with no save: the location is written to
+  /// disk by whichever registry save runs next.
+  func setLocationDeferringSave(_ location: TPPBookLocation?, forIdentifier identifier: String) {
+    store.mutateRegistry({ registry in
+      registry[identifier]?.location = location
+    }, announce: false)
+  }
+
   func setLocationSync(_ location: TPPBookLocation?, forIdentifier identifier: String, account: String?) {
     guard !identifier.isEmpty else { return }
     store.mutateRegistrySync({ registry in

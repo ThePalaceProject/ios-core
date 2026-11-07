@@ -76,9 +76,6 @@ struct CatalogLaneMoreView: View {
         .onReceive(accountChangePublisher) { _ in
             handleAccountChange()
         }
-        .onReceive(sampleTogglePublisher) { note in
-            handleSampleToggle(note)
-        }
         .onDisappear {
             Log.debug(#file, "🔴 CatalogLaneMoreView.onDisappear() - Being dismissed")
             appContainer.samplePreviewManager.close()
@@ -105,13 +102,6 @@ struct CatalogLaneMoreView: View {
 
     private var accountChangePublisher: AnyPublisher<CurrentLibraryChange, Never> {
         appContainer.accountsManager.currentLibraryChangePublisher
-    }
-
-    private var sampleTogglePublisher: AnyPublisher<Notification, Never> {
-        NotificationCenter.default
-            .publisher(for: Notification.Name("ToggleSampleNotification"))
-            .receive(on: RunLoop.main)
-            .eraseToAnyPublisher()
     }
 
     private var registryChangePublisher: AnyPublisher<String, Never> {
@@ -148,21 +138,6 @@ struct CatalogLaneMoreView: View {
         viewModel.appliedSelections.removeAll()
         viewModel.pendingSelections.removeAll()
         Task { await viewModel.load(coordinator: coordinator) }
-    }
-
-    private func handleSampleToggle(_ note: Notification) {
-        guard let info = note.userInfo as? [String: Any],
-              let identifier = info["bookIdentifier"] as? String else { return }
-
-        let action = (info["action"] as? String) ?? "toggle"
-        if action == "close" {
-            appContainer.samplePreviewManager.close()
-            return
-        }
-
-        if let book = appContainer.bookRegistry.book(forIdentifier: identifier) ?? viewModel.allBooks.first(where: { $0.identifier == identifier }) {
-            appContainer.samplePreviewManager.toggle(for: book)
-        }
     }
 
     // MARK: - Navigation

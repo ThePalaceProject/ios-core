@@ -209,6 +209,10 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider, @unchecked Sendabl
         lock.withLock { _registry[identifier]?.location = location }
     }
 
+    func setLocationDeferringSave(_ location: TPPBookLocation?, forIdentifier identifier: String) {
+        lock.withLock { _registry[identifier]?.location = location }
+    }
+
     func location(forIdentifier identifier: String) -> TPPBookLocation? {
         lock.withLock { _registry[identifier]?.location }
     }

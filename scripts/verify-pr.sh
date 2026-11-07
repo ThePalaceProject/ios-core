@@ -1191,6 +1191,8 @@ run_phase35_detector "raising_unarchiver" "check-raising-unarchiver.py" "block" 
   "No NSKeyedUnarchiver.unarchiveObject(with:) — raises uncatchably on a corrupt archive" "diff"
 run_phase35_detector "opaque_blob_egress" "check-opaque-blob-egress.py" "block" \
   "No opaque payload reaches an external sink"
+run_phase35_detector "formatter_in_function" "check-formatter-in-function.py" "block" \
+  "No DateFormatter/ISO8601DateFormatter built inside a function body" "diff"
 
 # Exit 0 from the enforcer can still carry rows below their recorded floor: an
 # app row within APP_FLOOR_TOLERANCE reads WITHIN, and a package row reads
