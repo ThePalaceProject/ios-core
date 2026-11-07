@@ -34,6 +34,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             updateBadge: { NotificationService.updateAppIconBadge(heldBooks: $0) }
         ))
 
+    /// Receives the main scene's visibility. Resolved on first use; tests set
+    /// their own instance.
+    lazy var activityPolicy: ActivityPolicy = AppContainer.production().activityPolicy
+
     private static let isRunningUnderXCTest =
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
@@ -101,19 +105,20 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func sceneDidBecomeActive(_ scene: UIScene) {
-        // Restart any tasks paused when scene was inactive
+        activityPolicy.setScene(.active)
     }
 
     func sceneWillResignActive(_ scene: UIScene) {
-        // Called when scene will move to inactive state
+        activityPolicy.setScene(.inactive)
     }
 
     func sceneWillEnterForeground(_ scene: UIScene) {
+        activityPolicy.setScene(.inactive)
         foregroundShelfSync?.appWillEnterForeground()
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {
-        // Save data, release resources, store scene state
+        activityPolicy.setScene(.background)
     }
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
