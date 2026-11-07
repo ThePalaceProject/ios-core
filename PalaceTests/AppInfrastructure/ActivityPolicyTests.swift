@@ -91,7 +91,7 @@ final class ActivityPolicyTests: XCTestCase {
         let subscription = policy.statePublisher.sink { state in
             if predicate(state) { reached.fulfill() }
         }
-        wait(for: [reached], timeout: 5)
+        wait(for: [reached], timeout: 5) // STARVE-001-OK: waits on one DispatchQueue.main delivery of a posted notification, not on async work
         subscription.cancel()
     }
 
