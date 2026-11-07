@@ -12,7 +12,6 @@ import PalacePreferences
 import PalaceBookRegistry
 
 extension Notification.Name {
-    static let TPPCrawlProgressDidUpdate = Notification.Name("TPPCrawlProgressDidUpdate")
     static let TPPUserAccountDidChange = Notification.Name("TPPUserAccountDidChangeNotification")
     static let TPPDidSignOut = Notification.Name("TPPDidSignOut")
     static let TPPAppDelegateDidReceiveCleverRedirectURL = Notification.Name("TPPAppDelegateDidReceiveCleverRedirectURL")
@@ -31,8 +30,6 @@ extension Notification.Name {
     static let TPPBookProcessingDidChange = Notification.Name("TPPBookProcessingDidChange")
 
     static let TPPMyBooksDownloadCenterDidChange = Notification.Name("TPPMyBooksDownloadCenterDidChange")
-    static let TPPBookDetailDidClose = Notification.Name("TPPBookDetailDidClose")
-    static let TPPAccountSetDidLoad = Notification.Name("TPPAccountSetDidLoad")
     // TPPReachabilityChanged is defined in PalaceNetwork; do not duplicate.
 }
 
@@ -44,8 +41,6 @@ extension Notification.Name {
     public static let TPPAppDelegateDidReceiveCleverRedirectURL = Notification.Name.TPPAppDelegateDidReceiveCleverRedirectURL
     public static let TPPBookProcessingDidChange = Notification.Name.TPPBookProcessingDidChange
     public static let TPPMyBooksDownloadCenterDidChange = Notification.Name.TPPMyBooksDownloadCenterDidChange
-    public static let TPPBookDetailDidClose = Notification.Name.TPPBookDetailDidClose
-    public static let TPPAccountSetDidLoad = Notification.Name.TPPAccountSetDidLoad
     public static let TPPReachabilityChanged = Notification.Name.TPPReachabilityChanged
 }
 

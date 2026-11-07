@@ -1,10 +1,6 @@
 import Foundation
 import UIKit
 
-extension Notification.Name {
-    static let TPPAccountLogoUpdated = Notification.Name("TPPAccountLogoUpdated")
-}
-
 // `@MainActor`: this observer only ever lives inside SwiftUI views (held as
 // `@StateObject`), so its `@Published token` is main-actor state. Isolating the
 // type lets `logoDidUpdate` hop to the main actor without capturing a

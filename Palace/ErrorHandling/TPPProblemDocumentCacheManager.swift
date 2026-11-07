@@ -1,13 +1,5 @@
 import PalaceCatalog
 
-extension Notification.Name {
-    static let TPPProblemDocumentWasCached = Notification.Name("TPPProblemDocumentWasCached")
-}
-
-@objc extension NSNotification {
-    public static let TPPProblemDocumentWasCached = Notification.Name.TPPProblemDocumentWasCached
-}
-
 // Thread-safety: all mutable state (`cache`) is guarded by `lock` (NSLock),
 // so instances are safe to share across concurrency domains. `@unchecked
 // Sendable` documents that the lock — not the compiler — enforces the
@@ -52,7 +44,6 @@ extension Notification.Name {
         vals.append(timeStampDoc)
         cache[key] = vals
         lock.unlock()
-        NotificationCenter.default.post(name: NSNotification.Name.TPPProblemDocumentWasCached, object: doc)
     }
 
     @objc(clearCachedDocForBookIdentifier:)

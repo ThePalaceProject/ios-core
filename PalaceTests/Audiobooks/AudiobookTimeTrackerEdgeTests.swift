@@ -160,6 +160,53 @@ final class AudiobookTimeTrackerEdgeTests: XCTestCase {
                         "Second stopAndSave should not create duplicate entries (duration is 0)")
     }
 
+    /// Ticks spanning three UTC minutes produce one entry per minute, keyed by
+    /// the minute string and holding exactly the seconds played in it (PP-5498).
+    func testReceiveValue_acrossThreeUTCMinutes_savesOneEntryPerMinuteWithExactSeconds() {
+        // 1_699_999_980 is 2023-11-14T22:13:00Z; ticks run 22:13:50 to 22:15:59.
+        let start = 1_700_000_030.0
+        for i in 0..<130 {
+            tracker.receiveValue(Date(timeIntervalSince1970: start + Double(i)))
+        }
+        tracker.stopAndSave()
+        mockDataManager.flush()
+
+        let saved = mockDataManager.savedTimeEntries.map { ($0.duringMinute, $0.duration) }
+        XCTAssertEqual(saved.map(\.0), ["2023-11-14T22:13Z", "2023-11-14T22:14Z", "2023-11-14T22:15Z"])
+        XCTAssertEqual(saved.map(\.1), [10, 60, 60])
+    }
+
+    /// A tick a fraction of a second before the boundary stays in the old
+    /// minute; the first tick at or after it opens the new one.
+    func testReceiveValue_fractionalTicksAroundBoundary_splitAtTheExactSecond() {
+        let boundary = 1_700_000_040.0
+        for offset in [-2.5, -1.5, -0.0005, 0.0, 0.5] {
+            tracker.receiveValue(Date(timeIntervalSince1970: boundary + offset))
+        }
+        tracker.stopAndSave()
+        mockDataManager.flush()
+
+        let saved = mockDataManager.savedTimeEntries.map { ($0.duringMinute, $0.duration) }
+        XCTAssertEqual(saved.map(\.0), ["2023-11-14T22:13Z", "2023-11-14T22:14Z"])
+        XCTAssertEqual(saved.map(\.1), [3, 2])
+    }
+
+    /// A tick under a millisecond before a minute ends is filed under that
+    /// minute. DateFormatter rounds to the millisecond, so a key formatted from
+    /// the tick itself would name the next minute and file it twice.
+    func testReceiveValue_tickJustBeforeMinuteEnds_isFiledUnderItsOwnMinute() {
+        // 22:13:50, then 22:14:59.9997 after a gap, then 22:15:00.5.
+        for t in [1_700_000_030.0, 1_700_000_099.9997, 1_700_000_100.5] {
+            tracker.receiveValue(Date(timeIntervalSince1970: t))
+        }
+        tracker.stopAndSave()
+        mockDataManager.flush()
+
+        let saved = mockDataManager.savedTimeEntries.map { ($0.duringMinute, $0.duration) }
+        XCTAssertEqual(saved.map(\.0), ["2023-11-14T22:13Z", "2023-11-14T22:14Z", "2023-11-14T22:15Z"])
+        XCTAssertEqual(saved.map(\.1), [1, 1, 1])
+    }
+
     /// SRS: AUDIO-003 -- Time tracking accumulates and persists correctly
     func testZeroDuration_isNotSaved() {
         // Don't send any receiveValue calls

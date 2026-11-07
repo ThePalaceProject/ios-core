@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import os
 import PalaceLogging
 import PalaceBookModel
 
@@ -221,8 +222,12 @@ struct AnyCodable: Codable {
 }
 
 extension Date {
+    /// Built once for every audiobook position save. ISO8601DateFormatter is
+    /// not Sendable, so the shared instance is read under a lock.
+    private static let bookmarkTimestampFormatter = OSAllocatedUnfairLock(uncheckedState: ISO8601DateFormatter())
+
     var iso8601: String {
-        return ISO8601DateFormatter().string(from: self)
+        Date.bookmarkTimestampFormatter.withLockUnchecked { $0.string(from: self) }
     }
 }
 
