@@ -192,8 +192,7 @@ extension TPPBook {
                 DispatchQueue.main.async {
                     self.thumbnailImage = image
                     if let img = image {
-                        self.imageCache.set(img, for: self.identifier)
-                        self.imageCache.set(img, for: thumbnailKey)
+                        self.imageCache.set(img, for: [self.identifier, thumbnailKey])
                         if self.coverImage == nil {
                             self.updateDominantColor(using: img)
                         }
