@@ -259,6 +259,8 @@ final class ActivityPolicyTests: XCTestCase {
         let sceneDelegate = SceneDelegate()
         sceneDelegate.foregroundShelfSync = nil
         sceneDelegate.activityPolicy = policy
+        let registry = TPPBookRegistryMock()
+        sceneDelegate.positionRegistry = { registry }
 
         let steps: [(String, (UIScene) -> Void, SceneVisibility)] = [
             ("willEnterForeground", sceneDelegate.sceneWillEnterForeground, .inactive),

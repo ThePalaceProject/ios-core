@@ -456,10 +456,9 @@ final class BookRegistryStore: @unchecked Sendable {
 
   // MARK: - Bulk operations
 
+  /// Synchronous so a sign-out knows no later snapshot can still see the shelf.
   func removeAll() {
-    performBarrier { [weak self] in
-      self?.registry.removeAll()
-    }
+    performBarrierSync({ self.registry.removeAll() }, operation: "removeAll")
   }
 
   func registrySnapshot() -> [[String: Any]] {

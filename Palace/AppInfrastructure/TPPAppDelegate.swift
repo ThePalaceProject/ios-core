@@ -442,6 +442,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         #endif
 
         audiobookLifecycleManager.willTerminate()
+        AppContainer.production().bookRegistry.flushPendingPositions()
         NotificationCenter.default.removeObserver(self)
         AppContainer.production().reachability.stopMonitoring()
 

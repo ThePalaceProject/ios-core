@@ -58,13 +58,24 @@ class TPPLastReadPositionPoster {
 
         // Save location locally
         let location = TPPBookLocation(locator: locator, type: "LocatorHrefProgression", publication: publication)
-        bookRegistryProvider.setLocation(location, forIdentifier: book.identifier)
+        // Page turns arrive in bursts; the registry keeps memory current and
+        // limits the file rewrite to once per 15 s (PP-5507).
+        bookRegistryProvider.setLocation(location, forIdentifier: book.identifier, persistence: .coalesced)
 
         // PP-5138: post the SAME bytes we just stored. See `makeSnapshot`.
         guard let snapshot = makeSnapshot(from: location) else { return }
         pendingWriteTasks.append(Task { [positionWriter] in
             _ = try? await positionWriter.save(snapshot)
         })
+    }
+
+    /// Stores the reader's last locator and writes any position still waiting
+    /// for its disk write. Called when the reader closes.
+    func storeFinalPositionAndFlush(locator: Locator?) {
+        if let locator {
+            storeReadPosition(locator: locator)
+        }
+        bookRegistryProvider.flushPendingPositions()
     }
 
     /// Test seam: returns every server-post `Task` spawned since the last drain

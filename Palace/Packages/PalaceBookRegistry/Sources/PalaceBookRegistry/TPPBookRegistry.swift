@@ -67,6 +67,11 @@ public protocol TPPBookRegistryProvider: Sendable {
     func state(for bookIdentifier: String?) -> TPPBookState
     func readiumBookmarks(forIdentifier identifier: String) -> [TPPReadiumBookmark]
     func setLocation(_ location: TPPBookLocation?, forIdentifier identifier: String)
+    /// Updates the in-memory position now and writes it to disk as `persistence` says.
+    func setLocation(_ location: TPPBookLocation?, forIdentifier identifier: String, persistence: RegistryPositionPersistence)
+    /// Writes every `.coalesced` position that has not reached disk yet, and
+    /// returns after the write has finished.
+    func flushPendingPositions()
     /// Replaces the stored location without a registry save of its own; the
     /// value reaches disk with the next save. For a refinement of a position
     /// that `setLocation` has just persisted (PP-5500). No default: a conformer
@@ -134,6 +139,14 @@ public extension TPPBookRegistryProvider {
     func updateAndRemoveBook(_ book: TPPBook, serverAuthoritative: Bool) {
         updateAndRemoveBook(book)
     }
+
+    /// Registries that do not persist have no disk write to coalesce, so every
+    /// mode is an ordinary `setLocation`.
+    func setLocation(_ location: TPPBookLocation?, forIdentifier identifier: String, persistence: RegistryPositionPersistence) {
+        setLocation(location, forIdentifier: identifier)
+    }
+
+    func flushPendingPositions() {}
 }
 
 // TPPBookRegistryData and TPPBookRegistryKey defined in TPPBookRegistryRecord.swift
@@ -301,6 +314,9 @@ public class TPPBookRegistry: @unchecked Sendable {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 guard let self else { return }
+                // The store still holds the outgoing account's shelf here, so its
+                // pending positions can be written to its own file.
+                self.flushPendingPositions()
                 // Invalidate UI-visible state synchronously BEFORE kicking off the
                 // async load. Without this, MyBooks keeps showing the previous
                 // account's registry for the duration of the load — the user can
@@ -541,7 +557,8 @@ public class TPPBookRegistry: @unchecked Sendable {
             store: store,
             save: { [weak sync] account in sync?.save(for: account) },
             savePosition: { [weak sync] account in sync?.save(for: account, scope: .positionOnly) },
-            saveSync: { [weak sync] account in sync?.saveSync(for: account) }
+            saveSync: { [weak sync] account in sync?.saveSync(for: account) },
+            now: dependencies.positionClock
         )
         setupAccountDidChangeObserver()
     }
@@ -571,7 +588,8 @@ public class TPPBookRegistry: @unchecked Sendable {
             store: store,
             save: { [weak sync] account in sync?.save(for: account) },
             savePosition: { [weak sync] account in sync?.save(for: account, scope: .positionOnly) },
-            saveSync: { [weak sync] account in sync?.saveSync(for: account) }
+            saveSync: { [weak sync] account in sync?.saveSync(for: account) },
+            now: dependencies.positionClock
         )
         syncEngine.load(account: account) { [weak self] newState in self?.state = newState }
     }
@@ -684,6 +702,7 @@ public class TPPBookRegistry: @unchecked Sendable {
     public func reset(_ account: String) {
         if loadedAccountID == account { setLoadedAccountID(nil) }
         state = .unloaded
+        bookmarks.dropPendingPositions(for: account)
         syncEngine.reset(account)
     }
 
@@ -931,8 +950,19 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
     // unconditionally and skips save-to-disk when account is nil.
 
     public func setLocation(_ location: TPPBookLocation?, forIdentifier bookIdentifier: String) {
+        setLocation(location, forIdentifier: bookIdentifier, persistence: .immediate)
+    }
+
+    // PUBLIC_INTENT: TPPBookRegistryProvider requirement called by the app's EPUB position poster.
+    public func setLocation(_ location: TPPBookLocation?, forIdentifier bookIdentifier: String, persistence: RegistryPositionPersistence) {
         bookmarks.setLocation(location, forIdentifier: bookIdentifier,
-                               account: accountScope.currentAccountID)
+                              account: accountScope.currentAccountID, persistence: persistence)
+    }
+
+    // PUBLIC_INTENT: TPPBookRegistryProvider requirement called by the app delegate and the EPUB reader.
+    public func flushPendingPositions() {
+        bookmarks.flushPendingPositions(loadedAccount: loadedAccountID)
+        syncEngine.waitForPendingDiskWrites()
     }
 
     // PUBLIC_INTENT: witness for the public TPPBookRegistryProvider requirement, which the app target calls across the package boundary.
