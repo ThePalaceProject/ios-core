@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import os
 import PalaceNetwork
 
 // MARK: - OPDS2 Feed Model
@@ -283,42 +284,45 @@ public struct OPDS2FacetProperties: Codable, Equatable, Sendable {
 
 public extension OPDS2Feed {
 
+    private static let fractionalDateFormatter = OSAllocatedUnfairLock(uncheckedState: {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }())
+
+    private static let plainDateFormatter = OSAllocatedUnfairLock(uncheckedState: {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }())
+
+    private static let rfc3339DateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter
+    }()
+
     /// Creates a JSONDecoder configured for OPDS 2.0 date formats
     static public func makeDecoder() -> JSONDecoder {
         let decoder = JSONDecoder()
 
-        // OPDS 2.0 uses ISO 8601 dates. Construct the formatters INSIDE the
-        // `.custom` closure: it is `@Sendable` (capturing a shared mutable
-        // ISO8601DateFormatter would be a data race), and the previous shared
-        // formatter mutated `formatOptions` to drop `.withFractionalSeconds`
-        // and never restored it — so once any non-fractional date was parsed,
-        // every later fractional date silently failed. Per-call formatters are
-        // both race-free and free of that latent ordering bug.
+        // OPDS 2.0 uses ISO 8601 dates. The shared formatters are configured
+        // once and never mutated afterwards, so one parse cannot change the
+        // options another relies on. ISO8601DateFormatter is not Sendable, so
+        // those two are read under a lock; DateFormatter is thread-safe.
         decoder.dateDecodingStrategy = .custom { decoder in
             let container = try decoder.singleValueContainer()
             let dateString = try container.decode(String.self)
 
-            // Try with fractional seconds first
-            let fractional = ISO8601DateFormatter()
-            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            if let date = fractional.date(from: dateString) {
+            if let date = OPDS2Feed.fractionalDateFormatter.withLockUnchecked({ $0.date(from: dateString) }) {
                 return date
             }
-
-            // Try without fractional seconds
-            let plain = ISO8601DateFormatter()
-            plain.formatOptions = [.withInternetDateTime]
-            if let date = plain.date(from: dateString) {
+            if let date = OPDS2Feed.plainDateFormatter.withLockUnchecked({ $0.date(from: dateString) }) {
                 return date
             }
-
-            // Try RFC 3339 format
-            let rfc3339Formatter = DateFormatter()
-            rfc3339Formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
-            rfc3339Formatter.locale = Locale(identifier: "en_US_POSIX")
-            rfc3339Formatter.timeZone = TimeZone(secondsFromGMT: 0)
-
-            if let date = rfc3339Formatter.date(from: dateString) {
+            if let date = OPDS2Feed.rfc3339DateFormatter.date(from: dateString) {
                 return date
             }
 

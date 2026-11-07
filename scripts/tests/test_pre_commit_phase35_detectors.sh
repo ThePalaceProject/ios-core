@@ -331,6 +331,50 @@ if [ "$CH_CLEAN_EXIT" -ne 0 ]; then
   exit 1
 fi
 
+# --- Assert 11: FORMATTER_IN_FUNCTION blocks a date formatter built inside a ---
+# function body (PP-5498), and clears when the formatter moves to a configured-
+# once static.
+cat > Palace/Stamp.swift <<'EOF'
+import Foundation
+extension Date {
+    var iso8601: String {
+        return ISO8601DateFormatter().string(from: self)
+    }
+}
+EOF
+git add Palace/Stamp.swift
+set +e
+DFF_OUT=$(echo "$JSON_INPUT" | bash "$HOOK" 2>&1)
+DFF_EXIT=$?
+set -e
+if [ "$DFF_EXIT" -eq 0 ] || ! echo "$DFF_OUT" | grep -q "FORMATTER_IN_FUNCTION" \
+   || ! echo "$DFF_OUT" | grep -q "Palace/Stamp.swift:4: DFF-1"; then
+  echo "FAIL: a formatter built inside a computed property did not block (exit $DFF_EXIT)"
+  echo "$DFF_OUT" | sed 's/^/    /'
+  exit 1
+fi
+cat > Palace/Stamp.swift <<'EOF'
+import Foundation
+extension Date {
+    private static let stampFormatter = ISO8601DateFormatter()
+    var iso8601: String {
+        Date.stampFormatter.string(from: self)
+    }
+}
+EOF
+git add Palace/Stamp.swift
+set +e
+DFF_CLEAN_OUT=$(echo "$JSON_INPUT" | bash "$HOOK" 2>&1)
+DFF_CLEAN_EXIT=$?
+set -e
+if [ "$DFF_CLEAN_EXIT" -ne 0 ]; then
+  echo "FAIL: a static formatter spuriously blocked (exit $DFF_CLEAN_EXIT)"
+  echo "$DFF_CLEAN_OUT" | sed 's/^/    /'
+  exit 1
+fi
+git rm -q --cached Palace/Stamp.swift
+rm -f Palace/Stamp.swift
+
 # --- Assert 10: SWIFT_SOURCES_COMPILED blocks a Swift file no target compiles, ---
 # and passes once every tracked Swift file is in the project's Sources phase.
 # Like the real project, it references the gitignored APIKeys.swift.
@@ -394,9 +438,9 @@ if [ "$SSC_BYPASS_EXIT" -ne 0 ]; then
   exit 1
 fi
 
-echo "PASS: 10 assertions — hook blocks violations, identifies detector, honors both"
+echo "PASS: 11 assertions — hook blocks violations, identifies detector, honors both"
 echo "      bypass envvars, passes a clean diff (no detector spuriously blocks),"
 echo "      and the unsynchronized-sendable-mock, auth-challenge-async-form,"
-echo "      opaque-blob-egress and swift-sources-compiled detectors each fire on a"
-echo "      violation and clean-pass on the fix."
+echo "      opaque-blob-egress, formatter-in-function and swift-sources-compiled"
+echo "      detectors each fire on a violation and clean-pass on the fix."
 exit 0
