@@ -30,7 +30,7 @@ final class ReaderServiceRouteOwnershipTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        service = ReaderService()
+        service = ReaderService(imageCache: { MockImageCache() })
         coordinator = NavigationCoordinator()
     }
 

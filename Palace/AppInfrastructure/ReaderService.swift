@@ -51,7 +51,7 @@ final class ReaderService {
             TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
         },
         redownloadAndReopen: (@MainActor (TPPBook, LibraryServiceError) -> Void)? = nil,
-        imageCache: @escaping @MainActor () -> ImageCacheType = { ImageCache.shared }
+        imageCache: @escaping @MainActor () -> ImageCacheType
     ) {
         self.rootViewController = rootViewController
         self.isConnected = isConnected
