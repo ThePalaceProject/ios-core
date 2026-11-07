@@ -21,6 +21,6 @@
       "hasLocation" : "true",
       "renderer" : "PalaceAudiobookToolkit"
     },
-    "method" : "registry.setLocation"
+    "method" : "registry.setLocationDeferringSave"
   }
 ]

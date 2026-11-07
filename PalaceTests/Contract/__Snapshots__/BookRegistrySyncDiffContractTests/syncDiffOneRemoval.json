@@ -1,0 +1,57 @@
+[
+  {
+    "args" : {
+      "state" : "syncing"
+    },
+    "method" : "setState"
+  },
+  {
+    "args" : {
+      "state" : "synced"
+    },
+    "method" : "setState"
+  },
+  {
+    "args" : {
+      "hasError" : "false",
+      "newBooks" : "true"
+    },
+    "method" : "completion"
+  },
+  {
+    "args" : {
+      "count" : "2"
+    },
+    "method" : "registryPublished"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "registryDidChange"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "registryDidChange"
+  },
+  {
+    "args" : {
+      "step" : "backupStaging"
+    },
+    "method" : "registryWrite"
+  },
+  {
+    "args" : {
+      "step" : "backupReplace"
+    },
+    "method" : "registryWrite"
+  },
+  {
+    "args" : {
+      "step" : "primary"
+    },
+    "method" : "registryWrite"
+  }
+]

@@ -81,7 +81,7 @@ final class DLNavigator: Sendable {
         guard let topViewController = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController(),
               let newAccount = accountsManager.account(libraryId)
         else {
-            callOnce(on: .TPPAccountSetDidLoad) { [weak self] in
+            Self.retryLoginWhenCatalogLoads(accountsManager: accountsManager) { [weak self] in
                 self?.login(libraryId: libraryId, barcode: barcode)
             }
             return
@@ -112,50 +112,26 @@ final class DLNavigator: Sendable {
         }
     }
 
-    /// Runs `block` when receives a notification with `name` once.
-    /// - Parameters:
-    ///   - name: Notification name
-    ///   - block: Code to run
-    // `block` is `@MainActor @Sendable`: it is captured into the `@Sendable`
-    // observer closure below (crossing the `complete`-mode boundary), and its
-    // callers drive `@MainActor login(...)`. The observer registers with
-    // `queue: .main`, so the block provably runs on the main actor — invoked via
-    // `MainActor.assumeIsolated`, not a hop, so timing is unchanged.
-    //
-    // `complete`: the block takes NO `Notification` argument. The call site
-    // ignores the payload (`{ _ in … }`), and passing the non-Sendable
-    // `Notification` into the `@MainActor` block was the "sending 'notification'
-    // risks data races" diagnostic. Dropping the unused argument removes the only
-    // non-Sendable value that crossed the boundary — behavior is unchanged.
-    private func callOnce(on name: Notification.Name, block: @escaping @MainActor @Sendable () -> Void) {
-        // Mirror `ObserverTokenBox` (TPPBookRegistry.swift): a self-removing
-        // `@Sendable` observer block can't reference a `var token` assigned after
-        // the block is formed — the `targeted` checker rejects it as "'token'
-        // mutated after capture by sendable closure". The box's `token` is
-        // written exactly once (right after `addObserver` returns) and only read
-        // thereafter, so `@unchecked Sendable` documents write-once-then-read
-        // confinement, not a race waiver.
-        let box = ObserverTokenBox()
-        box.token = NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in
-            box.removeObserver(name: name)
-            // Provably on main: registered with `queue: .main`. `assumeIsolated`
-            // to call the `@MainActor` block without a re-async hop.
-            MainActor.assumeIsolated {
-                block()
-            }
-        }
+    /// Retries a deep-link sign-in after the next catalog load, for a link that
+    /// names a library the registry has not loaded yet.
+    @MainActor
+    static func retryLoginWhenCatalogLoads(
+        accountsManager: AccountsManager,
+        retry: @escaping @MainActor @Sendable () -> Void
+    ) {
+        callOnce(on: accountsManager.catalogLoadedPublisher, block: retry)
     }
 
-    /// Runs `block` on the first change `changes` emits, then unsubscribes.
-    /// `AccountsManager.currentLibraryChangePublisher` delivers on main, so
-    /// `block` runs on the main actor without a further hop. Callers do not
-    /// keep the subscription; the helper does, until the first change.
-    static func callOnce(
-        on changes: AnyPublisher<CurrentLibraryChange, Never>,
+    /// Runs `block` on the first value `changes` emits, then unsubscribes.
+    /// `AccountsManager`'s publishers deliver on main, so `block` runs on the
+    /// main actor without a further hop. Callers do not keep the subscription;
+    /// the helper does, until the first value.
+    static func callOnce<Output>(
+        on changes: AnyPublisher<Output, Never>,
         block: @escaping @MainActor @Sendable () -> Void
     ) {
         // The subscription keeps the box, and so itself, alive until the first
-        // change, then releases both, matching the self-removing observer above.
+        // value, then releases both.
         let box = SubscriptionBox()
         box.subscription = changes.first().sink { _ in
             box.subscription = nil
@@ -170,16 +146,4 @@ final class DLNavigator: Sendable {
 /// the subscription is made and cleared when it fires, both on the main thread.
 private final class SubscriptionBox: @unchecked Sendable {
     var subscription: AnyCancellable?
-}
-
-/// Sendable holder for a `NotificationCenter` observer token (see `callOnce`).
-/// Written exactly once after `addObserver` returns, read-only thereafter —
-/// write-once-then-read confinement, no race.
-private final class ObserverTokenBox: @unchecked Sendable {
-    var token: NSObjectProtocol?
-    func removeObserver(name: Notification.Name) {
-        if let token {
-            NotificationCenter.default.removeObserver(token, name: name, object: nil)
-        }
-    }
 }

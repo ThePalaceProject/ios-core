@@ -28,6 +28,10 @@ private final class OneShotImageResumer: @unchecked Sendable {
     }
 }
 
+/// A queued disk-to-memory decode. A memory warning cancels these and leaves
+/// queued writes running, so a cover handed to the cache is not lost.
+private final class ImageDecodeOperation: BlockOperation, @unchecked Sendable {}
+
 /// `@unchecked Sendable` invariant: every stored property is either an
 /// immutable `let` (`defaultTTL`, `maxDimension`, `compressionQuality`) or a
 /// reference to a type that is itself internally thread-safe — `NSCache`
@@ -76,12 +80,14 @@ private final class OneShotImageResumer: @unchecked Sendable {
 public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
     public static let shared = ImageCache()
 
-    private let dataCache = GeneralCache<String, Data>(cacheName: "ImageCache", mode: .memoryAndDisk)
+    private let dataCache: GeneralCache<String, Data>
     private let memoryImages = NSCache<NSString, UIImage>()
     private let defaultTTL: TimeInterval = 14 * 24 * 60 * 60
     private let limits: Limits
     private var maxDimension: CGFloat { limits.maxDimension }
     private let compressionQuality: CGFloat = 0.85
+    /// JPEG encoder. Injected only by tests, to count encodes.
+    private let encode: @Sendable (UIImage, CGFloat) -> Data?
     // Internal (not private) so tests can deterministically exercise the
     // cancellation path of `getAsync` (suspend → enqueue → cancelAllOperations
     // → resume) without spamming a global memory-warning notification through
@@ -120,7 +126,13 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
         self.init(deviceMemoryMB: ProcessInfo.processInfo.physicalMemory / (1024 * 1024))
     }
 
-    private init(deviceMemoryMB: UInt64) {
+    private init(
+        deviceMemoryMB: UInt64,
+        cacheName: String = "ImageCache",
+        encode: @escaping @Sendable (UIImage, CGFloat) -> Data? = { $0.jpegData(compressionQuality: $1) }
+    ) {
+        dataCache = GeneralCache<String, Data>(cacheName: cacheName, mode: .memoryAndDisk)
+        self.encode = encode
         limits = Self.limits(forDeviceMemoryMB: deviceMemoryMB)
         memoryImages.countLimit = limits.countLimit
         processingQueue.maxConcurrentOperationCount = limits.maxConcurrentProcessing
@@ -134,8 +146,13 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
         )
     }
 
-    @objc private func handleMemoryWarning() {
-        processingQueue.cancelAllOperations()
+    /// Drops queued decodes and decoded images, and slows the queue to one
+    /// operation for 60 s. Queued writes still run: cancelling them would make
+    /// the next sync fetch and encode those covers again.
+    @objc func handleMemoryWarning() {
+        for operation in processingQueue.operations where operation is ImageDecodeOperation {
+            operation.cancel()
+        }
         processingQueue.maxConcurrentOperationCount = 1
 
         memoryImages.removeAllObjects()
@@ -148,6 +165,17 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
     }
 
     public nonisolated func set(_ image: UIImage, for key: String, expiresIn: TimeInterval? = nil) {
+        set(image, for: [key], expiresIn: expiresIn)
+    }
+
+    /// Stores one image under several keys with one resize, one encode and one
+    /// file; the other keys link to that file. Keys whose file is already on
+    /// disk are not written again, and when every key is on disk the image is
+    /// not resized or encoded at all.
+    public nonisolated func set(_ image: UIImage, for keys: [String], expiresIn: TimeInterval?) {
+        var seen = Set<String>()
+        let keys = keys.filter { seen.insert($0).inserted }
+        guard !keys.isEmpty else { return }
         let ttl = expiresIn ?? defaultTTL
 
         // Hoisted into an explicitly-typed `let` so the closure's type comes
@@ -160,53 +188,63 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
         // Same pattern at every NSOperation-family enqueue in this file.
         let work: @Sendable () -> Void = { [weak self] in
             guard let self = self else { return }
-
             autoreleasepool {
-                // Memory pressure check: Skip caching if system memory is critically low
-                // to prevent NSMallocException crashes
-                let availableMemory = self.estimateAvailableMemory()
-                let minimumRequiredMemory: UInt64 = 50 * 1024 * 1024 // 50 MB minimum
-
-                guard availableMemory > minimumRequiredMemory else {
-                    Log.warn(#file, "Skipping image cache due to low memory (\(availableMemory / 1024 / 1024) MB available)")
-                    return
-                }
-
-                guard let processed = self.resize(image, maxDimension: self.maxDimension) else {
-                    Log.error(#file, "Failed to resize image for key: \(key). Skipping cache.")
-                    return
-                }
-
-                let cost = self.imageCost(processed)
-
-                // Check cost against available memory before proceeding
-                guard UInt64(cost) < availableMemory / 2 else {
-                    Log.warn(#file, "Image too large for available memory: \(cost) bytes")
-                    return
-                }
-
-                self.memoryImages.setObject(processed, forKey: key as NSString, cost: cost)
-
-                // Wrap JPEG data creation in exception handling to catch NSMallocException
-                var data: Data?
-                do {
-                    data = try autoreleasepool { () -> Data? in
-                        processed.jpegData(compressionQuality: self.compressionQuality)
-                    }
-                } catch {
-                    Log.error(#file, "Exception creating JPEG data for key: \(key) - \(error)")
-                    return
-                }
-
-                guard let jpegData = data else {
-                    Log.error(#file, "Failed to compress image for key: \(key)")
-                    return
-                }
-
-                self.dataCache.set(jpegData, for: key, expiresIn: ttl)
+                self.store(image, for: keys, ttl: ttl)
             }
         }
         processingQueue.addOperation(work)
+    }
+
+    private nonisolated func store(_ image: UIImage, for keys: [String], ttl: TimeInterval) {
+        let missingKeys = keys.filter { !dataCache.hasUnexpiredDiskEntry(for: $0) }
+        guard !missingKeys.isEmpty else {
+            // Already on disk. Keep the in-hand image as the decoded copy when
+            // it needs no resize; otherwise the next read decodes from disk.
+            if let cgImage = image.cgImage, max(cgImage.width, cgImage.height) <= Int(maxDimension) {
+                let cost = imageCost(image)
+                for key in keys {
+                    memoryImages.setObject(image, forKey: key as NSString, cost: cost)
+                }
+            }
+            return
+        }
+
+        // Memory pressure check: Skip caching if system memory is critically low
+        // to prevent NSMallocException crashes
+        let availableMemory = estimateAvailableMemory()
+        let minimumRequiredMemory: UInt64 = 50 * 1024 * 1024 // 50 MB minimum
+
+        guard availableMemory > minimumRequiredMemory else {
+            Log.warn(#file, "Skipping image cache due to low memory (\(availableMemory / 1024 / 1024) MB available)")
+            return
+        }
+
+        guard let processed = resize(image, maxDimension: maxDimension) else {
+            Log.error(#file, "Failed to resize image for keys: \(keys). Skipping cache.")
+            return
+        }
+
+        let cost = imageCost(processed)
+
+        // Check cost against available memory before proceeding
+        guard UInt64(cost) < availableMemory / 2 else {
+            Log.warn(#file, "Image too large for available memory: \(cost) bytes")
+            return
+        }
+
+        for key in keys {
+            memoryImages.setObject(processed, forKey: key as NSString, cost: cost)
+        }
+
+        let data = autoreleasepool { () -> Data? in
+            encode(processed, compressionQuality)
+        }
+        guard let jpegData = data else {
+            Log.error(#file, "Failed to compress image for keys: \(keys)")
+            return
+        }
+
+        dataCache.set(jpegData, for: missingKeys, expiresIn: ttl)
     }
 
     /// Estimates available memory based on system resources
@@ -272,8 +310,8 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
         return await withCheckedContinuation { continuation in
             // The continuation must resume exactly once. Every resume below
             // lives inside the operation's execution block, but
-            // `handleMemoryWarning` calls `processingQueue.cancelAllOperations()`
-            // — and a cancelled `BlockOperation` never runs its block, which
+            // `handleMemoryWarning` cancels queued decode operations like this
+            // one — and a cancelled `BlockOperation` never runs its block, which
             // would orphan the continuation forever (Crashlytics ab80dbb0:
             // "leaked its continuation" breadcrumb under memory pressure, where
             // each orphaned continuation pins the suspended Task + captured
@@ -288,7 +326,7 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
             // `@Sendable` closure under strict concurrency).
             let resumer = OneShotImageResumer(continuation)
 
-            let operation = BlockOperation()
+            let operation = ImageDecodeOperation()
             // Hoisted into an explicitly-typed `let` so the closure's type
             // comes from this annotation, not from `addExecutionBlock`'s
             // imported parameter type — which the Xcode 26.2 ClangImporter
@@ -360,7 +398,9 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
             let cost = self.imageCost(img)
             self.memoryImages.setObject(img, forKey: key as NSString, cost: cost)
         }
-        processingQueue.addOperation(work)
+        let operation = ImageDecodeOperation()
+        operation.addExecutionBlock(work)
+        processingQueue.addOperation(operation)
     }
 
     public func remove(for key: String) {
@@ -377,9 +417,16 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
     /// exactly the operations it enqueued. The shared queue also carries the
     /// test host app's cover loads.
     internal static func _makeIsolatedForTesting(
-        deviceMemoryMB: UInt64 = ProcessInfo.processInfo.physicalMemory / (1024 * 1024)
+        deviceMemoryMB: UInt64 = ProcessInfo.processInfo.physicalMemory / (1024 * 1024),
+        cacheName: String = "ImageCache",
+        encode: @escaping @Sendable (UIImage, CGFloat) -> Data? = { $0.jpegData(compressionQuality: $1) }
     ) -> ImageCache {
-        ImageCache(deviceMemoryMB: deviceMemoryMB)
+        ImageCache(deviceMemoryMB: deviceMemoryMB, cacheName: cacheName, encode: encode)
+    }
+
+    /// Test-only: where the stored data for `key` lives on disk.
+    internal func _diskURLForTesting(for key: String) -> URL {
+        dataCache.fileURL(for: key)
     }
 
     /// Test-only: restore the shared `processingQueue` to its running state.

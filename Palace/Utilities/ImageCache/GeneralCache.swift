@@ -18,9 +18,11 @@ public enum CachePolicy {
     case noCache
 }
 
-// `@unchecked Sendable`: every read and write of the cache files, and every
-// memory-cache access that has to stay consistent with them, happens under
-// `lock`. The memory-only clears skip the lock because `NSCache` is itself
+// `@unchecked Sendable`: every read of the cache files, every rename or link
+// that publishes a written file, `pendingWrites`, and every memory-cache access
+// that has to stay consistent with them happen under `lock`. Only the byte
+// write of a new entry runs outside it, into a staging file no reader can
+// name. The memory-only clears skip the lock because `NSCache` is itself
 // thread-safe and dropping a memory entry can never make a read wrong (the
 // value is still on disk, or in `.memoryOnly` mode it is simply gone).
 // `memoryWarningObserver` is set once during `init` and only read in `deinit`.
@@ -48,9 +50,16 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
     /// A lock cannot do that: the thread releasing it wakes the next waiter
     /// directly, so no operation here ever needs a thread that is not already
     /// running. The cost is that readers no longer run concurrently with each
-    /// other, and writes do their disk I/O on the caller's thread instead of in
-    /// the background.
+    /// other. Writes put their bytes in a staging file on the caller's thread
+    /// without the lock, then take it only to rename the file into place.
     private let lock = NSLock()
+
+    /// The write each key is waiting for, by generation. A write publishes its
+    /// staged file under a key only while it is still that key's latest write,
+    /// so a `remove`, `clear` or newer `set` that lands during the byte write
+    /// wins. Guarded by `lock`.
+    private var pendingWrites: [Key: UInt64] = [:]
+    private var lastWriteGeneration: UInt64 = 0
     private var memoryWarningObserver: NSObjectProtocol?
 
     private final class Entry: Codable, Sendable {
@@ -78,8 +87,17 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
         }
     }
 
-    public init(cacheName: String = "GeneralCache", mode: CachingMode = .memoryAndDisk) {
+    /// Writes the encoded bytes of one entry. Injected only by tests, to hold
+    /// a write open while other calls run.
+    private let writeData: @Sendable (Data, URL) throws -> Void
+
+    public convenience init(cacheName: String = "GeneralCache", mode: CachingMode = .memoryAndDisk) {
+        self.init(cacheName: cacheName, mode: mode, writeData: { try $0.write(to: $1) })
+    }
+
+    init(cacheName: String, mode: CachingMode, writeData: @escaping @Sendable (Data, URL) throws -> Void) {
         self.mode = mode
+        self.writeData = writeData
         guard let cachesDir = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else {
             cacheDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(cacheName, isDirectory: true)
             try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
@@ -140,17 +158,50 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
     }
 
     public func set(_ value: Value, for key: Key, expiresIn interval: TimeInterval? = nil) {
+        set(value, for: [key], expiresIn: interval)
+    }
+
+    /// Stores one value under several keys. On disk the value is written once;
+    /// the other keys are hard links to that file, so each key still reads and
+    /// removes as its own file.
+    func set(_ value: Value, for keys: [Key], expiresIn interval: TimeInterval? = nil) {
+        guard !keys.isEmpty else { return }
         let expirationDate = interval.map { Date().addingTimeInterval($0) }
         let entry = Entry(value: value, expiration: expirationDate)
-        let wrappedKey = WrappedKey(key)
-        lock.withLock {
+        let writesToDisk = mode == .diskOnly || mode == .memoryAndDisk
+        let generation: UInt64 = lock.withLock {
             if mode == .memoryOnly || mode == .memoryAndDisk {
                 let cost = estimatedCost(for: value)
-                memoryCache.setObject(entry, forKey: wrappedKey, cost: cost)
+                for key in keys {
+                    memoryCache.setObject(entry, forKey: WrappedKey(key), cost: cost)
+                }
             }
-            if mode == .diskOnly || mode == .memoryAndDisk {
-                saveToDisk(entry, for: key)
+            guard writesToDisk else { return 0 }
+            lastWriteGeneration &+= 1
+            for key in keys {
+                pendingWrites[key] = lastWriteGeneration
             }
+            return lastWriteGeneration
+        }
+        guard writesToDisk else { return }
+
+        let staged = stageOnDisk(entry)
+        lock.withLock {
+            publish(staged, for: keys, generation: generation)
+        }
+    }
+
+    /// Whether `key` has a file on disk that has not expired, or a write for it
+    /// in progress. Reads no file contents.
+    func hasUnexpiredDiskEntry(for key: Key) -> Bool {
+        guard mode == .diskOnly || mode == .memoryAndDisk else { return false }
+        return lock.withLock {
+            if pendingWrites[key] != nil { return true }
+            guard let attrs = try? fileManager.attributesOfItem(atPath: fileURL(for: key).path) else {
+                return false
+            }
+            if let exp = attrs[.modificationDate] as? Date, exp < Date() { return false }
+            return true
         }
     }
 
@@ -173,7 +224,7 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
             do {
                 let attrs = try fileManager.attributesOfItem(atPath: url.path)
                 if let exp = attrs[.modificationDate] as? Date, exp < Date() {
-                    removeWhileLocked(key)
+                    removeStoredWhileLocked(key)
                     return nil
                 }
                 let raw = try Data(contentsOf: url, options: .mappedIfSafe)
@@ -183,7 +234,7 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
                 } else {
                     let diskEntry = try JSONDecoder().decode(Entry.self, from: raw)
                     guard !diskEntry.isExpired else {
-                        removeWhileLocked(key)
+                        removeStoredWhileLocked(key)
                         return nil
                     }
                     value = diskEntry.value
@@ -253,6 +304,13 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
     /// The body of `remove(for:)`, for callers that already hold `lock`
     /// (`NSLock` is not reentrant).
     private func removeWhileLocked(_ key: Key) {
+        pendingWrites[key] = nil
+        removeStoredWhileLocked(key)
+    }
+
+    /// Drops the memory entry and file for `key` but leaves a write in progress
+    /// alone, for `get` discarding an expired file. Caller holds `lock`.
+    private func removeStoredWhileLocked(_ key: Key) {
         if mode == .memoryOnly || mode == .memoryAndDisk {
             memoryCache.removeObject(forKey: WrappedKey(key))
         }
@@ -263,6 +321,7 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
 
     public func clear() {
         lock.withLock {
+            pendingWrites.removeAll()
             if mode == .memoryOnly || mode == .memoryAndDisk {
                 memoryCache.removeAllObjects()
             }
@@ -279,8 +338,12 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
         memoryCache.removeAllObjects()
     }
 
-    private func saveToDisk(_ entry: Entry, for key: Key) {
-        let url = fileURL(for: key)
+    /// Writes the entry's bytes to a new staging file and returns its URL, or
+    /// nil if the write failed. Called without `lock`. Staging names start with
+    /// a dot, which `fileURL(for:)` never produces, so no reader can see a
+    /// partial file.
+    private func stageOnDisk(_ entry: Entry) -> URL? {
+        let url = cacheDirectory.appendingPathComponent(".staged-\(UUID().uuidString)")
         do {
             if !fileManager.fileExists(atPath: cacheDirectory.path) {
                 try fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
@@ -291,13 +354,40 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
             } else {
                 raw = try JSONEncoder().encode(entry)
             }
-            try raw.write(to: url, options: .atomic)
+            try writeData(raw, url)
             if let exp = entry.expiration {
-                try fileManager.setAttributes([.modificationDate: exp],
-                                              ofItemAtPath: url.path)
+                try fileManager.setAttributes([.modificationDate: exp], ofItemAtPath: url.path)
             }
+            return url
         } catch {
             print("Cache disk write failed: \(error)")
+            try? fileManager.removeItem(at: url)
+            return nil
+        }
+    }
+
+    /// Moves a staged file into place under every key whose latest write is
+    /// still `generation`. The first such key takes the file by rename; the
+    /// others become hard links to it. Caller holds `lock`.
+    private func publish(_ staged: URL?, for keys: [Key], generation: UInt64) {
+        var published: URL?
+        for key in keys where pendingWrites[key] == generation {
+            pendingWrites[key] = nil
+            guard let staged else { continue }
+            let url = fileURL(for: key)
+            if let published {
+                try? fileManager.removeItem(at: url)
+                if (try? fileManager.linkItem(at: published, to: url)) == nil {
+                    try? fileManager.copyItem(at: published, to: url)
+                }
+            } else if Darwin.rename(staged.path, url.path) == 0 {
+                published = url
+            } else {
+                print("Cache disk write failed: rename errno \(errno)")
+            }
+        }
+        if published == nil, let staged {
+            try? fileManager.removeItem(at: staged)
         }
     }
 

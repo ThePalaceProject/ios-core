@@ -291,7 +291,7 @@ func makeTestAppContainer(
     imageLoader: imageLoader,
     userAccountPublisher: userAccountPublisher,
     opdsFeedService: OPDSFeedService(),
-    readerService: ReaderService(),
+    readerService: ReaderService(imageCache: { imageCache }),
     navigationCoordinatorHub: NavigationCoordinatorHub(tabRouterHub: tabRouterHub),
     tabRouterHub: tabRouterHub,
     drmAuthorizerProvider: { nil },

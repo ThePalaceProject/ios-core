@@ -39,6 +39,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     /// (PP-5507). UIKit reports background entry here, not to the app delegate.
     var positionRegistry: () -> TPPBookRegistryProvider = { AppContainer.production().bookRegistry }
 
+    /// Receives the main scene's visibility. Resolved on first use; tests set
+    /// their own instance.
+    lazy var activityPolicy: ActivityPolicy = AppContainer.production().activityPolicy
+
     private static let isRunningUnderXCTest =
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
@@ -106,14 +110,15 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func sceneDidBecomeActive(_ scene: UIScene) {
-        // Restart any tasks paused when scene was inactive
+        activityPolicy.setScene(.active)
     }
 
     func sceneWillResignActive(_ scene: UIScene) {
-        // Called when scene will move to inactive state
+        activityPolicy.setScene(.inactive)
     }
 
     func sceneWillEnterForeground(_ scene: UIScene) {
+        activityPolicy.setScene(.inactive)
         foregroundShelfSync?.appWillEnterForeground()
     }
 
@@ -121,6 +126,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // A suspended app can be ended without `applicationWillTerminate`, so
         // write positions still inside their 15 s interval now.
         positionRegistry().flushPendingPositions()
+        activityPolicy.setScene(.background)
     }
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
