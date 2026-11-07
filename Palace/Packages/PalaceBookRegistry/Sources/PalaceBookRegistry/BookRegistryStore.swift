@@ -46,12 +46,15 @@ final class BookRegistryStore: @unchecked Sendable {
   private var registry = [String: TPPBookRegistryRecord]() {
     didSet {
       guard announcesChanges else { return }
-      let snapshot = registry
-      DispatchQueue.main.async { [weak self] in
-        guard let self else { return }
-        registrySubject.send(snapshot)
-        registryDidChangeSubject.send(())
-      }
+      announce(registry)
+    }
+  }
+
+  private func announce(_ snapshot: [String: TPPBookRegistryRecord]) {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      registrySubject.send(snapshot)
+      registryDidChangeSubject.send(())
     }
   }
 
@@ -220,6 +223,22 @@ final class BookRegistryStore: @unchecked Sendable {
     if let onComplete = onComplete {
       performBarrierSync({ onComplete() }, operation: "mutateRegistrySync")
     }
+  }
+
+  /// `mutateRegistrySync` that announces only when `block` returns `true`.
+  /// An `inout` pass through `registry` runs its `didSet` whether or not the
+  /// block wrote anything, so a caller that may change nothing says so here.
+  func mutateRegistrySyncAnnouncingChanges(
+    _ block: (_ registry: inout [String: TPPBookRegistryRecord]) -> Bool
+  ) {
+    performBarrierSync({
+      let announced = self.announcesChanges
+      self.announcesChanges = false
+      defer { self.announcesChanges = announced }
+      if block(&self.registry), announced {
+        self.announce(self.registry)
+      }
+    }, operation: "mutateRegistrySyncAnnouncingChanges")
   }
 
   /// - Parameter announce: `false` withholds the `registrySubject` and
