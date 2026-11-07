@@ -67,6 +67,11 @@ public protocol TPPBookRegistryProvider: Sendable {
     func state(for bookIdentifier: String?) -> TPPBookState
     func readiumBookmarks(forIdentifier identifier: String) -> [TPPReadiumBookmark]
     func setLocation(_ location: TPPBookLocation?, forIdentifier identifier: String)
+    /// Replaces the stored location without a registry save of its own; the
+    /// value reaches disk with the next save. For a refinement of a position
+    /// that `setLocation` has just persisted (PP-5500). No default: a conformer
+    /// that forwarded to `setLocation` would hide a second save from callers.
+    func setLocationDeferringSave(_ location: TPPBookLocation?, forIdentifier identifier: String)
     func location(forIdentifier identifier: String) -> TPPBookLocation?
     func add(_ bookmark: TPPReadiumBookmark, forIdentifier identifier: String)
     func delete(_ bookmark: TPPReadiumBookmark, forIdentifier identifier: String)
@@ -928,6 +933,11 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
     public func setLocation(_ location: TPPBookLocation?, forIdentifier bookIdentifier: String) {
         bookmarks.setLocation(location, forIdentifier: bookIdentifier,
                                account: accountScope.currentAccountID)
+    }
+
+    // PUBLIC_INTENT: witness for the public TPPBookRegistryProvider requirement, which the app target calls across the package boundary.
+    public func setLocationDeferringSave(_ location: TPPBookLocation?, forIdentifier bookIdentifier: String) {
+        bookmarks.setLocationDeferringSave(location, forIdentifier: bookIdentifier)
     }
 
     public func setLocationSync(_ location: TPPBookLocation?, forIdentifier bookIdentifier: String) {

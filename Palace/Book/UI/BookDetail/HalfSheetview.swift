@@ -174,6 +174,7 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
     typealias DisplayStrings = Strings.BookDetailView
     @Environment(\.colorScheme) var colorScheme
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.appContainer) private var appContainer
 
     @ObservedObject var viewModel: ViewModel
     var backgroundColor: Color
@@ -321,7 +322,7 @@ struct HalfSheetView<ViewModel: HalfSheetProvider>: View {
         .accessibilityIdentifier(AccessibilityID.BookDetail.halfSheet)
         .onAppear {
             originalState = bookRegistry.state(for: viewModel.book.identifier)
-            NotificationCenter.default.post(name: .TPPAccessibilityScreenTransition, object: nil)
+            appContainer.accessibilityAnnouncer.notifyScreenTransition()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
                 isBookTitleFocused = true
             }

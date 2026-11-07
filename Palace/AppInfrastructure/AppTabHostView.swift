@@ -449,7 +449,6 @@ struct AppTabHostView: View {
            let top = appDelegate.topViewController() {
             top.dismiss(animated: true)
         }
-        NotificationCenter.default.post(name: .AppTabSelectionDidChange, object: nil)
         // F-035: Auto-refresh My Books and Holds when their tabs
         // become visible so the user doesn't have to pull-to-refresh
         // to see newly borrowed/returned/held books.
@@ -656,8 +655,4 @@ fileprivate extension AppTabHostView {
             }
         }
     }
-}
-
-extension Notification.Name {
-    static let AppTabSelectionDidChange = Notification.Name("AppTabSelectionDidChange")
 }

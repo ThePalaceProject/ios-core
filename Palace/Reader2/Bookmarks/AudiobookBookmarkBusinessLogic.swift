@@ -230,10 +230,13 @@ import PalaceUtilities
                 }
 
                 // Commit the server-assigned annotationId to the local
-                // registry so subsequent reads carry the server linkage.
+                // registry so subsequent reads carry the server linkage. The
+                // position itself was persisted before the post, so this adds
+                // no registry save of its own (PP-5500); the id reaches disk
+                // with the next save.
                 audioBookmark.annotationId = serverID
 
-                self.registry.setLocation(audioBookmark.toTPPBookLocation(), forIdentifier: self.book.identifier)
+                self.registry.setLocationDeferringSave(audioBookmark.toTPPBookLocation(), forIdentifier: self.book.identifier)
                 Log.debug(#file, "☁️ Synced position to server: track=\(sentTrackKey), annotationId=\(audioBookmark.annotationId)")
                 await complete(serverID)
             } catch {
