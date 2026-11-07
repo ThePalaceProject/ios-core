@@ -550,14 +550,11 @@ actor TPPBookCoverRegistry {
     /// in the sync memory cache (`TPPBook.fetchCoverImage` hits this before going
     /// async and showing a skeleton).
     ///
-    /// The shared identifier slot may be overwritten by a later size, but the
-    /// ImageCache normalizes everything to `maxDimension` on write, so the quality
-    /// floor is the same regardless of which variant wrote last.
+    /// One store for both keys: the image is encoded and written once and the
+    /// identifier names the same file. A key already on disk keeps its file,
+    /// so the identifier slot holds whichever size was stored first.
     private func storeDecoded(_ image: UIImage, for key: String, identifier: String) {
-        imageCache.set(image, for: key, expiresIn: nil)
-        if key != identifier {
-            imageCache.set(image, for: identifier, expiresIn: nil)
-        }
+        imageCache.set(image, for: [key, identifier], expiresIn: nil)
     }
 
     /// Determines if an error indicates a host-level failure (DNS, connection, etc.)

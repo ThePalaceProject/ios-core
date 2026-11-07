@@ -41,7 +41,7 @@ class CatalogSearchViewModel: ObservableObject {
     private var debounceTask: Task<Void, Never>?
     private var entryPointLoadTask: Task<Void, Never>?
     private let debounceInterval: TimeInterval
-    private let announcements: TPPAccessibilityAnnouncementCenter
+    let announcements: TPPAccessibilityAnnouncementCenter
     private let bookRegistry: TPPBookRegistryProvider
     private let bookCellModelCache: BookCellModelCache
 

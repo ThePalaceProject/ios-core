@@ -123,7 +123,8 @@ private final class RedirectCompletionBox: @unchecked Sendable {
     // account-scope read seam — see MyBooksDownloadCenter+AccountScope.swift
     private let accountScope: any DownloadAccountScopeProviding
     private let networkExecutor: TPPNetworkExecutor
-    private let accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter
+    /// Shared with the rest of the app through `AppContainer.accessibilityAnnouncer`.
+    let accessibilityAnnouncements: TPPAccessibilityAnnouncementCenter
     let downloadAnnouncementService: DownloadAnnouncementService
     private let bookFileManager: BookFileManager
     private let diskBudgetManager: DiskBudgetManager

@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 public extension NSDate {
 
@@ -18,6 +19,31 @@ public extension NSDate {
     return formatter
   }()
 
+  /// ISO8601DateFormatter is not Sendable, so the shared instance is read
+  /// under a lock.
+  private static let iso8601FullDateFormatter = OSAllocatedUnfairLock(uncheckedState: {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withFullDate]
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    return formatter
+  }())
+
+  /// Locale and time zone stay unset: a formatter left at the defaults reads
+  /// the current default time zone on each parse, as a per-call one did.
+  private static let yearOnlyFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy"
+    return formatter
+  }()
+
+  private static let rfc3339OutputFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.dateFormat = "yyyy'-'MM'-'dd'T'HH':'mm':'ss'Z'"
+    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+    return formatter
+  }()
+
   /// Parses an RFC 3339 date string. Correctly handles fractional seconds but ignores them.
   @objc public static func date(withRFC3339String string: String?) -> NSDate? {
     guard let string = string else { return nil }
@@ -33,25 +59,15 @@ public extension NSDate {
   @objc public static func date(withISO8601DateString string: String?) -> NSDate? {
     guard let string = string else { return nil }
 
-    let isoFormatter = ISO8601DateFormatter()
-    isoFormatter.formatOptions = [.withFullDate]
-    isoFormatter.timeZone = TimeZone(secondsFromGMT: 0)
-
-    if let date = isoFormatter.date(from: string) {
+    if let date = iso8601FullDateFormatter.withLockUnchecked({ $0.date(from: string) }) {
       return date as NSDate
     }
 
-    let dateFormatter = DateFormatter()
-    dateFormatter.dateFormat = "yyyy"
-    return dateFormatter.date(from: string) as NSDate?
+    return yearOnlyFormatter.date(from: string) as NSDate?
   }
 
   @objc public func rfc3339String() -> String {
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "en_US_POSIX")
-    formatter.dateFormat = "yyyy'-'MM'-'dd'T'HH':'mm':'ss'Z'"
-    formatter.timeZone = TimeZone(secondsFromGMT: 0)
-    return formatter.string(from: self as Date)
+    NSDate.rfc3339OutputFormatter.string(from: self as Date)
   }
 
   @objc public func utcComponents() -> DateComponents {

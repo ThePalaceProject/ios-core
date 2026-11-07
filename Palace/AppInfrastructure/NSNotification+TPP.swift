@@ -30,7 +30,6 @@ extension Notification.Name {
     static let TPPBookProcessingDidChange = Notification.Name("TPPBookProcessingDidChange")
 
     static let TPPMyBooksDownloadCenterDidChange = Notification.Name("TPPMyBooksDownloadCenterDidChange")
-    static let TPPAccountSetDidLoad = Notification.Name("TPPAccountSetDidLoad")
     // TPPReachabilityChanged is defined in PalaceNetwork; do not duplicate.
 }
 
@@ -42,7 +41,6 @@ extension Notification.Name {
     public static let TPPAppDelegateDidReceiveCleverRedirectURL = Notification.Name.TPPAppDelegateDidReceiveCleverRedirectURL
     public static let TPPBookProcessingDidChange = Notification.Name.TPPBookProcessingDidChange
     public static let TPPMyBooksDownloadCenterDidChange = Notification.Name.TPPMyBooksDownloadCenterDidChange
-    public static let TPPAccountSetDidLoad = Notification.Name.TPPAccountSetDidLoad
     public static let TPPReachabilityChanged = Notification.Name.TPPReachabilityChanged
 }
 

@@ -22,7 +22,9 @@ import PalaceUtilities
 struct AudiobookMorphingPlayerView: View {
 
     @ObservedObject var presenter: AudiobookSessionPresenter
-    @ObservedObject var progress: AudiobookPlaybackProgress
+    /// Not observed here: it changes four times a second, so only the leaves
+    /// that show it observe it (`AudiobookPlayerProgressLeaves.swift`, PP-5505).
+    let progress: AudiobookPlaybackProgress
     let audiobookSession: AudiobookSessionManaging
 
     /// The bottom inset (safe area + LIVE tab-bar height + margin) the host
@@ -32,6 +34,7 @@ struct AudiobookMorphingPlayerView: View {
     /// we then fall back to the window-safe-area + default-height math, which
     /// is exactly the historical hardcoded behavior. See `TabBarModernization`.
     @Environment(\.miniPlayerTabBarInset) private var injectedTabBarInset
+    @Environment(\.appContainer) private var appContainer
 
     /// PP-4712: the patron's configured skip intervals, read reactively from the
     /// same UserDefaults keys the settings screen writes — so the transport
@@ -87,6 +90,8 @@ struct AudiobookMorphingPlayerView: View {
     /// Latched once a download has been observed; the one-way rule and why it
     /// must be one-way live in `hasSeenDownloading(previous:isDownloading:)`.
     @State private var hasSeenDownloading = false
+    /// Last unpublished session state seen on a playback tick; see `sessionState`.
+    @State private var polledSessionState: AudiobookPlayerSessionPoll?
 
     /// PP-5205 (F13): the 30s timer, held so a re-arm can CANCEL the prior one.
     ///
@@ -177,6 +182,13 @@ struct AudiobookMorphingPlayerView: View {
             let landscape = Self.isLandscapePhone(size: geo.size)
 
             card(expanded: expanded, size: geo.size, landscape: landscape)
+                .background {
+                    AudiobookPlayerSessionPollWatcher(
+                        progress: progress,
+                        read: { AudiobookPlayerSessionPoll(audiobookSession) },
+                        onChange: { polledSessionState = $0 }
+                    )
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 // Reader hide + first-open slide-in + interactive pull-down are
                 // all folded into a single vertical offset (see `cardOffsetY`).
@@ -228,7 +240,7 @@ struct AudiobookMorphingPlayerView: View {
     @ViewBuilder
     private func playPauseContent(glyphSize: CGFloat) -> some View {
         if audioWaitPhase == .none {
-            abGlyph(presenter.isPlaying ? Self.icPause : Self.icPlay, size: glyphSize)
+            Self.abGlyph(presenter.isPlaying ? Self.icPause : Self.icPlay, size: glyphSize)
         } else {
             ProgressView().tint(Color(.systemBackground))
         }
@@ -367,10 +379,7 @@ struct AudiobookMorphingPlayerView: View {
                 isBound: audiobookSession.hasActiveManager,
                 fallback: currentRate
             )
-            NotificationCenter.default.post(
-                name: Notification.Name("TPPAccessibilityScreenTransition"),
-                object: nil
-            )
+            appContainer.accessibilityAnnouncer.notifyScreenTransition()
             UIAccessibility.post(notification: .layoutChanged, argument: nil)
         }
         .modifier(AudiobookPlayerOpeningFocus(
@@ -555,60 +564,14 @@ struct AudiobookMorphingPlayerView: View {
     /// while idle it displays live playback progress, and on release it seeks
     /// via `audiobookSession.seek(to:)` (toolkit `seekWithSlider`).
     private var seekBar: some View {
-        VStack(spacing: 4) {
-            // The ported toolkit scrubber (`PalaceSeekSliderView`): thumb-grow +
-            // track-grow on touch, continuous drag-to-seek. `value` reflects
-            // playback when idle (display-only fallback) and tracks the finger
-            // while dragging; the seek commits via `onChange` on release.
-            PalaceSeekSliderView(
-                value: Binding(
-                    // CHAPTER-relative — the scrubber is chapter-scoped to match
-                    // `seekWithSlider`, which seeks `chapterStart + value *
-                    // chapterDuration`. Reading the book-relative `playbackProgress`
-                    // here made the thumb sit at book-% while the seek treated the
-                    // drop as chapter-%, so the playhead jumped and the thumb never
-                    // settled. The `set` is a no-op: the seek commits via `onChange`
-                    // and the visual hold lives inside the slider — writing here
-                    // would corrupt the book-relative progress the "N min remaining"
-                    // text depends on.
-                    get: { chapterProgressClamped },
-                    set: { _ in }
-                ),
-                onChange: { audiobookSession.seek(to: $0) },
-                // PP-5280: VoiceOver swipes step by the patron's skip intervals,
-                // the same distances as the transport's skip buttons.
-                chapterDuration: chapterDuration,
-                forwardStepSeconds: skipForwardInterval,
-                backStepSeconds: skipBackInterval,
-                spokenValue: { seekAccessibilityValue(at: $0) }
-            )
-            .accessibilityLabel(Strings.Generic.playbackPosition)
-            // Row under the bar: chapter elapsed · chapter name · chapter time-left
-            // (mirrors toolkit `playheadOffsetText` / `chapterTitle` / `timeLeftText`).
-            // The title is centered in the FULL row width via a ZStack so it stays
-            // fixed as the flanking timecodes change character-width (even
-            // monospaced, "9:59" → "10:00" adds a digit). The times pin to the
-            // edges; the title (subheadline) defines the row height as before, and
-            // its horizontal padding keeps it clear of the times.
-            ZStack {
-                // Dimmed while the chapter it names is not yet playing; on a long
-                // wait it says so instead (PP-5399).
-                Text(audioWaitPhase == .slow ? Strings.Generic.audiobookLoading : chapterDisplayTitle)
-                    .font(.subheadline).fontWeight(.semibold)
-                    .lineLimit(1).truncationMode(.tail)
-                    .padding(.horizontal, 64)
-                    .opacity(audioWaitPhase == .none ? 1 : 0.5)
-                HStack(spacing: 8) {
-                    Text(chapterElapsedString)
-                        .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
-                        .accessibilityLabel(Strings.Generic.timeElapsedLabel(chapterElapsedString))
-                    Spacer(minLength: 8)
-                    Text(chapterRemainingString)
-                        .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
-                        .accessibilityLabel(Strings.Generic.timeRemainingLabel(chapterRemainingString))
-                }
-            }
-        }
+        AudiobookPlayerSeekBar(
+            progress: progress,
+            audioWaitPhase: audioWaitPhase,
+            bookTitle: presenter.currentBook?.title,
+            forwardStepSeconds: skipForwardInterval,
+            backStepSeconds: skipBackInterval,
+            onSeek: { audiobookSession.seek(to: $0) }
+        )
     }
 
     private var titleAuthorFull: some View {
@@ -628,14 +591,7 @@ struct AudiobookMorphingPlayerView: View {
                     .multilineTextAlignment(.center)
                     .lineLimit(1)
             }
-            let remaining = wholeBookRemainingString
-            if !remaining.isEmpty {
-                Text(remaining)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .padding(.top, 2)
-            }
+            AudiobookPlayerBookRemainingText(progress: progress, rate: currentRate)
         }
     }
 
@@ -692,7 +648,7 @@ struct AudiobookMorphingPlayerView: View {
     private static let icPlay = "ABPlayerPlay"
     private static let icPause = "ABPlayerPause"
     private static let icSource = "ABPlayerSource"
-    private static let icSleep = "ABPlayerSleep"
+    static let icSleep = "ABPlayerSleep"
     private static let icBookmark = "ABPlayerBookmark"
 
     /// A template-rendered custom glyph at a point size. Template rendering tints
@@ -702,7 +658,7 @@ struct AudiobookMorphingPlayerView: View {
     /// already carries its own `.accessibilityLabel` (close, play/pause, skip,
     /// AirPlay, sleep, bookmark), so an element here would make VoiceOver
     /// announce each of those controls twice.
-    private func abGlyph(_ name: String, size: CGFloat) -> some View {
+    static func abGlyph(_ name: String, size: CGFloat) -> some View {
         Image(name)
             .renderingMode(.template)
             .resizable()
@@ -717,7 +673,7 @@ struct AudiobookMorphingPlayerView: View {
     private func miniSkipGlyph(asset: String, interval: Int) -> some View {
         ZStack {
             Circle().fill(Color(.secondarySystemFill))
-            abGlyph(asset, size: 25)
+            Self.abGlyph(asset, size: 25)
             // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - sized to sit inside the 25pt arrow glyph; the button's label speaks the interval
             Text("\(interval)")
                 .font(.system(size: 7, weight: .semibold, design: .rounded))
@@ -776,7 +732,7 @@ struct AudiobookMorphingPlayerView: View {
             // underneath. Gray circle.
             ZStack {
                 Circle().fill(controlBg)
-                abGlyph(Self.icSource, size: glyph)
+                Self.abGlyph(Self.icSource, size: glyph)
                     .foregroundStyle(.primary)
                     .allowsHitTesting(false)
                 AirPlayRoutePicker(tint: .clear)
@@ -800,21 +756,10 @@ struct AudiobookMorphingPlayerView: View {
                     }
                 }
             } label: {
-                HStack(spacing: metrics.narrow ? 4 : 6) {
-                    abGlyph(Self.icSleep, size: glyph)
-                    if audiobookSession.sleepTimerIsActive {
-                        // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - countdown inside the same fixed-height capsule as the row's other controls
-                        Text(Self.formatTime(audiobookSession.sleepTimerRemaining))
-                            .font(.system(size: metrics.fontSize, weight: .medium, design: .monospaced))
-                            .lineLimit(1).minimumScaleFactor(0.6)
-                        // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
-                    }
-                }
-                .padding(.horizontal, audiobookSession.sleepTimerIsActive ? metrics.chipPadH : 0)
-                .frame(width: audiobookSession.sleepTimerIsActive ? nil : circle, height: circle)
-                .background(controlBg)
-                .clipShape(Capsule())
-                .contentShape(Capsule())
+                AudiobookPlayerSleepTimerLabel(
+                    progress: progress, session: audiobookSession, metrics: metrics,
+                    glyph: glyph, diameter: circle, background: controlBg
+                )
             }
             .accessibilityLabel(Strings.Generic.sleepTimer)
 
@@ -823,7 +768,7 @@ struct AudiobookMorphingPlayerView: View {
             // Bookmark ADDS a bookmark (TOC/list stays reachable via the
             // top-trailing list button) — gray circle.
             Button { addBookmarkFromControl() } label: {
-                abGlyph(Self.icBookmark, size: glyph)
+                Self.abGlyph(Self.icBookmark, size: glyph)
                     .frame(width: circle, height: circle)
                     .background(controlBg)
                     .clipShape(Circle())
@@ -961,14 +906,15 @@ struct AudiobookMorphingPlayerView: View {
     /// re-deriving the guard.
     ///
     /// Caveat, recorded so it is not "fixed" later: `isLoaded` is NOT `@Published`
-    /// (`AudiobookSessionManager:1176` — the view re-reads it on `isPlaying`/position
-    /// ticks), so arm/cancel lands on the next render tick rather than the instant of
-    /// the flip. That is acceptable ONLY because the fire-time predicate re-reads live
+    /// (`AudiobookSessionManager:1176` — the view re-reads it on presenter changes and,
+    /// through `AudiobookPlayerSessionPollWatcher`, on position ticks), so arm/cancel
+    /// lands on the next render tick rather than the instant of the flip. That is acceptable ONLY because the fire-time predicate re-reads live
     /// state and self-disarms; publishing `isLoaded` to "fix" the latency would change
     /// behaviour this design depends on.
     private var loadingOverlayCurrentState: LoadingOverlayState {
-        Self.loadingOverlayState(
-            isLoaded: audiobookSession.isLoaded,
+        let session = sessionState
+        return Self.loadingOverlayState(
+            isLoaded: session.isLoaded,
             isDownloading: presenter.isDownloading,
             loadingTimedOut: loadingTimedOut,
             hasStartedPlayback: presenter.hasStartedPlayback,
@@ -977,11 +923,20 @@ struct AudiobookMorphingPlayerView: View {
             // at the first evaluation; the session's needs the playback model
             // and answers for a chapter the patron selects later.
             expectsSlowStart: presenter.expectsSlowOpen
-                || audiobookSession.expectsSlowChapterStart,
+                || session.expectsSlowChapterStart,
             hasSeenDownloading: hasSeenDownloading,
-            transportIsWaitingForData: audiobookSession.transportIsWaitingForData,
+            transportIsWaitingForData: session.transportIsWaitingForData,
             forceSkeletons: DebugSettings.forceSkeletons
         )
+    }
+
+    /// The session state the loading overlay reads, always live. Reading
+    /// `polledSessionState` is what lets a change seen on a playback tick
+    /// re-evaluate this view; the live read keeps the first evaluation and
+    /// every presenter change current.
+    private var sessionState: AudiobookPlayerSessionPoll {
+        _ = polledSessionState
+        return AudiobookPlayerSessionPoll(audiobookSession)
     }
 
     @ViewBuilder
@@ -1206,7 +1161,7 @@ struct AudiobookMorphingPlayerView: View {
         }) {
             ZStack {
                 Circle().fill(Color(.secondarySystemFill))
-                abGlyph(asset, size: glyph)
+                Self.abGlyph(asset, size: glyph)
                 // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - derived from `glyph` so the number stays inside the arrow; the button's label speaks the interval
                 Text("\(interval)")
                     .font(.system(size: glyph * 0.27, weight: .semibold, design: .rounded))
@@ -1248,7 +1203,7 @@ struct AudiobookMorphingPlayerView: View {
             Button { showStopConfirmation = true } label: {
                 ZStack {
                     Circle().fill(Color(.secondarySystemFill))
-                    abGlyph(Self.icClose, size: 11).foregroundStyle(.primary)
+                    Self.abGlyph(Self.icClose, size: 11).foregroundStyle(.primary)
                 }
                 .frame(width: 30, height: 30)
                 .frame(width: 44, height: 44)
@@ -1476,67 +1431,12 @@ struct AudiobookMorphingPlayerView: View {
 
     // MARK: - Derived
 
-    /// Chapter-relative progress (0…1 within the current chapter) — drives the
-    /// seek scrubber so its thumb position matches `seekWithSlider`'s chapter scale.
-    private var chapterProgressClamped: Double {
-        progress.chapterProgress.isFinite ? min(max(progress.chapterProgress, 0), 1) : 0
-    }
-
-    /// The chapter name shown between the two timecodes.
-    ///
-    /// Reads `progress`, the SAME observed object the timecodes read, so the three
-    /// cannot disagree about which chapter is being shown and cannot repaint on
-    /// different ticks. It used to read `audiobookSession.currentChapter` — a cache
-    /// on an object this view does not even observe (`audiobookSession` is a plain
-    /// `let`), written only from position events. Choosing a chapter therefore left
-    /// the name a seek behind the times beside it, and repainted only when something
-    /// ELSE published — which during a seek, with the player paused and the position
-    /// stream silent, is nothing (PP-5205).
-    private var chapterDisplayTitle: String {
-        Self.chapterDisplayTitle(
-            chapterTitle: progress.chapterTitle,
-            bookTitle: presenter.currentBook?.title
-        )
-    }
-
     /// The fallback rule, pulled out so it can fail a test. Before a playback model
     /// has published anything there is no chapter name, and a blank row reads as a
     /// broken player rather than as a player that is still loading — so the book's
     /// own title stands in until the first tick.
     nonisolated static func chapterDisplayTitle(chapterTitle: String, bookTitle: String?) -> String {
         chapterTitle.isEmpty ? (bookTitle ?? "") : chapterTitle
-    }
-
-    /// Chapter-relative elapsed timecode (seconds from the start of the current
-    /// chapter) — mirrors toolkit `playheadOffsetText`.
-    private var chapterElapsedString: String {
-        Self.formatTime(progress.chapterOffset)
-    }
-
-    /// Chapter-relative time-left timecode — mirrors toolkit `timeLeftText`.
-    private var chapterRemainingString: String {
-        "-" + Self.formatTime(max(0, progress.chapterTimeLeft))
-    }
-
-    /// Length of the current chapter in seconds (elapsed + remaining).
-    private var chapterDuration: TimeInterval {
-        max(0, progress.chapterOffset) + max(0, progress.chapterTimeLeft)
-    }
-
-    /// Spoken value for the seek slider at chapter fraction `fraction`: percent
-    /// through the current chapter (the scrubber is chapter-scoped) plus the
-    /// chapter elapsed timecode. At the live position it reads the live
-    /// timecode; after a VoiceOver step it reads the step's target, so the value
-    /// spoken matches where the seek is going before playback catches up.
-    /// Until the chapter length is known there is no timecode to give, so it
-    /// reads the percentage alone.
-    private func seekAccessibilityValue(at fraction: Double) -> String {
-        let percent = "\(Int(fraction * 100))%"
-        guard chapterDuration > 0 else { return percent }
-        let elapsed = abs(fraction - chapterProgressClamped) < 0.000_001
-            ? chapterElapsedString
-            : Self.formatTime((fraction * chapterDuration).rounded())
-        return "\(percent), \(elapsed)"
     }
 
     // MARK: - Safe-area insets (window, since the overlay ignores safe area)
@@ -1565,17 +1465,6 @@ struct AudiobookMorphingPlayerView: View {
             .flatMap { $0.windows }
             .first { $0.isKeyWindow }?
             .safeAreaInsets ?? .zero
-    }
-
-    /// Whole-book remaining, phrased like the original ("18 hr 06 min remaining").
-    private var wholeBookRemainingString: String {
-        guard let position = progress.currentLocation else { return "" }
-        // Book-relative remaining straight from the playhead — NOT derived from a
-        // progress fraction. `durationToSelf()` is the book-elapsed time; deriving
-        // `total * scrubberFraction` would leap whenever the (chapter-scoped)
-        // scrubber moved. This reads the true book position independently.
-        let bookTimeRemaining = position.tracks.totalDuration - position.durationToSelf()
-        return Self.wholeBookRemainingText(bookTimeRemaining: bookTimeRemaining, rate: currentRate)
     }
 
 }
