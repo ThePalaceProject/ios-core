@@ -405,6 +405,14 @@ public class TPPBook: NSObject, ObservableObject {
         merging(from: fresh, acquisitions: fresh.acquisitions)
     }
 
+    /// `mergingPreservingMetadata(from:)` without the decoded cover images, which
+    /// the main thread writes. For a comparison that runs off the main thread;
+    /// the images are not part of a record's stored form.
+    // PUBLIC_INTENT: called by PalaceBookRegistry's loans sync.
+    public func mergingPreservingMetadataWithoutImages(from fresh: TPPBook) -> TPPBook {
+        merging(from: fresh, acquisitions: fresh.acquisitions, carryingImages: false)
+    }
+
     /// Enrichment-only merge, for an entry that is NOT authoritative about the
     /// loan: the catalog.
     ///
@@ -427,7 +435,8 @@ public class TPPBook: NSObject, ObservableObject {
     }
 
     private func merging(from fresh: TPPBook,
-                         acquisitions: [TPPOPDSAcquisition]) -> TPPBook {
+                         acquisitions: [TPPOPDSAcquisition],
+                         carryingImages: Bool = true) -> TPPBook {
         func preferNonEmpty(_ a: String?, _ b: String?) -> String? {
             if let a, !a.isEmpty { return a }
             return b
@@ -472,6 +481,7 @@ public class TPPBook: NSObject, ObservableObject {
         // re-hydrates them asynchronously — TPPBook.init dispatches the
         // cache-hit assignment through DispatchQueue.main.async, which is
         // just late enough for SwiftUI to render a nil image first.
+        guard carryingImages else { return merged }
         merged.coverImage = self.coverImage ?? fresh.coverImage
         merged.thumbnailImage = self.thumbnailImage ?? fresh.thumbnailImage
         return merged
