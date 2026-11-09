@@ -108,7 +108,7 @@ final class BookRegistrySyncDiffContractTests: XCTestCase {
         return feed
     }
 
-    private func makeSync() -> BookRegistrySync {
+    private func makeSync(afterLoansFeedCompared: @escaping @Sendable () -> Void = {}) -> BookRegistrySync {
         let spy = downloadSpy!
         let fetcher = self.fetcher!
         let directory = tempDirectory!
@@ -122,7 +122,8 @@ final class BookRegistrySyncDiffContractTests: XCTestCase {
                 sideloadedIdentifiers: { [] },
                 registryDirectory: { _ in directory },
                 onAvailabilityChange: { _, _ in },
-                beforeRegistryWrite: { step, _ in writes.record(step) }
+                beforeRegistryWrite: { step, _ in writes.record(step) },
+                afterLoansFeedCompared: afterLoansFeedCompared
             )
         )
     }
@@ -425,6 +426,69 @@ final class BookRegistrySyncDiffContractTests: XCTestCase {
         XCTAssertEqual(writes.steps, [])
     }
 
+    // MARK: - Comparison off the main thread
+
+    /// The feed is compared with the shelf before the sync returns to the main
+    /// thread, so a large shelf does not hold up the UI.
+    func testSync_ComparesTheFeedOffTheMainThread() async {
+        let threads = ThreadRecorder()
+        let sut = makeSync(afterLoansFeedCompared: { threads.record(Thread.isMainThread) })
+
+        await runSync(sut, feed: Self.feed(shelf))
+
+        XCTAssertEqual(threads.values, [false], "the comparison step must run once, off the main thread")
+    }
+
+    /// A state written after the comparison (an async store write) is newer
+    /// than the feed, so the sync keeps it instead of the compared result.
+    func testSync_WhenStateIsSetAfterTheComparison_KeepsTheLocalState() async {
+        let store = self.store!
+        let seed = makeSync()
+        await seedBySync(seed, shelf)
+        let sut = makeSync(afterLoansFeedCompared: {
+            store.setState(.downloadSuccessful, for: "book-b")
+        })
+        var changed = shelf
+        changed[1].until = "2026-09-15T00:00:00Z"
+
+        await runSync(sut, feed: Self.feed(changed))
+
+        let record = records()["book-b"]
+        XCTAssertEqual(record?.state, .downloadSuccessful, "a local state newer than the feed must be kept")
+        XCTAssertEqual(record?.book.defaultAcquisition?.availability.until,
+                       NSDate.date(withRFC3339String: "2026-09-15T00:00:00Z") as Date?)
+    }
+
+    /// The same rule for a synchronous in-place write.
+    func testSync_WhenRecordIsChangedInPlaceAfterTheComparison_KeepsTheLocalState() async {
+        let store = self.store!
+        let seed = makeSync()
+        await seedBySync(seed, shelf)
+        let sut = makeSync(afterLoansFeedCompared: {
+            store.mutateRegistrySync { $0["book-b"]?.state = .downloadSuccessful }
+        })
+        var changed = shelf
+        changed[1].until = "2026-09-15T00:00:00Z"
+
+        await runSync(sut, feed: Self.feed(changed))
+
+        XCTAssertEqual(records()["book-b"]?.state, .downloadSuccessful)
+    }
+
+    /// A feed that lists one book twice ends with the last entry, as each entry
+    /// is applied to the record the previous entry left.
+    func testSync_WhenFeedListsABookTwice_TheLastEntryWins() async {
+        let sut = makeSync()
+        await seedBySync(sut, shelf)
+        var first = shelf[1]
+        first.until = "2026-09-15T00:00:00Z"
+
+        await runSync(sut, feed: Self.feed([shelf[0], first, shelf[1], shelf[2]]))
+
+        XCTAssertEqual(records()["book-b"]?.book.defaultAcquisition?.availability.until,
+                       NSDate.date(withRFC3339String: shelf[1].until) as Date?)
+    }
+
     // MARK: - Record comparison
 
     /// A ready hold read back from disk has no deadline; it must not match the
@@ -471,6 +535,13 @@ final class BookRegistrySyncDiffContractTests: XCTestCase {
 }
 
 // MARK: - Test doubles
+
+private final class ThreadRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [Bool] = []
+    func record(_ isMain: Bool) { lock.withLock { recorded.append(isMain) } }
+    var values: [Bool] { lock.withLock { recorded } }
+}
 
 private final class DiffLoansAccountScope: AccountScopeProviding, @unchecked Sendable {
     let accountID: String?

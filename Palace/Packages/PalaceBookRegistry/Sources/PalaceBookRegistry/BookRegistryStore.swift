@@ -64,6 +64,11 @@ final class BookRegistryStore: @unchecked Sendable {
 
   private var processingIdentifiers = Set<String>()
 
+  /// Advances after every write, so a reader can tell whether the shelf it read
+  /// is still current. A loans sync compares the feed off the main thread and
+  /// applies that result only when no write came between (PP-5503).
+  private var writeGeneration: UInt64 = 0
+
   // MARK: - Combine subjects
 
   let registrySubject = CurrentValueSubject<[String: TPPBookRegistryRecord], Never>([:])
@@ -155,7 +160,12 @@ final class BookRegistryStore: @unchecked Sendable {
     // another thread. Mirrors `SyncCallbacks` / `SendableErrorDocument`.
     let carrier = BarrierBlockBox(block)
     let token = ownerToken
-    syncQueue.async(flags: .barrier) { Self.runAsBarrierOwner(token) { carrier.run() } }
+    syncQueue.async(flags: .barrier) {
+      Self.runAsBarrierOwner(token) {
+        carrier.run()
+        self.writeGeneration &+= 1
+      }
+    }
   }
 
   /// Runs `block` as an exclusive write and returns `true`. Inside a write of
@@ -164,7 +174,12 @@ final class BookRegistryStore: @unchecked Sendable {
   @discardableResult
   func performBarrierSync(_ block: () -> Void, operation: String = "performBarrierSync") -> Bool {
     guard DispatchQueue.getSpecific(key: syncQueueKey) != nil else {
-      syncQueue.sync(flags: .barrier) { Self.runAsBarrierOwner(ownerToken, block) }
+      syncQueue.sync(flags: .barrier) {
+        Self.runAsBarrierOwner(ownerToken) {
+          block()
+          writeGeneration &+= 1
+        }
+      }
       return true
     }
     guard isRunningBarrier else {
@@ -172,6 +187,7 @@ final class BookRegistryStore: @unchecked Sendable {
       return false
     }
     block()
+    writeGeneration &+= 1
     return true
   }
 
@@ -201,6 +217,19 @@ final class BookRegistryStore: @unchecked Sendable {
   /// Provides direct read access to the registry dictionary within a sync block.
   func readRegistry<T>(_ block: (_ registry: [String: TPPBookRegistryRecord]) -> T) -> T {
     return performSync { block(self.registry) }
+  }
+
+  /// `readRegistry`, plus the write generation the block read.
+  func readRegistryWithWriteGeneration<T>(
+    _ block: (_ registry: [String: TPPBookRegistryRecord]) -> T
+  ) -> (value: T, writeGeneration: UInt64) {
+    return performSync { (block(self.registry), self.writeGeneration) }
+  }
+
+  /// The current write generation. Inside a write it is the value from before
+  /// that write, which advances it only when it ends.
+  func currentWriteGeneration() -> UInt64 {
+    return performSync { writeGeneration }
   }
 
   /// Provides direct write access to the registry dictionary within a barrier block.
