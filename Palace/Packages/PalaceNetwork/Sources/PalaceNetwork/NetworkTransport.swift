@@ -203,4 +203,10 @@ public final class ActiveTasksStore {
     @objc public func clearCache() {
         urlSession.configuration.urlCache?.removeAllCachedResponses()
     }
+
+    /// Bytes the response cache holds in memory now (PP-5509).
+    // PUBLIC_INTENT: read by the app target's memory event record.
+    public var cacheMemoryUsage: Int {
+        urlSession.configuration.urlCache?.currentMemoryUsage ?? 0
+    }
 }
