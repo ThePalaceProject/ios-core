@@ -54,6 +54,11 @@ final class HoldsViewModel: ObservableObject {
     private let currentLibraryNeedsAuth: () -> Bool
     private let presentSignIn: (@escaping () -> Void) -> Void
     private let store: Store<HoldsState, HoldsAction, HoldsEnvironment>
+    private let activityPolicy: ActivityPolicy?
+    /// The sign-in change refresh waits while the app is not visible (PP-5508).
+    private lazy var signInSync = DeferredAmbientSync(policy: activityPolicy) { [weak self] in
+        self?.refresh()
+    }
     private var cancellables = Set<AnyCancellable>()
 
     /// Trailing-edge debounce interval for the merged sync-ended /
@@ -77,7 +82,8 @@ final class HoldsViewModel: ObservableObject {
             bookRegistry: appContainer.bookRegistry,
             accountsManager: appContainer.accountsManager,
             settings: appContainer.settings,
-            debugSettings: appContainer.debugSettings
+            debugSettings: appContainer.debugSettings,
+            activityPolicy: appContainer.activityPolicy
         )
     }
 
@@ -90,13 +96,16 @@ final class HoldsViewModel: ObservableObject {
         currentLibraryNeedsAuth: (() -> Bool)? = nil,
         presentSignIn: ((@escaping () -> Void) -> Void)? = nil,
         debounceInterval: TimeInterval = 0.3,
-        accountDidChange: AnyPublisher<Void, Never>? = nil
+        accountDidChange: AnyPublisher<Void, Never>? = nil,
+        authStateChanges: AnyPublisher<TPPAccountAuthState, Never>? = nil,
+        activityPolicy: ActivityPolicy? = nil
     ) {
         self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager
         self.settings = settings
         self.debugSettings = debugSettings
         self.debounceInterval = debounceInterval
+        self.activityPolicy = activityPolicy
         self.hasCredentials = hasCredentials ?? { [accountsManager] in
             accountsManager.currentUserAccount.hasCredentials()
         }
@@ -187,15 +196,13 @@ final class HoldsViewModel: ObservableObject {
         // check inside the sink is for test isolation —
         // `UserAccountPublisher.shared` is singleton-backed and leaks
         // authState across XCTest cases.
-        UserAccountPublisher.shared.authStateDidChangePublisher
+        (authStateChanges ?? UserAccountPublisher.shared.authStateDidChangePublisher)
             .dropFirst()
             .filter { $0 == .loggedIn }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                guard let self,
-                      self.accountsManager.currentUserAccount.hasCredentials()
-                else { return }
-                self.refresh()
+                guard let self, self.hasCredentials() else { return }
+                self.signInSync.request()
             }
             .store(in: &cancellables)
 
