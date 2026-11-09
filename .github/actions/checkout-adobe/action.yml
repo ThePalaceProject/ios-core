@@ -27,7 +27,7 @@ runs:
   using: "composite"
   steps:
     - name: Checkout Adobe RMSDK
-      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       with:
         repository: ${{ inputs.repo }}
         token: ${{ inputs.token }}
@@ -41,7 +41,7 @@ runs:
       shell: bash
 
     - name: Restore Adobe RMSDK Git LFS object cache
-      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ${{ inputs.path }}/.git/lfs
         key: ${{ runner.os }}-rmsdk-lfsdata-v1-${{ hashFiles(format('{0}/.git/lfs-hashes.txt', inputs.path)) }}
