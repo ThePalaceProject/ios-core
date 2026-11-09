@@ -32,9 +32,13 @@ final class AccountDetailReauthSheetTests: PalaceTestCase {
         set { credentialsBox.value = newValue }
     }
     private var notificationSinks = Set<AnyCancellable>()
+    /// The library the presented view model shows, and the manager that owns its account.
+    private var presentedLibraryUUID = ""
+    private var presentedAccountsManager: AccountsManager?
 
     override func tearDown() {
         notificationSinks.removeAll()
+        presentedAccountsManager = nil
         super.tearDown()
     }
 
@@ -96,12 +100,23 @@ final class AccountDetailReauthSheetTests: PalaceTestCase {
     private func presentedViewModel(
         authenticationJSON: String,
         credentials: Credentials,
-        forceReauthMode: Bool
+        forceReauthMode: Bool,
+        anotherLibraryIsCurrent: Bool = false
     ) async throws -> (AccountDetailViewModel, () -> Void) {
         let appContainer = makeTestAppContainer()
         let uuid = "urn:uuid:pp5449-\(UUID().uuidString)"
         let account = try account(uuid: uuid, authenticationJSON: authenticationJSON)
-        let restore = appContainer.accountsManager._seedAccountForTesting(account)
+        var restore = appContainer.accountsManager._seedAccountForTesting(account)
+        if anotherLibraryIsCurrent {
+            // Seeding makes a library current, so seed a second one after it.
+            let current = try self.account(uuid: "urn:uuid:pp5473-current-\(UUID().uuidString)",
+                                           authenticationJSON: authenticationJSON)
+            let restoreCurrent = appContainer.accountsManager._seedAccountForTesting(current)
+            let restorePresented = restore
+            restore = { restoreCurrent(); restorePresented() }
+        }
+        presentedLibraryUUID = uuid
+        presentedAccountsManager = appContainer.accountsManager
         currentCredentials = credentials
         let viewModel = AccountDetailViewModel(
             libraryAccountID: uuid,
@@ -119,17 +134,20 @@ final class AccountDetailReauthSheetTests: PalaceTestCase {
         return (viewModel, restore)
     }
 
-    /// Posts the notification and returns once the view model's subscriber has
+    /// Publishes a change from a library's stored account (the presented
+    /// library's by default) and returns once the view model's subscriber has
     /// run: both hop through `RunLoop.main`, which delivers in order, and the
     /// view model subscribed first.
-    private func postAccountChange(object: Any?) async {
+    private func publishAccountChange(libraryUUID: String? = nil) async throws {
+        let manager = try XCTUnwrap(presentedAccountsManager)
+        let account = manager.userAccount(for: libraryUUID ?? presentedLibraryUUID)
         let delivered = expectation(description: "account change delivered")
-        NotificationCenter.default.publisher(for: .TPPUserAccountDidChange)
+        account.changes
             .receive(on: RunLoop.main)
             .first()
             .sink { _ in delivered.fulfill() }
             .store(in: &notificationSinks)
-        NotificationCenter.default.post(name: .TPPUserAccountDidChange, object: object)
+        account._publishChangeForTesting()
         await fulfillment(of: [delivered], timeout: 5) // STARVE-001-OK: waits on one RunLoop.main delivery, not on async work
     }
 
@@ -156,21 +174,21 @@ final class AccountDetailReauthSheetTests: PalaceTestCase {
         XCTAssertFalse(viewModel.shouldShowSignInPrompt, "Basic auth has no browser prompt; it needs the form")
     }
 
-    /// A credential-change notification while the sheet is open must not turn
-    /// the form back into the signed-in view.
+    /// A credential change while the sheet is open must not turn the form
+    /// back into the signed-in view.
     func testReauthSheet_WhenAccountChangesWhileOpen_KeepsSignInForm() async throws {
         let (viewModel, restore) = try await presentedViewModel(
             authenticationJSON: basicAuthJSON, credentials: .stale, forceReauthMode: true)
         defer { restore() }
 
-        await postAccountChange(object: nil)
+        try await publishAccountChange()
 
         XCTAssertFalse(viewModel.isSignedIn)
         XCTAssertEqual(viewModel.usernameText, "")
     }
 
-    /// A token refresh in any library posts this notification; it must not
-    /// erase the barcode and PIN the patron is typing.
+    /// A token refresh for this library or another must not erase the
+    /// barcode and PIN the patron is typing.
     func testReauthSheet_WhenAccountChangeArrivesWhileTyping_KeepsTypedCredentials() async throws {
         let (viewModel, restore) = try await presentedViewModel(
             authenticationJSON: basicAuthJSON, credentials: .stale, forceReauthMode: true)
@@ -178,8 +196,8 @@ final class AccountDetailReauthSheetTests: PalaceTestCase {
         viewModel.usernameText = "01230000000999"
         viewModel.pinText = "new-pin"
 
-        await postAccountChange(object: nil)
-        await postAccountChange(object: TPPUserAccount(libraryUUID: "urn:uuid:pp5449-other-library"))
+        try await publishAccountChange()
+        try await publishAccountChange(libraryUUID: "urn:uuid:pp5449-other-library")
         viewModel.refreshSignInState()
 
         XCTAssertEqual(viewModel.usernameText, "01230000000999")
@@ -194,10 +212,25 @@ final class AccountDetailReauthSheetTests: PalaceTestCase {
         defer { restore() }
         currentCredentials = .fresh
 
-        await postAccountChange(object: TPPUserAccount(libraryUUID: "urn:uuid:pp5449-other-library"))
+        try await publishAccountChange(libraryUUID: "urn:uuid:pp5449-other-library")
 
         XCTAssertFalse(viewModel.isSignedIn)
         XCTAssertEqual(viewModel.usernameText, "")
+    }
+
+    /// A library the patron switched away from still follows its own
+    /// account: signing in on its page must show it signed in.
+    func testSettingsPage_WhenAnotherLibraryIsCurrent_FollowsItsOwnLibrarysAccount() async throws {
+        let (viewModel, restore) = try await presentedViewModel(
+            authenticationJSON: basicAuthJSON, credentials: .none, forceReauthMode: false,
+            anotherLibraryIsCurrent: true)
+        defer { restore() }
+        XCTAssertFalse(viewModel.isSignedIn)
+        currentCredentials = .fresh
+
+        try await publishAccountChange()
+
+        XCTAssertTrue(viewModel.isSignedIn)
     }
 
     /// When the state really changes, the fields follow it: a sign-in fills
@@ -209,13 +242,13 @@ final class AccountDetailReauthSheetTests: PalaceTestCase {
         viewModel.usernameText = "01230000000999"
 
         currentCredentials = .fresh
-        await postAccountChange(object: nil)
+        try await publishAccountChange()
         XCTAssertTrue(viewModel.isSignedIn)
         XCTAssertEqual(viewModel.usernameText, "01230000000237")
         XCTAssertEqual(viewModel.pinText, "old-pin")
 
         currentCredentials = .none
-        await postAccountChange(object: nil)
+        try await publishAccountChange()
         XCTAssertFalse(viewModel.isSignedIn)
         XCTAssertEqual(viewModel.usernameText, "")
         XCTAssertEqual(viewModel.pinText, "")

@@ -22,8 +22,8 @@ final class AccountsManagerEventPublisherTests: PalaceWiringTestCase {
         let uuids = ["urn:uuid:cat-loaded-a-\(UUID().uuidString)", "urn:uuid:cat-loaded-b-\(UUID().uuidString)"]
         let manager = makeFreshAccountsManager(
             defaults: Self.testUserDefaults(),
-            registryCache: CachedFeed(data: try Self.feed(uuids: uuids)),
-            crawlScheduler: .neverStarts
+            registryCache: FreshRegistryCache(data: try Self.feed(uuids: uuids)),
+            crawlScheduler: .startsNothing
         )
         var loads = 0
         manager.catalogLoadedPublisher
@@ -44,8 +44,8 @@ final class AccountsManagerEventPublisherTests: PalaceWiringTestCase {
         let uuids = ["urn:uuid:cat-iso-\(UUID().uuidString)"]
         let loading = makeFreshAccountsManager(
             defaults: Self.testUserDefaults(),
-            registryCache: CachedFeed(data: try Self.feed(uuids: uuids)),
-            crawlScheduler: .neverStarts
+            registryCache: FreshRegistryCache(data: try Self.feed(uuids: uuids)),
+            crawlScheduler: .startsNothing
         )
         let other = makeFreshAccountsManager(defaults: Self.testUserDefaults())
         var loadingLoads = 0
@@ -89,26 +89,4 @@ final class AccountsManagerEventPublisherTests: PalaceWiringTestCase {
             metadata: OPDS2CatalogsFeed.Metadata(adobe_vendor_id: "ThePalaceProject", title: "Libraries", numberOfItems: uuids.count)
         ))
     }
-}
-
-/// Serves `data` as a fresh cached catalog for every hash, so `loadCatalogs`
-/// takes the disk-cache path.
-private final class CachedFeed: AccountRegistryCaching, @unchecked Sendable {
-    private let data: Data
-    init(data: Data) { self.data = data }
-    func writeCatalogData(_ data: Data, hash: String, isBundled: Bool) {}
-    func readCatalogData(hash: String) -> Data? { data }
-    func hasFreshCatalogData(hash: String) -> Bool { true }
-    func isCatalogStale(hash: String) -> Bool { false }
-    func slimSnapshotURL(hash: String) -> URL? { nil }
-    func clearFileCaches() {}
-}
-
-private extension CrawlTaskScheduler {
-    /// Returns finished tasks without running the operation, so the disk-cache
-    /// path's background refresh never reaches the network.
-    static let neverStarts = CrawlTaskScheduler(
-        spawn: { _, _ in Task {} },
-        spawnDetached: { _, _ in Task {} }
-    )
 }

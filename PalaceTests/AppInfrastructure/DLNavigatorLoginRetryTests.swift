@@ -19,7 +19,7 @@ final class DLNavigatorLoginRetryTests: PalaceWiringTestCase {
         let uuids = ["urn:uuid:dl-retry-\(UUID().uuidString)"]
         let manager = makeFreshAccountsManager(
             defaults: Self.testUserDefaults(),
-            registryCache: CachedCatalog(data: try Self.feed(uuids: uuids)),
+            registryCache: FreshRegistryCache(data: try Self.feed(uuids: uuids)),
             crawlScheduler: .startsNothing
         )
         let retries = RetryCounter()
@@ -55,7 +55,7 @@ final class DLNavigatorLoginRetryTests: PalaceWiringTestCase {
         let waiting = makeFreshAccountsManager(defaults: Self.testUserDefaults())
         let loading = makeFreshAccountsManager(
             defaults: Self.testUserDefaults(),
-            registryCache: CachedCatalog(data: try Self.feed(uuids: uuids)),
+            registryCache: FreshRegistryCache(data: try Self.feed(uuids: uuids)),
             crawlScheduler: .startsNothing
         )
         let retries = RetryCounter()
@@ -89,26 +89,4 @@ final class DLNavigatorLoginRetryTests: PalaceWiringTestCase {
 @MainActor
 private final class RetryCounter {
     var count = 0
-}
-
-/// Serves `data` as a fresh cached catalog for every hash, so `loadCatalogs`
-/// takes the disk-cache path.
-private final class CachedCatalog: AccountRegistryCaching, @unchecked Sendable {
-    private let data: Data
-    init(data: Data) { self.data = data }
-    func writeCatalogData(_ data: Data, hash: String, isBundled: Bool) {}
-    func readCatalogData(hash: String) -> Data? { data }
-    func hasFreshCatalogData(hash: String) -> Bool { true }
-    func isCatalogStale(hash: String) -> Bool { false }
-    func slimSnapshotURL(hash: String) -> URL? { nil }
-    func clearFileCaches() {}
-}
-
-private extension CrawlTaskScheduler {
-    /// Returns finished tasks without running the operation, so the disk-cache
-    /// path's background refresh never reaches the network.
-    static let startsNothing = CrawlTaskScheduler(
-        spawn: { _, _ in Task {} },
-        spawnDetached: { _, _ in Task {} }
-    )
 }
