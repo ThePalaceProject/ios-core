@@ -66,10 +66,6 @@ final class SignInOAuthErrorPropagationTests: XCTestCase {
         // branch at OAuth.swift:103-119.
         let prefix = urlProvider.universalLinksURL.absoluteString
         let redirectURL = URL(string: "\(prefix)?some_unrelated_param=foo")!
-        let notification = Notification(
-            name: .TPPAppDelegateDidReceiveCleverRedirectURL,
-            object: redirectURL
-        )
 
         var capturedError: Error?
         var capturedTitle: String?
@@ -77,7 +73,7 @@ final class SignInOAuthErrorPropagationTests: XCTestCase {
         var completionCallCount = 0
         let expectation = expectation(description: "completion fires")
 
-        businessLogic.handleRedirectURL(notification) { error, title, message in
+        businessLogic.handleRedirectURL(redirectURL) { error, title, message in
             capturedError = error
             capturedTitle = title
             capturedMessage = message
@@ -114,17 +110,13 @@ final class SignInOAuthErrorPropagationTests: XCTestCase {
         // and the URL still contains "error" (the
         // `universalLinkRedirectURLContainsPayload` check).
         let redirectURL = URL(string: "\(prefix)?error=\(encoded)")!
-        let notification = Notification(
-            name: .TPPAppDelegateDidReceiveCleverRedirectURL,
-            object: redirectURL
-        )
 
         var capturedError: Error?
         var capturedTitle: String?
         var capturedMessage: String?
         let expectation = expectation(description: "completion fires")
 
-        businessLogic.handleRedirectURL(notification) { error, title, message in
+        businessLogic.handleRedirectURL(redirectURL) { error, title, message in
             capturedError = error
             capturedTitle = title
             capturedMessage = message
@@ -152,17 +144,13 @@ final class SignInOAuthErrorPropagationTests: XCTestCase {
         let encoded = errorJSON
             .addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
         let redirectURL = URL(string: "\(prefix)?error=\(encoded)")!
-        let notification = Notification(
-            name: .TPPAppDelegateDidReceiveCleverRedirectURL,
-            object: redirectURL
-        )
 
         var capturedError: Error?
         var capturedTitle: String?
         var capturedMessage: String?
         let expectation = expectation(description: "completion fires")
 
-        businessLogic.handleRedirectURL(notification) { error, title, message in
+        businessLogic.handleRedirectURL(redirectURL) { error, title, message in
             capturedError = error
             capturedTitle = title
             capturedMessage = message
@@ -198,17 +186,13 @@ final class SignInOAuthErrorPropagationTests: XCTestCase {
             withAllowedCharacters: .urlQueryAllowed)!
         let redirectURL = URL(string:
             "\(prefix)?access_token=tok&patron_info=\(bogusPatron)")!
-        let notification = Notification(
-            name: .TPPAppDelegateDidReceiveCleverRedirectURL,
-            object: redirectURL
-        )
 
         var capturedError: Error?
         var capturedTitle: String?
         var capturedMessage: String?
         let expectation = expectation(description: "completion fires")
 
-        businessLogic.handleRedirectURL(notification) { error, title, message in
+        businessLogic.handleRedirectURL(redirectURL) { error, title, message in
             capturedError = error
             capturedTitle = title
             capturedMessage = message
@@ -251,15 +235,11 @@ final class SignInOAuthErrorPropagationTests: XCTestCase {
         // Mutated code (inner `&&` → `||`): inner returns true → outer returns
         // true → falls through to parse-fail branch.
         let redirectURL = URL(string: "\(prefix)?access_token=tok_only")!
-        let notification = Notification(
-            name: .TPPAppDelegateDidReceiveCleverRedirectURL,
-            object: redirectURL
-        )
 
         var capturedError: Error?
         let expectation = expectation(description: "completion fires")
 
-        businessLogic.handleRedirectURL(notification) { error, _, _ in
+        businessLogic.handleRedirectURL(redirectURL) { error, _, _ in
             capturedError = error
             expectation.fulfill()
         }
@@ -281,38 +261,6 @@ final class SignInOAuthErrorPropagationTests: XCTestCase {
 
     // MARK: - Branch 0: notification has no URL (line 96, pre-existing :96 guard)
 
-    /// Defensive coverage for the `notification.object as? URL` guard.
-    /// The contract identified this as the implicit fourth branch and the
-    /// PR snippet wires a synthesised error here too. Mutation surface: a
-    /// regression that returns to `completion?(nil, nil, nil)` MUST fail
-    /// this test.
-    func testHandleRedirectURL_notificationWithoutURL_synthesizesNonNilError() {
-        let notification = Notification(
-            name: .TPPAppDelegateDidReceiveCleverRedirectURL,
-            object: "not a URL"   // wrong type — fails `as? URL` cast
-        )
-
-        var capturedError: Error?
-        var capturedTitle: String?
-        var capturedMessage: String?
-        let expectation = expectation(description: "completion fires")
-
-        businessLogic.handleRedirectURL(notification) { error, title, message in
-            capturedError = error
-            capturedTitle = title
-            capturedMessage = message
-            expectation.fulfill()
-        }
-
-        wait(for: [expectation], timeout: 2.0)
-
-        XCTAssertNotNil(capturedError,
-                        "no-URL branch must synthesise an Error so the " +
-                        "consumer alert path fires")
-        XCTAssertEqual(capturedTitle, Strings.Error.loginErrorTitle)
-        XCTAssertEqual(capturedMessage, Strings.Error.loginErrorDescription)
-    }
-
     // MARK: - Edge: base64-token kvpair parsing (mutation surface for line 166)
 
     /// Pin the kvpair-parsing guard `elts.count >= 2`. Base64 tokens contain
@@ -331,15 +279,11 @@ final class SignInOAuthErrorPropagationTests: XCTestCase {
             withAllowedCharacters: .urlQueryAllowed)!
         let redirectURL = URL(string:
             "\(prefix)?access_token=\(tokenWithEquals)&patron_info=\(encoded)")!
-        let notification = Notification(
-            name: .TPPAppDelegateDidReceiveCleverRedirectURL,
-            object: redirectURL
-        )
 
         var capturedError: Error?
         let expectation = expectation(description: "completion fires")
 
-        businessLogic.handleRedirectURL(notification) { error, _, _ in
+        businessLogic.handleRedirectURL(redirectURL) { error, _, _ in
             capturedError = error
             expectation.fulfill()
         }
@@ -366,15 +310,11 @@ final class SignInOAuthErrorPropagationTests: XCTestCase {
             withAllowedCharacters: .urlQueryAllowed)!
         let redirectURL = URL(string:
             "\(prefix)?access_token=valid-tok&patron_info=\(encoded)")!
-        let notification = Notification(
-            name: .TPPAppDelegateDidReceiveCleverRedirectURL,
-            object: redirectURL
-        )
 
         var capturedError: Error?
         let expectation = expectation(description: "completion fires")
 
-        businessLogic.handleRedirectURL(notification) { error, _, _ in
+        businessLogic.handleRedirectURL(redirectURL) { error, _, _ in
             capturedError = error
             expectation.fulfill()
         }

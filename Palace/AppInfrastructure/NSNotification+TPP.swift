@@ -12,7 +12,6 @@ import PalacePreferences
 import PalaceBookRegistry
 
 extension Notification.Name {
-    static let TPPAppDelegateDidReceiveCleverRedirectURL = Notification.Name("TPPAppDelegateDidReceiveCleverRedirectURL")
     // Registry sync and change events are the registry's Combine publishers
     // (syncEventPublisher / registryDidChangePublisher / bookStatePublisher /
     // registryStatePublisher / holdsDidChangePublisher), not notifications.
@@ -34,7 +33,6 @@ extension Notification.Name {
 @objc extension NSNotification {
     public static let TPPSettingsDidChange = Notification.Name.TPPSettingsDidChange
     public static let TPPUseBetaDidChange = Notification.Name.TPPUseBetaDidChange
-    public static let TPPAppDelegateDidReceiveCleverRedirectURL = Notification.Name.TPPAppDelegateDidReceiveCleverRedirectURL
     public static let TPPBookProcessingDidChange = Notification.Name.TPPBookProcessingDidChange
     public static let TPPMyBooksDownloadCenterDidChange = Notification.Name.TPPMyBooksDownloadCenterDidChange
     public static let TPPReachabilityChanged = Notification.Name.TPPReachabilityChanged

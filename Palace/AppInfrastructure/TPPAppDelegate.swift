@@ -373,12 +373,24 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
             }
         }
 
-        if userActivity.activityType == NSUserActivityTypeBrowsingWeb &&
-            userActivity.webpageURL?.host == AppContainer.production().settings.universalLinksURL.host {
-            NotificationCenter.default.post(name: .TPPAppDelegateDidReceiveCleverRedirectURL, object: userActivity.webpageURL)
-            return true
+        let container = AppContainer.production()
+        return Self.routeSignInRedirect(userActivity,
+                                        universalLinksURL: container.settings.universalLinksURL,
+                                        to: container.signInRedirects)
+    }
+
+    /// Hands a universal link on the sign-in redirect host to the sign-in
+    /// waiting in the browser. Returns whether the link was that redirect.
+    static func routeSignInRedirect(_ userActivity: NSUserActivity,
+                                    universalLinksURL: URL,
+                                    to relay: SignInRedirectRelay) -> Bool {
+        guard userActivity.activityType == NSUserActivityTypeBrowsingWeb,
+              let url = userActivity.webpageURL,
+              url.host == universalLinksURL.host else {
+            return false
         }
-        return false
+        relay.deliver(url)
+        return true
     }
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
