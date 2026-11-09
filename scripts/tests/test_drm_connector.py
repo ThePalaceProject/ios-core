@@ -1,7 +1,7 @@
 """Tests for scripts/drm_connector.py: the connector record, the local clone,
 and the drift check that compares a local connector tree with the record.
 
-prior-art-checked: nothing in the harness reads this repository's connector record.
+prior-art-checked: no existing script under scripts/ reads the connector record.
 """
 
 from __future__ import annotations
@@ -268,6 +268,27 @@ def test_bootstrap_leaves_an_existing_connector_clone_where_it_is(bootstrap_sand
     assert result.returncode == 0, result.stdout + result.stderr
     assert git("rev-parse", "HEAD", cwd=connector) == shas["tip"]
     assert "ios-drm-adeptconnector already exists" in result.stdout
+
+
+def test_setup_repo_drm_run_twice_replaces_the_link_and_writes_nothing_in_the_connector(linked):
+    # `ln -sf` over an existing link to a directory follows it and creates a
+    # stray link inside the connector checkout; the second run must not.
+    root, connector, shas = linked
+    git("checkout", "-q", "--detach", shas["pinned"], cwd=connector)
+    (root / "adobe-rmsdk").unlink()
+    (root / "scripts").mkdir()
+    for script in ("setup-repo-drm.sh", "drm_connector.py"):
+        (root / "scripts" / script).write_text((REPO / "scripts" / script).read_text())
+    connector.rename(root / "ios-drm-adeptconnector")
+    connector = root / "ios-drm-adeptconnector"
+    env = {**os.environ, "BUILD_CONTEXT": "ci"}
+    env.pop("ADEPT_RMSDK", None)
+    for _ in range(2):
+        result = subprocess.run(["bash", "scripts/setup-repo-drm.sh"], cwd=root, env=env,
+                                capture_output=True, text=True)
+        assert result.returncode == 0, result.stdout + result.stderr
+    assert os.readlink(root / "adobe-rmsdk") == "./ios-drm-adeptconnector/connector"
+    assert git("status", "--porcelain", cwd=connector) == ""
 
 
 # ---------- the drift check ---------------------------------------------------

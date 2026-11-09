@@ -14,7 +14,7 @@ docs/architecture/adobe-drm-connector-linking.md.
 `check` exit status: 0 the tree is at the recorded commit and clean, 1 it is
 not, 2 there is no connector tree (a noDRM setup), 3 no usable verdict.
 
-prior-art-checked: the harness has no reader for this repository's connector record.
+prior-art-checked: no existing script under scripts/ reads the connector record.
 """
 
 from __future__ import annotations

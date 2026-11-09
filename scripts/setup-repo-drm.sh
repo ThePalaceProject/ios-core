@@ -29,7 +29,9 @@ else
   ADOBE_SDK_PATH=../ios-drm-adeptconnector
 fi
 
-ln -sf $ADOBE_SDK_PATH/connector adobe-rmsdk
+# -n replaces an existing adobe-rmsdk link instead of following it and
+# creating a second link inside the connector checkout.
+ln -sfn $ADOBE_SDK_PATH/connector adobe-rmsdk
 
 # Stop if the linked connector is not the commit CI builds.
 python3 scripts/drm_connector.py check
