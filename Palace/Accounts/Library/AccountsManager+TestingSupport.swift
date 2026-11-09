@@ -47,7 +47,7 @@ extension AccountsManager {
     /// write is then wiped. Snapshot under lock (inside the holder); drain
     /// outside the lock (the drain pumps the run loop and must not hold a lock).
     ///
-    /// Also retires each instance from `.TPPUseBetaDidChange`. Instances built
+    /// Also retires each instance from the beta-libraries switch. Instances built
     /// by earlier tests can outlive their graph (each boundary rebuild leaves the
     /// previous manager alive), and every subscribed one answers a beta toggle
     /// with a global-queue `updateAccountSet` that blocks in its loader's
@@ -65,7 +65,7 @@ extension AccountsManager {
         }
         let snapshot = _liveInstancesForTesting.snapshot()
         for m in snapshot {
-            NotificationCenter.default.removeObserver(m, name: .TPPUseBetaDidChange, object: nil)
+            m.betaToggleSubscription.cancel()
             m.cancelAndDrainBackgroundWork()
         }
     }

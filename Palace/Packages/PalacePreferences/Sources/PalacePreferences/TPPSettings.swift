@@ -19,27 +19,20 @@ public final class TPPSettings {
         self.defaults = defaults
     }
 
-    // MARK: - Combine Publishers
+    // MARK: - Change streams
 
-    /// Publishes when any setting changes (replaces `.TPPSettingsDidChange` notification)
-    private let settingsChangedSubject = PassthroughSubject<Void, Never>()
-
-    /// Publisher for settings changes. Use instead of observing `.TPPSettingsDidChange`.
-    public var settingsDidChange: AnyPublisher<Void, Never> {
-        settingsChangedSubject
+    /// Each change of the beta-libraries switch, on main. A stream on the type,
+    /// not on each instance: settings screens and `AccountsManager` each build
+    /// their own `TPPSettings` over the same defaults, and the account list
+    /// must follow a switch flipped on any of them.
+    // PUBLIC_INTENT: AccountsManager (app target) follows the beta-libraries switch.
+    public static var useBetaLibrariesChanges: AnyPublisher<Bool, Never> {
+        useBetaLibrariesChannel.subject
             .receive(on: DispatchQueue.main)
             .eraseToAnyPublisher()
     }
 
-    /// Publishes when the beta libraries toggle changes (replaces `.TPPUseBetaDidChange` notification)
-    private let useBetaChangedSubject = PassthroughSubject<Bool, Never>()
-
-    /// Publisher for beta libraries toggle. Use instead of observing `.TPPUseBetaDidChange`.
-    public var useBetaDidChange: AnyPublisher<Bool, Never> {
-        useBetaChangedSubject
-            .receive(on: DispatchQueue.main)
-            .eraseToAnyPublisher()
-    }
+    private static let useBetaLibrariesChannel = SettingsChangeChannel<Bool>()
 
     public static let TPPAboutPalaceURLString = "http://thepalaceproject.org/"
     public static let TPPUserAgreementURLString = "https://legal.palaceproject.io/End%20User%20License%20Agreement.html"
@@ -81,8 +74,6 @@ public final class TPPSettings {
                 return
             }
             defaults.set(customUrl, forKey: TPPSettings.customMainFeedURLKey)
-            settingsChangedSubject.send()
-            NotificationCenter.default.post(name: Notification.Name.TPPSettingsDidChange, object: self)
         }
     }
 
@@ -95,8 +86,6 @@ public final class TPPSettings {
                 return
             }
             defaults.set(mainFeedUrl, forKey: TPPSettings.accountMainFeedURLKey)
-            settingsChangedSubject.send()
-            NotificationCenter.default.post(name: Notification.Name.TPPSettingsDidChange, object: self)
         }
     }
 
@@ -124,9 +113,7 @@ public final class TPPSettings {
         }
         set {
             defaults.set(newValue, forKey: TPPSettings.useBetaLibrariesKey)
-            useBetaChangedSubject.send(newValue)
-            NotificationCenter.default.post(name: NSNotification.Name.TPPUseBetaDidChange,
-                                            object: self)
+            Self.useBetaLibrariesChannel.subject.send(newValue)
         }
     }
 
@@ -215,4 +202,10 @@ public final class TPPSettings {
         set { defaults.set(newValue, forKey: TPPSettings.appRatingCrashFreeLastSessionKey) }
     }
 
+}
+
+/// A process-wide change stream for a setting. `@unchecked Sendable`: the only
+/// state is the `let` subject, and Combine subjects lock around `send`.
+final class SettingsChangeChannel<Value>: @unchecked Sendable {
+    let subject = PassthroughSubject<Value, Never>()
 }

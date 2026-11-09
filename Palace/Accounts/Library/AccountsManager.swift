@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import PalacePreferences
 import PalaceLogging
@@ -19,6 +20,16 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
         get { lock.lock(); defer { lock.unlock() }; return storage }
         set { lock.lock(); defer { lock.unlock() }; storage = newValue }
     }
+}
+
+/// Lock-backed holder for one Combine subscription, so it can be replaced or
+/// cancelled from any thread. `@unchecked Sendable` invariant: `cancellable`
+/// is read and written only under `lock`.
+final class AccountsManagerSubscription: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cancellable: AnyCancellable?
+    func hold(_ newValue: AnyCancellable) { lock.withLock { cancellable = newValue } }
+    func cancel() { lock.withLock { cancellable = nil } }
 }
 
 /// Manages library accounts asynchronously with authentication & image loading.
@@ -50,6 +61,10 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
     /// `currentAccount` setter and the `@MainActor` cleanup Task; read from the
     /// sign-in-modal presenter.
     private let _isAccountSwitching = AccountsManagerBoolFlag(false)
+
+    /// Follows the beta-libraries switch for the manager's lifetime; the test
+    /// boundary drain cancels it on retired instances.
+    let betaToggleSubscription = AccountsManagerSubscription()
 
     /// True during an account switch — suppresses sign-in modal presentation
     /// to prevent the intermittent login prompt (F-032). `private(set)`
@@ -94,9 +109,9 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
     private let crawlScheduler: CrawlTaskScheduler
     /// Catalog load orchestration, owned background crawl, and drain.
     /// A `lazy var` because its provider closures capture `self`. A `lazy var` is
-    /// not synchronized and the `.TPPUseBetaDidChange` observer can reach this from
-    /// a global queue, so `init` forces construction before registering that
-    /// observer; see the call site.
+    /// not synchronized and the beta-libraries subscription can reach this from
+    /// a global queue, so `init` forces construction before subscribing; see
+    /// the call site.
     private lazy var registryLoader: AccountRegistryLoader = AccountRegistryLoader(
         registryCache: registryCache,
         registryStore: registryStore,
@@ -254,8 +269,8 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
                         ? TPPConfiguration.betaUrlHash
                         : TPPConfiguration.prodUrlHash)
         )
-        // Force `registryLoader`'s construction on THIS thread before the observer
-        // below goes live. The observer's handler hops to a global queue and reaches
+        // Force `registryLoader`'s construction on THIS thread before the
+        // subscription below goes live. Its handler hops to a global queue and reaches
         // `registryLoader` through `updateAccountSet` -> `loadCatalogs`; a `lazy var`
         // has no synchronisation, so that background first-touch can race the one on
         // the constructing thread. The synchronous preload further down used to be the
@@ -265,11 +280,10 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
         // `AccountRegistryLoader.init` is pure assignment, no dispatch and no I/O.
         _ = registryLoader
 
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(updateAccountSetFromNotification(_:)),
-            name: .TPPUseBetaDidChange,
-            object: nil
+        betaToggleSubscription.hold(
+            TPPSettings.useBetaLibrariesChanges.sink { [weak self] _ in
+                self?.useBetaLibrariesDidChange()
+            }
         )
 
         #if DEBUG
@@ -557,10 +571,8 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
         registryLoader.loadAccountSetsAndAuthDoc(fromCatalogData: data, key: hash, completion: completion)
     }
 
-    @objc private func updateAccountSetFromNotification(_ notif: Notification) {
-        // Run off the poster's thread. `.TPPUseBetaDidChange` is delivered
-        // synchronously by `NotificationCenter` on whatever thread posted it —
-        // typically MAIN, from a Settings toggle. `updateAccountSet` does a
+    private func useBetaLibrariesDidChange() {
+        // Run off the main thread, where the beta-libraries change is delivered. `updateAccountSet` does a
         // synchronous read on the registry store's concurrent `accountSetsLock`
         // (via `registryStore.bucketIsNonEmpty`) that blocks until any in-flight
         // background catalog-refresh barrier on that lock drains; under

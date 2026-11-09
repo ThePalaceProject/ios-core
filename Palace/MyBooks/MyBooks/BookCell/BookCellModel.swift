@@ -218,7 +218,7 @@ class BookCellModel: ObservableObject {
         self.state = BookCellState(initialButtonState)
 
         self.image = generatePlaceholder(for: book)
-        registerForNotifications()
+        bindConnectivityChanges()
         loadBookCoverImage()
         bindRegistryState()
         bindReachability()
@@ -227,10 +227,6 @@ class BookCellModel: ObservableObject {
         #if LCP
         prefetchLCPStreamingIfPossible()
         #endif
-    }
-
-    deinit {
-        NotificationCenter.default.removeObserver(self)
     }
 
     // MARK: - Image Loading
@@ -289,11 +285,16 @@ class BookCellModel: ObservableObject {
         self.image = image
     }
 
-    // MARK: - Notification Handling
+    // MARK: - Connectivity
 
-    private func registerForNotifications() {
-        NotificationCenter.default.addObserver(self, selector: #selector(updateButtons),
-                                               name: .TPPReachabilityChanged, object: nil)
+    /// Any connectivity change clears the cell's own spinner. `dropFirst()`
+    /// skips the publisher's replay of the current state.
+    private func bindConnectivityChanges() {
+        reachability.connectivityPublisher
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateButtons() }
+            .store(in: &cancellables)
     }
 
     private func bindRegistryState() {
@@ -613,7 +614,7 @@ class BookCellModel: ObservableObject {
         return isConsistent
     }
 
-    @objc private func updateButtons() {
+    private func updateButtons() {
         Task { @MainActor [weak self] in
             self?.isLoading = false
         }

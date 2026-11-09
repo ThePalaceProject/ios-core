@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import UIKit
 import ImageIO
@@ -155,9 +156,7 @@ actor TPPBookCoverRegistry {
 
     /// Reachability observer: a Wi-Fi↔cellular handoff briefly fails in-flight
     /// requests, so any reachability change clears the circuit breaker.
-    // `nonisolated(unsafe)`: written once in `init`, read once in the nonisolated
-    // `deinit`, when no other reference to the actor exists.
-    nonisolated(unsafe) private var reachabilityObserverToken: NSObjectProtocol?
+    private let reachabilitySubscription: AnyCancellable
 
     /// Dedicated URLSession with short timeouts for image fetches.
     /// Using URLSession.shared's 60s default timeout is far too slow when a host is down —
@@ -212,22 +211,11 @@ actor TPPBookCoverRegistry {
         }
 
         // Reset the host circuit breaker on any reachability change. Capturing
-        // only the (Sendable) tracker keeps this `@Sendable` observer closure off
+        // only the (Sendable) tracker keeps this closure off
         // `self`, so it is sound to install from the actor's initializer.
         let tracker = hostFailureTracker
-        reachabilityObserverToken = NotificationCenter.default.addObserver(
-            forName: .TPPReachabilityChanged,
-            object: nil,
-            queue: nil
-        ) { _ in
-            Task { await tracker.reset() }
-        }
-    }
-
-    deinit {
-        if let token = reachabilityObserverToken {
-            NotificationCenter.default.removeObserver(token)
-        }
+        reachabilitySubscription = Reachability.connectivityChanges
+            .sink { _ in Task { await tracker.reset() } }
     }
 
     /// Clears the host circuit breaker (fire-and-forget). Call on an account

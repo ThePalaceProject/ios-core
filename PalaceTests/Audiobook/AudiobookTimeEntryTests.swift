@@ -143,17 +143,9 @@ final class NSNotificationTPPTests: XCTestCase {
 
     // SRS: Notification.Name constants exist
     func testNotificationNames_exist() {
-        XCTAssertEqual(Notification.Name.TPPSettingsDidChange.rawValue, "TPPSettingsDidChange")
-        XCTAssertEqual(Notification.Name.TPPUseBetaDidChange.rawValue, "TPPUseBetaDidChange")
         // .TPPBookRegistryStateDidChange was removed with the registry
         // dual-write — its lifecycle/per-book signal moved to the
         // registry's Combine publishers, so there is no longer a name to assert.
-        XCTAssertEqual(Notification.Name.TPPReachabilityChanged.rawValue, "TPPReachabilityChanged")
-    }
-
-    // SRS: NSNotification static constants match Swift counterparts
-    func testNSNotificationConstants_matchSwift() {
-        XCTAssertEqual(NSNotification.TPPSettingsDidChange, Notification.Name.TPPSettingsDidChange)
     }
 
 }
