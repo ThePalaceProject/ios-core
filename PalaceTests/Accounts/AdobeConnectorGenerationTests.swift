@@ -3,6 +3,7 @@
 //
 
 import XCTest
+import Combine
 @testable import Palace
 
 /// Pins the per-library marker that records which DRM connector performed a
@@ -12,34 +13,30 @@ import XCTest
 /// key but never `_licensor`, whose only writer is `setLicensor`. `hasLicensor()`
 /// is therefore true forever after a first sign-in and cannot stand for
 /// "an activation exists".
-/// `queue: nil` delivers the block synchronously on the posting thread, so a
-/// test can write-and-assert in one turn with no deadline.
+/// Counts an account's changes. The account sends on the thread that made the
+/// change, so a test can write-and-assert in one turn with no deadline.
 private final class AccountChangeRecorder {
-    private var token: NSObjectProtocol?
+    private var subscription: AnyCancellable?
     private let lock = NSLock()
     private var _count = 0
     var senderCount: Int { lock.withLock { _count } }
 
     init(account: TPPUserAccount) {
-        token = NotificationCenter.default.addObserver(
-            forName: .TPPUserAccountDidChange, object: account, queue: nil
-        ) { [weak self] _ in
+        subscription = account.changes.sink { [weak self] in
             guard let self else { return }
             self.lock.withLock { self._count += 1 }
         }
     }
 
     func stop() {
-        if let token { NotificationCenter.default.removeObserver(token) }
-        token = nil
+        subscription = nil
     }
 }
 
 final class AdobeConnectorGenerationTests: XCTestCase {
 
-    /// Held by the test case rather than a local, so `tearDown` removes the
-    /// observer even when a test throws before its own cleanup runs. An
-    /// observer that outlives its test counts every later post in this process.
+    /// Held by the test case rather than a local, so `tearDown` cancels the
+    /// subscription even when a test throws before its own cleanup runs.
     private var accountChangeRecorder: AccountChangeRecorder?
 
     override func tearDown() {
@@ -130,20 +127,16 @@ final class AdobeConnectorGenerationTests: XCTestCase {
     /// reasons identifies neither.
     func testRecordingAnActivationNotifiesObservers() {
         let account: TPPUserAccount = TPPUserAccountTestFactory.makeIsolated()
-        // Bound to this account: `notifyAccountDidChange()` posts with
-        // `object: self`, and a nil object matches any sender. Other tests in
-        // this process post the same notification, so an unbound observer is
-        // satisfied by whoever happens to post first.
         let recorder = AccountChangeRecorder(account: account)
         accountChangeRecorder = recorder
 
         account.setAdobeActivation(userID: "user", deviceID: "device",
                                    generation: AdobeConnectorGeneration.current)
 
-        // No deadline: `notifyAccountDidChange` posts synchronously, so the
-        // block has already run by the time the setter returns. A wall-clock
-        // wait here would be a timed wait on work that is already done, which
-        // is what starves under parallel sim clones.
+        // No deadline: the account sends synchronously, so the sink has
+        // already run by the time the setter returns. A wall-clock wait here
+        // would be a timed wait on work that is already done, which is what
+        // starves under parallel sim clones.
         XCTAssertEqual(recorder.senderCount, 1,
                        "recording an activation must tell observers once")
     }

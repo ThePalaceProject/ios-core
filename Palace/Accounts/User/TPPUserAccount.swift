@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import PalaceLogging
 import PalaceKeychain
@@ -66,6 +67,8 @@ private enum StorageKey: String {
     //   • `let` fields (`libraryUUID`, `boundLibraryUUID`, `accountInfoQueue`,
     //     `controlLock`, `keychainTransaction` and the keychain variables) are set
     //     in `init` and immutable; the variables are internally queue-synchronized.
+    //   • `changeSubject` is a `let`; Combine subjects lock around `send`, so
+    //     changes made on different threads can each send.
     private let accountInfoQueue: DispatchQueue
     private let controlLock = NSLock()
     private let keychainTransaction: TPPKeychainVariableTransaction
@@ -274,14 +277,26 @@ private enum StorageKey: String {
         self.authDefinition = authDefinition
     }
 
+    /// Each change to this library's stored account: sign-in, sign-out, a
+    /// token refresh, a DRM activation. Sends on the thread that made the
+    /// change, which can be a background queue during a token refresh.
+    var changes: AnyPublisher<Void, Never> {
+        changeSubject.eraseToAnyPublisher()
+    }
+
+    private let changeSubject = PassthroughSubject<Void, Never>()
+
+    /// Publishes a change without storing anything, so view tests can drive
+    /// a subscriber that reads injected credentials.
+    func _publishChangeForTesting() {
+        changeSubject.send()
+    }
+
     private func notifyAccountDidChange() {
         Task { @MainActor in
             UserAccountPublisher.shared.updateState(from: self)
         }
-        NotificationCenter.default.post(
-            name: Notification.Name.TPPUserAccountDidChange,
-            object: self
-        )
+        changeSubject.send()
     }
 
     // MARK: - Storage
@@ -732,8 +747,8 @@ private enum StorageKey: String {
             // The write-through `write(nil)` calls above already left every
             // cache nil, but `credentialSnapshot()` no longer invalidates per
             // read — so drop the caches here too, synchronously and BEFORE the
-            // `.TPPDidSignOut` notification posts. This guarantees any consumer
-            // that reacts to sign-out (`AccountDetailViewModel.accountDidChange`,
+            // change is published. This guarantees any consumer that reacts to
+            // sign-out (`AccountDetailViewModel.accountDidChange`,
             // and — critically — the `TPPNetworkResponder` 401-decision reading
             // `currentUserAccount.credentialSnapshot()`) can never observe a
             // stale "signed in" snapshot after sign-out has completed.
@@ -744,7 +759,6 @@ private enum StorageKey: String {
             UserAccountPublisher.shared.signOut()
         }
         notifyAccountDidChange()
-        NotificationCenter.default.post(name: Notification.Name.TPPDidSignOut, object: nil)
     }
 }
 
