@@ -83,7 +83,7 @@ final class UserAccountChangesTests: XCTestCase {
             account.setAuthToken("token", barcode: nil, pin: nil, expirationDate: nil)
         }
 
-        wait(for: [published], timeout: 5)
+        wait(for: [published], timeout: 5) // STARVE-001-OK: waits on one dispatched block, which sends synchronously; no other async work
     }
 }
 
