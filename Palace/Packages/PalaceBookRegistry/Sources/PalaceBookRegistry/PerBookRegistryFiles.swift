@@ -16,8 +16,17 @@ import PalaceBookModel
 
 /// The per-book files of one account's registry folder.
 ///
-/// Not thread-safe: `BookRegistrySync` calls it only on its disk-write queue.
-/// `@unchecked Sendable` so the queue's closures can capture it.
+/// Every file carries the sequence number of the save that wrote it, and the
+/// trust record carries the sequence `registry.json` was written at. For each
+/// book the newest of the three sources wins, so a crash between two files
+/// leaves each book as it was before or after the save.
+///
+/// Sequences are allocated by the caller, under `sequenceLock`: a shelf save
+/// before it takes its snapshot, a position save after it reads the position.
+/// So a snapshot that misses a position change always has the lower number.
+///
+/// Everything else is not thread-safe: `BookRegistrySync` calls it only on its
+/// disk-write queue. `@unchecked Sendable` so the queue's closures can capture it.
 final class PerBookRegistryFiles: @unchecked Sendable {
   typealias BeforeWrite = (RegistryWriteStep, URL) throws -> Void
 
@@ -30,6 +39,7 @@ final class PerBookRegistryFiles: @unchecked Sendable {
   static let stateFileName = "books-state.json"
   private static let identifierKey = "identifier"
   private static let recordKey = "record"
+  private static let sequenceKey = "sequence"
   private static let locationKey = TPPBookRegistryKey.location.rawValue
 
   /// The migration and trust record in `books-state.json`.
@@ -41,14 +51,15 @@ final class PerBookRegistryFiles: @unchecked Sendable {
     /// file on disk has other bytes, something else wrote it after them (an
     /// older app, or a launch with the flag off), and these files are not trusted.
     var registryDigest: String?
+    /// The highest file sequence `registry.json` already reflects.
+    var registrySequence: Int = 0
   }
 
-  /// Per-book files read back: records without their location, and the
-  /// position file of each book. A position file without a location is
-  /// `.some(nil)`; a book without a position file is absent.
+  /// Per-book files read back, each with the sequence of the save that wrote it.
+  /// A position file without a location has `location == nil`.
   struct Contents {
-    var records: [String: TPPBookRegistryData] = [:]
-    var positions: [String: Any?] = [:]
+    var records: [String: (record: TPPBookRegistryData, sequence: Int)] = [:]
+    var positions: [String: (location: Any?, sequence: Int)] = [:]
   }
 
   let registryURL: URL
@@ -57,9 +68,12 @@ final class PerBookRegistryFiles: @unchecked Sendable {
   let stateURL: URL
   private let beforeWrite: BeforeWrite
 
-  /// Bytes of each book's files as on disk, so a save writes only what changed.
-  private var recordBytes: [String: Data] = [:]
-  private var positionBytes: [String: Data] = [:]
+  /// Content of each book's files as on disk, so a save writes only what changed.
+  private var recordContent: [String: Data] = [:]
+  private var positionContent: [String: Data] = [:]
+  private let sequenceLock = NSLock()
+  /// Guarded by `sequenceLock`.
+  private var nextSequence = 1
 
   init(registryURL: URL, beforeWrite: @escaping BeforeWrite) {
     let folder = registryURL.deletingLastPathComponent()
@@ -98,18 +112,16 @@ final class PerBookRegistryFiles: @unchecked Sendable {
     try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys, .fragmentsAllowed])
   }
 
-  private static func encodeRecord(_ identifier: String, _ record: TPPBookRegistryData) throws -> Data {
-    var withoutLocation = record
-    withoutLocation.removeValue(forKey: locationKey)
-    return try encode([identifierKey: identifier, recordKey: withoutLocation])
+  private static func recordObject(_ identifier: String, _ record: TPPBookRegistryData) -> [String: Any] {
+    [identifierKey: identifier, recordKey: record]
   }
 
   /// Keeps the location value exactly, `NSNull` included, so a record read
   /// back equals the one written.
-  private static func encodePosition(_ identifier: String, _ record: TPPBookRegistryData) throws -> Data {
+  private static func positionObject(_ identifier: String, _ location: Any?) -> [String: Any] {
     var object: [String: Any] = [identifierKey: identifier]
-    if let location = record[locationKey] { object[locationKey] = location }
-    return try encode(object)
+    if let location { object[locationKey] = location }
+    return object
   }
 
   private func recordURL(_ identifier: String, in folder: URL) -> URL {
@@ -122,41 +134,61 @@ final class PerBookRegistryFiles: @unchecked Sendable {
 
   // MARK: - State
 
-  func readState() -> State? {
-    guard let data = try? Data(contentsOf: stateURL),
+  static func readState(at url: URL) -> State? {
+    guard let data = try? Data(contentsOf: url),
           let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
           let appVersion = object["appVersion"] as? String,
           let attempts = object["attempts"] as? Int,
           let verified = object["verified"] as? Bool
     else { return nil }
     return State(appVersion: appVersion, attempts: attempts, verified: verified,
-                 registryDigest: object["registryDigest"] as? String)
+                 registryDigest: object["registryDigest"] as? String,
+                 registrySequence: object["registrySequence"] as? Int ?? 0)
   }
 
+  func readState() -> State? { Self.readState(at: stateURL) }
+
   func writeState(_ state: State) throws {
-    var object: [String: Any] = ["appVersion": state.appVersion, "attempts": state.attempts, "verified": state.verified]
+    var object: [String: Any] = [
+      "appVersion": state.appVersion, "attempts": state.attempts,
+      "verified": state.verified, "registrySequence": state.registrySequence
+    ]
     object["registryDigest"] = state.registryDigest
     try beforeWrite(.perBookState, stateURL)
     try Self.encode(object).write(to: stateURL, options: .atomic)
   }
 
-  /// Whether these files hold the newest shelf: verified, and written together
-  /// with the `registry.json` bytes now on disk.
-  func isTrusted(primaryData: Data?) -> Bool {
-    guard let state = readState(), state.verified, let digest = state.registryDigest,
-          let primaryData else { return false }
-    return digest == Self.digest(of: primaryData)
+  /// The trust record when these files hold the newest shelf: verified, and
+  /// written together with the `registry.json` bytes now on disk.
+  static func trustedState(at stateURL: URL, primaryData: Data?) -> State? {
+    guard let state = readState(at: stateURL), state.verified, let recorded = state.registryDigest,
+          let primaryData, recorded == digest(of: primaryData) else { return nil }
+    return state
   }
 
-  /// Records that the files match `registryData`, just written to `registry.json`.
-  func recordTrust(registryData: Data, appVersion: String) throws {
+  /// A new sequence number for a save.
+  func allocateSequence() -> Int {
+    sequenceLock.withLock {
+      defer { nextSequence += 1 }
+      return nextSequence
+    }
+  }
+
+  private func continueSequence(after highest: Int) {
+    sequenceLock.withLock { nextSequence = highest + 1 }
+  }
+
+  /// Records that `registryData`, just written to `registry.json` from a
+  /// snapshot taken at `sequence`, reflects every file with a lower number.
+  func recordTrust(registryData: Data, sequence: Int, appVersion: String) throws {
     try writeState(State(appVersion: appVersion, attempts: 0, verified: true,
-                         registryDigest: Self.digest(of: registryData)))
+                         registryDigest: Self.digest(of: registryData),
+                         registrySequence: sequence))
   }
 
   // MARK: - Reading
 
-  func read(from folder: URL) -> Contents {
+  static func read(from folder: URL) -> Contents {
     var contents = Contents()
     let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
     for name in names {
@@ -164,107 +196,132 @@ final class PerBookRegistryFiles: @unchecked Sendable {
       guard isRecord || name.hasSuffix(".position.json"),
             let data = try? Data(contentsOf: folder.appendingPathComponent(name)),
             let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let identifier = object[Self.identifierKey] as? String
+            let identifier = object[identifierKey] as? String
       else {
         Log.warn(#file, "Skipping unreadable per-book registry file \(name)")
         continue
       }
+      let sequence = object[sequenceKey] as? Int ?? 0
       if isRecord {
-        guard let record = object[Self.recordKey] as? TPPBookRegistryData else { continue }
-        contents.records[identifier] = record
+        guard let record = object[recordKey] as? TPPBookRegistryData else { continue }
+        contents.records[identifier] = (record, sequence)
       } else {
-        contents.positions[identifier] = .some(object[Self.locationKey])
+        contents.positions[identifier] = (object[locationKey], sequence)
       }
     }
     return contents
   }
 
-  /// The trusted shelf: every per-book record, every `registry.json` record the
-  /// per-book files lack (never fewer books than the old file), and each
-  /// position file over the location it covers. Remembers what is on disk.
-  func loadTrusted(primaryRecords: [TPPBookRegistryData]) -> [TPPBookRegistryData] {
-    let contents = read(from: booksDirectory)
-    rememberOnDisk(contents)
-    return Self.merge(primary: primaryRecords, contents: contents)
+  /// The trusted shelf and whether any file is newer than `registry.json`.
+  /// Remembers what is on disk and continues the sequence after it.
+  func loadTrusted(primaryRecords: [TPPBookRegistryData], state: State) -> (records: [TPPBookRegistryData], singleFileBehind: Bool) {
+    let contents = Self.read(from: booksDirectory)
+    recordContent = [:]
+    positionContent = [:]
+    var highest = state.registrySequence
+    for (identifier, entry) in contents.records {
+      recordContent[identifier] = try? Self.encode(Self.recordObject(identifier, entry.record))
+      highest = max(highest, entry.sequence)
+    }
+    for (identifier, entry) in contents.positions {
+      positionContent[identifier] = try? Self.encode(Self.positionObject(identifier, entry.location))
+      highest = max(highest, entry.sequence)
+    }
+    continueSequence(after: highest)
+    let merged = Self.merge(primary: primaryRecords, contents: contents,
+                            registrySequence: state.registrySequence, includeRecords: true)
+    return (merged.records, merged.newer)
   }
 
-  static func merge(primary: [TPPBookRegistryData], contents: Contents) -> [TPPBookRegistryData] {
+  /// For each book, the newest of `registry.json` (at `registrySequence`), its
+  /// record file and its position file. A record file older than
+  /// `registry.json` for a book `registry.json` lacks is a removal that already
+  /// reached `registry.json`. `newer` is true when any file won over it.
+  ///
+  /// - Parameter includeRecords: false for a launch with the flag off, which
+  ///   takes only positions from the per-book files.
+  static func merge(
+    primary: [TPPBookRegistryData],
+    contents: Contents,
+    registrySequence: Int,
+    includeRecords: Bool
+  ) -> (records: [TPPBookRegistryData], newer: Bool) {
     var byIdentifier: [String: TPPBookRegistryData] = [:]
+    var locationSequence: [String: Int] = [:]
     var order: [String] = []
-    func put(_ identifier: String, _ record: TPPBookRegistryData) {
-      if byIdentifier[identifier] == nil { order.append(identifier) }
-      byIdentifier[identifier] = record
-    }
+    var newer = false
     for record in primary {
       guard let identifier = identifier(of: record) else { continue }
-      put(identifier, record)
+      if byIdentifier[identifier] == nil { order.append(identifier) }
+      byIdentifier[identifier] = record
+      locationSequence[identifier] = registrySequence
     }
-    for (identifier, record) in contents.records {
-      var merged = record
-      merged[locationKey] = byIdentifier[identifier]?[locationKey]
-      put(identifier, merged)
+    if includeRecords {
+      for (identifier, entry) in contents.records where entry.sequence > registrySequence {
+        if byIdentifier[identifier] == nil { order.append(identifier) }
+        byIdentifier[identifier] = entry.record
+        locationSequence[identifier] = entry.sequence
+        newer = true
+      }
     }
-    for (identifier, position) in contents.positions where byIdentifier[identifier] != nil {
-      byIdentifier[identifier]?[locationKey] = position
+    for (identifier, entry) in contents.positions {
+      guard byIdentifier[identifier] != nil, entry.sequence > locationSequence[identifier] ?? .max else { continue }
+      byIdentifier[identifier]?[locationKey] = entry.location
+      newer = true
     }
-    return order.compactMap { byIdentifier[$0] }
+    return (order.compactMap { byIdentifier[$0] }, newer)
   }
 
-  private func rememberOnDisk(_ contents: Contents) {
-    recordBytes = [:]
-    positionBytes = [:]
-    for (identifier, record) in contents.records {
-      recordBytes[identifier] = try? Self.encodeRecord(identifier, record)
-    }
-    for (identifier, position) in contents.positions {
-      var record: TPPBookRegistryData = [:]
-      if case .some(let location) = position { record[Self.locationKey] = location }
-      positionBytes[identifier] = try? Self.encodePosition(identifier, record)
-    }
+  /// Positions saved after `registry.json` was last written, applied to its
+  /// records, for a launch with the flag off. Nil when the per-book files are
+  /// not trusted against these bytes or hold nothing newer. Writes nothing.
+  static func newerPositions(registryURL: URL, primaryRecords: [TPPBookRegistryData], primaryData: Data?) -> [TPPBookRegistryData]? {
+    let folder = registryURL.deletingLastPathComponent()
+    guard let state = trustedState(at: folder.appendingPathComponent(stateFileName), primaryData: primaryData) else { return nil }
+    let contents = read(from: folder.appendingPathComponent(booksFolderName, isDirectory: true))
+    let merged = merge(primary: primaryRecords, contents: contents,
+                       registrySequence: state.registrySequence, includeRecords: false)
+    return merged.newer ? merged.records : nil
   }
 
   // MARK: - Writing
 
-  /// Brings the files in line with `records`, the whole in-memory shelf: writes
-  /// each changed position file, then each changed record file, then removes
-  /// the files of books no longer on it. The position goes first so a crash
-  /// between the two never leaves a new book without the position it was saved with.
-  func write(shelf records: [TPPBookRegistryData]) throws {
+  /// Brings the record files in line with `records`, the whole in-memory shelf
+  /// as snapshotted at `sequence`:
+  /// one file per changed book, holding its whole record and position, then
+  /// removes the files of books no longer on it. One file per book keeps each
+  /// book's change atomic.
+  func write(shelf records: [TPPBookRegistryData], sequence: Int) throws {
     try ensureFolder(booksDirectory)
     var present = Set<String>()
     for record in records {
       guard let identifier = Self.identifier(of: record) else { continue }
       present.insert(identifier)
-      let position = try Self.encodePosition(identifier, record)
-      if positionBytes[identifier] != position {
-        try writeFile(position, to: positionURL(identifier, in: booksDirectory), step: .bookPosition)
-        positionBytes[identifier] = position
-      }
-      let encoded = try Self.encodeRecord(identifier, record)
-      if recordBytes[identifier] != encoded {
-        try writeFile(encoded, to: recordURL(identifier, in: booksDirectory), step: .bookRecord)
-        recordBytes[identifier] = encoded
-      }
+      var object = Self.recordObject(identifier, record)
+      let content = try Self.encode(object)
+      guard recordContent[identifier] != content else { continue }
+      object[Self.sequenceKey] = sequence
+      try writeFile(Self.encode(object), to: recordURL(identifier, in: booksDirectory), step: .bookRecord)
+      recordContent[identifier] = content
     }
-    for identifier in Set(recordBytes.keys).union(positionBytes.keys).subtracting(present) {
-      try beforeWrite(.bookRemoval, recordURL(identifier, in: booksDirectory))
-      try removeIfPresent(recordURL(identifier, in: booksDirectory))
-      recordBytes[identifier] = nil
-      try removeIfPresent(positionURL(identifier, in: booksDirectory))
-      positionBytes[identifier] = nil
+    for identifier in Set(recordContent.keys).union(positionContent.keys).subtracting(present) {
+      try removeFile(recordURL(identifier, in: booksDirectory))
+      recordContent[identifier] = nil
+      try removeFile(positionURL(identifier, in: booksDirectory))
+      positionContent[identifier] = nil
     }
   }
 
   /// Writes one book's position file if it changed. `location` is the
   /// location dictionary, or nil for a book without a position.
-  func writePosition(identifier: String, location: [String: Any]?) throws {
-    var record: TPPBookRegistryData = [:]
-    record[Self.locationKey] = location
-    let encoded = try Self.encodePosition(identifier, record)
-    guard positionBytes[identifier] != encoded else { return }
+  func writePosition(identifier: String, location: [String: Any]?, sequence: Int) throws {
+    var object = Self.positionObject(identifier, location)
+    let content = try Self.encode(object)
+    guard positionContent[identifier] != content else { return }
     try ensureFolder(booksDirectory)
-    try writeFile(encoded, to: positionURL(identifier, in: booksDirectory), step: .bookPosition)
-    positionBytes[identifier] = encoded
+    object[Self.sequenceKey] = sequence
+    try writeFile(Self.encode(object), to: positionURL(identifier, in: booksDirectory), step: .bookPosition)
+    positionContent[identifier] = content
   }
 
   /// True when any record file exists, so an empty save would remove books.
@@ -278,9 +335,18 @@ final class PerBookRegistryFiles: @unchecked Sendable {
     try data.write(to: url, options: .atomic)
   }
 
-  private func removeIfPresent(_ url: URL) throws {
+  private func removeFile(_ url: URL) throws {
     guard FileManager.default.fileExists(atPath: url.path) else { return }
+    try beforeWrite(.bookRemoval, url)
     try FileManager.default.removeItem(at: url)
+  }
+
+  /// Removes the staging folder through the write hook, so a crash there
+  /// leaves it in place as a real crash would.
+  private func removeStaging() {
+    guard FileManager.default.fileExists(atPath: stagingDirectory.path),
+          (try? beforeWrite(.migrationCleanup, stagingDirectory)) != nil else { return }
+    try? FileManager.default.removeItem(at: stagingDirectory)
   }
 
   private func ensureFolder(_ folder: URL) throws {
@@ -293,18 +359,18 @@ final class PerBookRegistryFiles: @unchecked Sendable {
 
   enum MigrationResult: Equatable {
     case migrated
-    /// Not tried: the old file is not a clean, non-empty source, or the tries
-    /// for this app version are used up.
+    /// Not tried: the old file is empty while per-book files hold books, or the
+    /// tries for this app version are used up.
     case skipped(reason: String)
     /// Tried and abandoned; the old file stays in use.
     case failed(mismatched: [String])
   }
 
   /// Moves `primaryRecords`, read from the valid `registry.json` bytes
-  /// `primaryData`, into the per-book layout: stage every file, read the staged
-  /// files back, compare every record with the old file, and only then put
-  /// them in place and mark them trusted. Any difference or error leaves the
-  /// old file in use and the attempt counted.
+  /// `primaryData`, into the per-book layout: stage every record file, read the
+  /// staged files back, compare every record with the old file, and only then
+  /// put them in place and mark them trusted. Any difference or error leaves
+  /// the old file in use and the attempt counted.
   func migrate(primaryRecords: [TPPBookRegistryData], primaryData: Data, appVersion: String) -> MigrationResult {
     var expected: [String: TPPBookRegistryData] = [:]
     for record in primaryRecords {
@@ -322,48 +388,50 @@ final class PerBookRegistryFiles: @unchecked Sendable {
 
     do {
       try writeState(State(appVersion: appVersion, attempts: attempts + 1, verified: false, registryDigest: nil))
-      try? FileManager.default.removeItem(at: stagingDirectory)
+      removeStaging()
       try FileManager.default.createDirectory(at: stagingDirectory, withIntermediateDirectories: true)
       for (identifier, record) in expected {
-        let position = try Self.encodePosition(identifier, record)
-        try writeFile(position, to: positionURL(identifier, in: stagingDirectory), step: .migrationStaging)
-        let encoded = try Self.encodeRecord(identifier, record)
-        try writeFile(encoded, to: recordURL(identifier, in: stagingDirectory), step: .migrationStaging)
+        var object = Self.recordObject(identifier, record)
+        object[Self.sequenceKey] = 0
+        try writeFile(Self.encode(object), to: recordURL(identifier, in: stagingDirectory), step: .migrationStaging)
       }
 
       try beforeWrite(.migrationVerify, stagingDirectory)
-      let staged = read(from: stagingDirectory)
+      let staged = Self.read(from: stagingDirectory)
       let mismatched = Self.mismatchedIdentifiers(expected: expected, staged: staged)
       guard mismatched.isEmpty else {
-        try? FileManager.default.removeItem(at: stagingDirectory)
+        removeStaging()
         return .failed(mismatched: mismatched)
       }
 
-      try beforeWrite(.migrationSwap, booksDirectory)
-      try removeIfPresent(booksDirectory)
+      if FileManager.default.fileExists(atPath: booksDirectory.path) {
+        try beforeWrite(.migrationSwap, booksDirectory)
+        try FileManager.default.removeItem(at: booksDirectory)
+      }
+      try beforeWrite(.migrationSwap, stagingDirectory)
       try FileManager.default.moveItem(at: stagingDirectory, to: booksDirectory)
-      rememberOnDisk(staged)
-      try recordTrust(registryData: primaryData, appVersion: appVersion)
+      recordContent = [:]
+      positionContent = [:]
+      for (identifier, entry) in staged.records {
+        recordContent[identifier] = try? Self.encode(Self.recordObject(identifier, entry.record))
+      }
+      continueSequence(after: 0)
+      try recordTrust(registryData: primaryData, sequence: 0, appVersion: appVersion)
       return .migrated
     } catch {
       Log.error(#file, "Per-book registry migration stopped: \(error.localizedDescription)")
-      try? FileManager.default.removeItem(at: stagingDirectory)
+      removeStaging()
       return .failed(mismatched: [])
     }
   }
 
-  /// Identifiers whose staged files do not read back as the old file's record,
-  /// including books missing from either side.
+  /// Identifiers whose staged record does not read back as the old file's
+  /// record, including books missing from either side.
   static func mismatchedIdentifiers(expected: [String: TPPBookRegistryData], staged: Contents) -> [String] {
     var mismatched = Set(staged.records.keys).symmetricDifference(expected.keys)
-    for (identifier, record) in expected where staged.records[identifier] != nil {
-      guard case .some(let location) = staged.positions[identifier] else {
-        mismatched.insert(identifier)
-        continue
-      }
-      var readBack = staged.records[identifier] ?? [:]
-      readBack[locationKey] = location
-      if !NSDictionary(dictionary: readBack).isEqual(to: record) {
+    for (identifier, record) in expected {
+      guard let readBack = staged.records[identifier]?.record else { continue }
+      if !NSDictionary(dictionary: readBack).isEqual(NSDictionary(dictionary: record)) {
         mismatched.insert(identifier)
       }
     }

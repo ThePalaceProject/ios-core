@@ -51,12 +51,6 @@ final class PerBookRegistrySession: @unchecked Sendable {
     isSingleFileBehind(account)
   }
 
-  /// Marks `registry.json` as behind before a position write is queued, so an
-  /// app event that runs before the queued write still brings it up to date.
-  func markSingleFileBehind(_ account: String) {
-    setSingleFileBehind(true, for: account)
-  }
-
   private func activate(_ account: String, _ files: PerBookRegistryFiles) {
     lock.withLock { active = (account, files) }
   }
@@ -83,12 +77,16 @@ final class PerBookRegistrySession: @unchecked Sendable {
     beforeWrite: @escaping PerBookRegistryFiles.BeforeWrite
   ) -> [TPPBookRegistryData]? {
     let files = PerBookRegistryFiles(registryURL: registryURL, beforeWrite: beforeWrite)
-    setSingleFileBehind(false, for: account)
-    if files.isTrusted(primaryData: primaryData) {
+    if let state = PerBookRegistryFiles.trustedState(at: files.stateURL, primaryData: primaryData) {
       activate(account, files)
+      let loaded = files.loadTrusted(primaryRecords: primaryRecords ?? [], state: state)
+      // Files newer than registry.json (positions saved before a kill) make
+      // it behind, so the next app event writes it again.
+      setSingleFileBehind(loaded.singleFileBehind, for: account)
       Log.info(#file, "  Reading the shelf from per-book files")
-      return files.loadTrusted(primaryRecords: primaryRecords ?? [])
+      return loaded.records
     }
+    setSingleFileBehind(false, for: account)
     deactivate(account: nil)
     guard primaryIsValid, let primaryData else {
       Log.info(#file, "  Per-book layout not used: registry.json is absent or was recovered")
@@ -106,30 +104,48 @@ final class PerBookRegistrySession: @unchecked Sendable {
     return primaryRecords
   }
 
-  // MARK: - Saves (on the disk-write queue)
+  // MARK: - Saves
 
-  /// Brings `files` in line with a shelf save's records. Returns true when they
-  /// now match. On an error the account stops using per-book files for this
-  /// launch, so later positions go to `registry.json`.
-  func writeShelf(_ files: PerBookRegistryFiles?, records: Any?, account: String) -> Bool {
-    guard let files else { return false }
+  /// The files and sequence of one save. Taken by the caller before the save's
+  /// snapshot; see `PerBookRegistryFiles.allocateSequence()`.
+  struct Save: Sendable {
+    let files: PerBookRegistryFiles
+    let sequence: Int
+  }
+
+  /// Allocates a save's sequence, or nil when `account` uses only `registry.json`.
+  func beginSave(for account: String) -> Save? {
+    files(for: account).map { Save(files: $0, sequence: $0.allocateSequence()) }
+  }
+
+  /// `save` when the account still uses the same files on the disk-write queue.
+  func stillActive(_ save: Save?, for account: String) -> Save? {
+    save.flatMap { files(for: account) === $0.files ? $0 : nil }
+  }
+
+  /// Brings the record files in line with a shelf save's records, on the
+  /// disk-write queue. Returns the save when they now match. On an error the
+  /// account stops using per-book files for this launch, so later positions go
+  /// to `registry.json`.
+  func writeShelf(_ save: Save?, records: Any?, account: String) -> Save? {
+    guard let save else { return nil }
     do {
-      try files.write(shelf: records as? [TPPBookRegistryData] ?? [])
-      return true
+      try save.files.write(shelf: records as? [TPPBookRegistryData] ?? [], sequence: save.sequence)
+      return save
     } catch {
       Log.error(#file, "Per-book registry write failed; using registry.json for this launch: \(error.localizedDescription)")
       deactivate(account: account)
-      return false
+      return nil
     }
   }
 
-  /// After `registry.json` was written: it is no longer behind, and when
-  /// `files` were written with it, they are recorded as matching these bytes.
-  func singleFileWritten(account: String, registryData: Data, files: PerBookRegistryFiles?, appVersion: String) {
+  /// After `registry.json` was written: it is no longer behind, and when the
+  /// record files were written with it, the trust record now names these bytes.
+  func singleFileWritten(account: String, registryData: Data, save: Save?, appVersion: String) {
     setSingleFileBehind(false, for: account)
-    guard let files else { return }
+    guard let save else { return }
     do {
-      try files.recordTrust(registryData: registryData, appVersion: appVersion)
+      try save.files.recordTrust(registryData: registryData, sequence: save.sequence, appVersion: appVersion)
     } catch {
       // Without the trust record the next launch reads registry.json, so later
       // positions must go there too.
@@ -138,16 +154,22 @@ final class PerBookRegistrySession: @unchecked Sendable {
     }
   }
 
-  /// Writes position files. When a write fails, or the account stopped using
-  /// the files after this save was queued, the position stays in memory and
-  /// `registry.json` stays marked as behind until an app event or the next
-  /// save writes it.
-  func writePositions(_ positions: [(identifier: String, location: [String: Any]?)], files: PerBookRegistryFiles, account: String) {
+  /// Marks `registry.json` as behind before a position write is queued, so an
+  /// app event that runs before the queued write still brings it up to date.
+  func markSingleFileBehind(_ account: String) {
     setSingleFileBehind(true, for: account)
-    guard self.files(for: account) === files else { return }
+  }
+
+  /// Writes position files on the disk-write queue. When a write fails, or the
+  /// account stopped using the files after this save was queued, the position
+  /// stays in memory and `registry.json` stays marked as behind until an app
+  /// event or the next save writes it.
+  func writePositions(_ positions: [(identifier: String, location: [String: Any]?)], save: Save, account: String) {
+    setSingleFileBehind(true, for: account)
+    guard stillActive(save, for: account) != nil else { return }
     do {
       for position in positions {
-        try files.writePosition(identifier: position.identifier, location: position.location)
+        try save.files.writePosition(identifier: position.identifier, location: position.location, sequence: save.sequence)
       }
     } catch {
       Log.error(#file, "Per-book position write failed; using registry.json for this launch: \(error.localizedDescription)")

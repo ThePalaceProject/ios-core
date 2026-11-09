@@ -305,11 +305,22 @@ final class BookRegistrySync: @unchecked Sendable {
         fileRead = result
       } else {
         self.perBookSession.deactivate(account: nil)
-        fileRead = RegistryFileRecovery.readForLoad(at: url)
+        var read = RegistryFileRecovery.readForLoad(at: url)
+        // With the flag off, positions saved to trusted per-book files after
+        // registry.json was last written are still the patron's newest; take
+        // them read-only and write them to registry.json below.
+        if self.allowsPerBookStorage, let records = read.records,
+           let merged = PerBookRegistryFiles.newerPositions(registryURL: url, primaryRecords: records, primaryData: read.data) {
+          Log.info(#file, "  Took positions saved in per-book files after registry.json was written")
+          read.records = merged
+          read.tookPerBookPositions = true
+        }
+        fileRead = read
       }
       let recordsToParse = fileRead.records
       let needsRebuild = fileRead.needsRebuild
       let needsRewrite = fileRead.needsRewrite
+      let tookPerBookPositions = fileRead.tookPerBookPositions
 
       if let records = recordsToParse {
         Log.debug(#file, "  Found \(records.count) books in registry")
@@ -379,6 +390,9 @@ final class BookRegistrySync: @unchecked Sendable {
         // until an authoritative server sync repopulates the shelf.
         self.needsRebuildFromServer = needsRebuild
         self.needsPrimaryRewrite = needsRewrite
+        if tookPerBookPositions {
+          self.save(for: loadedAccount, scope: .positionOnly)
+        }
 
         // Register the delayed recovery work BEFORE announcing the load.
         //
@@ -834,6 +848,8 @@ final class BookRegistrySync: @unchecked Sendable {
     guard let registryUrl = registryUrl(for: account) else { return }
 
     let generation = resetGeneration(for: account)
+    // Before the snapshot, so position files written later win over it.
+    let perBookSave = perBookSession.beginSave(for: account)
     let snapshot = store.registrySnapshot()
     let isEmpty = snapshot.isEmpty
     let needsRebuild = needsRebuildFromServer
@@ -851,7 +867,7 @@ final class BookRegistrySync: @unchecked Sendable {
     diskWriteQueue.async { [self] in
       if isStale(generation, for: account) { return }
       if onlyIfSingleFileBehind, !perBookSession.isSingleFileBehind(account) { return }
-      let perBook = perBookSession.files(for: account)
+      let perBook = perBookSession.stillActive(perBookSave, for: account)
       // INV-1: during the post-corrupt-load rebuild window, only an authoritative
       // server sync may persist an empty shelf. Refuse any other empty save — the
       // corrupt original is quarantined and the last-good `.bak` (if present) still
@@ -870,7 +886,7 @@ final class BookRegistrySync: @unchecked Sendable {
         Log.error(#file, "INV-1: refusing to persist an EMPTY registry (no server authority) over a non-empty on-disk shelf — needsRebuild: \(needsRebuild), onDiskHasRecords: \(RegistryFileRecovery.onDiskHasRecords(for: registryUrl))")
         return
       }
-      if isEmpty, !serverAuthoritative, perBook?.hasRecordFiles() == true {
+      if isEmpty, !serverAuthoritative, perBook?.files.hasRecordFiles() == true {
         Log.error(#file, "INV-1: refusing to persist an EMPTY registry (no server authority) over non-empty per-book files")
         return
       }
@@ -881,7 +897,7 @@ final class BookRegistrySync: @unchecked Sendable {
         }
         directoryURL.registryExcludeFromBackup()
         let registryData = try JSONSerialization.data(withJSONObject: payload.value, options: .fragmentsAllowed)
-        let perBookCurrent = perBookSession.writeShelf(perBook, records: payload.value[TPPBookRegistryKey.records.rawValue], account: account)
+        let perBookWritten = perBookSession.writeShelf(perBook, records: payload.value[TPPBookRegistryKey.records.rawValue], account: account)
         // Refresh the last-good `.bak` BEFORE overwriting the primary, but only
         // for a good snapshot (non-empty, or a server-authoritative empty) so a
         // transient empty can never clobber the backup.
@@ -895,7 +911,7 @@ final class BookRegistrySync: @unchecked Sendable {
         try registryData.write(to: registryUrl, options: .atomic)
         needsPrimaryRewrite = false
         perBookSession.singleFileWritten(account: account, registryData: registryData,
-                                         files: perBookCurrent ? perBook : nil, appVersion: dependencies.appVersion())
+                                         save: perBookWritten, appVersion: dependencies.appVersion())
         if !isEmpty || serverAuthoritative {
           needsRebuildFromServer = false
         }
@@ -927,6 +943,7 @@ final class BookRegistrySync: @unchecked Sendable {
     // race). The in-memory snapshot is independent of disk-flush ordering, so
     // reading it here is behavior-equivalent for persistence.
     let generation = resetGeneration(for: account)
+    let perBookSave = perBookSession.beginSave(for: account)
     let snapshot = store.registrySnapshot()
     let isEmpty = snapshot.isEmpty
     let needsRebuild = needsRebuildFromServer
@@ -944,7 +961,7 @@ final class BookRegistrySync: @unchecked Sendable {
     let write = {
       if self.isStale(generation, for: account) { return }
       if onlyIfSingleFileBehind, !self.perBookSession.isSingleFileBehind(account) { return }
-      let perBook = self.perBookSession.files(for: account)
+      let perBook = self.perBookSession.stillActive(perBookSave, for: account)
       // INV-1: saveSync is teardown persistence (bookmarks/location), never a
       // server reconciliation — so it is always non-authoritative. Refuse an
       // empty snapshot over a non-empty backup during the rebuild window.
@@ -956,7 +973,7 @@ final class BookRegistrySync: @unchecked Sendable {
         Log.error(#file, "INV-1: refusing synchronous EMPTY registry save over a non-empty on-disk shelf — needsRebuild: \(needsRebuild), onDiskHasRecords: \(RegistryFileRecovery.onDiskHasRecords(for: registryUrl))")
         return
       }
-      if isEmpty, perBook?.hasRecordFiles() == true {
+      if isEmpty, perBook?.files.hasRecordFiles() == true {
         Log.error(#file, "INV-1: refusing synchronous EMPTY registry save over non-empty per-book files")
         return
       }
@@ -967,7 +984,7 @@ final class BookRegistrySync: @unchecked Sendable {
         }
         directoryURL.registryExcludeFromBackup()
         let registryData = try JSONSerialization.data(withJSONObject: registryObject, options: .fragmentsAllowed)
-        let perBookCurrent = self.perBookSession.writeShelf(perBook, records: registryObject[TPPBookRegistryKey.records.rawValue], account: account)
+        let perBookWritten = self.perBookSession.writeShelf(perBook, records: registryObject[TPPBookRegistryKey.records.rawValue], account: account)
         if !isEmpty {
           try? RegistryFileRecovery.writeBackup(data: registryData, for: registryUrl, beforeWrite: self.dependencies.beforeRegistryWrite)
         }
@@ -975,7 +992,7 @@ final class BookRegistrySync: @unchecked Sendable {
         try registryData.write(to: registryUrl, options: .atomic)
         self.needsPrimaryRewrite = false
         self.perBookSession.singleFileWritten(account: account, registryData: registryData,
-                                              files: perBookCurrent ? perBook : nil, appVersion: self.dependencies.appVersion())
+                                              save: perBookWritten, appVersion: self.dependencies.appVersion())
         if !isEmpty {
           self.needsRebuildFromServer = false
         }
@@ -996,16 +1013,19 @@ final class BookRegistrySync: @unchecked Sendable {
       save(for: account, scope: .positionOnly)
       return
     }
+    // After the read, so a shelf snapshot that missed this position has the
+    // lower sequence and loses to the position file.
     let generation = resetGeneration(for: account)
     let positions = SendablePositions(value: store.readRegistry { registry in
       identifiers.sorted().compactMap { identifier in
         registry[identifier].map { (identifier: identifier, location: $0.location?.dictionaryRepresentation) }
       }
     })
+    let perBookSave = PerBookRegistrySession.Save(files: files, sequence: files.allocateSequence())
     perBookSession.markSingleFileBehind(account)
     diskWriteQueue.async { [self] in
       if isStale(generation, for: account) { return }
-      perBookSession.writePositions(positions.value, files: files, account: account)
+      perBookSession.writePositions(positions.value, save: perBookSave, account: account)
     }
   }
 

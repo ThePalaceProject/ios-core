@@ -2,10 +2,8 @@
 //  PerBookRegistryStorageTests.swift
 //  PalaceTests
 //
-//  PP-5507: the per-book shelf layout behind `per_book_registry_storage`. Each
-//  "launch" is a new registry over the same directory; a crash is a write step
-//  that throws and makes every later write of that launch throw. Layout and
-//  rules: docs/architecture/per-book-registry-storage.md.
+//  PP-5507: migration, flag on and off, write errors and the empty-shelf rule
+//  of the per-book shelf layout. Fixture: PerBookRegistryTestCase.
 //
 
 import XCTest
@@ -15,242 +13,7 @@ import PalaceBookModel
 import PalaceFeatureFlags
 
 @MainActor
-final class PerBookRegistryStorageTests: XCTestCase {
-
-    // MARK: - Doubles
-
-    /// The write steps of one launch. Can end the launch at a step, fail one
-    /// step once, or edit `books.migrating` before it is read back.
-    final class LaunchLog: @unchecked Sendable {
-        struct Crash: Error {}
-        struct DiskFull: Error {}
-
-        private let lock = NSLock()
-        private var _steps: [RegistryWriteStep] = []
-        private var crashIndex: Int?
-        private var crashed = false
-        private var failOnce: RegistryWriteStep?
-        private var verifyHook: (@Sendable (URL) -> Void)?
-
-        init(crashAtStep index: Int? = nil, failOnce step: RegistryWriteStep? = nil,
-             beforeVerify hook: (@Sendable (URL) -> Void)? = nil) {
-            crashIndex = index
-            failOnce = step
-            verifyHook = hook
-        }
-
-        var steps: [RegistryWriteStep] { lock.withLock { _steps } }
-        var didCrash: Bool { lock.withLock { crashed } }
-
-        func beforeWrite(_ step: RegistryWriteStep, _ url: URL) throws {
-            lock.lock()
-            if crashed { lock.unlock(); throw Crash() }
-            let index = _steps.count
-            _steps.append(step)
-            if index == crashIndex { crashed = true; lock.unlock(); throw Crash() }
-            if failOnce == step { failOnce = nil; lock.unlock(); throw DiskFull() }
-            let hook = step == .migrationVerify ? verifyHook : nil
-            lock.unlock()
-            hook?(url)
-        }
-    }
-
-    /// Flag and app version as the next launch reads them.
-    final class LaunchSettings: @unchecked Sendable {
-        private let lock = NSLock()
-        private var _flag = true
-        private var _version = "4.0.0 (600)"
-        var flag: Bool {
-            get { lock.withLock { _flag } }
-            set { lock.withLock { _flag = newValue } }
-        }
-        var version: String {
-            get { lock.withLock { _version } }
-            set { lock.withLock { _version = newValue } }
-        }
-    }
-
-    /// What a patron sees of one book.
-    struct ShelfEntry: Equatable, CustomStringConvertible {
-        let title: String
-        let state: TPPBookState
-        let location: String?
-        let genericBookmarks: Int
-        let readiumBookmarks: Int
-        var description: String {
-            "\(title)|\(state.stringValue())|\(location ?? "-")|g\(genericBookmarks)|r\(readiumBookmarks)"
-        }
-    }
-
-    // MARK: - Fixture
-
-    private var root: URL!
-    private var settings: LaunchSettings!
-    private var launches: [TPPBookRegistry] = []
-    private let clock = PositionTestClock()
-    private let account = "perbook-\(UUID().uuidString)"
-
-    override func setUp() {
-        super.setUp()
-        root = FileManager.default.temporaryDirectory
-            .appendingPathComponent("PerBookRegistryStorageTests-\(UUID().uuidString)", isDirectory: true)
-        settings = LaunchSettings()
-    }
-
-    override func tearDown() {
-        launches.removeAll()
-        try? FileManager.default.removeItem(at: root)
-        root = nil
-        settings = nil
-        super.tearDown()
-    }
-
-    private var registryDirectory: URL { root.appendingPathComponent(account).appendingPathComponent("registry") }
-    private var primaryURL: URL { registryDirectory.appendingPathComponent("registry.json") }
-    private var booksDirectory: URL { registryDirectory.appendingPathComponent("books") }
-    private var stateURL: URL { registryDirectory.appendingPathComponent("books-state.json") }
-
-    private func dependencies(_ log: LaunchLog) -> RegistryExternalDependencies {
-        let root = self.root!
-        let settings = self.settings!
-        let clock = self.clock
-        return RegistryExternalDependencies(
-            downloadService: { NoContentDownloadService() },
-            loansFeedFetcher: { UnreachableLoansFeed() },
-            sideloadedIdentifiers: { [] },
-            registryDirectory: { root.appendingPathComponent($0, isDirectory: true) },
-            onAvailabilityChange: { _, _ in },
-            beforeRegistryWrite: { try log.beforeWrite($0, $1) },
-            positionClock: { clock.now },
-            perBookStorageEnabled: { settings.flag },
-            appVersion: { settings.version }
-        )
-    }
-
-    /// A new registry over the same files, loaded: an app launch.
-    @discardableResult
-    private func launch(_ log: LaunchLog = LaunchLog()) async -> TPPBookRegistry {
-        let registry = TPPBookRegistry(
-            accountScope: PositionTestAccountScope(account),
-            imageLoader: MockImageLoader(),
-            dependencies: dependencies(log)
-        )
-        launches.append(registry)
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            registry.load(account: account) { continuation.resume() }
-        }
-        await settle(registry)
-        return registry
-    }
-
-    /// Waits for queued saves, including a fallback save the disk queue hands
-    /// back to the main queue.
-    private func settle(_ registry: TPPBookRegistry) async {
-        await registry._awaitPendingPersistenceForTesting()
-        await drainMainQueueAsync()
-        await registry._awaitPendingPersistenceForTesting()
-    }
-
-    private func shelf(_ registry: TPPBookRegistry) -> [String: ShelfEntry] {
-        var result: [String: ShelfEntry] = [:]
-        for book in registry.allBooks {
-            result[book.identifier] = ShelfEntry(
-                title: book.title,
-                state: registry.state(for: book.identifier),
-                location: registry.location(forIdentifier: book.identifier)?.locationString,
-                genericBookmarks: registry.genericBookmarksForIdentifier(book.identifier).count,
-                readiumBookmarks: registry.readiumBookmarks(forIdentifier: book.identifier).count
-            )
-        }
-        return result
-    }
-
-    private func writePrimary(_ json: String) throws {
-        try FileManager.default.createDirectory(at: registryDirectory, withIntermediateDirectories: true)
-        try Data(json.utf8).write(to: primaryURL)
-    }
-
-    private func book(_ id: String) -> TPPBook {
-        TPPBookMocker.mockBook(identifier: id, title: "Book \(id)", distributorType: .EpubZip)
-    }
-
-    private func location(_ value: String) -> TPPBookLocation? {
-        TPPBookLocation(locationString: value, renderer: "test-renderer")
-    }
-
-    /// Every file under the account's registry folder, by relative path.
-    private func files() -> [String: Data] {
-        var result: [String: Data] = [:]
-        guard let enumerator = FileManager.default.enumerator(at: registryDirectory, includingPropertiesForKeys: nil) else { return result }
-        let prefix = registryDirectory.resolvingSymlinksInPath().path + "/"
-        for case let url as URL in enumerator {
-            guard let data = try? Data(contentsOf: url) else { continue }
-            result[url.resolvingSymlinksInPath().path.replacingOccurrences(of: prefix, with: "")] = data
-        }
-        return result
-    }
-
-    private func perBookState() -> [String: Any]? {
-        guard let data = try? Data(contentsOf: stateURL) else { return nil }
-        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-    }
-
-    /// The per-book files merged back into whole records, by identifier.
-    private func perBookRecords() -> [String: NSDictionary] {
-        var records: [String: [String: Any]] = [:]
-        var positions: [String: Any?] = [:]
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: booksDirectory.path)) ?? []
-        for name in names {
-            guard let data = try? Data(contentsOf: booksDirectory.appendingPathComponent(name)),
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let id = object["identifier"] as? String else { continue }
-            if name.hasSuffix(".record.json") { records[id] = object["record"] as? [String: Any] }
-            if name.hasSuffix(".position.json") { positions[id] = .some(object["location"]) }
-        }
-        var merged: [String: NSDictionary] = [:]
-        for (id, var record) in records {
-            if case .some(.some(let value)) = positions[id] { record["location"] = value }
-            merged[id] = record as NSDictionary
-        }
-        return merged
-    }
-
-    /// The records of a registry file by identifier, last one winning, as load reads them.
-    private func primaryRecords(_ json: String) -> [String: NSDictionary] {
-        let object = try! JSONSerialization.jsonObject(with: Data(json.utf8)) as! [String: Any]
-        var result: [String: NSDictionary] = [:]
-        for record in object["records"] as! [[String: Any]] {
-            guard let id = (record["metadata"] as? [String: Any])?["id"] as? String else { continue }
-            result[id] = record as NSDictionary
-        }
-        return result
-    }
-
-    /// The location string `registry.json` holds for a book.
-    private func singleFileLocation(of identifier: String) throws -> String? {
-        let object = try JSONSerialization.jsonObject(with: Data(contentsOf: primaryURL)) as? [String: Any]
-        let records = object?["records"] as? [[String: Any]] ?? []
-        return records.first { ($0["metadata"] as? [String: Any])?["id"] as? String == identifier }
-            .flatMap { ($0["location"] as? [String: Any])?["locationString"] as? String }
-    }
-
-    private func schemaVersion(_ json: String) -> Int? {
-        (try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])?["schemaVersion"] as? Int
-    }
-
-    /// A migrated three-book shelf with positions, written by an earlier launch.
-    private func seedMigratedShelf() async throws {
-        settings.flag = false
-        let first = await launch()
-        for id in ["a", "b", "c"] { first.addBook(book(id), state: .holding) }
-        await settle(first)
-        first.setLocation(location("a-1"), forIdentifier: "a")
-        first.setLocation(location("b-1"), forIdentifier: "b")
-        await settle(first)
-        settings.flag = true
-        await launch()
-        XCTAssertEqual(perBookState()?["verified"] as? Bool, true, "premise: the seeded shelf moved to the per-book layout")
-    }
+final class PerBookRegistryStorageTests: PerBookRegistryTestCase {
 
     // MARK: - Migration
 
@@ -261,12 +24,17 @@ final class PerBookRegistryStorageTests: XCTestCase {
             try? FileManager.default.removeItem(at: root)
             try writePrimary(corpus.json)
             settings.flag = false
+            let offStarted = Date()
             let expected = shelf(await launch())
+            let offMilliseconds = Int(Date().timeIntervalSince(offStarted) * 1000)
             XCTAssertFalse(expected.isEmpty, "\(corpus.name): premise: the corpus loads")
 
             settings.flag = true
             let migrating = LaunchLog()
+            let migrationStarted = Date()
             let migrated = shelf(await launch(migrating))
+            // Reported, not asserted: wall time depends on machine load.
+            print("per-book migration \(corpus.name): launch \(Int(Date().timeIntervalSince(migrationStarted) * 1000)) ms with migration, \(offMilliseconds) ms flag off")
 
             XCTAssertEqual(perBookState()?["verified"] as? Bool, true, "\(corpus.name): migration verified")
             XCTAssertTrue(migrating.steps.contains(.migrationSwap), "\(corpus.name): the per-book files were put in place")
@@ -492,74 +260,7 @@ final class PerBookRegistryStorageTests: XCTestCase {
         XCTAssertEqual(files().keys.sorted(), [], "nothing of the shelf is left on disk")
     }
 
-    // MARK: - Crashes and write errors
-
-    /// A crash at any write step of an operation leaves a shelf that loads and
-    /// equals the shelf before the operation or after it.
-    func testCrash_AtEveryWriteStep_LeavesTheShelfBeforeOrAfter() async throws {
-        let operations: [(String, (TPPBookRegistry) -> Void)] = [
-            ("position", { $0.setLocation(self.location("a-9"), forIdentifier: "a") }),
-            ("add", { $0.addBook(self.book("n"), location: self.location("n-1"), state: .holding) }),
-            ("remove", { $0.removeBook(forIdentifier: "b") }),
-            ("state", { $0.setState(.downloadNeeded, for: "c") }),
-            ("bookmark", { $0.addGenericBookmark(self.location("bm")!, forIdentifier: "a") }),
-            ("flush", {
-                $0.setLocation(self.location("c-7"), forIdentifier: "c", persistence: .coalesced)
-                $0.flushPendingPositions()
-            })
-        ]
-        for (name, operation) in operations {
-            try? FileManager.default.removeItem(at: root)
-            try await seedMigratedShelf()
-            let cleanLog = LaunchLog()
-            let clean = await launch(cleanLog)
-            let before = shelf(clean)
-            let start = cleanLog.steps.count
-            operation(clean)
-            await settle(clean)
-            let stepCount = cleanLog.steps.count - start
-            let after = shelf(await launch())
-            XCTAssertNotEqual(before, after, "\(name): premise: the operation changes the shelf")
-            XCTAssertGreaterThan(stepCount, 0, "\(name): premise: the operation writes")
-
-            for step in 0..<stepCount {
-                try? FileManager.default.removeItem(at: root)
-                try await seedMigratedShelf()
-                let crashing = LaunchLog(crashAtStep: start + step)
-                let registry = await launch(crashing)
-                operation(registry)
-                await settle(registry)
-                XCTAssertTrue(crashing.didCrash, "\(name) step \(step): premise: the crash fired")
-
-                let reloaded = shelf(await launch())
-                XCTAssertTrue(reloaded == before || reloaded == after,
-                              "\(name): crash at step \(step) (\(crashing.steps.last.map { "\($0)" } ?? "-")) left \(reloaded.sorted { $0.key < $1.key }), before \(before.sorted { $0.key < $1.key }), after \(after.sorted { $0.key < $1.key })")
-            }
-        }
-    }
-
-    /// A crash at any step of the migration leaves the old shelf loadable.
-    func testCrash_AtEveryMigrationStep_LeavesTheOldShelf() async throws {
-        try writePrimary(RegistryShelfCorpus.versioned.json)
-        settings.flag = false
-        let expected = shelf(await launch())
-        settings.flag = true
-        let clean = LaunchLog()
-        await launch(clean)
-        let stepCount = clean.steps.count
-        XCTAssertGreaterThan(stepCount, 3, "premise: the migration writes several steps")
-
-        for step in 0..<stepCount {
-            try? FileManager.default.removeItem(at: root)
-            try writePrimary(RegistryShelfCorpus.versioned.json)
-            let crashing = LaunchLog(crashAtStep: step)
-            let launched5 = shelf(await launch(crashing))
-            XCTAssertEqual(launched5, expected, "step \(step): the crashing launch shows the old shelf")
-            let launched6 = shelf(await launch())
-            XCTAssertEqual(launched6, expected, "step \(step): the next launch shows the old shelf")
-            XCTAssertEqual(perBookState()?["verified"] as? Bool, true, "step \(step): the next launch completes the move")
-        }
-    }
+    // MARK: - Write errors
 
     /// A failed position file write (a full disk) keeps the position: it goes
     /// to the old file, and later positions do too.
@@ -646,17 +347,14 @@ final class PerBookRegistryStorageTests: XCTestCase {
     /// An empty save, async or blocking, is refused while per-book files hold a
     /// book even when `registry.json` and `.bak` hold none.
     func testEmptySave_OverPerBookBooks_IsRefusedWhenTheSingleFileIsEmpty() async throws {
-        settings.flag = false
-        let first = await launch()
-        first.addBook(book("solo"), location: location("solo-1"), state: .holding)
-        await settle(first)
-        settings.flag = true
+        try writePrimary(#"{"schemaVersion":1,"records":[]}"#)
         await launch()
-        let empty = Data(#"{"schemaVersion":1,"records":[]}"#.utf8)
-        try empty.write(to: primaryURL)
-        try? FileManager.default.removeItem(at: primaryURL.appendingPathExtension("bak"))
-        let files = PerBookRegistryFiles(registryURL: primaryURL) { _, _ in }
-        try files.recordTrust(registryData: empty, appVersion: settings.version)
+        XCTAssertEqual(perBookState()?["verified"] as? Bool, true, "premise: the empty shelf moved")
+        // A crash after the book's record file and before registry.json: the
+        // per-book files hold a book that registry.json and `.bak` do not.
+        let crashing = await launch(LaunchLog(crashAtFirst: .backupStaging))
+        crashing.addBook(book("solo"), location: location("solo-1"), state: .holding)
+        await settle(crashing)
         let registry = await launch()
         XCTAssertEqual(Set(shelf(registry).keys), ["solo"], "premise: the per-book files hold the shelf")
 

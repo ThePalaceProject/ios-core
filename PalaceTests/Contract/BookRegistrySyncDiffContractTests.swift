@@ -596,7 +596,7 @@ private final class WriteStepRecorder: @unchecked Sendable {
         case .backupReplace: name = "backupReplace"
         case .primary: name = "primary"
         case .bookRecord, .bookPosition, .bookRemoval, .perBookState,
-             .migrationStaging, .migrationVerify, .migrationSwap:
+             .migrationStaging, .migrationVerify, .migrationSwap, .migrationCleanup:
             name = "perBook"
         }
         lock.withLock { _steps.append(name) }

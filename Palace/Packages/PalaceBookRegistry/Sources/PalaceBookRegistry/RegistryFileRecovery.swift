@@ -259,6 +259,8 @@ extension RegistryFileRecovery {
     var needsRewrite = false
     var data: Data?
     var isValid = false
+    /// Positions from per-book files were applied over the file's records.
+    var tookPerBookPositions = false
   }
 
   /// Reads and classifies `registry.json`, quarantining a corrupt file and

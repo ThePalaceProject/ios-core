@@ -105,8 +105,10 @@ public enum RegistryWriteStep: Sendable, Equatable {
     /// About to read `books.migrating` back and compare it with `registry.json`.
     /// Nothing is written at this step.
     case migrationVerify
-    /// Replacing `books` with the verified `books.migrating`.
+    /// Removing `books`, then moving the verified `books.migrating` in its place.
     case migrationSwap
+    /// Removing a leftover or abandoned `books.migrating`.
+    case migrationCleanup
 }
 
 /// The external collaborators `BookRegistrySync` / `BookRegistryStore` resolve
