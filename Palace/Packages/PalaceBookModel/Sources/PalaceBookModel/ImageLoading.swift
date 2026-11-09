@@ -1,4 +1,5 @@
 import UIKit
+import ObjectiveC
 
 /// Unified image-loading surface for the app. Replaces the trio of overlapping
 /// singletons (`ImageCache.shared`, `TPPBookCoverRegistry.shared`,
@@ -83,5 +84,18 @@ public extension ImageLoading {
     func set(_ image: UIImage, for key: String) {
         let sevenDays: TimeInterval = 7 * 24 * 60 * 60
         set(image, for: key, expiresIn: sevenDays)
+    }
+}
+
+nonisolated(unsafe) private var generatedCoverPlaceholderKey: UInt8 = 0
+
+// PUBLIC_INTENT: loaders mark covers they draw themselves so BookCoverStore ranks them below real covers.
+public extension UIImage {
+    /// True for a cover drawn locally (TenPrint) because no real image was available.
+    /// `BookCoverStore` lets any real cover replace a marked one and never the reverse.
+    /// The mark lives on the object, so an image read back from the disk cache is unmarked.
+    var isGeneratedCoverPlaceholder: Bool {
+        get { (objc_getAssociatedObject(self, &generatedCoverPlaceholderKey) as? Bool) ?? false }
+        set { objc_setAssociatedObject(self, &generatedCoverPlaceholderKey, newValue, .OBJC_ASSOCIATION_RETAIN) }
     }
 }

@@ -108,7 +108,7 @@ public final class BookCoverStore: @unchecked Sendable {
         books.forEach { $0.coverStateDidChange() }
     }
 
-    /// Stores `image` as the cover unless the stored cover has more pixels, and
+    /// Stores `image` as the cover unless it ranks below the stored cover, and
     /// computes the color of an accepted cover. Views of different sizes fetch
     /// into the same entry, so a lane-sized decode must not replace the detail
     /// header's larger one. `endingLoad` also clears `isCoverLoading`.
@@ -121,13 +121,23 @@ public final class BookCoverStore: @unchecked Sendable {
                 state.isCoverLoading = false
             }
             guard let image else { return }
-            if let current = state.coverImage, current.pixelCount > image.pixelCount { return }
+            if let current = state.coverImage, Self.image(image, ranksBelow: current) { return }
             state.coverImage = image
             accepted = image
         }
         if let accepted {
             updateDominantColor(for: identifier, using: accepted)
         }
+    }
+
+    /// A generated placeholder ranks below any real cover, whatever its size: a
+    /// TenPrint drawn at display size can have more pixels than a capped real
+    /// decode. Between two of the same kind, fewer pixels ranks below.
+    static func image(_ candidate: UIImage, ranksBelow current: UIImage) -> Bool {
+        if candidate.isGeneratedCoverPlaceholder != current.isGeneratedCoverPlaceholder {
+            return candidate.isGeneratedCoverPlaceholder
+        }
+        return candidate.pixelCount < current.pixelCount
     }
 
     /// Computes the cover color from `image` unless the stored color already

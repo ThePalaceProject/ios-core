@@ -642,7 +642,7 @@ actor TPPBookCoverRegistry {
         let size = CGSize(width: width, height: height)
         let format = UIGraphicsImageRendererFormat()
         format.scale = UIScreen.main.scale
-        return UIGraphicsImageRenderer(size: size, format: format)
+        let image = UIGraphicsImageRenderer(size: size, format: format)
             .image { ctx in
                 if let view = NYPLTenPrintCoverView(
                     frame: CGRect(origin: .zero, size: size),
@@ -653,6 +653,10 @@ actor TPPBookCoverRegistry {
                     view.layer.render(in: ctx.cgContext)
                 }
             }
+        // Drawn at display size, so it can have more pixels than a real decode
+        // capped at 1200 px; the mark keeps it from outranking one in BookCoverStore.
+        image.isGeneratedCoverPlaceholder = true
+        return image
     }
 
     private func cost(for image: UIImage) -> Int {

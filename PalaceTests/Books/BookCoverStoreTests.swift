@@ -27,6 +27,7 @@ final class BookCoverStoreTests: XCTestCase {
     }
 
     override func tearDown() async throws {
+        (TPPBookImageContext.imageLoaderProvider?() as? MockImageLoader)?.releaseSizedCover()
         TPPBookImageContext._resetForTesting()
         store = nil
         extractor = nil
@@ -205,6 +206,50 @@ final class BookCoverStoreTests: XCTestCase {
         XCTAssertEqual(extractor.count, colorCalculations, "a refused cover computes no color")
     }
 
+    /// A TenPrint drawn at display size can have more pixels than a real decode capped
+    /// at 1200 px; the real cover from a later visit must still replace it.
+    func testRealCoverOnLaterFetch_replacesALargerGeneratedPlaceholder() async {
+        let generated = solidImage(width: 600, height: 900)
+        generated.isGeneratedCoverPlaceholder = true
+        let real = solidImage(width: 525, height: 840)
+        let loader = MockImageLoader()
+        loader.stubbedCoverImage = generated
+        TPPBookImageContext.imageLoaderProvider = { loader }
+        let header = Self.makeBook("id-g", cache: CountingCache(), store: store)
+        header.fetchCoverImage(forDisplayHeight: 280)
+        await awaitConditionAsync(timeout: 3) { header.coverImage === generated && !header.isCoverLoading }
+
+        loader.stubbedCoverImage = real
+        header.fetchCoverImage(forDisplayHeight: 280)
+
+        await awaitConditionAsync(timeout: 3) { header.coverImage === real }
+    }
+
+    /// An offline visit gets a TenPrint; it must not replace the real cover already shown.
+    func testGeneratedPlaceholderOnLaterFetch_doesNotReplaceARealCover() async {
+        let real = solidImage(width: 525, height: 840)
+        let generated = solidImage(width: 600, height: 900)
+        generated.isGeneratedCoverPlaceholder = true
+        let loader = MockImageLoader()
+        loader.stubbedCoverImage = real
+        TPPBookImageContext.imageLoaderProvider = { loader }
+        let header = Self.makeBook("id-r", cache: CountingCache(), store: store)
+        header.fetchCoverImage(forDisplayHeight: 280)
+        await awaitConditionAsync(timeout: 3) { header.coverImage === real && !header.isCoverLoading }
+
+        loader.stubbedCoverImage = generated
+        loader.holdSizedCover(for: "id-r")
+        header.fetchCoverImage(forDisplayHeight: 280)
+        await awaitConditionAsync(timeout: 3) { self.sizedFetchCount(loader, "id-r") == 2 }
+        await drainMainQueueAsync()
+        XCTAssertTrue(header.isCoverLoading, "precondition: the second fetch is in flight")
+
+        loader.releaseSizedCover()
+
+        await awaitConditionAsync(timeout: 3) { !header.isCoverLoading }
+        XCTAssertIdentical(header.coverImage, real)
+    }
+
     /// Loader callbacks and merges write off the main thread; SwiftUI must still hear about it on main.
     func testOffMainWrite_sendsObjectWillChangeOnMain() async {
         let book = Self.makeBook("id-o", cache: CountingCache(), store: store)
@@ -265,6 +310,10 @@ final class BookCoverStoreTests: XCTestCase {
     }
 
     // MARK: - Helpers
+
+    private func sizedFetchCount(_ loader: MockImageLoader, _ identifier: String) -> Int {
+        loader.coverCalls.filter { $0.identifier == identifier && $0.displayPoints != nil }.count
+    }
 
     /// Lets queued main-thread writes, color work and its write-back finish.
     private func settle() async {
