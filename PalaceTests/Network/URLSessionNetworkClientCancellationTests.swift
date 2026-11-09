@@ -50,7 +50,9 @@ final class URLSessionNetworkClientCancellationTests: XCTestCase {
         ScriptedURLProtocol.expectStop(of: apiURL, stopped)
 
         let sendTask = makeSendTask(fixture.client, .GET)
-        await fulfillment(of: [started], timeout: 5) // STARVE-001-OK: fulfilled by the URLProtocol when the request starts, no fire-and-forget work
+        // Generous: this only bounds a failure. Under ThreadSanitizer the request
+        // can take over 5 s to start.
+        await fulfillment(of: [started], timeout: 30) // STARVE-001-OK: fulfilled by the URLProtocol when the request starts, no fire-and-forget work
 
         sendTask.cancel()
 
@@ -128,7 +130,8 @@ final class URLSessionNetworkClientCancellationTests: XCTestCase {
         ScriptedURLProtocol.expectStart(of: tokenURL, refreshStarted)
 
         let sendTask = makeSendTask(fixture.client, .GET)
-        await fulfillment(of: [refreshStarted], timeout: 5) // STARVE-001-OK: fulfilled by the URLProtocol when the token request starts
+        // Generous for the same reason as above: it only bounds a failure.
+        await fulfillment(of: [refreshStarted], timeout: 30) // STARVE-001-OK: fulfilled by the URLProtocol when the token request starts
 
         sendTask.cancel()
         await assertThrowsPromptly(sendTask)
