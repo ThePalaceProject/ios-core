@@ -148,7 +148,6 @@ final class NSNotificationTPPTests: XCTestCase {
         // .TPPBookRegistryStateDidChange was removed with the registry
         // dual-write — its lifecycle/per-book signal moved to the
         // registry's Combine publishers, so there is no longer a name to assert.
-        XCTAssertEqual(Notification.Name.TPPMyBooksDownloadCenterDidChange.rawValue, "TPPMyBooksDownloadCenterDidChange")
         XCTAssertEqual(Notification.Name.TPPReachabilityChanged.rawValue, "TPPReachabilityChanged")
     }
 

@@ -20,7 +20,6 @@ import PalaceUtilities
 // MARK: - Delegate
 
 protocol DownloadCancellationHandlerDelegate: AnyObject {
-    func broadcastUpdate()
     func schedulePendingStartsIfPossible()
 }
 
@@ -105,7 +104,6 @@ final class DownloadCancellationHandler: @unchecked Sendable {
                 // state for a cancel that does nothing.
                 progressReporter?.clearLCPContentTransfer(for: identifier)
                 bookRegistry.setState(.downloadNeeded, for: identifier)
-                delegate?.broadcastUpdate()
 
                 lastCancelTeardownTask = Task { [weak self] in
                     guard let self else { return }
@@ -148,7 +146,6 @@ final class DownloadCancellationHandler: @unchecked Sendable {
         // as on the no-task branch above.
         progressReporter?.clearLCPContentTransfer(for: identifier)
         bookRegistry.setState(.downloadNeeded, for: identifier)
-        delegate?.broadcastUpdate()
 
         info.downloadTask.cancel { [weak self] _ in
             guard let self else { return }

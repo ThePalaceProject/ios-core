@@ -68,25 +68,18 @@ protocol DownloadProgressPublishing: AnyObject {
     /// Publishes an error and announces it via VoiceOver
     func publishAndAnnounceError(_ errorInfo: DownloadErrorInfo)
 
-    /// Broadcasts a general update notification (throttled)
-    func broadcastUpdate()
 }
 
 // MARK: - DownloadProgressReporter
 
-/// Handles Combine-based progress reporting, error publishing, and
-/// throttled broadcast notifications for download state changes.
+/// Handles Combine-based progress reporting and error publishing for
+/// download state changes.
 ///
 /// - Sendable invariant (Swift 6 `complete`-mode): the stored dependencies
 ///   (`accessibilityAnnouncements`, `downloadAnnouncementService`) plus the two
-///   `PassthroughSubject` publishers are `let` bound at init. All broadcast-
-///   throttling mutable state (`lastBroadcastTime`, `pendingBroadcast`) is
-///   `@MainActor`-isolated and only touched inside the `@MainActor` broadcast
-///   methods. The one non-isolated mutable member is `weak var notificationSender`,
-///   assigned once by the owner during composition-root wiring (weak-ref reads +
-///   ARC zeroing are atomic). `sendProgress` / `broadcastUpdate` hop to
-///   `@MainActor` before touching any of that state. `@unchecked` only because
-///   the stored service types are not themselves `Sendable`.
+///   `PassthroughSubject` publishers are `let` bound at init. The LCP
+///   transfer map is guarded by its own lock. `@unchecked` only because the
+///   stored service types are not themselves `Sendable`.
 final class DownloadProgressReporter: DownloadProgressPublishing, @unchecked Sendable {
 
     // MARK: - Publishers
@@ -126,15 +119,6 @@ final class DownloadProgressReporter: DownloadProgressPublishing, @unchecked Sen
     /// Monotonic so a wall-clock adjustment mid-download cannot expire a live
     /// transfer. Injectable for tests.
     var monotonicClock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
-
-    // MARK: - Broadcast throttling
-
-    @MainActor private var lastBroadcastTime: Date = Date.distantPast
-    @MainActor private var pendingBroadcast: DispatchWorkItem?
-
-    /// The object to use as the notification sender
-    /// (typically `AppContainer.production().downloadCenter`).
-    weak var notificationSender: AnyObject?
 
     // MARK: - Init
 
@@ -232,44 +216,6 @@ final class DownloadProgressReporter: DownloadProgressPublishing, @unchecked Sen
     func publishAndAnnounceError(_ errorInfo: DownloadErrorInfo) {
         downloadErrorPublisher.send(errorInfo)
         accessibilityAnnouncements.announceStatus(title: errorInfo.title, message: errorInfo.message)
-    }
-
-    // MARK: - Broadcast
-
-    func broadcastUpdate() {
-        Task { @MainActor [weak self] in
-            self?.broadcastUpdateOnMain()
-        }
-    }
-
-    @MainActor private func broadcastUpdateOnMain() {
-        pendingBroadcast?.cancel()
-
-        let timeSinceLastBroadcast = Date().timeIntervalSince(lastBroadcastTime)
-        let minimumBroadcastInterval: TimeInterval = 0.5
-
-        if timeSinceLastBroadcast >= minimumBroadcastInterval {
-            broadcastUpdateNow()
-        } else {
-            let delay = minimumBroadcastInterval - timeSinceLastBroadcast
-            let workItem = DispatchWorkItem { [weak self] in
-                Task { @MainActor in
-                    self?.broadcastUpdateNow()
-                }
-            }
-            pendingBroadcast = workItem
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: workItem)
-        }
-    }
-
-    @MainActor private func broadcastUpdateNow() {
-        lastBroadcastTime = Date()
-        pendingBroadcast = nil
-
-        NotificationCenter.default.post(
-            name: Notification.Name.TPPMyBooksDownloadCenterDidChange,
-            object: notificationSender
-        )
     }
 
     // MARK: - Accessibility Announcements

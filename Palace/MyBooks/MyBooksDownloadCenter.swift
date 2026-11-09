@@ -912,15 +912,11 @@ private final class RedirectCompletionBox: @unchecked Sendable {
 
         super.init()
 
-        // Notification sender has to outlive `super.init()` since the
-        // reporter holds it weakly — set after self is fully constructed.
-        progressReporter.notificationSender = self
-
         // The LCP content re-download reports progress + an active/idle edge so
         // the half-sheet can show a real percentage while a multi-gigabyte
         // `.lcpa` transfers. Wired here rather than at construction because
         // `localContentService` is built earlier in this initializer than
-        // `reporter` is (same reason as `notificationSender` above).
+        // `reporter` is.
         self.localContentService.contentDownloadReporter = progressReporter
 
         // The content re-download must not race the fulfillment handler's own
@@ -1441,8 +1437,6 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
         // Use a small delay to ensure UI updates from setState complete first
         try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
 
-        broadcastUpdate()
-
         // CRITICAL: Remove from bookIdentifierToDownloadInfo so retry works.
         // Also remove the taskIdentifierToBook entry so the airplane-mode
         // handler doesn't later misread the completed task as in-flight and
@@ -1501,10 +1495,6 @@ extension MyBooksDownloadCenter: URLSessionDownloadDelegate {
     /// bridging, no semaphores, no data races.
     @objc func downloadInfo(forBookIdentifier bookIdentifier: String) -> MyBooksDownloadInfo? {
         bookIdentifierToDownloadInfo.syncGet(bookIdentifier)
-    }
-
-    func broadcastUpdate() {
-        progressReporter.broadcastUpdate()
     }
 
 }
@@ -1636,18 +1626,6 @@ extension MyBooksDownloadCenter {
         queueOrchestrator.schedulePendingStartsIfPossible()
     }
 
-    /// Posts the legacy `.TPPMyBooksDownloadCenterDidChange` notification
-    /// from the MBDC instance so subscribers that filter on `object: self`
-    /// keep working. Used by services (e.g. DownloadTaskLifecycleService)
-    /// that need to broadcast a state change without holding a back-
-    /// reference to MBDC.
-    func notifyDownloadCenterDidChange() {
-        runOnMainAsync { [weak self] in
-            guard let self else { return }
-            NotificationCenter.default.post(name: .TPPMyBooksDownloadCenterDidChange, object: self)
-        }
-    }
-
     func schedulePendingStartsAsync() async {
         await queueOrchestrator.schedulePendingStartsAsync()
     }
@@ -1776,7 +1754,6 @@ extension MyBooksDownloadCenter: AdobeDRMHandlerDelegate {
             await MainActor.run {
                 self.downloadProgressPublisher.send((tag, progress))
             }
-            self.broadcastUpdate()
         }
     }
 }

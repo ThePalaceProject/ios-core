@@ -192,7 +192,6 @@ private final class NoAuthorizationDelegateSpy: AdobeDRMHandlerDelegate {
         calls.append("markDownloadSuccessful")
         bookRegistry.setState(.downloadSuccessful, for: book.identifier)
     }
-    func broadcastUpdate() { calls.append("broadcastUpdate") }
     func handleAdobeDownloadProgress(_ progress: Double, for tag: String) { calls.append("handleAdobeDownloadProgress") }
 }
 #endif

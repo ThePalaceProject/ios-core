@@ -20,13 +20,11 @@ extension Notification.Name {
     // `catalogLoadedPublisher` and `signInProgressPublisher`.
     // A book's processing flag is `TPPBookRegistry.bookProcessingPublisher`.
 
-    static let TPPMyBooksDownloadCenterDidChange = Notification.Name("TPPMyBooksDownloadCenterDidChange")
     // TPPReachabilityChanged is defined in PalaceNetwork; do not duplicate.
 }
 
 @objc extension NSNotification {
     public static let TPPSettingsDidChange = Notification.Name.TPPSettingsDidChange
     public static let TPPUseBetaDidChange = Notification.Name.TPPUseBetaDidChange
-    public static let TPPMyBooksDownloadCenterDidChange = Notification.Name.TPPMyBooksDownloadCenterDidChange
     public static let TPPReachabilityChanged = Notification.Name.TPPReachabilityChanged
 }

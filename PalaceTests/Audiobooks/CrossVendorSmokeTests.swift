@@ -339,7 +339,6 @@ final class AudiobookCrossVendorSmokeTests: XCTestCase {
         func downloadInfoAsync(forBookIdentifier bookIdentifier: String) async -> MyBooksDownloadInfo? { nil }
         func fileUrl(for identifier: String) -> URL? { stubbedFileURL }
         func fileUrl(for identifier: String, account: String?) -> URL? { stubbedFileURL }
-        func broadcastUpdate() { /* no-op */ }
         func reset() { /* no-op */ }
     }
 

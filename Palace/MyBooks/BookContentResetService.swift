@@ -112,8 +112,6 @@ final class BookContentResetService: @unchecked Sendable {
         } catch {
             // Handle error, if needed
         }
-
-        progressReporter.broadcastUpdate()
     }
 
     // MARK: - deleteAudiobooks(forAccount:)

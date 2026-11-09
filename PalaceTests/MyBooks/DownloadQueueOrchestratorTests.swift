@@ -5,8 +5,7 @@
 //  Coverage for DownloadQueueOrchestrator: the pending-queue policy
 //  extracted from MyBooksDownloadCenter. enqueuePending must mark the
 //  book .downloading in the registry (UI-feedback fix), append to the
-//  coordinator's pending queue, and broadcast the
-//  TPPMyBooksDownloadCenterDidChange notification on the injected center.
+//  coordinator's pending queue.
 //  schedulePendingStartsAsync must respect the active-cap, FIFO-dequeue
 //  up to remaining capacity, and fan out via the delegate; it must
 //  no-op at-cap and on an empty queue. The sync wrapper must drive the
@@ -22,7 +21,6 @@ final class DownloadQueueOrchestratorTests: XCTestCase {
 
     private var bookRegistry: TPPBookRegistryMock!
     private var stateManager: DownloadStateManager!
-    private var notificationCenter: NotificationCenter!
     private var spyDelegate: SpyDelegate!
     private var orchestrator: DownloadQueueOrchestrator!
 
@@ -30,12 +28,10 @@ final class DownloadQueueOrchestratorTests: XCTestCase {
         try super.setUpWithError()
         bookRegistry = TPPBookRegistryMock()
         stateManager = DownloadStateManager()
-        notificationCenter = NotificationCenter()
         spyDelegate = SpyDelegate()
         orchestrator = DownloadQueueOrchestrator(
             bookRegistry: bookRegistry,
-            stateManager: stateManager,
-            notificationCenter: notificationCenter
+            stateManager: stateManager
         )
         orchestrator.delegate = spyDelegate
     }
@@ -43,7 +39,6 @@ final class DownloadQueueOrchestratorTests: XCTestCase {
     override func tearDownWithError() throws {
         bookRegistry = nil
         stateManager = nil
-        notificationCenter = nil
         spyDelegate = nil
         orchestrator = nil
         try super.tearDownWithError()
@@ -104,83 +99,6 @@ final class DownloadQueueOrchestratorTests: XCTestCase {
 
         XCTAssertEqual(observedCount, 1,
                        "enqueuePending must append the book onto the DownloadCoordinator pending queue")
-    }
-
-    func testEnqueuePending_postsDidChangeNotificationOnInjectedCenter() async {
-        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
-        register(book)
-
-        var observedCount = 0
-        let token = notificationCenter.addObserver(
-            forName: .TPPMyBooksDownloadCenterDidChange,
-            object: nil,
-            queue: nil
-        ) { _ in
-            observedCount += 1
-        }
-        defer { notificationCenter.removeObserver(token) }
-
-        // The DidChange post lands via runOnMainAsync (a `Task { @MainActor }`),
-        // which drainMainQueueAsync does NOT flush. Synchronize on the post
-        // itself with an expectation the SUT fulfills — prompt-firing, so it
-        // completes the instant the notification fires (not a deadline-poll).
-        let posted = XCTNSNotificationExpectation(
-            name: .TPPMyBooksDownloadCenterDidChange,
-            object: nil,
-            notificationCenter: notificationCenter
-        )
-        await orchestrator.enqueuePendingAsync(book)
-        await fulfillment(of: [posted], timeout: 5.0)
-
-        XCTAssertEqual(observedCount, 1,
-                       "enqueuePending must post TPPMyBooksDownloadCenterDidChange so MyBooks/detail/cell views refresh")
-    }
-
-    func testEnqueuePending_doesNotPostOnDefaultCenter_whenInjectedCenterDiffers() async {
-        // Regression guard: the orchestrator must use the *injected*
-        // notificationCenter, not NotificationCenter.default. If someone
-        // swaps the property to .default the rest of the suite still
-        // appears green — this test catches that drift.
-        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
-        register(book)
-
-        var defaultCenterCount = 0
-        let token = NotificationCenter.default.addObserver(
-            forName: .TPPMyBooksDownloadCenterDidChange,
-            object: nil,
-            queue: nil
-        ) { _ in
-            defaultCenterCount += 1
-        }
-        defer { NotificationCenter.default.removeObserver(token) }
-
-        // Also observe the injected center so we can synchronize on the
-        // post landing (rather than guessing how long the Task hop takes).
-        var injectedCount = 0
-        let injectedToken = notificationCenter.addObserver(
-            forName: .TPPMyBooksDownloadCenterDidChange,
-            object: nil,
-            queue: nil
-        ) { _ in
-            injectedCount += 1
-        }
-        defer { notificationCenter.removeObserver(injectedToken) }
-
-        // Synchronize on the post via an expectation on the injected center —
-        // prompt-firing (fulfills the instant the SUT posts), not a deadline
-        // poll. This also lets the runOnMainAsync `Task { @MainActor }` hop
-        // (which drainMainQueueAsync can't flush) complete deterministically.
-        let posted = XCTNSNotificationExpectation(
-            name: .TPPMyBooksDownloadCenterDidChange,
-            object: nil,
-            notificationCenter: notificationCenter
-        )
-        await orchestrator.enqueuePendingAsync(book)
-        await fulfillment(of: [posted], timeout: 5.0)
-
-        XCTAssertEqual(injectedCount, 1, "sanity: injected center received the post")
-        XCTAssertEqual(defaultCenterCount, 0,
-                       "Notifications must be routed through the injected center; .default must NOT see this post when a custom center is injected")
     }
 
     // MARK: - schedulePendingStartsAsync — capacity gating

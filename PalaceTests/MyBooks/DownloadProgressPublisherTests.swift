@@ -150,52 +150,6 @@ final class DownloadProgressPublisherCoreTests: XCTestCase {
 
     // MARK: - Broadcast Update
 
-    func testBroadcastUpdate_postsNotification() {
-        var receivedNotification = false
-        let notificationExpectation = expectation(
-            forNotification: Notification.Name.TPPMyBooksDownloadCenterDidChange,
-            object: nil,
-            handler: { _ in receivedNotification = true; return true }
-        )
-
-        reporter.broadcastUpdate()
-
-        wait(for: [notificationExpectation], timeout: 2.0)
-        XCTAssertTrue(receivedNotification, "broadcastUpdate must post TPPMyBooksDownloadCenterDidChange")
-    }
-
-    func testBroadcastUpdate_throttles_rapidCalls() {
-        var notificationCount = 0
-        let token = NotificationCenter.default.addObserver(
-            forName: Notification.Name.TPPMyBooksDownloadCenterDidChange,
-            object: nil,
-            queue: .main
-        ) { _ in
-            notificationCount += 1
-        }
-
-        // Fire many rapid updates
-        for _ in 0..<10 {
-            reporter.broadcastUpdate()
-        }
-
-        // BOUNDED-TIMER (not fire-and-forget starvation): the publisher emits
-        // one notification immediately and schedules a single trailing
-        // broadcast via `DispatchQueue.main.asyncAfter(+0.5s)` — an intrinsic,
-        // by-design wall-clock delay that no join can collapse to zero.
-        // awaitCondition spins the main runloop, which fires that main-queue
-        // timer; a 0.5s timer under a 5s ceiling has ~10x headroom and is not
-        // the unbounded-async-work pattern that starves to executionTimeAllowance.
-        // Left as a bounded-timer wait.
-        awaitCondition(timeout: 5.0) { notificationCount >= 2 }
-        NotificationCenter.default.removeObserver(token)
-
-        // Should have throttled - fewer notifications than calls
-        // At minimum 1 (first), at most a few (first + delayed)
-        XCTAssertGreaterThan(notificationCount, 0)
-        XCTAssertLessThan(notificationCount, 10, "Should throttle broadcasts")
-    }
-
     // MARK: - Accessibility Announcements (smoke tests)
 
     func testAnnounceDownloadStarted_doesNotCrash() {
@@ -261,23 +215,6 @@ final class DownloadProgressPublisherCoreTests: XCTestCase {
     }
 
     // MARK: - Notification Sender
-
-    func testBroadcastUpdate_usesNotificationSender() {
-        let sender = NSObject()
-        reporter.notificationSender = sender
-
-        var receivedSender: AnyObject?
-        let notificationExpectation = expectation(
-            forNotification: Notification.Name.TPPMyBooksDownloadCenterDidChange,
-            object: sender,
-            handler: { note in receivedSender = note.object as AnyObject; return true }
-        )
-
-        reporter.broadcastUpdate()
-
-        wait(for: [notificationExpectation], timeout: 2.0)
-        XCTAssertTrue(receivedSender === sender, "Notification must be posted with the configured sender object")
-    }
 
     // MARK: - Protocol Conformance
 

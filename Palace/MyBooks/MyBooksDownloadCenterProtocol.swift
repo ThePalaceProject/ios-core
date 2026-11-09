@@ -63,9 +63,6 @@ protocol MyBooksDownloadCenterProviding: AnyObject {
 
     // MARK: - State
 
-    /// Broadcasts a download state update notification.
-    func broadcastUpdate()
-
     /// Resets the download center, clearing all state.
     func reset()
 }
