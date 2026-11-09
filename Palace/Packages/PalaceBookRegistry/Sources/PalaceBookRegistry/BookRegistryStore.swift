@@ -160,10 +160,11 @@ final class BookRegistryStore: @unchecked Sendable {
     // another thread. Mirrors `SyncCallbacks` / `SendableErrorDocument`.
     let carrier = BarrierBlockBox(block)
     let token = ownerToken
-    syncQueue.async(flags: .barrier) {
+    // Weak: a queued write must not keep the store alive.
+    syncQueue.async(flags: .barrier) { [weak self] in
       Self.runAsBarrierOwner(token) {
         carrier.run()
-        self.writeGeneration &+= 1
+        self?.writeGeneration &+= 1
       }
     }
   }
