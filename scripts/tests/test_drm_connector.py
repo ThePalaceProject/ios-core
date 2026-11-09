@@ -46,6 +46,30 @@ def write_action(root: Path, ref: str, generation: str = "2", repo: str = "Org/c
     path.write_text(ACTION_TEMPLATE.format(ref=ref, generation=generation, repo=repo))
 
 
+CERT_SHIPPED_SHA = "855e8752fab169afd262102f75f3b22d793d013e"
+
+CERT_ACTION_TEMPLATE = """name: 'Checkout Certificates'
+inputs:
+  token:
+    required: true
+  path:
+    default: "./mobile-certificates"
+  ref:
+    default: "{ref}"
+  repo:
+    default: "{repo}"
+runs:
+  using: "composite"
+  steps: []
+"""
+
+
+def write_cert_action(root: Path, ref: str, repo: str = "Org/certs") -> None:
+    path = root / ".github" / "actions" / "checkout-certificates" / "action.yml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(CERT_ACTION_TEMPLATE.format(ref=ref, repo=repo))
+
+
 def git(*args: str, cwd: Path) -> str:
     env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
            "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
@@ -118,6 +142,30 @@ def test_get_prints_each_field_from_the_record(tmp_path):
     assert run_cli("get", "repo", root=tmp_path).stdout.strip() == "Org/conn"
 
 
+def test_committed_certificates_record_names_the_commit_3_4_1_used():
+    record = drm_connector.read_record(REPO, "certificates")
+    assert record["sha"] == CERT_SHIPPED_SHA
+    assert record["repo"] == "ThePalaceProject/mobile-certificates"
+
+
+def test_certificates_record_needs_no_generation(tmp_path):
+    write_cert_action(tmp_path, ref=CERT_SHIPPED_SHA)
+    assert run_cli("get", "--input", "certificates", "sha", root=tmp_path).stdout.strip() == CERT_SHIPPED_SHA
+
+
+def test_get_of_a_field_the_record_lacks_exits_3(tmp_path):
+    write_cert_action(tmp_path, ref=CERT_SHIPPED_SHA)
+    result = run_cli("get", "--input", "certificates", "generation", root=tmp_path)
+    assert result.returncode == 3
+    assert "has no generation" in result.stderr
+
+
+def test_certificates_record_rejects_a_branch_name(tmp_path):
+    write_cert_action(tmp_path, ref="main")
+    with pytest.raises(drm_connector.RecordError, match="40-character"):
+        drm_connector.read_record(tmp_path, "certificates")
+
+
 def test_unreadable_record_exits_3(tmp_path):
     result = run_cli("check", root=tmp_path)
     assert result.returncode == 3
@@ -145,10 +193,43 @@ def test_no_workflow_overrides_the_connector_record():
     assert offenders == []
 
 
-def test_action_checks_out_the_recorded_ref_and_verifies_it():
-    action = (REPO / ".github/actions/checkout-adobe/action.yml").read_text()
+@pytest.mark.parametrize("name", ["checkout-adobe", "checkout-certificates"])
+def test_action_checks_out_the_recorded_ref_and_verifies_it(name):
+    action = (REPO / f".github/actions/{name}/action.yml").read_text()
     assert "ref: ${{ inputs.ref }}" in action
-    assert 'test "$actual" = "$CONNECTOR_SHA"' in action
+    assert 'test "$actual" = "$RECORDED_SHA"' in action
+
+
+def test_workflows_check_out_certificates_only_through_the_record():
+    # A direct actions/checkout of the repository would fetch its default
+    # branch, not the recorded commit.
+    direct, through = [], []
+    for workflow in sorted((REPO / ".github" / "workflows").glob("*.yml")):
+        text = workflow.read_text()
+        if "repository: ThePalaceProject/mobile-certificates" in text:
+            direct.append(workflow.name)
+        if "uses: ./.github/actions/checkout-certificates" in text:
+            through.append(workflow.name)
+            # A local action needs the repository checked out first.
+            assert text.index("actions/checkout@") < text.index("./.github/actions/checkout-certificates"), workflow.name
+    assert direct == []
+    assert len(through) == 8
+
+
+def test_no_workflow_overrides_the_certificates_record():
+    offenders = []
+    for workflow in sorted((REPO / ".github" / "workflows").glob("*.yml")):
+        lines = workflow.read_text().splitlines()
+        for i, line in enumerate(lines):
+            if "uses: ./.github/actions/checkout-certificates" not in line:
+                continue
+            for following in lines[i + 1:]:
+                stripped = following.lstrip()
+                if stripped.startswith("- "):
+                    break
+                if re.match(r"(ref|repo):", stripped):
+                    offenders.append(f"{workflow.name}: {stripped}")
+    assert offenders == []
 
 
 # ---------- local setup -------------------------------------------------------
@@ -206,14 +287,23 @@ def bootstrap_sandbox(tmp_path, remote):
     remote_path, shas = remote
     remotes = remote_path.parent
     remote_path.rename(remotes / "ios-drm-adeptconnector.git")
+    pins = {}
     for name in ("mobile-certificates", "ios-audiobook-overdrive"):
         other = remotes / f"{name}.git"
         other.mkdir()
         git("init", "-q", "-b", "main", cwd=other)
-        commit(other, name)
+        pins[name] = commit(other, f"{name} pinned")
+        pins[f"{name} tip"] = commit(other, f"{name} later")
+    shas = {**shas, **pins}
     root = tmp_path / "work" / "app"
     (root / "scripts").mkdir(parents=True)
     write_action(root, ref=shas["pinned"], repo="ThePalaceProject/ios-drm-adeptconnector")
+    write_cert_action(root, ref=pins["mobile-certificates"], repo="ThePalaceProject/mobile-certificates")
+    # The app repository records the overdrive submodule as a gitlink.
+    git("init", "-q", cwd=root)
+    git("update-index", "--add", "--cacheinfo",
+        f"160000,{pins['ios-audiobook-overdrive']},ios-audiobook-overdrive", cwd=root)
+    git("commit", "-q", "-m", "gitlink", cwd=root)
     for script in ("bootstrap-drm.sh", "drm_connector.py"):
         (root / "scripts" / script).write_text((REPO / "scripts" / script).read_text())
     calls = tmp_path / "calls.log"
@@ -243,6 +333,22 @@ def test_bootstrap_clones_the_recorded_commit_beside_the_app(bootstrap_sandbox):
     connector = root.parent / "ios-drm-adeptconnector"
     assert git("rev-parse", "HEAD", cwd=connector) == shas["pinned"]
     assert calls.read_text().split() == ["setup-repo-drm.sh", "build-3rd-party-dependencies.sh"]
+
+
+def test_bootstrap_checks_out_the_recorded_certificates_commit(bootstrap_sandbox):
+    root, shas, calls, run = bootstrap_sandbox
+    result = run()
+    assert result.returncode == 0, result.stdout + result.stderr
+    certs = root.parent / "mobile-certificates"
+    assert git("rev-parse", "HEAD", cwd=certs) == shas["mobile-certificates"]
+
+
+def test_bootstrap_checks_out_overdrive_at_the_submodule_commit(bootstrap_sandbox):
+    root, shas, calls, run = bootstrap_sandbox
+    result = run()
+    assert result.returncode == 0, result.stdout + result.stderr
+    overdrive = root.parent / "ios-audiobook-overdrive"
+    assert git("rev-parse", "HEAD", cwd=overdrive) == shas["ios-audiobook-overdrive"]
 
 
 def test_bootstrap_run_twice_succeeds_and_keeps_the_existing_clones(bootstrap_sandbox):
@@ -281,6 +387,7 @@ def test_setup_repo_drm_run_twice_replaces_the_link_and_writes_nothing_in_the_co
         (root / "scripts" / script).write_text((REPO / "scripts" / script).read_text())
     connector.rename(root / "ios-drm-adeptconnector")
     connector = root / "ios-drm-adeptconnector"
+    (root.parent / "mobile-certificates").rename(root / "mobile-certificates")
     env = {**os.environ, "BUILD_CONTEXT": "ci"}
     env.pop("ADEPT_RMSDK", None)
     for _ in range(2):
@@ -295,15 +402,23 @@ def test_setup_repo_drm_run_twice_replaces_the_link_and_writes_nothing_in_the_co
 
 @pytest.fixture
 def linked(tmp_path, remote):
-    """An app root whose adobe-rmsdk links into a clone of the remote."""
+    """An app root whose adobe-rmsdk links into a clone of the remote, with a
+    certificates checkout beside it at its recorded commit."""
     remote_path, shas = remote
     connector = tmp_path / "ios-drm-adeptconnector"
     subprocess.run(["git", "clone", "-q", str(remote_path), str(connector)], check=True)
+    certs = tmp_path / "mobile-certificates"
+    certs.mkdir()
+    git("init", "-q", "-b", "main", cwd=certs)
+    cert_pin = commit(certs, "certs pinned")
+    cert_tip = commit(certs, "certs later")
+    git("checkout", "-q", "--detach", cert_pin, cwd=certs)
     root = tmp_path / "app"
     root.mkdir()
     write_action(root, ref=shas["pinned"])
+    write_cert_action(root, ref=cert_pin)
     (root / "adobe-rmsdk").symlink_to(connector / "connector")
-    return root, connector, shas
+    return root, connector, {**shas, "cert_pin": cert_pin, "cert_tip": cert_tip}
 
 
 def test_check_passes_when_the_tree_is_at_the_recorded_commit(linked):
@@ -341,6 +456,36 @@ def test_check_reads_the_adept_rmsdk_override_instead_of_the_symlink(linked, tmp
     result = run_cli("check", root=root, env={"ADEPT_RMSDK": str(other / "connector")})
     assert result.returncode == 1
     assert shas["main"] in result.stdout
+
+
+def test_check_fails_when_certificates_are_at_another_commit(linked):
+    root, connector, shas = linked
+    git("checkout", "-q", "--detach", shas["pinned"], cwd=connector)
+    certs = root.parent / "mobile-certificates"
+    git("checkout", "-q", "--detach", shas["cert_tip"], cwd=certs)
+    result = run_cli("check", root=root)
+    assert result.returncode == 1
+    assert f"checkout --detach {shas['cert_pin']}" in result.stdout
+
+
+def test_check_fails_when_a_drm_setup_has_no_certificates_checkout(linked):
+    root, connector, shas = linked
+    git("checkout", "-q", "--detach", shas["pinned"], cwd=connector)
+    (root.parent / "mobile-certificates").rename(root.parent / "moved-away")
+    result = run_cli("check", root=root)
+    assert result.returncode == 1
+    assert "no certificates checkout" in result.stdout
+
+
+def test_check_reads_certificates_inside_the_repo_in_ci(linked):
+    # CI checks the repository out to ./mobile-certificates; local setup uses
+    # the sibling ../mobile-certificates, as build-carthage.sh does.
+    root, connector, shas = linked
+    git("checkout", "-q", "--detach", shas["pinned"], cwd=connector)
+    assert run_cli("check", root=root, env={"BUILD_CONTEXT": "ci"}).returncode == 1
+    (root.parent / "mobile-certificates").rename(root / "mobile-certificates")
+    result = run_cli("check", root=root, env={"BUILD_CONTEXT": "ci"})
+    assert result.returncode == 0, result.stdout
 
 
 def test_check_without_a_connector_tree_exits_2(tmp_path):

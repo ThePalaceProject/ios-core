@@ -16,9 +16,13 @@
 set -eo pipefail
 
 ROOT="$(pwd)"
-# Read the connector record (.github/actions/checkout-adobe/action.yml) before
-# cloning anything, so a bad record stops here rather than mid-setup.
-python3 "$ROOT/scripts/drm_connector.py" --repo-root "$ROOT" get sha >/dev/null
+RECORDS="$ROOT/scripts/drm_connector.py"
+# Read the records (.github/actions/checkout-adobe and checkout-certificates)
+# before cloning anything, so a bad record stops here rather than mid-setup.
+python3 "$RECORDS" --repo-root "$ROOT" get sha >/dev/null
+python3 "$RECORDS" --repo-root "$ROOT" get --input certificates sha >/dev/null
+# The sibling overdrive checkout matches the commit the submodule records.
+OVERDRIVE_SHA="$(git -C "$ROOT" rev-parse HEAD:ios-audiobook-overdrive)"
 
 # Runs the clone command unless the directory already exists.
 clone_once() {  # clone_once <dir> <command...>
@@ -31,13 +35,19 @@ clone_once() {  # clone_once <dir> <command...>
   fi
 }
 
+clone_overdrive() {
+  git clone git@github.com:ThePalaceProject/ios-audiobook-overdrive.git ios-audiobook-overdrive
+  git -C ios-audiobook-overdrive checkout --detach "$OVERDRIVE_SHA"
+}
+
 cd ..
-clone_once mobile-certificates git clone git@github.com:ThePalaceProject/mobile-certificates.git
-# Clones the connector and checks out the recorded commit, then pulls its LFS
-# objects. CI builds the same commit.
+# Each clone checks out the recorded commit (and pulls LFS objects where the
+# repository has them). CI builds the same commits.
+clone_once mobile-certificates \
+  python3 "$RECORDS" --repo-root "$ROOT" clone --input certificates mobile-certificates
 clone_once ios-drm-adeptconnector \
-  python3 "$ROOT/scripts/drm_connector.py" --repo-root "$ROOT" clone ios-drm-adeptconnector
-clone_once ios-audiobook-overdrive git clone git@github.com:ThePalaceProject/ios-audiobook-overdrive.git
+  python3 "$RECORDS" --repo-root "$ROOT" clone ios-drm-adeptconnector
+clone_once ios-audiobook-overdrive clone_overdrive
 
 cd "$ROOT"
 

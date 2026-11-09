@@ -1,0 +1,50 @@
+name: 'Checkout Certificates'
+description: 'Check out mobile-certificates at its recorded commit'
+
+inputs:
+  token:
+    description: "Access token to use"
+    required: true
+  path:
+    description: "Path where it should be checked out"
+    required: false
+    default: "./mobile-certificates"
+  ref:
+    description: "Certificates commit to check out (the record; see below)"
+    required: false
+    # These defaults are the certificates record: repo and ref. CI checks out
+    # `ref`, scripts/bootstrap-drm.sh clones it, and scripts/drm_connector.py
+    # check compares the local checkout with it. No workflow passes these
+    # inputs; change the defaults here to change the certificates, LCP version
+    # (AddLCP.swift) or release-notes script every build uses. `ref` is the
+    # commit every 3.4.1 build used. Update path:
+    # docs/architecture/adobe-drm-connector-linking.md.
+    default: "855e8752fab169afd262102f75f3b22d793d013e"
+  repo:
+    description: "Repository to checkout"
+    required: false
+    default: "ThePalaceProject/mobile-certificates"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout Certificates
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: ${{ inputs.repo }}
+        token: ${{ inputs.token }}
+        path: ${{ inputs.path }}
+        ref: ${{ inputs.ref }}
+
+    - name: Verify Certificates revision
+      working-directory: ${{ inputs.path }}
+      shell: bash
+      env:
+        RECORDED_SHA: ${{ inputs.ref }}
+      run: |
+        actual=$(git rev-parse HEAD)
+        echo "mobile-certificates at $actual"
+        test "$actual" = "$RECORDED_SHA" || {
+          echo "::error::Checked out $actual, but the certificates record names $RECORDED_SHA."
+          exit 1
+        }

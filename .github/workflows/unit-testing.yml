@@ -123,11 +123,9 @@ jobs:
             ${{ runner.os }}-spm-
 
       - name: Checkout Certificates
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: ./.github/actions/checkout-certificates
         with:
-          repository: ThePalaceProject/mobile-certificates
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
-          path: ./mobile-certificates
 
       - name: Checkout Adobe RMSDK
         uses: ./.github/actions/checkout-adobe
