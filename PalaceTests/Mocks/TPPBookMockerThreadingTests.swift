@@ -33,9 +33,11 @@ final class TPPBookMockerThreadingTests: XCTestCase {
                 // Let the main-queue writes that `TPPBook.init` scheduled run.
                 await Task.yield()
             }
-            let cached = books.filter { $0.imageCache.get(for: $0.identifier) != nil }
-            XCTAssertEqual(cached.count, books.count, "round \(round): every book's cache holds its cover")
-            // Dropping the books frees each cover through its last owner.
+            XCTAssertEqual(books.filter { $0.coverImage == nil }.count, 0,
+                           "round \(round): a book built off main has its cover when it is returned")
+            // Dropping the books frees each cover through its last owner. With
+            // the race, an over-released cover crashes the host here, so a
+            // finished loop is the pass condition.
             books.removeAll()
             await Task.yield()
         }

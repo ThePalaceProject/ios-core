@@ -102,6 +102,8 @@ struct TPPBookMocker {
     /// Sets the cover on the main thread. `TPPBook.init` schedules its own cover
     /// writes on the main queue and `@Published` storage is not thread-safe, so
     /// a write from another thread can race them and over-release the image.
+    /// Off main it blocks on `DispatchQueue.main.sync`, so do not build a mock
+    /// book on a background thread while the main thread waits for it.
     private static func setCover(_ cover: UIImage, on book: TPPBook) {
         let assign = {
             book.coverImage = cover
