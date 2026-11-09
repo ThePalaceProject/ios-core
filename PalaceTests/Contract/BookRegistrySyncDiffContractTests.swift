@@ -429,14 +429,20 @@ final class BookRegistrySyncDiffContractTests: XCTestCase {
     // MARK: - Comparison off the main thread
 
     /// The feed is compared with the shelf before the sync returns to the main
-    /// thread, so a large shelf does not hold up the UI.
+    /// thread, and the main thread uses that result, so a large shelf does not
+    /// hold up the UI.
     func testSync_ComparesTheFeedOffTheMainThread() async {
         let threads = ThreadRecorder()
         let sut = makeSync(afterLoansFeedCompared: { threads.record(Thread.isMainThread) })
 
+        await seedBySync(sut, shelf)
+        let comparedBefore = sut.mainThreadComparisonCount
+
         await runSync(sut, feed: Self.feed(shelf))
 
-        XCTAssertEqual(threads.values, [false], "the comparison step must run once, off the main thread")
+        XCTAssertEqual(threads.values, [false, false], "the comparison step must run once per sync, off the main thread")
+        XCTAssertEqual(sut.mainThreadComparisonCount, comparedBefore,
+                       "with no write after the comparison, the main thread must not compare again")
     }
 
     /// A state written after the comparison (an async store write) is newer
@@ -453,6 +459,8 @@ final class BookRegistrySyncDiffContractTests: XCTestCase {
 
         await runSync(sut, feed: Self.feed(changed))
 
+        XCTAssertEqual(sut.mainThreadComparisonCount, shelf.count,
+                       "a write after the comparison makes the main thread compare every entry again")
         let record = records()["book-b"]
         XCTAssertEqual(record?.state, .downloadSuccessful, "a local state newer than the feed must be kept")
         XCTAssertEqual(record?.book.defaultAcquisition?.availability.until,
@@ -483,8 +491,12 @@ final class BookRegistrySyncDiffContractTests: XCTestCase {
         var first = shelf[1]
         first.until = "2026-09-15T00:00:00Z"
 
+        let comparedBefore = sut.mainThreadComparisonCount
+
         await runSync(sut, feed: Self.feed([shelf[0], first, shelf[1], shelf[2]]))
 
+        XCTAssertEqual(sut.mainThreadComparisonCount - comparedBefore, 1,
+                       "only the second entry, whose record the first entry replaced, is compared again")
         XCTAssertEqual(records()["book-b"]?.book.defaultAcquisition?.availability.until,
                        NSDate.date(withRFC3339String: shelf[1].until) as Date?)
     }

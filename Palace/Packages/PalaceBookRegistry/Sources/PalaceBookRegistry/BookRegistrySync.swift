@@ -19,6 +19,8 @@ import PalaceBookModel
 ///     and `sync`), and the reads that gate behaviour (e.g. `syncUrl != loansUrl`,
 ///     the duplicate-load guard) run on that same main queue. No write races
 ///     another write across threads.
+///   • `mainThreadComparisonCount` is written only inside the sync's
+///     main-thread apply block and read by tests after the sync ends.
 ///   • `_needsRebuildFromServer` (the INV-1 rebuild flag) is guarded by its own
 ///     `rebuildFlagLock`, so the disk-write queue can read/clear it race-free.
 ///
@@ -181,6 +183,11 @@ final class BookRegistrySync: @unchecked Sendable {
   /// instead of waiting on a wall-clock deadline (PP-5296). Per-instance for the
   /// same reason as `_scheduledRedownloads`.
   private let _syncTasks = XCTestJoinableTasks()
+
+  /// Feed entries the main thread compared with their record because the
+  /// off-main comparison was out of date. Tests read it to check that an
+  /// undisturbed sync does no comparison on the main thread.
+  private(set) var mainThreadComparisonCount = 0
 
   /// Schedules `body` on the main queue after `delay`, retaining the Task under XCTest.
   private func trackScheduledRedownload(
@@ -596,8 +603,8 @@ final class BookRegistrySync: @unchecked Sendable {
       }
 
       // Parse the feed and compare it with the shelf here, off the main thread.
-      // The main-thread block below applies the result, and compares again
-      // only a record that was written after this read.
+      // The main-thread block below applies the result. If any registry write
+      // came after this read, it compares every entry again.
       let feedBooks = feed.entries.compactMap { entry in
         (entry as? TPPOPDSEntry).flatMap { TPPBook(entry: $0) }
       }
@@ -639,8 +646,13 @@ final class BookRegistrySync: @unchecked Sendable {
               // store write since then, or an earlier entry for the same book
               // in this feed, means compare again here.
               let earlier = comparisonIsCurrent ? comparison.value[index] : nil
-              let outcome = earlier.flatMap { $0.record === record ? $0 : nil }
-                ?? Self.compare(record: record, with: book, stateAtFetchStart: statesAtFetchStart[book.identifier])
+              let outcome: FeedComparison
+              if let earlier, earlier.record === record {
+                outcome = earlier
+              } else {
+                self.mainThreadComparisonCount += 1
+                outcome = Self.compare(record: record, with: book, stateAtFetchStart: statesAtFetchStart[book.identifier])
+              }
               if outcome.nextState != record.state {
                 stateChanges.append((book.identifier, outcome.nextState))
               }
