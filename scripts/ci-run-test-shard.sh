@@ -61,15 +61,14 @@ rm -rf "$OUT/parallel.xcresult" "$OUT/serial.xcresult" "$OUT/rerun.xcresult" "$O
        "$OUT/TestResults.xcresult" "$OUT/merged.xcresult" "$OUT/memory-samples.txt" \
        "$OUT"/*-crash-retry.xcresult "$OUT"/*.log "$OUT/partial"
 
-SIMULATOR_ID=$(xcrun simctl list devices available \
-    | grep "iPhone" \
-    | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' \
-    | head -1)
-if [ -z "$SIMULATOR_ID" ]; then
-    echo "🔴 ERROR: no iPhone simulator available"
-    xcrun simctl list devices available
+# The reference profile's device on its runtime (scripts/reference-toolchain.ini),
+# so every shard runs the same simulator and records the same toolchain.
+if ! SIMULATOR_ID=$(python3 "$HERE/reference_toolchain.py" select-sim --profile reference); then
+    echo "🔴 ERROR: the reference simulator is not installed on this runner"
     exit 1
 fi
+python3 "$HERE/reference_toolchain.py" report --profile reference \
+    --udid "$SIMULATOR_ID" --configuration Debug --strict
 WORKERS="${CI_TEST_WORKERS:-2}"
 echo "Shard $SHARD on simulator $SIMULATOR_ID, $WORKERS parallel worker(s)"
 
