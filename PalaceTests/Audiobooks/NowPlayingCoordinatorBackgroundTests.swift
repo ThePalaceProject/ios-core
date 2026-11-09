@@ -3,8 +3,8 @@
 //  HelpSpot 17865: NowPlaying froze after background -> foreground. Pins that
 //  MPNowPlayingInfoCenter writes go out at once while not active (the main
 //  queue stalls during suspend and delayed work can be lost), that `.active`
-//  updates still coalesce, and that returning to foreground after >30s with no
-//  writes while playing logs an error.
+//  writes a change at once too (PP-5504), and that returning to foreground after
+//  >30s with no writes while playing logs an error.
 
 import MediaPlayer
 import UIKit
@@ -49,7 +49,7 @@ final class NowPlayingCoordinatorBackgroundTests: XCTestCase {
 
     /// HelpSpot 17865 — when the app is in the background a delayed write can
     /// be lost (the main queue stalls), so applyUpdate writes at once.
-    func testApplyUpdate_inBackground_bypassesDebounce() {
+    func testApplyUpdate_inBackground_writesEachChangeAtOnce() {
         // Arrange: background state
         fakeAppState.value = .background
 
