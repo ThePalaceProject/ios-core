@@ -18,13 +18,7 @@ extension Notification.Name {
     // Current-library changes, catalog loads and sign-in progress are
     // `AccountsManager`'s `currentLibraryChangePublisher`,
     // `catalogLoadedPublisher` and `signInProgressPublisher`.
-
-    /// The `userInfo` dictionary contains the following key-value pairs:
-    /// - an `bookProcessingBookIDKey` key whose value is a String indicating
-    /// the book identifier;
-    /// - a `bookProcessingValueKey` key whose value is a Bool indicating
-    /// if there's some processing going on for the book.
-    static let TPPBookProcessingDidChange = Notification.Name("TPPBookProcessingDidChange")
+    // A book's processing flag is `TPPBookRegistry.bookProcessingPublisher`.
 
     static let TPPMyBooksDownloadCenterDidChange = Notification.Name("TPPMyBooksDownloadCenterDidChange")
     // TPPReachabilityChanged is defined in PalaceNetwork; do not duplicate.
@@ -33,12 +27,6 @@ extension Notification.Name {
 @objc extension NSNotification {
     public static let TPPSettingsDidChange = Notification.Name.TPPSettingsDidChange
     public static let TPPUseBetaDidChange = Notification.Name.TPPUseBetaDidChange
-    public static let TPPBookProcessingDidChange = Notification.Name.TPPBookProcessingDidChange
     public static let TPPMyBooksDownloadCenterDidChange = Notification.Name.TPPMyBooksDownloadCenterDidChange
     public static let TPPReachabilityChanged = Notification.Name.TPPReachabilityChanged
-}
-
-class TPPNotificationKeys: NSObject {
-    @objc public static let bookProcessingBookIDKey = "identifier"
-    @objc public static let bookProcessingValueKey = "value"
 }

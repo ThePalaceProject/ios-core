@@ -266,39 +266,16 @@ final class BookRegistryStoreTests: XCTestCase {
                        "Adding a book must not flip its processing flag — that is reserved for setProcessing")
     }
 
-    // KEPT: `setProcessing` posts `.TPPBookProcessingDidChange` via a nested
-    // `DispatchQueue.main.async` *inside* the barrier block, so this is testing
-    // the actual NotificationCenter contract (name + userInfo payload), not
-    // just registry-write convergence. `_awaitPendingWritesForTesting()` only
-    // proves the barrier ran (i.e. the post was *submitted*); it does not
-    // prove the notification was *delivered* with the right payload. There is
-    // no catalog seam for "assert this specific notification's userInfo", so
-    // converting would silently drop coverage of the notification contract
-    // that UI badges depend on. `expectation(forNotification:)` is the correct
-    // bounded primitive for this and is left byte-for-byte.
-    func test_setProcessing_true_thenFalse() {
-        let notifExpectation = expectation(forNotification: .TPPBookProcessingDidChange, object: nil) { notif in
-            let id = notif.userInfo?[TPPNotificationKeys.bookProcessingBookIDKey] as? String
-            let value = notif.userInfo?[TPPNotificationKeys.bookProcessingValueKey] as? Bool
-            return id == "book-1" && value == true
-        }
-
+    /// The flag the borrow spinner reads; `BookProcessingPublisherTests` pins
+    /// the change each call publishes.
+    func test_setProcessing_true_thenFalse() async {
         store.setProcessing(true, for: "book-1")
-        wait(for: [notifExpectation], timeout: 2.0)
-
-        drainMainQueue()
-            XCTAssertTrue(self.store.processing(forIdentifier: "book-1"))
-
-        let notifExpectation2 = expectation(forNotification: .TPPBookProcessingDidChange, object: nil) { notif in
-            let value = notif.userInfo?[TPPNotificationKeys.bookProcessingValueKey] as? Bool
-            return value == false
-        }
+        await store._awaitPendingWritesForTesting()
+        XCTAssertTrue(store.processing(forIdentifier: "book-1"))
 
         store.setProcessing(false, for: "book-1")
-        wait(for: [notifExpectation2], timeout: 2.0)
-
-        drainMainQueue()
-            XCTAssertFalse(self.store.processing(forIdentifier: "book-1"))
+        await store._awaitPendingWritesForTesting()
+        XCTAssertFalse(store.processing(forIdentifier: "book-1"))
     }
 
     // MARK: - RemoveAll

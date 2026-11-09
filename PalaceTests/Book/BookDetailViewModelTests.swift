@@ -1430,8 +1430,8 @@ final class BookDetailViewModelTests: XCTestCase {
         )
     }
 
-    func testIsBorrowProcessing_FlipsOnProcessingNotification_ForSameBook() {
-        let (vm, _, book) = makeVM()
+    func testIsBorrowProcessing_FlipsOnProcessingChange_ForSameBook() {
+        let (vm, registry, book) = makeVM()
         XCTAssertFalse(vm.isBorrowProcessing, "Pre-condition: VM starts idle")
 
         let exp = expectation(description: "isBorrowProcessing flips true")
@@ -1440,20 +1440,13 @@ final class BookDetailViewModelTests: XCTestCase {
             .sink { _ in exp.fulfill() }
             .store(in: &cancellables)
 
-        NotificationCenter.default.post(
-            name: .TPPBookProcessingDidChange,
-            object: nil,
-            userInfo: [
-                TPPNotificationKeys.bookProcessingBookIDKey: book.identifier,
-                TPPNotificationKeys.bookProcessingValueKey: true
-            ]
-        )
+        registry.setProcessing(true, for: book.identifier)
 
         wait(for: [exp], timeout: 2.0)
         XCTAssertTrue(vm.isBorrowProcessing)
     }
 
-    func testIsBorrowProcessing_FlipsBackToFalseOnCompletionNotification() {
+    func testIsBorrowProcessing_FlipsBackToFalseWhenProcessingEnds() {
         let book = createTestBook()
         let registry = TPPBookRegistryMock()
         registry.addBook(book, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
@@ -1477,32 +1470,18 @@ final class BookDetailViewModelTests: XCTestCase {
             .sink { _ in exp.fulfill() }
             .store(in: &cancellables)
 
-        NotificationCenter.default.post(
-            name: .TPPBookProcessingDidChange,
-            object: nil,
-            userInfo: [
-                TPPNotificationKeys.bookProcessingBookIDKey: book.identifier,
-                TPPNotificationKeys.bookProcessingValueKey: false
-            ]
-        )
+        registry.setProcessing(false, for: book.identifier)
 
         wait(for: [exp], timeout: 2.0)
         XCTAssertFalse(vm.isBorrowProcessing)
     }
 
-    func testIsBorrowProcessing_IgnoresNotificationsForDifferentBook() {
-        let (vm, _, _) = makeVM()
+    func testIsBorrowProcessing_IgnoresChangesForDifferentBook() {
+        let (vm, registry, _) = makeVM()
         XCTAssertFalse(vm.isBorrowProcessing)
 
-        // Notification for a *different* book ID — must NOT affect this VM.
-        NotificationCenter.default.post(
-            name: .TPPBookProcessingDidChange,
-            object: nil,
-            userInfo: [
-                TPPNotificationKeys.bookProcessingBookIDKey: "some-other-book-id",
-                TPPNotificationKeys.bookProcessingValueKey: true
-            ]
-        )
+        // A change for a *different* book ID — must NOT affect this VM.
+        registry.setProcessing(true, for: "some-other-book-id")
 
         // Drain the main run loop so any (incorrect) delivery has a chance to
         // fire. Negative-assertion: we want to prove nothing happened, so FIFO
@@ -1512,7 +1491,7 @@ final class BookDetailViewModelTests: XCTestCase {
 
         XCTAssertFalse(
             vm.isBorrowProcessing,
-            "Processing notifications must be filtered by book identifier — otherwise an unrelated book's borrow puts every detail view into a spinning state."
+            "Processing changes must be filtered by book identifier — otherwise an unrelated book's borrow puts every detail view into a spinning state."
         )
     }
 

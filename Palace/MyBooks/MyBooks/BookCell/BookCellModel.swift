@@ -512,22 +512,13 @@ class BookCellModel: ObservableObject {
     /// Observed 2026-09-09: an Adobe activation failure surfaced its alert, and
     /// dismissing the alert left the list cell spinning, because the failure
     /// path clears the REGISTRY's processing flag and nothing connected that to
-    /// the cell. The store has always broadcast this notification; nobody
-    /// listened.
+    /// the cell.
     private func bindProcessingState() {
-        // App-side symbols deliberately, not the package's internal ones: the
-        // registry keeps a separate declaration with the same runtime string
-        // to avoid a cross-module ambiguity. Same notification, same keys —
-        // this mirrors what BookDetailViewModel already does.
-        NotificationCenter.default.publisher(for: NSNotification.TPPBookProcessingDidChange)
+        bookRegistry.bookProcessingPublisher
             .receive(on: RunLoop.main)
-            .sink { [weak self] notification in
-                guard let self else { return }
-                guard let info = notification.userInfo,
-                      let bookID = info[TPPNotificationKeys.bookProcessingBookIDKey] as? String,
-                      bookID == self.currentBookIdentifier,
-                      let processing = info[TPPNotificationKeys.bookProcessingValueKey] as? Bool
-                else { return }
+            .sink { [weak self] change in
+                guard let self, change.bookIdentifier == self.currentBookIdentifier else { return }
+                let processing = change.isProcessing
 
                 // Only ever LOWER the spinner from here. Raising it on the
                 // registry's say-so would fight the cell's own tap handling,

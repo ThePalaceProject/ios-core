@@ -115,7 +115,7 @@ final class BookDetailViewModel: ObservableObject {
     ///
     /// Lets the half-sheet show an indeterminate spinner during slow borrows
     /// (e.g. Overdrive) instead of an inert 0% bar. Mirrored from
-    /// `.TPPBookProcessingDidChange`.
+    /// `TPPBookRegistry.bookProcessingPublisher`.
     @Published private(set) var isBorrowProcessing: Bool = false
 
     var isShowingSample = false
@@ -356,20 +356,16 @@ final class BookDetailViewModel: ObservableObject {
             .sink { [weak self] in self?.handleBookRegistryChange() }
             .store(in: &cancellables)
 
-        // BorrowOperation posts .TPPBookProcessingDidChange via the registry
-        // when it starts a borrow request and again when it finishes. Mirror
-        // it onto an @Published flag the half-sheet can observe, filtered to
-        // this VM's book identifier so unrelated borrows don't spin our UI.
-        NotificationCenter.default.publisher(for: .TPPBookProcessingDidChange)
+        // BorrowOperation sets the registry's processing flag when it starts a
+        // borrow request and clears it when it finishes. Mirror it onto an
+        // @Published flag the half-sheet can observe, filtered to this VM's
+        // book identifier so unrelated borrows don't spin our UI.
+        registry.bookProcessingPublisher
             .receive(on: RunLoop.main)
-            .sink { [weak self] note in
-                guard let self else { return }
-                guard let info = note.userInfo as? [String: Any],
-                      let identifier = info[TPPNotificationKeys.bookProcessingBookIDKey] as? String,
-                      identifier == self.bookIdentifier,
-                      let value = info[TPPNotificationKeys.bookProcessingValueKey] as? Bool else { return }
-                if self.isBorrowProcessing != value {
-                    self.isBorrowProcessing = value
+            .sink { [weak self] change in
+                guard let self, change.bookIdentifier == self.bookIdentifier else { return }
+                if self.isBorrowProcessing != change.isProcessing {
+                    self.isBorrowProcessing = change.isProcessing
                 }
             }
             .store(in: &cancellables)

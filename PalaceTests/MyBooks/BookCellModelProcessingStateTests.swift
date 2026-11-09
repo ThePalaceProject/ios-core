@@ -2,7 +2,7 @@
 //  `bindProcessingState`: the list cell raises its own spinner on tap, and a
 //  borrow failure that clears the registry's processing flag (e.g. an Adobe
 //  activation failure, seen while validating PP-3649) left it spinning because the
-//  cell did not observe `TPPBookProcessingDidChange`. Every assertion fails if the
+//  cell did not observe the registry's processing changes. Every assertion fails if the
 //  subscription is deleted; the last two fail if it is widened to fight the cell's
 //  own tap handling. `BookCellModelOfflineTests` covers the reachability case.
 //
@@ -51,7 +51,7 @@ final class BookCellModelProcessingStateTests: XCTestCase {
     private func makeModel(book: TPPBook) -> BookCellModel {
         // A test-scoped container, not `AppContainer.production()`: none of the
         // collaborators below participate in what these tests assert (the cell's
-        // reaction to a NotificationCenter broadcast), and reaching for the live
+        // reaction to a registry processing change), and reaching for the live
         // graph would give this suite a background `loadCatalogs` to race with.
         BookCellModel(
             book: book,
@@ -65,15 +65,10 @@ final class BookCellModelProcessingStateTests: XCTestCase {
         )
     }
 
-    /// Posts the notification the registry broadcasts when it clears (or sets)
-    /// a book's processing flag. Same name and same keys as
-    /// `LibraryService.swift:137-140`.
+    /// Changes the book's processing flag through the registry, as a borrow,
+    /// a return or an open does.
     private func postProcessingChange(bookID: String, processing: Bool) {
-        NotificationCenter.default.post(
-            name: NSNotification.TPPBookProcessingDidChange,
-            object: nil,
-            userInfo: [TPPNotificationKeys.bookProcessingBookIDKey: bookID,
-                       TPPNotificationKeys.bookProcessingValueKey: processing])
+        mockRegistry.setProcessing(processing, for: bookID)
     }
 
     // MARK: - Already-presented errors
@@ -149,7 +144,7 @@ final class BookCellModelProcessingStateTests: XCTestCase {
 
     // MARK: - It must not fire for other books
 
-    /// The notification is broadcast for every book, so a cell that does not
+    /// The registry publishes changes for every book, so a cell that does not
     /// filter would clear its spinner whenever ANY other borrow finished — which
     /// looks like it works, because in a list something is usually finishing.
     func test_whenAnotherBookStopsProcessing_thisSpinnerIsUntouched() {
@@ -185,42 +180,6 @@ final class BookCellModelProcessingStateTests: XCTestCase {
         XCTAssertFalse(model.isLoading,
                        "the registry must not RAISE this cell's spinner — the tap handler owns that edge, "
                        + "and a second owner produces a spinner nothing can clear")
-    }
-
-    // MARK: - Malformed payloads must not act
-
-    /// A notification with no `value` key, or a non-Bool one, carries no
-    /// decision. Treating a missing field as `false` would clear spinners on any
-    /// unrelated broadcast that happened to reuse the name.
-    func test_whenTheNotificationCarriesNoProcessingValue_nothingChanges() {
-        let book = makeBook(id: "processing-no-value")
-        mockRegistry.addBook(book, state: .downloadNeeded)
-        let model = makeModel(book: book)
-        drainMainQueue()
-
-        model.isLoading = true
-        NotificationCenter.default.post(
-            name: NSNotification.TPPBookProcessingDidChange,
-            object: nil,
-            userInfo: [TPPNotificationKeys.bookProcessingBookIDKey: book.identifier])
-        drainMainQueue()
-
-        XCTAssertTrue(model.isLoading,
-                      "a payload with no processing value is not evidence processing stopped")
-    }
-
-    func test_whenTheNotificationCarriesNoUserInfo_nothingChanges() {
-        let book = makeBook(id: "processing-no-userinfo")
-        mockRegistry.addBook(book, state: .downloadNeeded)
-        let model = makeModel(book: book)
-        drainMainQueue()
-
-        model.isLoading = true
-        NotificationCenter.default.post(
-            name: NSNotification.TPPBookProcessingDidChange, object: nil)
-        drainMainQueue()
-
-        XCTAssertTrue(model.isLoading)
     }
 
     // MARK: - Idempotence
