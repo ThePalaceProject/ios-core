@@ -196,12 +196,16 @@ def test_clone_fails_when_the_recorded_commit_does_not_exist(tmp_path, remote):
     assert "checkout --detach" in result.stderr
 
 
-def test_bootstrap_clones_the_recorded_commit_beside_the_app(tmp_path, remote):
-    # Runs the real bootstrap-drm.sh in a sandbox: its sibling clones come from
-    # local fixtures and its setup/build steps are stubs.
+@pytest.fixture
+def bootstrap_sandbox(tmp_path, remote):
+    """An app root beside empty sibling slots, with every remote a local fixture.
+
+    Runs the real bootstrap-drm.sh and drm_connector.py; the setup and build
+    scripts it calls are stubs that log their names.
+    """
     remote_path, shas = remote
     remotes = remote_path.parent
-    (remote_path).rename(remotes / "ios-drm-adeptconnector.git")
+    remote_path.rename(remotes / "ios-drm-adeptconnector.git")
     for name in ("mobile-certificates", "ios-audiobook-overdrive"):
         other = remotes / f"{name}.git"
         other.mkdir()
@@ -224,12 +228,46 @@ def test_bootstrap_clones_the_recorded_commit_beside_the_app(tmp_path, remote):
            "GIT_CONFIG_COUNT": "1",
            "GIT_CONFIG_KEY_0": f"url.{remotes}/.insteadOf",
            "GIT_CONFIG_VALUE_0": "git@github.com:ThePalaceProject/"}
-    result = subprocess.run(["bash", "scripts/bootstrap-drm.sh"], cwd=root, env=env,
-                            capture_output=True, text=True)
+
+    def run():
+        return subprocess.run(["bash", "scripts/bootstrap-drm.sh"], cwd=root, env=env,
+                              capture_output=True, text=True)
+
+    return root, shas, calls, run
+
+
+def test_bootstrap_clones_the_recorded_commit_beside_the_app(bootstrap_sandbox):
+    root, shas, calls, run = bootstrap_sandbox
+    result = run()
     assert result.returncode == 0, result.stdout + result.stderr
     connector = root.parent / "ios-drm-adeptconnector"
     assert git("rev-parse", "HEAD", cwd=connector) == shas["pinned"]
     assert calls.read_text().split() == ["setup-repo-drm.sh", "build-3rd-party-dependencies.sh"]
+
+
+def test_bootstrap_run_twice_succeeds_and_keeps_the_existing_clones(bootstrap_sandbox):
+    root, shas, calls, run = bootstrap_sandbox
+    assert run().returncode == 0
+    marker = root.parent / "mobile-certificates" / "local-only.txt"
+    marker.write_text("kept")
+    second = run()
+    assert second.returncode == 0, second.stdout + second.stderr
+    assert marker.read_text() == "kept"
+    assert git("rev-parse", "HEAD", cwd=root.parent / "ios-drm-adeptconnector") == shas["pinned"]
+    assert calls.read_text().split().count("setup-repo-drm.sh") == 2
+
+
+def test_bootstrap_leaves_an_existing_connector_clone_where_it_is(bootstrap_sandbox):
+    # A developer's existing clone is not moved; setup-repo-drm.sh's drift
+    # check reports it with the commands to fix it.
+    root, shas, calls, run = bootstrap_sandbox
+    assert run().returncode == 0
+    connector = root.parent / "ios-drm-adeptconnector"
+    git("checkout", "-q", "feature/x", cwd=connector)
+    result = run()
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert git("rev-parse", "HEAD", cwd=connector) == shas["tip"]
+    assert "ios-drm-adeptconnector already exists" in result.stdout
 
 
 # ---------- the drift check ---------------------------------------------------
