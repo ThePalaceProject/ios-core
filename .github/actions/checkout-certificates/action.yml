@@ -12,9 +12,10 @@ inputs:
   ref:
     description: "Certificates commit to check out (the record; see below)"
     required: false
-    # These defaults are the certificates record: repo and ref. CI checks out
-    # `ref`, scripts/bootstrap-drm.sh clones it, and scripts/drm_connector.py
-    # check compares the local checkout with it. No workflow passes these
+    # These defaults are the certificates record: repo, ref, paths and tooling.
+    # CI checks out `ref`, scripts/bootstrap-drm.sh clones it, and
+    # scripts/drm_connector.py check compares the local checkout's `paths` with
+    # it. No workflow passes these
     # inputs; change the defaults here to change the certificates, LCP version
     # (AddLCP.swift) or release-notes script every build uses. `ref` is the
     # commit every 3.4.1 build used. Update path:
@@ -24,6 +25,17 @@ inputs:
     description: "Repository to checkout"
     required: false
     default: "ThePalaceProject/mobile-certificates"
+  paths:
+    description: "Files a DRM build reads from the checkout; the local drift check compares these"
+    required: false
+    # Derived from scripts/build-carthage.sh and scripts/update-certificates.sh;
+    # test_drm_connector.py fails if a script reads a file not listed here or
+    # under tooling.
+    default: "Certificates/Palace/iOS/AddLCP.swift Certificates/Palace/iOS/GoogleService-Info.plist Certificates/Palace/iOS/ReaderClientCert.sig Certificates/Palace/iOS/KeyObfuscator.swift Certificates/Palace/iOS/APIKeys.json"
+  tooling:
+    description: "Files scripts read that are not build inputs; not compared locally"
+    required: false
+    default: "Certificates/Palace/iOS/ReleaseNotes.py"
 
 runs:
   using: "composite"

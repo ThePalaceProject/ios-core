@@ -5,20 +5,22 @@ Two private repositories feed a DRM build, and each is recorded as the input
 defaults of a composite action:
 
   connector     .github/actions/checkout-adobe/action.yml        repo, ref, generation
-  certificates  .github/actions/checkout-certificates/action.yml repo, ref
+  certificates  .github/actions/checkout-certificates/action.yml repo, ref, paths, tooling
 
 `ref` is always a full commit SHA. CI checks out that commit through the
 action, local setup clones it with `clone`, and `check` compares the local
-checkouts a DRM build reads against the records. See
+checkouts a DRM build reads against the records: the connector by commit (it is
+binaries only), the certificates by the content of the build files in `paths`,
+because that repository also holds tooling (`tooling`) developed in place. See
 docs/architecture/adobe-drm-connector-linking.md.
 
   drm_connector.py get [--input NAME] repo|sha|generation
   drm_connector.py clone [--input NAME] DEST
   drm_connector.py check
 
-`check` exit status: 0 every checkout is at its recorded commit and clean, 1 one
-is not (or is missing), 2 there is no connector tree (a noDRM setup), 3 no
-usable verdict. It prints commits and paths only, never file contents.
+`check` exit status: 0 every checkout matches its record, 1 one does not (or is
+missing), 2 there is no connector tree (a noDRM setup), 3 no usable verdict. It
+prints commits and paths only, never file contents.
 
 prior-art-checked: no existing script under scripts/ reads the connector record.
 """
@@ -34,7 +36,7 @@ from pathlib import Path
 
 INPUTS = {
     "connector": (Path(".github/actions/checkout-adobe/action.yml"), ("repo", "ref", "generation")),
-    "certificates": (Path(".github/actions/checkout-certificates/action.yml"), ("repo", "ref")),
+    "certificates": (Path(".github/actions/checkout-certificates/action.yml"), ("repo", "ref", "paths")),
 }
 ACTION_PATH = INPUTS["connector"][0]
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -69,9 +71,9 @@ def read_record(repo_root: Path, name: str = "connector") -> dict:
         if field:
             current = field.group(1)
             continue
-        default = re.match(r'^    default:\s*"?([^"#\s]*)"?', line)
+        default = re.match(r'^    default:\s*(?:"([^"]*)"|([^"#\s]+))', line)
         if default and current:
-            defaults[current] = default.group(1)
+            defaults[current] = default.group(1) if default.group(1) is not None else default.group(2)
 
     missing = [key for key in required if not defaults.get(key)]
     if missing:
@@ -80,6 +82,9 @@ def read_record(repo_root: Path, name: str = "connector") -> dict:
     if not SHA_RE.match(sha):
         raise RecordError(f"{path}: ref default {sha!r} is not a full 40-character commit SHA")
     record = {"repo": defaults["repo"], "sha": sha, "path": action}
+    if "paths" in required:
+        record["paths"] = defaults["paths"].split()
+        record["tooling"] = defaults.get("tooling", "").split()
     if "generation" in required:
         if not defaults["generation"].isdigit():
             raise RecordError(f"{path}: generation default {defaults['generation']!r} is not an integer")
@@ -175,14 +180,47 @@ def check_connector(record: dict, repo_root: Path) -> int:
 
 
 def check_certificates(record: dict, repo_root: Path) -> int:
-    """Compare the certificates checkout build-carthage.sh reads with the record."""
+    """Compare the build files of the certificates checkout with the record.
+
+    Only the files in `paths` are compared, committed or not; other commits and
+    edits in that repository (its tooling) are not drift.
+    """
     # Same location rule as scripts/build-carthage.sh.
     base = repo_root if os.environ.get("BUILD_CONTEXT") == "ci" else repo_root.parent
     tree = (base / "mobile-certificates").resolve()
+    sha = record["sha"]
     if not (tree / ".git").exists():
-        print(f"drm-connector: no certificates checkout at {tree}; a DRM build needs one at {record['sha']}")
+        print(f"drm-connector: no certificates checkout at {tree}; a DRM build needs one with the build files of {sha}")
         return EXIT_DRIFT
-    return _compare(tree, record)
+    if _git("cat-file", "-e", f"{sha}^{{commit}}", cwd=tree).returncode != 0:
+        print(
+            f"drm-connector: {tree} does not have the recorded commit {sha}.\n"
+            f"  Fetch it with: git -C {tree} fetch origin"
+        )
+        return EXIT_DRIFT
+    missing = [path for path in record["paths"]
+               if _git("cat-file", "-e", f"{sha}:{path}", cwd=tree).returncode != 0]
+    if missing:
+        print(f"drm-connector: {record['path']} lists {', '.join(missing)}, which {sha} does not contain")
+        return EXIT_ERROR
+    # Working tree against the recorded commit: committed and uncommitted changes.
+    diff = _git("diff", "--name-only", sha, "--", *record["paths"], cwd=tree)
+    if diff.returncode != 0:
+        print(f"drm-connector: cannot compare {tree} with {sha}")
+        return EXIT_ERROR
+    differing = diff.stdout.split()
+    if differing:
+        print(
+            f"drm-connector: {tree} has build files that differ from {sha}, which "
+            f"{record['path']} records: {', '.join(differing)}.\n"
+            "  Local DRM builds would use different certificates or LCP settings from CI.\n"
+            "  To use the recorded versions (this discards local changes to those files):\n"
+            f"    git -C {tree} checkout {sha} -- {' '.join(differing)}"
+        )
+        return EXIT_DRIFT
+    head = _git("rev-parse", "HEAD", cwd=tree).stdout.strip()
+    print(f"drm-connector: {tree} build files match {sha} ({len(record['paths'])} files; checkout HEAD {head})")
+    return EXIT_MATCH
 
 
 def check(repo_root: Path) -> int:

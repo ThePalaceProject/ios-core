@@ -58,16 +58,33 @@ inputs:
     default: "{ref}"
   repo:
     default: "{repo}"
+  paths:
+    default: "{paths}"
+  tooling:
+    default: "{tooling}"
 runs:
   using: "composite"
   steps: []
 """
 
+BUILD_FILE = "Certificates/Palace/iOS/AddLCP.swift"
+TOOLING_FILE = "Certificates/Palace/iOS/ReleaseNotes.py"
 
-def write_cert_action(root: Path, ref: str, repo: str = "Org/certs") -> None:
+
+def write_cert_action(root: Path, ref: str, repo: str = "Org/certs",
+                      paths: str = BUILD_FILE, tooling: str = TOOLING_FILE) -> None:
     path = root / ".github" / "actions" / "checkout-certificates" / "action.yml"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(CERT_ACTION_TEMPLATE.format(ref=ref, repo=repo))
+    path.write_text(CERT_ACTION_TEMPLATE.format(ref=ref, repo=repo, paths=paths, tooling=tooling))
+
+
+def commit_files(repo: Path, files: dict, message: str) -> str:
+    for rel, content in files.items():
+        (repo / rel).parent.mkdir(parents=True, exist_ok=True)
+        (repo / rel).write_text(content)
+        git("add", rel, cwd=repo)
+    git("commit", "-q", "-m", message, cwd=repo)
+    return git("rev-parse", "HEAD", cwd=repo)
 
 
 def git(*args: str, cwd: Path) -> str:
@@ -146,6 +163,67 @@ def test_committed_certificates_record_names_the_commit_3_4_1_used():
     record = drm_connector.read_record(REPO, "certificates")
     assert record["sha"] == CERT_SHIPPED_SHA
     assert record["repo"] == "ThePalaceProject/mobile-certificates"
+
+
+CENSUS_BUILD_FILES = {
+    "Certificates/Palace/iOS/AddLCP.swift",
+    "Certificates/Palace/iOS/GoogleService-Info.plist",
+    "Certificates/Palace/iOS/ReaderClientCert.sig",
+    "Certificates/Palace/iOS/KeyObfuscator.swift",
+    "Certificates/Palace/iOS/APIKeys.json",
+}
+
+
+def certificates_paths_used_by_scripts() -> set:
+    """Every mobile-certificates path a script or workflow reads, derived from
+    the files themselves: literal `mobile-certificates/...` paths, and
+    `$VAR/...` uses of a variable assigned a `mobile-certificates/...` path."""
+    found = set()
+    sources = [p for p in (REPO / "scripts").rglob("*") if p.is_file() and p.suffix in {".sh", ".py", ".rb"}
+               and "tests" not in p.relative_to(REPO / "scripts").parts]
+    sources += list((REPO / ".github").rglob("*.yml"))
+    for source in sources:
+        text = source.read_text(errors="replace")
+        variables = {}
+        for name, sub in re.findall(r'(\w+)="[^"]*mobile-certificates/([^"$\s]+)"', text):
+            variables[name] = sub.rstrip("/")
+        for match in re.findall(r'mobile-certificates/([A-Za-z0-9_./-]+)', text):
+            if any(match == sub for sub in variables.values()):
+                continue  # the assignment itself; its uses are expanded below
+            found.add(match.rstrip("/"))
+        for name, sub in variables.items():
+            for rest in re.findall(r'\$\{?' + name + r'\}?/([A-Za-z0-9_./-]+)', text):
+                found.add(f"{sub}/{rest}")
+    return found
+
+
+def covered(path: str, entries: list) -> bool:
+    return any(path == entry or path.startswith(entry.rstrip("/") + "/") for entry in entries)
+
+
+def test_census_finds_the_certificates_files_the_scripts_read():
+    # Shows the scan is able to find uses, so an empty result cannot pass.
+    used = certificates_paths_used_by_scripts()
+    assert CENSUS_BUILD_FILES | {TOOLING_FILE} <= used
+
+
+def test_every_certificates_path_a_script_reads_is_in_the_record():
+    record = drm_connector.read_record(REPO, "certificates")
+    entries = record["paths"] + record["tooling"]
+    uncovered = sorted(p for p in certificates_paths_used_by_scripts() if not covered(p, entries))
+    assert uncovered == []
+
+
+def test_committed_certificates_record_checks_the_build_files_not_the_tooling():
+    record = drm_connector.read_record(REPO, "certificates")
+    assert set(record["paths"]) == CENSUS_BUILD_FILES
+    assert record["tooling"] == [TOOLING_FILE]
+
+
+def test_certificates_record_without_paths_is_an_error(tmp_path):
+    write_cert_action(tmp_path, ref=CERT_SHIPPED_SHA, paths="")
+    with pytest.raises(drm_connector.RecordError, match="paths"):
+        drm_connector.read_record(tmp_path, "certificates")
 
 
 def test_certificates_record_needs_no_generation(tmp_path):
@@ -410,8 +488,8 @@ def linked(tmp_path, remote):
     certs = tmp_path / "mobile-certificates"
     certs.mkdir()
     git("init", "-q", "-b", "main", cwd=certs)
-    cert_pin = commit(certs, "certs pinned")
-    cert_tip = commit(certs, "certs later")
+    cert_pin = commit_files(certs, {BUILD_FILE: "lcp 4.1.0", TOOLING_FILE: "notes v1"}, "certs pinned")
+    cert_tip = commit_files(certs, {BUILD_FILE: "lcp 4.2.0"}, "certs later")
     git("checkout", "-q", "--detach", cert_pin, cwd=certs)
     root = tmp_path / "app"
     root.mkdir()
@@ -458,14 +536,57 @@ def test_check_reads_the_adept_rmsdk_override_instead_of_the_symlink(linked, tmp
     assert shas["main"] in result.stdout
 
 
-def test_check_fails_when_certificates_are_at_another_commit(linked):
+def test_check_fails_when_a_certificates_build_file_differs_from_the_record(linked):
     root, connector, shas = linked
     git("checkout", "-q", "--detach", shas["pinned"], cwd=connector)
     certs = root.parent / "mobile-certificates"
     git("checkout", "-q", "--detach", shas["cert_tip"], cwd=certs)
     result = run_cli("check", root=root)
     assert result.returncode == 1
-    assert f"checkout --detach {shas['cert_pin']}" in result.stdout
+    assert BUILD_FILE in result.stdout
+    assert f"checkout {shas['cert_pin']} -- {BUILD_FILE}" in result.stdout
+
+
+def test_check_passes_when_only_certificates_tooling_differs(linked):
+    # mobile-certificates also hosts tooling developed in place; commits and
+    # edits to files the build does not read are not drift.
+    root, connector, shas = linked
+    git("checkout", "-q", "--detach", shas["pinned"], cwd=connector)
+    certs = root.parent / "mobile-certificates"
+    git("checkout", "-q", "-b", "tooling-work", cwd=certs)
+    commit_files(certs, {TOOLING_FILE: "notes v2"}, "tooling commit")
+    (certs / TOOLING_FILE).write_text("notes v3, not committed")
+    result = run_cli("check", root=root)
+    assert result.returncode == 0, result.stdout
+    assert "build files match" in result.stdout
+
+
+def test_check_fails_on_an_uncommitted_change_to_a_certificates_build_file(linked):
+    root, connector, shas = linked
+    git("checkout", "-q", "--detach", shas["pinned"], cwd=connector)
+    certs = root.parent / "mobile-certificates"
+    (certs / BUILD_FILE).write_text("edited in place")
+    result = run_cli("check", root=root)
+    assert result.returncode == 1
+    assert BUILD_FILE in result.stdout
+
+
+def test_check_fails_when_the_recorded_certificates_commit_is_not_fetched(linked):
+    root, connector, shas = linked
+    git("checkout", "-q", "--detach", shas["pinned"], cwd=connector)
+    write_cert_action(root, ref="1" * 40)
+    result = run_cli("check", root=root)
+    assert result.returncode == 1
+    assert "fetch origin" in result.stdout
+
+
+def test_check_reports_a_recorded_path_missing_from_the_recorded_commit(linked):
+    root, connector, shas = linked
+    git("checkout", "-q", "--detach", shas["pinned"], cwd=connector)
+    write_cert_action(root, ref=shas["cert_pin"], paths=f"{BUILD_FILE} Certificates/Palace/iOS/Gone.plist")
+    result = run_cli("check", root=root)
+    assert result.returncode == 3
+    assert "Gone.plist" in result.stdout
 
 
 def test_check_fails_when_a_drm_setup_has_no_certificates_checkout(linked):

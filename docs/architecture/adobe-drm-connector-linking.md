@@ -204,10 +204,15 @@ depends on. The others are recorded the same way or where they already live:
   script. Its record is the input defaults of
   `.github/actions/checkout-certificates/action.yml` (`repo`, `ref`), first set
   to `855e8752fab169afd262102f75f3b22d793d013e`, the commit every 3.4.1 build
-  used. Every workflow checks it out through that action, bootstrap clones it at
-  `ref`, and `drm_connector.py check` covers it: `../mobile-certificates`
-  locally, `./mobile-certificates` in CI. A change in that repository reaches
-  builds only when the record moves.
+  used. Every workflow checks it out through that action and bootstrap clones
+  it at `ref`. Because people also develop tooling in that repository in place,
+  `drm_connector.py check` compares content, not the commit: the files listed
+  in `paths` (the ones `build-carthage.sh` and `update-certificates.sh` read)
+  must match `ref`, committed or not, in `../mobile-certificates` locally or
+  `./mobile-certificates` in CI. Files in `tooling` (the release-notes script)
+  are not compared. `test_drm_connector.py` derives every certificates path the
+  scripts read and fails if one is in neither list. A change to a build file
+  reaches builds only when the record moves.
 * **liblcp**, the LCP library Carthage downloads, is checked after
   `carthage bootstrap` by `scripts/build-carthage.sh`, which records its
   version and the SHA-256 of the archive. A different version in
