@@ -19,6 +19,8 @@ import PalaceBookModel
 ///     and `sync`), and the reads that gate behaviour (e.g. `syncUrl != loansUrl`,
 ///     the duplicate-load guard) run on that same main queue. No write races
 ///     another write across threads.
+///   • `mainThreadComparisonCount` is written only inside the sync's
+///     main-thread apply block and read by tests after the sync ends.
 ///   • `_needsRebuildFromServer` (the INV-1 rebuild flag) is guarded by its own
 ///     `rebuildFlagLock`, so the disk-write queue can read/clear it race-free.
 ///
@@ -181,6 +183,11 @@ final class BookRegistrySync: @unchecked Sendable {
   /// instead of waiting on a wall-clock deadline (PP-5296). Per-instance for the
   /// same reason as `_scheduledRedownloads`.
   private let _syncTasks = XCTestJoinableTasks()
+
+  /// Feed entries the main thread compared with their record because the
+  /// off-main comparison was out of date. Tests read it to check that an
+  /// undisturbed sync does no comparison on the main thread.
+  private(set) var mainThreadComparisonCount = 0
 
   /// Schedules `body` on the main queue after `delay`, retaining the Task under XCTest.
   private func trackScheduledRedownload(
@@ -595,6 +602,21 @@ final class BookRegistrySync: @unchecked Sendable {
         return
       }
 
+      // Parse the feed and compare it with the shelf here, off the main thread.
+      // The main-thread block below applies the result. If any registry write
+      // came after this read, it compares every entry again.
+      let feedBooks = feed.entries.compactMap { entry in
+        (entry as? TPPOPDSEntry).flatMap { TPPBook(entry: $0) }
+      }
+      let comparison = self.store.readRegistryWithWriteGeneration { registry in
+        feedBooks.map { book in
+          registry[book.identifier].map { record in
+            Self.compare(record: record, with: book, stateAtFetchStart: statesAtFetchStart[book.identifier])
+          }
+        }
+      }
+      dependencies.afterLoansFeedCompared()
+
       await MainActor.run { [weak self] in
         guard let self else { return }
         if self.syncUrl != loansUrl { return }
@@ -615,40 +637,30 @@ final class BookRegistrySync: @unchecked Sendable {
         // unchanged sync keeps every instance and neither saves nor announces.
         self.store.mutateRegistrySyncAnnouncingChanges { registry in
           let localIdentifiers = Set<String>(registry.keys)
-          for entry in feed.entries {
-            guard let opdsEntry = entry as? TPPOPDSEntry,
-                  let book = TPPBook(entry: opdsEntry)
-            else { continue }
+          let comparisonIsCurrent = self.store.currentWriteGeneration() == comparison.writeGeneration
+          for (index, book) in feedBooks.enumerated() {
             feedIdentifiers.insert(book.identifier)
 
             if let record = registry[book.identifier] {
-              // Follow the server between Holds and My Books: a hold borrowed on
-              // another device otherwise stayed a hold until sign-out (PP-5360).
-              let unchangedSinceFetch = statesAtFetchStart[book.identifier] == record.state
-              let nextState = unchangedSinceFetch
-                ? TPPBookRegistryRecord.stateAfterServerUpdate(current: record.state, book: book)
-                : record.state
-              if nextState != record.state {
-                stateChanges.append((book.identifier, nextState))
+              // The earlier comparison holds only for the record it read: a
+              // store write since then, or an earlier entry for the same book
+              // in this feed, means compare again here.
+              let earlier = comparisonIsCurrent ? comparison.value[index] : nil
+              let outcome: FeedComparison
+              if let earlier, earlier.record === record {
+                outcome = earlier
+              } else {
+                self.mainThreadComparisonCount += 1
+                outcome = Self.compare(record: record, with: book, stateAtFetchStart: statesAtFetchStart[book.identifier])
+              }
+              if outcome.nextState != record.state {
+                stateChanges.append((book.identifier, outcome.nextState))
               }
               dependencies.onAvailabilityChange(record, book)
-              // Preserve metadata already in the registry if the loans feed's
-              // entry for this book came back lean (authors / summary /
-              // categories missing). The CM's loans endpoint has been observed
-              // to omit those fields intermittently — without this guard, a
-              // later sync overwrites a previously-enriched record and MyBooks
-              // cells lose their author line until a catalog visit refills it.
-              let mergedBook = record.book.mergingPreservingMetadata(from: book)
-              let reconciled = TPPBookRegistryRecord(
-                book: mergedBook,
-                location: record.location,
-                state: nextState,
-                fulfillmentId: record.fulfillmentId,
-                readiumBookmarks: record.readiumBookmarks,
-                genericBookmarks: record.genericBookmarks
-              )
-              if !Self.recordsMatch(record, reconciled) {
-                registry[book.identifier] = reconciled
+              if !outcome.matches {
+                registry[book.identifier] = Self.reconciledRecord(
+                  record, book: record.book.mergingPreservingMetadata(from: book), state: outcome.nextState
+                )
                 changesMade = true
               }
             } else {
@@ -731,6 +743,51 @@ final class BookRegistrySync: @unchecked Sendable {
       }
     }
     _syncTasks.retain(syncTask)
+  }
+
+  /// What a loans sync does with one stored record and its feed entry.
+  struct FeedComparison: Sendable {
+    let record: TPPBookRegistryRecord
+    let nextState: TPPBookState
+    let matches: Bool
+  }
+
+  /// Compares a stored record with its feed entry. It leaves out the decoded
+  /// cover images, so it can run off the main thread.
+  static func compare(
+    record: TPPBookRegistryRecord,
+    with book: TPPBook,
+    stateAtFetchStart: TPPBookState?
+  ) -> FeedComparison {
+    // Follow the server between Holds and My Books: a hold borrowed on
+    // another device otherwise stayed a hold until sign-out (PP-5360).
+    let nextState = stateAtFetchStart == record.state
+      ? TPPBookRegistryRecord.stateAfterServerUpdate(current: record.state, book: book)
+      : record.state
+    // Preserve metadata already in the registry if the loans feed's entry for
+    // this book came back lean (authors / summary / categories missing). The
+    // CM's loans endpoint has been observed to omit those fields intermittently
+    // — without this guard, a later sync overwrites a previously-enriched record
+    // and MyBooks cells lose their author line until a catalog visit refills it.
+    let reconciled = reconciledRecord(
+      record, book: record.book.mergingPreservingMetadataWithoutImages(from: book), state: nextState
+    )
+    return FeedComparison(record: record, nextState: nextState, matches: recordsMatch(record, reconciled))
+  }
+
+  private static func reconciledRecord(
+    _ record: TPPBookRegistryRecord,
+    book: TPPBook,
+    state: TPPBookState
+  ) -> TPPBookRegistryRecord {
+    TPPBookRegistryRecord(
+      book: book,
+      location: record.location,
+      state: state,
+      fulfillmentId: record.fulfillmentId,
+      readiumBookmarks: record.readiumBookmarks,
+      genericBookmarks: record.genericBookmarks
+    )
   }
 
   /// Whether two records hold the same data. The persisted form is the oracle;

@@ -3,10 +3,10 @@
 **Status:** Accepted · supersedes the ambient,
 undeclared conventions previously spread across `CLAUDE.md` and the code.
 **Authority:** This is the single source of truth for *how state is held, mutated,
-and observed* in Palace. Contracts B–F of this campaign conform to it; Contract F
-encodes its checkable clauses as `arch drift` probes over
-`docs/architecture/.arch/facts.json`. If code and this doctrine disagree, one of
-them is a bug — and the probe says which.
+and observed* in Palace. If code and this doctrine disagree, one of them is a bug.
+Most clauses are kept by review and by the tests named under each one; the
+clauses that CI checks mechanically are listed in
+[What CI checks](#what-ci-checks), and no other clause is machine-checked.
 
 ## Context
 
@@ -23,8 +23,8 @@ owner; and a documented-but-unenforced legal-transition set.
 
 The problem was never a shortage of good patterns. It was **unfinished migrations
 and no stated rule**. This doctrine states the rule, converts the accidental
-divergence into *bounded, named debt with finish-lines*, and makes each clause
-mechanically enforceable so it cannot silently rot again.
+divergence into *bounded, named debt with finish-lines*, and names the test or
+check that holds each clause where one exists.
 
 ## Decision — the two tiers
 
@@ -36,10 +36,12 @@ function* — no I/O, no `@Published` mutation, no singleton reads — so it is
 testable with zero mocks and pinnable by contract snapshot.
 
 Fact: today `Store` has **exactly one** production consumer —
-`HoldsViewModel` (`Palace/Holds/HoldsViewModel.swift:52`). That is the beachhead,
+`HoldsViewModel` (`Palace/Holds/HoldsViewModel.swift:56`). That is the beachhead,
 not the finish line. This doctrine declares the *direction*: critical-path
-decision logic migrates onto this dialect (see Contract E, which extracts
-`ReturnReducer` / `BorrowReducerCore` / `DownloadStartReducer` cores).
+decision logic migrates onto this dialect. The borrow, return and download
+decision cores (`BorrowReducerCore`, `ReturnReducer`, `DownloadStartReducer`
+in `Palace/MyBooks/`) are already extracted as pure functions with their own
+contract tests; see [MyBooks pipeline shape](#mybooks-pipeline-shape--hub-effect-runners-decision-cores).
 
 ### 2. Leaf-UI tier — plain ObservableObject
 Everything that is *not* a critical-path state machine — navigation, tab routing,
@@ -49,22 +51,24 @@ presentation, playback session UI — uses plain `@MainActor ObservableObject` w
 leaf view is the over-abstraction tax in a costume. Reducers earn their ceremony
 only where a regression handles user money or access.
 
-## Tracked debt — ALLOWED, but each carries a finish-line probe
+## Tracked debt — allowed, each with a finish line
 
-Debt is permitted **only** when it is named here with a finish-line that Contract
-F's probe enforces. An un-declared divergence is a doctrine violation; a declared
-one is a scheduled repayment.
+Debt is permitted **only** when it is named here with a finish line. An
+undeclared divergence is a doctrine violation; a declared one is a scheduled
+repayment. No CI check watches these rows; a reviewer holds them, and the
+finish line says what the code looks like when the debt is repaid.
 
-| Debt | Where | Finish-line (probe flips when repaid) |
+| Debt | Where | Finish line |
 |---|---|---|
-| **Shape-only `BorrowReducer`** | `Palace/Book/UI/BookDetail/BorrowReducer.swift:114` | Every branch returns `.none`; the ViewModel owns effects. Repaid when effects move into the reducer — the `absent: .task` probe flips to a real effect. |
-| **Shape-only `AuthReducer`** | `Palace/Packages/PalaceAuth/.../AuthReducer.swift:132` | All branches `.none`; `TPPSignInBusinessLogic` owns effects. Same finish-line as above. |
-| **Duplicate `Effect`** | canonical `Sendable`-bound at `Palace/AppInfrastructure/Store.swift:21`; second copy WITHOUT the `Sendable` bound in `PalaceAuth` at `Palace/Packages/PalaceAuth/Sources/PalaceAuth/Effect.swift:11` | Allowed count is fixed by Contract B (the package boundary reason is that `PalaceAuth` must not import the app module). A `count` probe pins the number so a *third* copy cannot appear silently. |
+| **Shape-only `BorrowReducer`** | `Palace/Book/UI/BookDetail/BorrowReducer.swift:117` | Integrated: `BookDetailViewModel` runs it at `:306` and `:833`. Every branch returns `.none` and the ViewModel still performs the borrow, download, return and cancel side effects. Repaid when at least one of those side effects is returned by the reducer as an `Effect` and run by its caller, instead of being started by the ViewModel. |
+| **Shape-only `AuthReducer`** | `Palace/Packages/PalaceAuth/Sources/PalaceAuth/AuthReducer.swift:139` | Integrated: `TPPSignInBusinessLogic.authState` (`Palace/SignInLogic/TPPSignInBusinessLogic.swift:194`) is the source of truth for in-flight sign-in state, and every legacy `@objc` auth property is computed from it through `dispatch(_:)` (`:198`). All 12 branches return `.none`; token requests, credential saves and DRM activation still run in `TPPSignInBusinessLogic`. Repaid on the same terms as `BorrowReducer`. |
+| **Duplicate `Effect`** | canonical at `Palace/AppInfrastructure/Store.swift:21`; mirror at `Palace/Packages/PalaceAuth/Sources/PalaceAuth/Effect.swift:39` | Two copies, both with `Environment: Sendable`, because `PalaceAuth` cannot import the app module. Keep the mirror identical to the canonical type and do not add a third copy. Repaid when both move into one SPM module that the app target and `PalaceAuth` import. |
 
 **`BorrowReducer` and `AuthReducer` are shape-only by declaration, not by
-accident** — they are pure state machines already extracted and contract-tested;
-only their effects have not yet moved across. That is the *last* step of a
-migration, captured mid-stride, not a design defect.
+accident.** They are pure state machines, already integrated and covered by
+`BorrowReducerTests`, `BorrowReducerContractTests` and `AuthReducerTests`; only
+their effects have not moved across. That is the last step of a migration, not a
+design defect.
 
 ## Out-of-family by design — NOT debt
 
@@ -83,37 +87,37 @@ source of truth for book state — **scoped to loans**. It projects read-only
 Combine publishers (`registryPublisher` / `bookStatePublisher` /
 `syncEventPublisher` / `registryDidChangePublisher`); consumers observe, they never reach in and mutate.
 
-`SideloadedBookRegistry` (`Palace/MyBooks/Sideload/SideloadedBookRegistry.swift:45`)
-is a **documented, probe-guarded second owner** for side-loaded content, exempt
-from loans-feed reconciliation by design (see Contract D). "Single source of
-truth" is therefore honestly *scoped*, not silently violated — the boundary is
-declared and a probe guards it against a third owner appearing.
+`SideloadedBookRegistry` (`Palace/MyBooks/Sideload/SideloadedBookRegistry.swift`)
+(`:24`) is a **documented second owner** for side-loaded content, exempt from
+loans-feed reconciliation by design. "Single source of truth" is therefore
+*scoped*, not violated: `PalaceTests/Contract/SideloadBoundaryTests.swift` pins
+that each owner answers only for its own books and that importing a side-loaded
+book never calls the loan owner's `setState`. No check counts book-state owners;
+a third owner is a review finding.
 
 ## The one mutation point — enforced
 
-`TPPBookState.allowedTransitions` (`Palace/Packages/PalaceBookModel/Sources/PalaceBookModel/TPPBookState.swift:91`,
-`canTransition` at `:151`) is the declared legal-transition set. It MUST be
-enforced at the single mutation seam `TPPBookRegistry.setState`
-(`Palace/Packages/PalaceBookRegistry/Sources/PalaceBookRegistry/TPPBookRegistry.swift:605`) — log-only in RELEASE (never
-drops state), assert in DEBUG (see Contract C). An unenforced invariant is a
-comment; this doctrine promotes it to an enforced rule so illegal transitions
-become detectable instead of merely discouraged.
+`TPPBookState.allowedTransitions` (`Palace/Packages/PalaceBookModel/Sources/PalaceBookModel/TPPBookState.swift:93`,
+`canTransition` at `:188`) is the declared legal-transition set. It is enforced
+at the single mutation seam `TPPBookRegistry.setState`
+(`Palace/Packages/PalaceBookRegistry/Sources/PalaceBookRegistry/TPPBookRegistry.swift:819`):
+an illegal transition is logged in RELEASE (the state is still written, never
+dropped) and fails an assertion in DEBUG, through the injectable
+`IllegalTransitionHandler` (`:492`). `TPPBookRegistryMutationContractTests`
+covers the handler.
 
-Correspondingly, the deprecated `NotificationCenter` dual-write
-(`postStateNotification`) is **deleted**, not merely marked deprecated — a
-"deprecated" post that still fires on every `setState` is a lie the doctrine
-does not tolerate (Contract C).
+The deprecated `NotificationCenter` dual-write (`postStateNotification`) is
+**deleted**, not only marked deprecated: a deprecated post that still fires on
+every `setState` keeps old observers working and hides them from review.
 
 ## Consequences
 
 - **New code has a rule.** Critical-path state machine → reducer. Leaf UI →
-  ObservableObject. No third dialect appears by drift; if one does, a probe reddens.
+  ObservableObject. A third dialect is a review finding; no check detects one.
 - **Debt is bounded and scheduled**, not perpetual. Each shape-only reducer and
-  the duplicate `Effect` has a finish-line a machine watches.
-- **The doctrine is executable.** Contract F derives `absent` / `count` /
-  `contains` probes from these clauses, wired into
-  `.github/workflows/tooling-checks.yml`, so the architecture cannot silently
-  drift from what this document says.
+  the duplicate `Effect` has a written finish line.
+- **The checks that exist are ratchets on ambient reach**, not on these clauses.
+  See [What CI checks](#what-ci-checks).
 - **The riskiest code becomes the most-verified.** Borrow/return/download decision
   logic moves onto the pure, snapshot-pinned reducer dialect, where a regression
   fails a test loudly instead of shipping to a patron.
@@ -147,23 +151,35 @@ labels the service snapshot recorded — **snapshot shape-equality is the
 behavior-preservation proof**. An extraction without a pinned baseline is a
 rewrite, not a refactor.
 
-## Probe execution — repo-local, dependency-free
+## What CI checks
 
-Doctrine probes run in CI (`tooling-checks.yml`) via a checker committed to
-`scripts/` that is **pure-stdlib** and reads only the committed
-`docs/architecture/.arch/facts.json` plus the source tree. CI runners have no
-machine-local harness tooling; never wire a machine-local binary into the
-workflow. Probe regexes must be anchored to full type names (an unanchored
-`class TPPBookRegistry` false-matches `TPPBookRegistryRecord` and miscounts the
-book-state owners), and the probe test suite must assert that a clean tree
-**passes**, not only that a violation fails.
+These checks run on every pull request in `.github/workflows/tooling-checks.yml`.
+The first two hold a baseline count and fail when the count rises; the other two
+fail on any file or package that breaks their rule. None of them reads this
+document.
 
-## Flow diagrams are derived, never authored
+| Check | What it bounds | Where CI runs it |
+|---|---|---|
+| `scripts/check-shared-read-count.sh` (baseline `scripts/godclass-shared-read-baseline.txt`) | `<Type>.shared` reads in app-target Swift under `Palace/` (SPM packages excluded) | `tooling-checks.yml` "pytest detector suite": `scripts/tests/test_check_shared_read_count.py::test_live_repo_baseline_passes` runs it on the whole tree |
+| `scripts/check-appcontainer-locator-count.sh` (baseline `scripts/godclass-appcontainer-locator-baseline.txt`, allowlist `scripts/godclass-appcontainer-locator-allowlist.txt`) | `AppContainer.production()` used as a service locator outside composition roots | same step, `scripts/tests/test_check_appcontainer_locator_count.py::test_live_repo_baseline_passes` |
+| `scripts/check-package-tests-wired.sh` | every SPM package under `Palace/Packages/` that has tests is run by CI | `tooling-checks.yml` step "package tests are wired (whole tree)" |
+| `scripts/check-file-size-ceiling.sh` | code lines per app-target Swift file; a file over the ceiling fails unless allowlisted at a recorded size | `tooling-checks.yml` step "file-size ceiling (whole tree)" |
 
-Sequence diagrams for the pinned flows (`docs/architecture/flows/`) are
-generated from the contract-snapshot JSON under
-`PalaceTests/Contract/__Snapshots__/`, never hand-written. Hand-authored flow
-prose drifts silently; a derived diagram re-generates from the pinned truth.
+`scripts/verify-pr.sh` also runs all four as its `decomposition_ratchets` leg.
+`scripts/tests/test_verify_pr_ratchet_wiring.sh` (run by the "verify-pr
+detector wiring test" step) checks that `verify-pr.sh` still calls them.
+
+The reducer-tier rule, the leaf-UI rule, the debt table, the single
+`Effect` mirror and the single mutation point are not machine-checked. A new
+check for one of them needs a real instance in the tree first; see the
+"Adding a detector" rule in the repository `CLAUDE.md`.
+
+## Flow descriptions come from the snapshots
+
+The contract-snapshot JSON under `PalaceTests/Contract/__Snapshots__/` is the
+record of each pinned flow's call order. When a document describes one of those
+flows, take the order from the snapshot, not from memory, and cite the snapshot
+file. No tool generates flow diagrams from the snapshots today.
 
 ## References
 - `docs/architecture/architectural-triad.md` (MVVM + Services + Reducers rationale)

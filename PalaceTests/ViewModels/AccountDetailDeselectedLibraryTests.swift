@@ -11,6 +11,7 @@
 //
 
 import XCTest
+import Combine
 import PalaceCatalog
 @testable import Palace
 
@@ -106,6 +107,22 @@ final class AccountDetailDeselectedLibraryTests: PalaceTestCase {
         )
     }
 
+    private var changeSinks = Set<AnyCancellable>()
+
+    /// Publishes an account change and returns once the view model's
+    /// subscriber has run: both hop through `RunLoop.main`, which delivers in
+    /// order, and the view model subscribed first.
+    private func publishChange(of account: TPPUserAccount) async {
+        let delivered = expectation(description: "account change delivered")
+        account.changes
+            .receive(on: RunLoop.main)
+            .first()
+            .sink { _ in delivered.fulfill() }
+            .store(in: &changeSinks)
+        account._publishChangeForTesting()
+        await fulfillment(of: [delivered], timeout: 5) // STARVE-001-OK: waits on one RunLoop.main delivery, not on async work
+    }
+
     /// Yield until the view model's init Task has run `setupTableData()`.
     private func drainMainActor() async {
         for _ in 0..<20 { await Task.yield() }
@@ -157,9 +174,8 @@ final class AccountDetailDeselectedLibraryTests: PalaceTestCase {
         let viewModel = makeViewModel(libraryAccountID: uuid, appContainer: appContainer)
         await drainMainActor()
 
-        // `removeAll()` posts this synchronously at the end of sign-out.
-        NotificationCenter.default.post(name: .TPPDidSignOut, object: nil)
-        await drainMainActor()
+        // `removeAll()` publishes this change at the end of sign-out.
+        await publishChange(of: appContainer.accountsManager.userAccount(for: uuid))
 
         XCTAssertTrue(cells(viewModel).contains(.barcode),
                       "After a sign-out on a deselected library the page must still offer the sign-in form, not collapse to Report an Issue.")

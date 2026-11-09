@@ -222,20 +222,18 @@ class AccountDetailViewModel: NSObject, ObservableObject {
     private func setupObservers() {
         // `.receive(on: RunLoop.main)` is REQUIRED, not cosmetic: this sink
         // closure is `@MainActor`-isolated (the view model is `@MainActor`), and
-        // `.TPPUserAccountDidChange` is posted on WHATEVER thread `setAuthToken`
-        // runs on — notably a BACKGROUND queue during the token-refresh-before-
+        // the account sends its changes on WHATEVER thread `setAuthToken` runs
+        // on — notably a BACKGROUND queue during the token-refresh-before-
         // playback path (`TPPNetworkExecutor.executeTokenRefresh` →
         // `TPPUserAccount.notifyAccountDidChange`). Without the hop, Combine runs
         // the `@MainActor` closure on that background queue and Swift 6 traps
         // (`dispatch_assert_queue_fail`) — it crashed audiobook startup. The
-        // hop also makes the inner `Task { @MainActor }` unnecessary. Mirrors the
-        // two subscribers below that already receive on main.
-        NotificationCenter.default.publisher(for: .TPPUserAccountDidChange)
+        // subscription is to this library's account only, so a token refresh
+        // in another library does not redraw the page. Sign-out is one of
+        // these changes.
+        accountsManager.userAccount(for: libraryAccountID).changes
             .receive(on: RunLoop.main)
-            .sink { [weak self] notification in
-                guard let self, self.concernsThisLibrary(notification) else { return }
-                self.accountDidChange()
-            }
+            .sink { [weak self] in self?.accountDidChange() }
             .store(in: &cancellables)
 
         // Listen for account switches to refresh sign-in state
@@ -244,18 +242,11 @@ class AccountDetailViewModel: NSObject, ObservableObject {
             .sink { [weak self] _ in self?.accountDidChange() }
             .store(in: &cancellables)
 
-        // Belt-and-suspenders refresh signals. The `.TPPUserAccountDidChange`
-        // path depends on the full sign-out/sign-in pipeline completing; if
-        // that pipeline hiccups (or lengthens — e.g. SAML SLO), the view can
-        // miss the state change. These two channels guarantee a refresh:
-        //   1. .TPPDidSignOut is posted synchronously by removeAll().
-        //   2. UserAccountPublisher.$hasCredentials is the authoritative
-        //      @Published source of truth for credential state.
-        NotificationCenter.default.publisher(for: .TPPDidSignOut)
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.accountDidChange() }
-            .store(in: &cancellables)
-
+        // A second refresh signal. The account change depends on the full
+        // sign-in or sign-out pipeline completing; if that pipeline stops (or
+        // lengthens, as SAML SLO does), `UserAccountPublisher.$hasCredentials`,
+        // the @Published source of truth for credential state, still
+        // refreshes the page.
         userAccountPublisher.$hasCredentials
             .receive(on: RunLoop.main)
             .removeDuplicates()
@@ -614,13 +605,6 @@ class AccountDetailViewModel: NSObject, ObservableObject {
             return
         }
         presented.dismiss(animated: true)
-    }
-
-    /// `.TPPUserAccountDidChange` carries the account that changed; a change
-    /// to another library's account (a token refresh, say) is not this page's.
-    private func concernsThisLibrary(_ notification: Notification) -> Bool {
-        guard let changed = (notification.object as? TPPUserAccount)?.libraryUUID else { return true }
-        return changed == libraryAccountID
     }
 
     /// While signed out the fields hold what the patron is typing, so they are
