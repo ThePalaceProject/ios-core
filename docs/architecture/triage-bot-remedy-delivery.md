@@ -1,6 +1,6 @@
 # Triage bot: how remedies reach patrons
 
-Status: implemented on `spike/triage-bot-keyword-strength-tiers`, pending review.
+Status: shipped in #1379 (PP-4865).
 Supersedes nothing. Companion to the classifier comments in `LocalClassifier.swift`.
 
 ## The problem this solves
@@ -47,8 +47,7 @@ resolution was "a fix exists or is coming", which the patron can act on only by
 getting the build: 26 of 36 resolved audiobook tickets, and 0 of 44 resolved
 sign-in tickets. That is what orders and filters the remedy ladders.
 
-Counting that class needs care, and an earlier draft of this document had the
-audiobook figure wrong. Its dominant phrasing is "known issue with certain
+Counting that class needs care. Its dominant phrasing is "known issue with certain
 audiobooks; fixed in Palace v3.2.3" — which contains no form of the words
 "update" or "wait", so a scan built from remedy names misses almost all of it
 while a scan for "fix" sweeps in unrelated prose. The rate is only reproducible
@@ -73,8 +72,7 @@ Escalation is not a dead end. Three things happen there, in order of preference:
 1. If an entry was recognised, the ticket carries its identity so support sees a
    scoped report rather than "a patron reports a problem". This holds on all
    three exits from a ladder: exhausting it, abandoning it, and declining it.
-   The third was added late, after review found that declining a ladder filed the
-   ladder's own id and dropped the recognition.
+   Declining must file the recognised entry's id, not the ladder's own id.
 2. The patron is offered the category's remedy ladder, if one exists.
 3. When the ladder is exhausted or the patron declines it, a question is asked
    before the ticket is filed. The entry's own question is used when recognition

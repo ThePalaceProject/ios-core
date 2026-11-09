@@ -52,7 +52,6 @@ Refresh the relevant one before changing code in that area.
 | [`god-class-decomposition-plan.md`](./god-class-decomposition-plan.md) | The wave plan for breaking up the god classes into `Palace/Packages/*`. Extends the triad's Phases 6–7. The map for why files now live where they do. |
 | [`singleton-census.md`](./singleton-census.md) | Captured inventory of `.shared` declarations and reads; feeds the `.shared`-read ratchet. |
 | [`wave3-coupling-map.md`](./wave3-coupling-map.md) | Write-ahead characterization scouting for the decomposition — which seams are genuinely coupled versus incidentally adjacent. |
-| [`wave2b-mutation-baseline.md`](./wave2b-mutation-baseline.md) | Recorded mutation baseline for the Wave 2b surfaces, captured 2026-07-27. A measurement, not a plan. |
 | [`swift-concurrency-doctrine.md`](./swift-concurrency-doctrine.md) | How to resolve a concurrency diagnostic: fix by isolation, never `nonisolated(unsafe)`; map shared types before fixing sites. Lifted from the six Swift 6 migration plans when the migration finished at #1199 (`SWIFT_VERSION 6.0` + `complete` on every config, so a violation is now a compile error). Those plans are in git history. |
 
 ## Subsystem designs
@@ -63,9 +62,7 @@ Refresh the relevant one before changing code in that area.
 | [`audiobook-systemic-overhaul.md`](./audiobook-systemic-overhaul.md) | Three-phase Palace-side refactor of the audiobook stack — vendor adapter extraction, position-writer unification, singleton elimination. Closes six recurring failure patterns including the PP-4407 Marketplace regression class. <!-- audit-verified --> |
 | [`in-app-navigation-during-playback.md`](./in-app-navigation-during-playback.md) | Design for letting users navigate the app while an audiobook plays or an ebook session is open. |
 | [`sideloading-plan.md`](./sideloading-plan.md) | Sideloaded-content design: registry sync exemption, content-type handling, and the settings surface. |
-| [`lcp-first-open-reliable-start.md`](./lcp-first-open-reliable-start.md) | Making the first open of an LCP title start reliably. DRAFT — proposed, not ratified. |
 | [`ws3-overdrive-refulfill-loader-seam.md`](./ws3-overdrive-refulfill-loader-seam.md) | The loader seam that lets an expired OverDrive URL re-fulfill instead of failing. Accepted. |
-| [`hermeticity-accountdetail-hang-fix-design.md`](./hermeticity-accountdetail-hang-fix-design.md) | Design for the AccountDetail hang, with the hermeticity problem that caused it. Investigation complete; design for review. |
 | [`ipad-on-mac-exit-static-destructor-bypass.md`](./ipad-on-mac-exit-static-destructor-bypass.md) | Why iPad-on-Mac exits via `_exit(0)` to bypass static destructors, and what that costs. |
 | [`adobe-drm-connector-linking.md`](./adobe-drm-connector-linking.md) | Where the Adobe DRM connector generation is actually chosen (the CI action's `ref` default, the one shared `adobe-rmsdk` symlink, the `ADEPT_RMSDK` override), why there is no runtime switch, the test that keeps `AdobeConnectorGeneration.current` honest against the linked binaries, and what has to move together to replace a drop. |
 | [`ws4-mac-validation-runbook.md`](./ws4-mac-validation-runbook.md) | How to validate the Mac/iPad-on-Mac path, including the static-destructor bypass above. |
@@ -78,7 +75,7 @@ Refresh the relevant one before changing code in that area.
 | [`triage-bot-shared-architecture-proposal.md`](./triage-bot-shared-architecture-proposal.md) | The forward design: a shared triage service across iOS, Android, and the Palace backend. |
 | [`triage-bot-privacy-review.md`](./triage-bot-privacy-review.md) | The recorded privacy answer — what the bot collects, what leaves the device, and when. |
 | [`triage-bot-telemetry-decision.md`](./triage-bot-telemetry-decision.md) | Where the bot's usage telemetry lands, plus the three metrics and starting thresholds. |
-| [`triage-bot-remedy-delivery.md`](./triage-bot-remedy-delivery.md) | How remedies reach the user. Implemented on a spike branch, pending review. |
+| [`triage-bot-remedy-delivery.md`](./triage-bot-remedy-delivery.md) | How remedies reach the user: keyword strength tiers, remedy ladders, and their limits. Shipped. |
 
 ## Testing and verification machinery
 

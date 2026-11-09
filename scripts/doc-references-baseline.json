@@ -382,16 +382,6 @@
       "target": "openapi.yaml"
     },
     {
-      "doc": "docs/architecture/wave2b-mutation-baseline.md",
-      "kind": "source",
-      "target": "Palace/Book/Models/BookRegistrySync.swift"
-    },
-    {
-      "doc": "docs/architecture/wave2b-mutation-baseline.md",
-      "kind": "source",
-      "target": "Palace/Book/Models/TPPBookRegistry.swift"
-    },
-    {
       "doc": "docs/architecture/ws4-mac-validation-runbook.md",
       "kind": "workflow",
       "target": ".simdrive/journeys/ws4-ipad-on-mac-exit-adobe-drm.yaml"

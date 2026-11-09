@@ -1448,6 +1448,10 @@ public final class AudiobookSessionManager: ObservableObject {
     /// budget runs out. Well below the toolkit's own 30s `.failed` timeout,
     /// which still reports a genuine non-start.
     ///
+    /// Kept separate from `readinessTimeout`: that value bounds an await on a
+    /// non-LCP player, while this one bounds re-issued plays during LCP engine
+    /// init (network and decrypt), so the two are tuned independently.
+    ///
     /// Provisional: 3.0s/0.5s has not been measured on device.
     static let lcpFirstPlayBudget: TimeInterval = 3.0
     static let lcpFirstPlayRetryInterval: TimeInterval = 0.5

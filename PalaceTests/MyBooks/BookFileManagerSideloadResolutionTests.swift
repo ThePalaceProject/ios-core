@@ -2,7 +2,7 @@
 //  BookFileManagerSideloadResolutionTests.swift
 //  PalaceTests
 //
-//  Component 4 (sideloading-plan.md R6): a side-loaded book's file is written
+//  A side-loaded book's file is written
 //  under one fixed account (`SideloadedBookRegistry.sideloadContentAccountID`)
 //  because side-loaded content is account-agnostic. `BookFileManager.fileUrl`
 //  must therefore resolve a side-loaded id to that FIXED account's directory
