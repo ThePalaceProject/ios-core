@@ -13,18 +13,15 @@ import Combine
 @MainActor
 final class TPPSettingsTests: XCTestCase {
 
-    private var settings: TPPSettings!
     private var cancellables: Set<AnyCancellable>!
 
     override func setUp() {
         super.setUp()
-        settings = TPPSettings()
         cancellables = []
     }
 
     override func tearDown() {
         cancellables = nil
-        settings = nil
         super.tearDown()
     }
 

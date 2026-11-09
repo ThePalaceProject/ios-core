@@ -40,9 +40,8 @@ final class BookCellModelConnectivityTests: XCTestCase {
         model.isLoading = true
 
         reachability.simulate(connected: true)
-        await drainMainQueueAsync()
-        await drainMainQueueAsync()
 
+        await awaitPublishedAsync(model.$isLoading, timeout: 2.0) { !$0 }
         XCTAssertFalse(model.isLoading)
     }
 }

@@ -572,14 +572,14 @@ final class AccountsManagerSubscription: @unchecked Sendable {
     }
 
     private func useBetaLibrariesDidChange() {
-        // Run off the main thread, where the beta-libraries change is delivered. `updateAccountSet` does a
-        // synchronous read on the registry store's concurrent `accountSetsLock`
-        // (via `registryStore.bucketIsNonEmpty`) that blocks until any in-flight
-        // background catalog-refresh barrier on that lock drains; under
-        // load that barrier can take a long time, so reacting synchronously stalls
-        // the poster (the Settings UI — and any test that posts this notification,
-        // which is how it surfaced as a 120s hang). The account-set update is
-        // inherently async anyway (it may reload catalogs), so dispatch it.
+        // Run off the main thread, where the beta-libraries change is delivered.
+        // `updateAccountSet` does a synchronous read on the registry store's
+        // concurrent `accountSetsLock` (via `registryStore.bucketIsNonEmpty`)
+        // that blocks until any in-flight background catalog-refresh barrier on
+        // that lock drains; under load that barrier can take a long time, so
+        // reacting on main stalls the Settings UI (and any test that flips the
+        // switch, which is how it surfaced as a 120s hang). The account-set
+        // update is inherently async anyway (it may reload catalogs).
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             self?.updateAccountSet(completion: nil)
         }
