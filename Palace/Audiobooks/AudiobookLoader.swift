@@ -420,7 +420,7 @@ final class AudiobookLoader {
         )
         networkService.downloadOnlyOnWiFi = container.settings.downloadOnlyOnWiFi
 
-        let manager = DefaultAudiobookManager(
+        let manager = Self.makeManager(
             metadata: metadata,
             audiobook: audiobook,
             networkService: networkService,
@@ -497,6 +497,26 @@ final class AudiobookLoader {
         positionTrace.observe(player: manager.audiobook.player,
                               notificationCenter: notificationCenter)
         return positionTrace
+    }
+
+    /// The only place the app builds an audiobook manager. It turns off the
+    /// toolkit's Now Playing writes: `NowPlayingCoordinator` is the only
+    /// writer (PP-5504), and a second writer races it on the lock screen and
+    /// CarPlay.
+    static func makeManager(
+        metadata: AudiobookMetadata,
+        audiobook: Audiobook,
+        networkService: AudiobookNetworkService,
+        playbackTrackerDelegate: AudiobookPlaybackTrackerDelegate?
+    ) -> DefaultAudiobookManager {
+        let manager = DefaultAudiobookManager(
+            metadata: metadata,
+            audiobook: audiobook,
+            networkService: networkService,
+            playbackTrackerDelegate: playbackTrackerDelegate
+        )
+        manager.nowPlayingWriter = nil
+        return manager
     }
 
     private func logDecodingError(_ decodingError: DecodingError) {
