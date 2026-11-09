@@ -66,8 +66,11 @@ enum Group: Int {
     private let authStateChanges: AnyPublisher<TPPAccountAuthState, Never>
     private let activityPolicy: ActivityPolicy?
     /// The sign-in change sync waits while the app is not visible (PP-5508).
+    /// Credentials are checked again when it runs: a sign-out while it waits
+    /// would otherwise make `reloadData()` present a sign-in sheet.
     private lazy var signInSync = DeferredAmbientSync(policy: activityPolicy) { [weak self] in
-        self?.reloadData()
+        guard let self, self.hasCredentials() else { return }
+        self.reloadData()
     }
 
     /// Tracks whether the My Books tab is currently visible. When false,

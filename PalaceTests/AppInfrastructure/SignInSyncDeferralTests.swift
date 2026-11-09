@@ -21,6 +21,9 @@ final class SignInSyncDeferralTests: XCTestCase {
     private var policy: ActivityPolicy!
     /// Starts at `.loggedOut`; the view models drop the replayed first value.
     private var authState: CurrentValueSubject<TPPAccountAuthState, Never>!
+    /// Read by the view models at request time and again when a pending sync runs.
+    private var signedIn = true
+    private var signInPresentations = 0
 
     override func setUp() {
         super.setUp()
@@ -29,6 +32,8 @@ final class SignInSyncDeferralTests: XCTestCase {
         scheduler = FakeActivityTickScheduler()
         policy = makeTestActivityPolicy(scheduler: scheduler)
         authState = CurrentValueSubject(.loggedOut)
+        signedIn = true
+        signInPresentations = 0
     }
 
     override func tearDown() {
@@ -40,7 +45,7 @@ final class SignInSyncDeferralTests: XCTestCase {
         super.tearDown()
     }
 
-    private func makeMyBooks(hasCredentials: Bool = true) -> MyBooksViewModel {
+    private func makeMyBooks() -> MyBooksViewModel {
         MyBooksViewModel(
             bookRegistry: registry,
             accountsManager: container.accountsManager,
@@ -48,7 +53,7 @@ final class SignInSyncDeferralTests: XCTestCase {
             downloadCenter: container.downloadCenter,
             isUserAuthorizedForRegistry: { true },
             isOnline: { true },
-            hasCredentials: { hasCredentials },
+            hasCredentials: { [unowned self] in self.signedIn },
             authStateChanges: authState.eraseToAnyPublisher(),
             activityPolicy: policy
         )
@@ -60,7 +65,8 @@ final class SignInSyncDeferralTests: XCTestCase {
             accountsManager: container.accountsManager,
             settings: TPPSettings(),
             debugSettings: container.debugSettings,
-            hasCredentials: { true },
+            hasCredentials: { [unowned self] in self.signedIn },
+            presentSignIn: { [unowned self] _ in self.signInPresentations += 1 },
             debounceInterval: 0,
             accountDidChange: Empty().eraseToAnyPublisher(),
             authStateChanges: authState.eraseToAnyPublisher(),
@@ -132,13 +138,40 @@ final class SignInSyncDeferralTests: XCTestCase {
     }
 
     func testMyBooksSignIn_withoutCredentials_neverSyncs() async {
-        let viewModel = makeMyBooks(hasCredentials: false)
+        signedIn = false
+        let viewModel = makeMyBooks()
         let before = registry.syncCallCount
 
         await signIn()
         policy.setScene(.active)
 
         XCTAssertEqual(registry.syncCallCount, before)
+        withExtendedLifetime(viewModel) {}
+    }
+
+    /// A sign-out while the sync waits must not let it run: with no
+    /// credentials, reloadData would open a sign-in sheet nobody asked for.
+    func testMyBooksSignIn_inBackgroundThenSignedOut_doesNotSyncWhenVisible() async {
+        let viewModel = makeMyBooks()
+        let before = registry.syncCallCount
+
+        await signIn()
+        signedIn = false
+        policy.setScene(.active)
+
+        XCTAssertEqual(registry.syncCallCount, before)
+        withExtendedLifetime(viewModel) {}
+    }
+
+    func testMyBooksSignIn_pendingThenCarPlayConnects_syncsOnce() async {
+        let viewModel = makeMyBooks()
+        let before = registry.syncCallCount
+
+        await signIn()
+        policy.setCarPlayConnected(true)
+        policy.setScene(.active)
+
+        XCTAssertEqual(registry.syncCallCount, before + 1, "CarPlay connecting runs the pending sync, once")
         withExtendedLifetime(viewModel) {}
     }
 
@@ -176,6 +209,57 @@ final class SignInSyncDeferralTests: XCTestCase {
         let before = holdsRefreshCount
 
         await signIn()
+
+        XCTAssertEqual(holdsRefreshCount, before + 1)
+        withExtendedLifetime(viewModel) {}
+    }
+
+    func testHoldsSignIn_inBackgroundThenSignedOut_neitherRefreshesNorPresentsSignIn() async {
+        let viewModel = makeHolds()
+        let before = holdsRefreshCount
+
+        await signIn()
+        signedIn = false
+        policy.setScene(.active)
+
+        XCTAssertEqual(holdsRefreshCount, before)
+        XCTAssertEqual(signInPresentations, 0)
+        withExtendedLifetime(viewModel) {}
+    }
+
+    func testHoldsSignIn_withoutCredentials_neverRefreshes() async {
+        signedIn = false
+        let viewModel = makeHolds()
+        let before = holdsRefreshCount
+
+        await signIn()
+        policy.setScene(.active)
+
+        XCTAssertEqual(holdsRefreshCount, before)
+        XCTAssertEqual(signInPresentations, 0)
+        withExtendedLifetime(viewModel) {}
+    }
+
+    func testHoldsSignIn_twiceInBackground_refreshesOnceWhenVisible() async {
+        let viewModel = makeHolds()
+        let before = holdsRefreshCount
+
+        await signIn()
+        authState.send(.credentialsStale)
+        await signIn()
+        policy.setScene(.active)
+
+        XCTAssertEqual(holdsRefreshCount, before + 1)
+        withExtendedLifetime(viewModel) {}
+    }
+
+    func testHoldsSignIn_pendingThenCarPlayConnects_refreshesOnce() async {
+        let viewModel = makeHolds()
+        let before = holdsRefreshCount
+
+        await signIn()
+        policy.setCarPlayConnected(true)
+        policy.setScene(.active)
 
         XCTAssertEqual(holdsRefreshCount, before + 1)
         withExtendedLifetime(viewModel) {}

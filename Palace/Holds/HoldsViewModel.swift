@@ -56,8 +56,11 @@ final class HoldsViewModel: ObservableObject {
     private let store: Store<HoldsState, HoldsAction, HoldsEnvironment>
     private let activityPolicy: ActivityPolicy?
     /// The sign-in change refresh waits while the app is not visible (PP-5508).
+    /// Credentials are checked again when it runs: a sign-out while it waits
+    /// would otherwise make `refresh()` present a sign-in sheet.
     private lazy var signInSync = DeferredAmbientSync(policy: activityPolicy) { [weak self] in
-        self?.refresh()
+        guard let self, self.hasCredentials() else { return }
+        self.refresh()
     }
     private var cancellables = Set<AnyCancellable>()
 
