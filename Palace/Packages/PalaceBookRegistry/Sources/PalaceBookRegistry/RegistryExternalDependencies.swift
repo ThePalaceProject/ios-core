@@ -125,6 +125,10 @@ public struct RegistryExternalDependencies: Sendable {
     /// leaves it as a no-op; tests hold a save here to place a sign-out inside
     /// that window.
     let afterSaveSnapshot: @Sendable (_ accountID: String) -> Void
+    /// Runs off the main thread after a loans sync has compared the feed with
+    /// the shelf and before it applies the result. Production leaves it as a
+    /// no-op; tests write to the shelf here to change it after the comparison.
+    let afterLoansFeedCompared: @Sendable () -> Void
 
     public init(
         downloadService: @escaping @Sendable () -> any RegistryDownloadServicing,
@@ -134,7 +138,8 @@ public struct RegistryExternalDependencies: Sendable {
         onAvailabilityChange: @escaping @Sendable (_ cachedRecord: TPPBookRegistryRecord, _ newBook: TPPBook) -> Void,
         beforeRegistryWrite: @escaping @Sendable (_ step: RegistryWriteStep, _ url: URL) throws -> Void = { _, _ in },
         positionClock: @escaping @Sendable () -> Date = { Date() },
-        afterSaveSnapshot: @escaping @Sendable (_ accountID: String) -> Void = { _ in }
+        afterSaveSnapshot: @escaping @Sendable (_ accountID: String) -> Void = { _ in },
+        afterLoansFeedCompared: @escaping @Sendable () -> Void = {}
     ) {
         self.downloadService = downloadService
         self.loansFeedFetcher = loansFeedFetcher
@@ -144,5 +149,6 @@ public struct RegistryExternalDependencies: Sendable {
         self.beforeRegistryWrite = beforeRegistryWrite
         self.positionClock = positionClock
         self.afterSaveSnapshot = afterSaveSnapshot
+        self.afterLoansFeedCompared = afterLoansFeedCompared
     }
 }
