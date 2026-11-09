@@ -207,8 +207,8 @@ final class DownloadRMSDKHandoffTests: XCTestCase {
     }
 
     /// Destination URL resolution returns nil (e.g. unknown account).
-    /// Handler must early-return: no failure alert, no success, no
-    /// broadcast. Pin this guard.
+    /// Handler must early-return: no failure alert, no success. Pin this
+    /// guard.
     func testHandoff_destinationURLUnresolvable_silentEarlyReturn() {
         spy.destURLOverride = nil
 
@@ -229,10 +229,9 @@ final class DownloadRMSDKHandoffTests: XCTestCase {
     // MARK: - Cancellation handoff: registry flips to .downloadNeeded
 
     /// User cancels mid-fulfilment: RMSDK fires `didCancelDownloadWithTag`,
-    /// the handler must flip the registry back to .downloadNeeded and
-    /// broadcast. Mutation target: a no-op cancellation handler would be
-    /// caught by both assertions.
-    func testHandoff_cancellation_resetsRegistryAndBroadcasts() {
+    /// the handler must flip the registry back to .downloadNeeded. A no-op
+    /// cancellation handler fails the state assertion.
+    func testHandoff_cancellation_resetsRegistryToDownloadNeeded() {
         handler.handleCancellation(tag: book.identifier)
 
         XCTAssertEqual(registry.state(for: book.identifier), .downloadNeeded,

@@ -3,7 +3,7 @@
 //  PalaceTests
 //
 //  Unit tests for DownloadProgressReporter: progress publishing, error publishing,
-//  accessibility announcements, and broadcast throttling.
+//  and accessibility announcements.
 //
 
 import XCTest
@@ -147,8 +147,6 @@ final class DownloadProgressPublisherCoreTests: XCTestCase {
         receivedError?.retryAction?()
         XCTAssertTrue(retryCalled)
     }
-
-    // MARK: - Broadcast Update
 
     // MARK: - Accessibility Announcements (smoke tests)
 

@@ -315,7 +315,7 @@ private final class RedirectCompletionBox: @unchecked Sendable {
     /// presentation, which can fail when a SwiftUI sheet is topmost.
     let downloadErrorPublisher: PassthroughSubject<DownloadErrorInfo, Never>
 
-    /// Owns the Combine publishers + broadcast-throttling state machine.
+    /// Owns the Combine progress and error publishers.
     /// MyBooksDownloadCenter exposes its publishers as the same passthrough
     /// instances so external subscribers see one continuous stream.
     /// Internal access (was private) so the delegate protocols of

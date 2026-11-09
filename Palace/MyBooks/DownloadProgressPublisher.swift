@@ -67,7 +67,6 @@ protocol DownloadProgressPublishing: AnyObject {
 
     /// Publishes an error and announces it via VoiceOver
     func publishAndAnnounceError(_ errorInfo: DownloadErrorInfo)
-
 }
 
 // MARK: - DownloadProgressReporter

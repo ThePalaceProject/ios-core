@@ -137,7 +137,7 @@ final class AdobeDRMHandlerTests: XCTestCase {
         )
 
         // With nil dest URL, the handler returns early at the first fileUrl
-        // check — no fail-with-alert, no markSuccessful, no broadcast.
+        // check — no fail-with-alert, no markSuccessful.
         XCTAssertEqual(spy.markedSuccessful, [])
         XCTAssertEqual(spy.failed, [])
     }
@@ -322,7 +322,7 @@ final class AdobeDRMHandlerTests: XCTestCase {
 
     // MARK: - Cancellation
 
-    func testHandleCancellation_setsRegistryStateAndBroadcasts() {
+    func testHandleCancellation_resetsRegistryToDownloadNeeded() {
         handler.handleCancellation(tag: book.identifier)
 
         XCTAssertEqual(registry.registry[book.identifier]?.state, .downloadNeeded, "Cancellation must set the registry state back to .downloadNeeded so the user can retry.")

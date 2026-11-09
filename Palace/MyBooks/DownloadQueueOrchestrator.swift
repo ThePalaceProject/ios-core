@@ -26,7 +26,7 @@ protocol DownloadQueueOrchestratorDelegate: AnyObject {
 // MARK: - DownloadQueueOrchestrator
 
 /// Coordinates the pending-download queue: parks books past the
-/// concurrency cap with the right state-broadcast UX, and pumps the
+/// concurrency cap with a `.downloading` state, and pumps the
 /// queue whenever capacity opens up.
 ///
 /// - Sendable invariant (Swift 6 `complete`-mode): the stored dependencies
@@ -63,9 +63,7 @@ final class DownloadQueueOrchestrator: @unchecked Sendable {
     /// Parks `book` on the pending-download queue. Sets the registry
     /// state to `.downloading` first so the UI shows a "Downloading"
     /// label immediately — without this the borrow button looks
-    /// unresponsive once the active-cap is hit. After enqueueing,
-    /// broadcasts a NotificationCenter update so MyBooks / detail / cell
-    /// views refresh.
+    /// unresponsive once the active-cap is hit.
     func enqueuePending(_ book: TPPBook) {
         // CRITICAL UI FIX: Update book state so button shows "Downloading" feedback
         // Otherwise button appears unresponsive when hitting queue limit
