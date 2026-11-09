@@ -3,7 +3,7 @@ name: audiobook-systemic-overhaul
 type: evolving
 status: active
 created: 2026-05-22
-last_refresh: 2026-05-22
+last_refresh: 2026-11-09
 freshness_window: 365d
 owners: [general]
 description: "Audiobook Systemic Overhaul — Plan and Retrospective"
@@ -13,7 +13,7 @@ description: "Audiobook Systemic Overhaul — Plan and Retrospective"
 
 > Three-phase refactor of the Palace-side audiobook stack to close six recurring failure surfaces. Originally drafted as a forward-looking ADR; reconstructed here after all three Palace-side phases shipped on **2026-05-21** (PRs #979 / #980 / #982).
 
-**Status:** Palace-side phases (1–3) shipped 2026-05-21. Toolkit-side phases (T1–T3) tracked separately in [`ios-audiobooktoolkit`](https://github.com/ThePalaceProject/ios-audiobooktoolkit) — unstarted at time of writing.
+**Status:** Palace-side phases (1–3) shipped 2026-05-21. Toolkit-side T1–T3 have shipped in [`ios-audiobooktoolkit`](https://github.com/ThePalaceProject/ios-audiobooktoolkit) (checked at the submodule commit `8574ef1` pinned on `develop`, 2026-11-09). One toolkit item remains: the toolkit still compiles in the Swift 4.2 language mode; see [Toolkit-side remaining work](#toolkit-side-remaining-work).
 **Companion docs:** [architectural-triad.md](./architectural-triad.md), [account-state-machine.md](./account-state-machine.md)
 
 ## TL;DR
@@ -27,8 +27,8 @@ This ADR proposed three Palace-side phases plus three toolkit-side phases:
 | **Swarm 1** — Vendor adapter extraction | Replace property-check dispatch in `AudiobookLoader.swift` with `AudiobookVendorAdapter` protocol | ✅ Shipped PR #979 |
 | **Swarm 2** — PositionWriter unification | Consolidate 3 duplicate position-write paths into one SPM module | ✅ Shipped PR #980 |
 | **Swarm 3** — Singleton elimination + async sweep | Drop `.shared` on audiobook session/bootstrap; final GCD-→-structured-concurrency pass | ✅ Shipped PR #982 |
-| **Toolkit T1 + T2** — Player async migration | Migrate toolkit's callback-style player APIs to `async/await` | ⏳ Unstarted |
-| **Toolkit T3** — Rename `AudiobookSessionManager` → `AudiobookDownloadCoordinator` | Toolkit-side rename now unblocked (Palace name freed by Swarm 3) | ⏳ Unstarted |
+| **Toolkit T1 + T2** — Player async migration | Migrate toolkit's callback-style player APIs to `async/await` | ✅ Shipped in the toolkit |
+| **Toolkit T3** — Rename `AudiobookSessionManager` → `AudiobookDownloadCoordinator` | Toolkit-side rename (Palace name freed by Swarm 3) | ✅ Shipped in the toolkit |
 
 Predicted timeline at ADR draft: **1.5–2 weeks**. Actual Palace-side execution: **~24 hours** across three swarms running in stacked-PR order on 2026-05-21. <!-- audit-verified: PR #979 merged 2026-05-21T19:19:56Z; PR #980 merged 2026-05-21T19:26:06Z; PR #982 merged 2026-05-21T19:28:40Z per `gh pr view`. -->
 
@@ -231,32 +231,29 @@ All three Palace-side phases shipped 2026-05-21 in stacked-PR order. <!-- audit-
 | GCD residue on audiobook path | 1 explicit `asyncAfter` + UIApplication background-task patterns | 0 `asyncAfter`; deliberate `syncQueue.barrier` retained | Phase 3 |
 
 What this overhaul **does not** fix:
-- **Toolkit-side player code** still uses callback APIs. Phases T1+T2 below.
-- **`AudiobookSessionManager` naming collision** — Palace freed the name in Phase 3, but the toolkit-side class is still misnamed (it coordinates downloads, not playback sessions). Phase T3 below.
+- **Toolkit-side player code** used callback APIs. Fixed later in the toolkit by T1+T2 (below), not by this overhaul.
+- **`AudiobookSessionManager` naming collision** — Palace freed the name in Phase 3; the toolkit rename (T3, below) followed separately.
 - **CarPlay metadata sync invariants** — Phase 3 simplified the timing primitive but didn't audit the CarPlay startup state machine. Tracked separately.
 
 ---
 
 ## Toolkit-side remaining work
 
-Three items are tracked on the `ios-audiobooktoolkit` submodule. They are **independent of the Palace-side merges** — the toolkit has its own release cadence and own governance.
+The toolkit has its own release cadence; these items are independent of the Palace-side merges. Facts below are from the toolkit commit pinned on `develop` (`8574ef1`).
 
-### T1 + T2 — Player async migration
+### T1 + T2 — Player async migration: shipped
 
-Migrate toolkit's callback-style player APIs (`OpenAccessPlayer`, `LCPPlayer`, `FindawayPlayer`) to `async/await`. Two phases because the player surface is large enough that a single PR would be unreviewable; T1 establishes the async-protocol shape and migrates one player implementation as proof, T2 migrates the remaining implementations.
+The `Player` protocol (`PalaceAudiobookToolkit/Player/Player.swift`) declares `play(at:) async throws`, `skipPlayhead(_:) async -> TrackPosition?` and `move(to:) async -> TrackPosition?`, and `OpenAccessPlayer` and `FindawayPlayer` implement them as `async` functions.
 
-Architect-side scoping deferred to when toolkit work begins — the Palace overhaul did not stand up T1/T2 contracts.
+### T3 — Rename to `AudiobookDownloadCoordinator`: shipped
 
-### T3 — Rename `AudiobookSessionManager` → `AudiobookDownloadCoordinator`
+The toolkit class is `AudiobookDownloadCoordinator` (`PalaceAudiobookToolkit/Core/AudiobookDownloadCoordinator.swift`); no toolkit type is named `AudiobookSessionManager`. In Palace, `AudiobookSessionManager` (`Palace/Audiobooks/`) is the playback-session owner.
 
-Toolkit-side rename now unblocked: Palace freed the `AudiobookSessionManager` name in Phase 3. The toolkit's class actually coordinates downloads (not playback sessions) — the rename clarifies intent and removes the cross-package naming collision that confused readers.
+### Swift language mode: open
 
-Scope:
-- Rename in toolkit (`PalaceAudiobookToolkit/Core/`)
-- Submodule bump in Palace
-- Update Palace's call sites (small — Palace consumes 1-2 methods of this class)
+Both toolkit targets (`PalaceAudiobookToolkit` and `PalaceAudiobookToolkitTests`) set `SWIFT_VERSION = 4.2` with `SWIFT_STRICT_CONCURRENCY = complete` in `PalaceAudiobookToolkit.xcodeproj/project.pbxproj`. Under the 4.2 language mode, strict-concurrency findings are warnings, not errors, so the toolkit does not get the guarantee the app target has (see [swift-concurrency-doctrine.md](./swift-concurrency-doctrine.md)).
 
-**Sequencing:** T3 is the lowest-risk of the three; could land first to feel out the toolkit-side `/swarm` workflow before T1/T2.
+**Finish line:** both toolkit targets set `SWIFT_VERSION = 6.0`, the toolkit builds and its tests pass in that mode, and Palace bumps the submodule to that commit.
 
 ---
 

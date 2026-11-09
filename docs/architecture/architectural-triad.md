@@ -150,7 +150,7 @@ Top offender services rewired via injected collaborators. Ran in parallel via 5 
 Reducer-extract sign-in and borrow flows:
 
 - **`BorrowReducer`** — 12 actions covering borrow / download / return / reserve / cancel + auth-prompt callbacks. 19 reducer-as-pure-function tests. Integrated into `BookDetailViewModel.bindRegistryState` via a `snapshotBorrowState() / reduce / applyBorrowState` round trip — replaces the legacy inline switch. The snapshot/apply pattern preserves the existing 81 `BookDetailViewModelTests` (which directly mutate `@Published` properties) without rewriting them, because the reducer mirrors state through the VM rather than wrapping the VM in a Store.
-- **`AuthReducer`** — 13 actions covering sign-in start, credential validation, success, failure, sign-out, OIDC/SAML browser callbacks. 21 reducer tests. **Not yet integrated** into `TPPSignInBusinessLogic` — kept as the testable contract. Integration is gated on writing characterization tests for that 758-LOC ObjC-bridged class first (it has 0 dedicated tests).
+- **`AuthReducer`** — 13 actions covering sign-in start, credential validation, success, failure, sign-out, OIDC/SAML browser callbacks. 21 reducer tests. **Integrated** into `TPPSignInBusinessLogic`: `authState` (`Palace/SignInLogic/TPPSignInBusinessLogic.swift:194`) is the source of truth for in-flight sign-in state, and the legacy `@objc` properties are computed from it through `dispatch(_:)`. The characterization tests that gated the integration exist under `PalaceTests/Decomp/` (`TPPSignInBusinessLogicCharacterizationTests`, `TPPSignInCapabilitiesCharacterizationTests`, `TPPSignInFlowCharacterizationTests`). Every branch still returns `.none`; the side effects stay in `TPPSignInBusinessLogic` (see the debt table in [state-management-doctrine.md](./state-management-doctrine.md#tracked-debt--allowed-each-with-a-finish-line)).
 
 **Mutation testing on Phase 5 reducers:** 6/6 mutants killed (100% kill rate) — every conditional flip and return-value flip in both reducers is caught by the dedicated reducer tests. Per the project's "critical path tests must be air-tight" rule, this is the bar.
 
@@ -162,7 +162,7 @@ Narrow public interfaces via real SPM modules. Order by risk:
 
 1. **`PalaceKeychain`** — 3 files, lowest risk, proves toolchain
 2. **`PalaceCatalog`** — `CatalogDomain` + `CatalogUI` merged (already cohesive)
-3. **`PalaceAuth`** — `SignInLogic` + `Accounts/User` + `Accounts/Library` + Keychain dep — **MUST land AFTER** the AuthReducer integration into `TPPSignInBusinessLogic`
+3. **`PalaceAuth`** — `SignInLogic` + `Accounts/User` + `Accounts/Library` + Keychain dep — was to land after the AuthReducer integration into `TPPSignInBusinessLogic`; that integration is done, and `AuthReducer` lives in `Palace/Packages/PalaceAuth/`
 4. **`PalaceReader`** — `Reader2` + PDF
 5. **`PalaceAudiobooks`** — stretch
 
@@ -210,9 +210,9 @@ Explicit is better than hidden. With defaults, calling `AppContainer()` silently
 
 `BookDetailViewModel` has 100+ tests that directly mutate `@Published` properties (`vm.bookState = .returning`, `vm.processingButtons = [...]`). Rerouting all of that through a `Store` would require rewriting those tests, which conflicts with the "preserve every test" constraint. The reducer is shaped to slot into `Store<State, Action, Environment>` once those test patterns are normalized in a future phase.
 
-### Why `AuthReducer` isn't integrated into `TPPSignInBusinessLogic` yet
+### Why `AuthReducer` was integrated only after characterization tests
 
-`TPPSignInBusinessLogic` is 758 LOC, ObjC-bridged, with 0 dedicated tests (only 16 test files touch it indirectly through other VMs). Wiring the reducer into it without a characterization-test safety net would be reckless on a critical path. The reducer ships as a testable spec; the integration is gated on Phase 3 characterization tests.
+At the time of this phase, `TPPSignInBusinessLogic` was 758 LOC, ObjC-bridged, with 0 dedicated tests (only 16 test files touched it indirectly through other VMs). Wiring the reducer into it without a characterization-test safety net would have been unsafe on a critical path, so the reducer shipped first as a testable spec. The characterization tests now exist under `PalaceTests/Decomp/` and the reducer is integrated; its effects have not moved yet.
 
 ---
 

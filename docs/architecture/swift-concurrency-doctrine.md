@@ -26,11 +26,33 @@ The #1129 playbook, in the order to try:
 
 **`nonisolated(unsafe)` is not on this list.** It silences the compiler without
 establishing the invariant, so the next reader cannot tell a checked case from
-an unchecked one.
+an unchecked one. Do not use it to fix a new diagnostic. The uses that remain
+are listed under [Retained exceptions](#retained-exceptions); a new one belongs
+in one of those groups, with a comment at the declaration that states its rule.
 
 **Avoid `MainActor.assumeIsolated` in `deinit`** — it `fatalError`s when the
 object is released off-main, which is exactly when a deinit is hardest to
-predict. See [[boundedcompletion-mainactor-trap]] for the shape.
+predict. The same trap applies to any completion handler that asserts main-actor
+isolation and is then called from a background queue.
+
+## Retained exceptions
+
+Each group below relaxes the compiler's check on purpose. The rule is what keeps
+it safe; the owner is the code that must keep the rule true, and the reviewer of
+a change to that code checks it. No CI check counts these uses. Census on
+`develop`: `git grep -n 'nonisolated(unsafe)' -- Palace` (24 declarations
+outside comments) and `git grep -n '@preconcurrency' -- Palace`.
+
+| Group | Sites | Rule that keeps it safe | Owner |
+|---|---|---|---|
+| Test seams on static APIs | `TPPAnnotations` and `AnnotationDevice` overrides (`Palace/Reader2/Bookmarks/TPPAnnotations.swift`), `RemoteFeatureFlags.oidcStubDefaults` (`Palace/FeatureFlags/RemoteFeatureFlags.swift`, `#if DEBUG`) | `nil` or the default in production. Tests set them in `setUp`, before the code under test runs, and clear them in `tearDown`. Production code never writes them. | The test class that sets the override; the owning type for any new seam |
+| Composition-root providers | `TPPBookImageContext.imageCacheProvider` / `imageLoaderProvider` (`Palace/Packages/PalaceBookModel`) | Written once by `AppContainer` (`Palace/AppInfrastructure/AppContainer.swift:551`) during launch, before any reader; cleared only by `_resetForTesting()`. | `AppContainer` |
+| Combine subjects held by an actor | `AccessibilityService`, `OfflineQueueService`, `PerformanceMonitor` (`Palace/Platform/`), `PositionSyncService` (`Palace/Packages/PalaceReadingPosition`) | The subject is a `let` set in `init` and never replaced. Subscribers attach through a `nonisolated` `AnyPublisher` so they need not await the actor. This depends on Combine subjects locking internally, which Apple does not document as `Sendable`. | The actor that declares the subject |
+| Lock-guarded or thread-safe storage | `CancellableContinuationBox.pendingResult` (`Palace/Network/TPPNetworkExecutor.swift`), `SafeDictionary._syncMirror` (`Palace/Packages/PalaceUtilities`), `TPPBookCoverRegistry.sourceDataCache` (`NSCache`) and `TPPAnnotations._lastDeletionChain` | Every read and write holds the type's lock (`NSLock`), or the stored type is documented thread-safe (`NSCache`). | The declaring type; a new access path must take the same lock |
+| Write-once, read-in-`deinit` | `TPPBookCoverRegistry.reachabilityObserverToken` | Written once in `init`, read once in the nonisolated `deinit`, when no other reference exists. | `TPPBookCoverRegistry` |
+| Local captures across one hop | `AudiobookPositionTraceRecorder` (`UserDefaults`), `NowPlayingCoordinator` (artwork `UIImage`), `TPPSignInBusinessLogic` (`Result` handed to the main actor) | The captured value is immutable after capture and only read on the other side of the hop; the comment at each site names the type's thread-safety basis. | The enclosing function |
+| `@preconcurrency import` | Readium modules, `PalaceAudiobookToolkit`, `AVFoundation`, `PDFKit`, `WebKit`, Firebase, `SQLite`, `PalaceAuth`, `PalaceCatalog` and others | The module's types are not yet `Sendable`-audited. Values from it stay on the actor that received them; do not send them across isolation boundaries on the strength of the import. Remove the attribute when the module ships `Sendable` annotations. | The Palace file that imports the module |
+| `@preconcurrency` conformances | delegate conformances such as `EmailTicketGateway` (#1134) | Every caller of the witness is on the main thread. A requirement that can be called off main uses a `nonisolated` witness over lock-guarded state instead (PP-5465). | The conforming type |
 
 ## Two things that ripple further than they look
 
