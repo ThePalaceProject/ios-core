@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import UIKit
 import PalaceCatalog
 @testable import Palace
 import PalaceBookModel
@@ -93,10 +94,24 @@ struct TPPBookMocker {
         )
 
         // Pre-set cover image directly for synchronous snapshot testing
-        fakeBook.coverImage = cover
-        fakeBook.thumbnailImage = cover
+        setCover(cover, on: fakeBook)
 
         return fakeBook
+    }
+
+    /// Sets the cover on the main thread. `TPPBook.init` schedules its own cover
+    /// writes on the main queue and `@Published` storage is not thread-safe, so
+    /// a write from another thread can race them and over-release the image.
+    private static func setCover(_ cover: UIImage, on book: TPPBook) {
+        let assign = {
+            book.coverImage = cover
+            book.thumbnailImage = cover
+        }
+        if Thread.isMainThread {
+            assign()
+        } else {
+            DispatchQueue.main.sync(execute: assign)
+        }
     }
 
     // MARK: - Simple Mock Book for Unit Tests
@@ -160,8 +175,7 @@ struct TPPBookMocker {
         )
 
         // Pre-set cover image directly for tests
-        book.coverImage = cover
-        book.thumbnailImage = cover
+        setCover(cover, on: book)
 
         return book
     }
@@ -262,8 +276,7 @@ struct TPPBookMocker {
         )
 
         // Pre-set cover image directly for synchronous snapshot testing
-        book.coverImage = cover
-        book.thumbnailImage = cover
+        setCover(cover, on: book)
 
         return book
     }
@@ -319,8 +332,7 @@ struct TPPBookMocker {
         )
 
         // Pre-set cover image directly for synchronous snapshot testing
-        book.coverImage = cover
-        book.thumbnailImage = cover
+        setCover(cover, on: book)
 
         return book
     }
@@ -375,8 +387,7 @@ struct TPPBookMocker {
         )
 
         // Pre-set cover image directly for synchronous snapshot testing
-        book.coverImage = cover
-        book.thumbnailImage = cover
+        setCover(cover, on: book)
 
         return book
     }
@@ -431,8 +442,7 @@ struct TPPBookMocker {
             imageCache: imageCache
         )
 
-        book.coverImage = cover
-        book.thumbnailImage = cover
+        setCover(cover, on: book)
 
         return book
     }
@@ -485,8 +495,7 @@ struct TPPBookMocker {
             imageCache: imageCache
         )
 
-        book.coverImage = cover
-        book.thumbnailImage = cover
+        setCover(cover, on: book)
 
         return book
     }
@@ -545,8 +554,7 @@ struct TPPBookMocker {
             imageCache: imageCache
         )
 
-        book.coverImage = cover
-        book.thumbnailImage = cover
+        setCover(cover, on: book)
 
         return book
     }
