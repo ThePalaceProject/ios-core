@@ -89,17 +89,13 @@ private struct TPPBoundedCompletionSink<T>: @unchecked Sendable {
 class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider, @preconcurrency TPPCurrentLibraryAccountProvider {
     var onLocationAuthorizationCompletion: (UINavigationController?, Error?) -> Void = {_, _ in }
 
-    /// The redirects a browser sign-in waits for. Replaceable so tests can
-    /// deliver one without the app delegate.
-    var signInRedirects: () -> AnyPublisher<URL, Never> = {
-        AppContainer.production().signInRedirects.redirects
-    }
+    /// The redirects a browser sign-in waits for. The account page sets the
+    /// app container's relay; other owners never open the browser.
+    var signInRedirects: () -> AnyPublisher<URL, Never> = { Empty().eraseToAnyPublisher() }
 
     /// Opens a sign-in page in the browser. Replaceable so tests can record
     /// the page instead of leaving the app.
-    var openInBrowser: @MainActor (URL) -> Void = { url in
-        UIApplication.shared.open(url)
-    }
+    var openInBrowser: @MainActor (URL) -> Void = { UIApplication.shared.open($0) }
 
     /// Presents the DRM-activation failure alert. Replaceable so tests can
     /// record the alert instead of presenting it over the host app's window.

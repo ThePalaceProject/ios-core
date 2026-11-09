@@ -86,9 +86,6 @@ final class AppContainerIsolationLintTests: XCTestCase {
     // Migrating these would invalidate the contract under test.
     "AppInfrastructure/AppContainerTests.swift",
     "AppInfrastructure/AppContainerAuthCoordinatorWiringTests.swift",
-    // Pins that a browser sign-in listens on the production container's
-    // redirect relay, which is where the app delegate delivers (PP-5473).
-    "SignInLogic/SignInRedirectDefaultSourceTests.swift",
     // Many tests pin `executor.cancelNonEssentialTasks()` /
     // `clearCache()` against the production NetworkExecutor identity
     // (`a === b` from production().networkExecutor). The file's
