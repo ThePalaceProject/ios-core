@@ -13,20 +13,19 @@
 
 set -eo pipefail
 
-# Use the same connector branch CI builds with, so the linked connector matches
-# AdobeConnectorGeneration.current.
-CONNECTOR_REF=$(awk '/^  ref:/{f=1} f && /^    default:/{gsub(/["[:space:]]/,"",$2); print $2; exit}' .github/actions/checkout-adobe/action.yml)
-[ -n "$CONNECTOR_REF" ] || { echo "Could not read the connector ref from .github/actions/checkout-adobe/action.yml" >&2; exit 1; }
+ROOT="$(pwd)"
+# Read the connector record (.github/actions/checkout-adobe/action.yml) before
+# cloning anything, so a bad record stops here rather than mid-setup.
+python3 "$ROOT/scripts/drm_connector.py" --repo-root "$ROOT" get sha >/dev/null
 
 cd ..
 git clone git@github.com:ThePalaceProject/mobile-certificates.git
-git clone --branch "$CONNECTOR_REF" git@github.com:ThePalaceProject/ios-drm-adeptconnector.git
+# Clones the connector and checks out the recorded commit, then pulls its LFS
+# objects. CI builds the same commit.
+python3 "$ROOT/scripts/drm_connector.py" --repo-root "$ROOT" clone ios-drm-adeptconnector
 git clone git@github.com:ThePalaceProject/ios-audiobook-overdrive.git
 
-cd ios-drm-adeptconnector
-git lfs pull
-
-cd ../ios-core
+cd "$ROOT"
 
 ./scripts/setup-repo-drm.sh
 ./scripts/build-3rd-party-dependencies.sh

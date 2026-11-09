@@ -20,13 +20,29 @@ replaced.
 
 Three mechanisms, in the order you will meet them.
 
-**In CI, the `ref` input of the `checkout-adobe` action**
-(`.github/actions/checkout-adobe/action.yml`). The action clones the connector
-repository at a branch and restores its Git LFS objects. No workflow in this
-repository passes `ref`, so the action's own default is the only thing that
-decides, and changing that default is the entire connector switch. A reader
-auditing a workflow file for the connector version will find nothing there; the
-value is in the action.
+**The connector record: the input defaults of the `checkout-adobe` action**
+(`.github/actions/checkout-adobe/action.yml`). `repo` names the connector
+repository, `ref` the exact commit (a full SHA, never a branch), and
+`generation` the `AdobeConnectorGeneration` that commit carries. It is the only
+copy:
+
+* CI checks out `ref` through the action, then a step fails the job if the
+  checked-out commit differs and prints the repo, commit and generation.
+* `scripts/bootstrap-drm.sh` clones the repository and checks out `ref` through
+  `scripts/drm_connector.py clone`. `git clone --branch` does not accept a SHA,
+  which is why the clone and the checkout are separate steps.
+* `scripts/drm_connector.py check` compares a local connector tree with it (see
+  below).
+
+No workflow passes `ref` or `repo`; `scripts/tests/test_drm_connector.py`
+fails if one does. A reader auditing a workflow file for the connector version
+will find nothing there; the value is in the action.
+
+The record was first set to `7913158fa6b04ef8387a0b3bf32454bd795284fb` on
+`feature/bytebooks-connector-20261104`, the commit every 3.4.1 build used. A
+release branch cut before the record existed (3.4.1 and its hotfixes) still
+fetches that branch by name, so the branch must not move while such a release
+is supported.
 
 **Locally, the `adobe-rmsdk` symlink.** `adept-ios/ADEPT/ADEPT.xcconfig` sets
 `ADEPT_RMSDK = $(SRCROOT)/../adobe-rmsdk` and takes `LIBRARY_SEARCH_PATHS`,
@@ -122,11 +138,16 @@ mechanisms above fight over.
 1. **Run the keystone test.** A green
    `testCurrentGenerationDescribesTheLinkedConnector` is a direct statement that
    the linked build and the constant agree. A red one names the build it found.
-2. **Check the shared tree's branch** before trusting a local build:
-   `git -C <connector checkout> rev-parse --abbrev-ref HEAD`. This is the value
-   that decides every local build in every worktree.
-3. **For a CI run**, read the `ref` the `checkout-adobe` step resolved in the
-   run log, not the workflow file.
+2. **Check the shared tree's revision** before trusting a local build:
+   `python3 scripts/drm_connector.py check`. It resolves `adobe-rmsdk` (or
+   `ADEPT_RMSDK` when set) to the connector checkout and exits 0 when that
+   checkout is at the recorded commit with no modified tracked files, 1 when it
+   is not (with the commands to fix it), 2 when there is no connector tree (a
+   noDRM setup), and 3 when it cannot tell. `scripts/setup-repo-drm.sh` runs it
+   after creating the link, and `scripts/verify-pr.sh` records it as the
+   `drm_connector` leg.
+3. **For a CI run**, read the "Verify Adobe RMSDK revision" step in the run
+   log, not the workflow file.
 
 A build that compiles, links, and passes everything else does not show which
 connector it used. The keystone test is the only check that does.
@@ -147,26 +168,50 @@ stay available: the app picks one at link time, and nothing selects
 between them at runtime. A new drop that changes the activation contract
 therefore lands as a branch, and the app points at it.
 
-When the connector changes, these move together or the migration is wrong:
+Changing the record is the only way to change the connector. When it changes,
+these move together in one PR or the migration is wrong:
 
-1. The connector branch exists and is pushed, with its LFS objects.
-2. The `ref` default in `.github/actions/checkout-adobe/action.yml` names it.
+1. The connector commit is pushed to a branch of the connector repository,
+   with its LFS objects.
+2. The `ref` default in `.github/actions/checkout-adobe/action.yml` is set to
+   that commit's full SHA, and its comment names the branch it is on.
 3. `generationsByBuild` gains the new `hobbes.build` with its generation.
 4. `AdobeConnectorGeneration.current` moves, if and only if the activation
-   contract changed.
+   contract changed, and the `generation` default moves with it
+   (`test_drm_connector.py` fails if the two differ).
 5. Any test that asserts an activation is usable passes the generation
    explicitly rather than relying on the default, or it will assert the old
    generation against the new constant.
+6. Each developer moves their connector tree to the new commit (the fix
+   commands `drm_connector.py check` prints), and the keystone test passes on
+   that tree.
+7. A DRM build from the new commit opens an Adobe-protected book from the test
+   library on a device, before merge. The unit suite does not exercise
+   fulfillment against the real connector.
 
 Step 5 is the one that surfaces late. Tests that seed an activation through
 `setAdobeActivation(userID:deviceID:generation:)` keep working across a bump;
 tests that set the identifiers directly and leave the marker absent are asserting
 `preMarker` behaviour and will change meaning when `current` moves past it.
 
+## The other pinned build inputs
+
+The connector is one of three outside inputs whose revision a DRM build
+depends on. The other two are recorded where they already live:
+
+* **The audiobook toolkit** is the `ios-audiobooktoolkit` submodule. The
+  gitlink in this repository is its exact commit; CI runs
+  `git submodule update --init`, never `--remote`. Move it with a normal
+  submodule bump.
+* **Findaway's AudioEngine** is downloaded by `scripts/fetch-audioengine.sh`,
+  which records the version and the SHA-256 of the archive and fails, without
+  installing anything, when the download does not match. To change the version,
+  change both values together and check a Findaway title plays.
+
 ## Traps worth knowing before you start
 
 **No single local state satisfies two release lines.** The shared connector tree
-is on one branch at a time. While one release line needs the Adobe-era connector
+is at one commit at a time. While one release line needs the Adobe-era connector
 and the next needs the ByteBooks one, a local full-suite run is valid for exactly
 one of them, and the keystone test is what tells you which. Build the other with
 `ADEPT_RMSDK` pointed at a second tree.

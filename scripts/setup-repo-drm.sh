@@ -30,3 +30,6 @@ else
 fi
 
 ln -sf $ADOBE_SDK_PATH/connector adobe-rmsdk
+
+# Stop if the linked connector is not the commit CI builds.
+python3 scripts/drm_connector.py check
