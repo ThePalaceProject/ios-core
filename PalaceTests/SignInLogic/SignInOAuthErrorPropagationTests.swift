@@ -259,8 +259,6 @@ final class SignInOAuthErrorPropagationTests: XCTestCase {
                        "fail the payload-contains check, not reach parse-fail")
     }
 
-    // MARK: - Branch 0: notification has no URL (line 96, pre-existing :96 guard)
-
     // MARK: - Edge: base64-token kvpair parsing (mutation surface for line 166)
 
     /// Pin the kvpair-parsing guard `elts.count >= 2`. Base64 tokens contain

@@ -55,7 +55,7 @@ final class SignInRedirectRoutingTests: XCTestCase {
     }
 
     /// An OAuth intermediary method as the circulation manager describes it.
-    nonisolated private static func oauthMethod() throws -> AccountDetails.Authentication {
+    nonisolated static func oauthMethod() throws -> AccountDetails.Authentication {
         let json = """
         {"type": "http://librarysimplified.org/authtype/OAuth-with-intermediary",
          "description": "Clever",
@@ -97,11 +97,16 @@ final class SignInRedirectRoutingTests: XCTestCase {
         XCTAssertEqual(businessLogic.authToken, "clever-token")
     }
 
-    /// A redirect with no sign-in waiting is not this library's.
-    func testRedirectBeforeSignInStarts_IsIgnored() {
+    /// A redirect that arrived before the sign-in started is not replayed to
+    /// it; the sign-in takes the next one.
+    func testRedirectBeforeSignInStarts_IsNotReplayed() {
         relay.deliver(redirect(token: "stray-token"))
 
+        businessLogic.oauthLogIn()
         XCTAssertNil(businessLogic.authToken)
+        relay.deliver(redirect(token: "real-token"))
+
+        XCTAssertEqual(businessLogic.authToken, "real-token")
     }
 
     /// The sign-in takes one redirect; a second link must not sign in again.
@@ -113,31 +118,6 @@ final class SignInRedirectRoutingTests: XCTestCase {
         relay.deliver(redirect(token: "second-token"))
 
         XCTAssertNil(businessLogic.authToken)
-    }
-
-    /// The app delegate delivers to the production container's relay, so a
-    /// sign-in built without a test source must listen there.
-    func testDefaultRedirectSource_IsTheAppContainersRelay() throws {
-        let libraryAccountMock = TPPLibraryAccountMock()
-        let production = TPPSignInBusinessLogic(
-            libraryAccountID: libraryAccountMock.tppAccountUUID,
-            libraryAccountsProvider: libraryAccountMock,
-            urlSettingsProvider: TPPURLSettingsProviderMock(),
-            bookRegistry: TPPBookRegistryMock(),
-            bookDownloadsCenter: TPPMyBooksDownloadsCenterMock(),
-            userAccountProvider: TPPUserAccountMock.self,
-            networkExecutor: TPPRequestExecutorMock(),
-            uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock(),
-            drmAuthorizer: TPPDRMAuthorizingMock()
-        )
-        defer { production.userAccount.removeAll() }
-        production.selectedAuthentication = try Self.oauthMethod()
-        production.openInBrowser = { _ in }
-        production.oauthLogIn()
-
-        AppContainer.production().signInRedirects.deliver(redirect(token: "app-token"))
-
-        XCTAssertEqual(production.authToken, "app-token")
     }
 
     // MARK: - App delegate
