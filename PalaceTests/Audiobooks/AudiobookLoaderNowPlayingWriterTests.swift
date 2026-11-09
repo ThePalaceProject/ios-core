@@ -1,10 +1,9 @@
 //  AudiobookLoaderNowPlayingWriterTests.swift
 //
-//  PP-5504: pins the loader step that turns off the toolkit's own Now Playing
-//  writes, so `NowPlayingCoordinator` is the only writer of the lock screen
-//  and CarPlay.
+//  PP-5504: the manager the loader builds leaves Now Playing to
+//  `NowPlayingCoordinator`, so the coordinator is the only writer of the lock
+//  screen and CarPlay.
 
-import MediaPlayer
 import XCTest
 @testable import Palace
 @testable import PalaceAudiobookToolkit
@@ -14,21 +13,29 @@ final class AudiobookLoaderNowPlayingWriterTests: XCTestCase {
 
     /// With a toolkit writer left in place, the toolkit's heartbeat and
     /// lifecycle writes race the coordinator's on the lock screen.
-    func testLeaveNowPlayingToCoordinator_removesTheToolkitWriter() {
-        let host = FakeNowPlayingWriterHost()
-        XCTAssertNotNil(host.nowPlayingWriter, "precondition: the toolkit default is a writer")
+    func testMakeManager_leavesNowPlayingToTheCoordinator() throws {
+        let manifest = try Manifest.from(jsonFileName: ManifestJSON.snowcrash.rawValue,
+                                         bundle: Bundle(for: type(of: self)))
+        let audiobook = try XCTUnwrap(AudiobookFactory.audiobook(
+            for: manifest,
+            bookIdentifier: "AudiobookLoaderNowPlayingWriterTests",
+            decryptor: nil,
+            token: nil,
+            fulfillURL: nil
+        ))
+        let networkService = DefaultAudiobookNetworkService(
+            tracks: audiobook.tableOfContents.allTracks,
+            decryptor: nil
+        )
 
-        AudiobookLoader().leaveNowPlayingToCoordinator(manager: host)
+        let manager = AudiobookLoader.makeManager(
+            metadata: AudiobookMetadata(title: "Snow Crash", authors: ["Author"]),
+            audiobook: audiobook,
+            networkService: networkService,
+            playbackTrackerDelegate: nil
+        )
+        defer { manager.unload() }
 
-        XCTAssertNil(host.nowPlayingWriter)
+        XCTAssertNil(manager.nowPlayingWriter)
     }
-}
-
-private final class FakeNowPlayingWriterHost: AudiobookNowPlayingWriterHost {
-    var nowPlayingWriter: NowPlayingInfoWriting? = RecordingNowPlayingWriter()
-}
-
-private final class RecordingNowPlayingWriter: NowPlayingInfoWriting {
-    var nowPlayingInfo: [String: Any]?
-    var playbackState: MPNowPlayingPlaybackState = .unknown
 }

@@ -334,31 +334,30 @@ final class NowPlayingCoordinatorBackgroundWriteTests: XCTestCase {
 
     /// Foreground ticks the system can extrapolate are not written either, so a
     /// patron with the app open does not cost a Now Playing write per tick.
-    func testActive_steadyPlayback_writesOnceThenSkipsExtrapolatedTicks() async {
+    func testActive_steadyPlayback_writesOnceThenSkipsExtrapolatedTicks() {
         appState.value = .active
         update(elapsed: 100)
 
         _ = steadyTicks(from: 100, count: 20)
-        await coordinator._awaitPendingUpdateForTesting()
 
         XCTAssertEqual(infoCenter.infoWrites.count, 1)
     }
 
-    func testActive_steadyPlayback_writesKeepAliveAfterTenSeconds() async {
+    func testActive_steadyPlayback_writesKeepAliveAfterTenSeconds() {
         appState.value = .active
         update(elapsed: 100)
 
         _ = steadyTicks(from: 100, count: 40)
-        await coordinator._awaitPendingUpdateForTesting()
 
         XCTAssertEqual(infoCenter.infoWrites.count, 2)
     }
 
-    /// A change two seconds or more after the last write lands at once.
-    func testActive_chapterChangeAfterTwoSeconds_isWrittenImmediately() {
+    /// A chapter change is written on the tick that carries it, however soon
+    /// after the last write, so CarPlay does not show the old chapter.
+    func testActive_chapterChangeHalfASecondAfterAWrite_isWrittenAtOnce() {
         appState.value = .active
         update(elapsed: 100)
-        clock.withValue { $0 = $0.addingTimeInterval(2.0) }
+        clock.withValue { $0 = $0.addingTimeInterval(0.5) }
 
         update(title: "Chapter 2", elapsed: 0)
 
@@ -366,26 +365,10 @@ final class NowPlayingCoordinatorBackgroundWriteTests: XCTestCase {
         XCTAssertEqual(infoCenter.nowPlayingInfo?[MPMediaItemPropertyTitle] as? String, "Chapter 2")
     }
 
-    /// A change sooner than two seconds after the last write waits for the
-    /// two-second mark, and then the latest values are written once.
-    func testActive_changesWithinTwoSeconds_areWrittenOnceWithLatestValues() async {
+    func testActive_seekHalfASecondAfterAWrite_isWrittenAtOnce() {
         appState.value = .active
         update(elapsed: 100)
         clock.withValue { $0 = $0.addingTimeInterval(0.5) }
-
-        update(title: "Chapter 2", elapsed: 0)
-        update(title: "Chapter 3", elapsed: 0)
-        XCTAssertEqual(infoCenter.infoWrites.count, 1, "no second write before the two-second mark")
-        await coordinator._awaitPendingUpdateForTesting()
-
-        XCTAssertEqual(infoCenter.infoWrites.count, 2)
-        XCTAssertEqual(infoCenter.nowPlayingInfo?[MPMediaItemPropertyTitle] as? String, "Chapter 3")
-    }
-
-    func testActive_seekAfterTwoSeconds_isWrittenImmediately() {
-        appState.value = .active
-        update(elapsed: 100)
-        clock.withValue { $0 = $0.addingTimeInterval(2.5) }
 
         update(elapsed: 400)
 
@@ -393,54 +376,36 @@ final class NowPlayingCoordinatorBackgroundWriteTests: XCTestCase {
         XCTAssertEqual(lastWrittenElapsed ?? -1, 400, accuracy: 0.001)
     }
 
-    // MARK: - Direct writes while a foreground write is pending
-
-    /// Starts a write that waits for the two-second mark: a chapter change
-    /// half a second after the last write.
-    private func startPendingChapterChange() {
+    /// A pause after skipped ticks writes the latest position, not the one
+    /// from the last write, and shows the lock screen as paused.
+    func testActive_pauseAfterSkippedTicks_writesTheLatestPositionAsPaused() {
         appState.value = .active
         update(elapsed: 100)
-        clock.withValue { $0 = $0.addingTimeInterval(0.5) }
-        update(title: "Chapter 2", elapsed: 0)
-        XCTAssertEqual(infoCenter.infoWrites.count, 1, "precondition: the chapter change is pending")
-    }
-
-    /// No position tick follows a pause, so a pending write that still says
-    /// "playing" would leave the lock screen running while the audio is paused.
-    func testActive_pauseWhileWriteIsPending_staysPausedWithTheLatestValues() async {
-        startPendingChapterChange()
+        let latest = steadyTicks(from: 100, count: 8)
 
         coordinator.setPlaybackState(playing: false)
-        await coordinator._awaitPendingUpdateForTesting()
 
         XCTAssertEqual(infoCenter.playbackState, .paused)
         XCTAssertEqual(infoCenter.nowPlayingInfo?[MPNowPlayingInfoPropertyPlaybackRate] as? Double, 0.0)
-        XCTAssertEqual(infoCenter.nowPlayingInfo?[MPMediaItemPropertyTitle] as? String, "Chapter 2",
-                       "the pending chapter change is part of the paused state, not dropped")
+        XCTAssertEqual(lastWrittenElapsed ?? -1, latest, accuracy: 0.001)
     }
 
-    func testActive_rateChangeWhileWriteIsPending_isNotRevertedByThePendingWrite() async {
-        startPendingChapterChange()
+    /// A paused tick, then a resumed one: each play-state change is written.
+    func testActive_pauseThenResumeTicks_writeEachStateChange() {
+        appState.value = .active
+        update(elapsed: 100)
+        clock.withValue { $0 = $0.addingTimeInterval(0.25) }
 
-        coordinator.updatePlaybackRate(.oneAndAHalfTime)
-        await coordinator._awaitPendingUpdateForTesting()
+        update(elapsed: 100.25, isPlaying: false)
+        clock.withValue { $0 = $0.addingTimeInterval(0.25) }
+        update(elapsed: 100.25, isPlaying: true)
 
-        XCTAssertEqual(infoCenter.nowPlayingInfo?[MPNowPlayingInfoPropertyDefaultPlaybackRate] as? Double, 1.5)
-        XCTAssertEqual(infoCenter.nowPlayingInfo?[MPMediaItemPropertyTitle] as? String, "Chapter 2")
-    }
-
-    func testActive_artworkWhileWriteIsPending_isNotDroppedByThePendingWrite() async {
-        startPendingChapterChange()
-
-        coordinator.updateArtwork(UIImage())
-        await coordinator._awaitPendingUpdateForTesting()
-
-        XCTAssertNotNil(infoCenter.nowPlayingInfo?[MPMediaItemPropertyArtwork])
-        XCTAssertEqual(infoCenter.nowPlayingInfo?[MPMediaItemPropertyTitle] as? String, "Chapter 2")
+        XCTAssertEqual(infoCenter.infoWrites.count, 3)
+        XCTAssertEqual(infoCenter.stateWrites.suffix(2), [.paused, .playing])
     }
 
     /// A chapter change on the first background tick after a foreground write
-    /// is written, whatever the foreground debounce last applied.
+    /// is written, whatever the foreground last wrote.
     func testBackground_firstTickAfterForegroundWrite_withChangedTitle_isWritten() {
         appState.value = .active
         update(elapsed: 100)

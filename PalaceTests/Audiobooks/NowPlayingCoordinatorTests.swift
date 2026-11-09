@@ -2,7 +2,7 @@
 //  NowPlayingCoordinatorTests.swift
 //  PalaceTests
 //
-//  Tests for NowPlayingCoordinator metadata update logic and debouncing.
+//  Tests for NowPlayingCoordinator metadata update logic.
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //
 
@@ -322,11 +322,10 @@ final class NowPlayingCoordinatorTests: XCTestCase {
         XCTAssertEqual(state, .stopped)
     }
 
-    // MARK: - Debouncing Tests
+    // MARK: - Rapid updates
 
     /// SRS: AUDIO-005 -- Now Playing info updates correctly
-    func testUpdateNowPlaying_rapidUpdates_lastOneWins() async {
-        // Send many updates rapidly
+    func testUpdateNowPlaying_rapidUpdates_lastOneWins() {
         for i in 0..<10 {
             coordinator.updateNowPlaying(
                 title: "Chapter \(i)",
@@ -339,19 +338,8 @@ final class NowPlayingCoordinatorTests: XCTestCase {
             )
         }
 
-        // Production debounce schedules a `Task { try await Task.sleep(...) }`
-        // (NowPlayingCoordinator.swift). Deterministically JOIN that debounce
-        // Task via the `_awaitPendingUpdateForTesting()` seam instead of polling
-        // `MPNowPlayingInfoCenter` against a fixed wall-clock deadline, which
-        // starves under CI oversubscription.
-        await coordinator._awaitPendingUpdateForTesting()
-
-        let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
-        let title = info?[MPMediaItemPropertyTitle] as? String
-
-        // The last update should be reflected (either immediately or after debounce)
-        XCTAssertEqual(title, "Chapter 9",
-                        "After debouncing, the latest title should be set")
+        let title = MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyTitle] as? String
+        XCTAssertEqual(title, "Chapter 9", "each title change is written at once, so the latest is shown")
     }
 
     /// SRS: AUDIO-005 -- Now Playing info updates correctly

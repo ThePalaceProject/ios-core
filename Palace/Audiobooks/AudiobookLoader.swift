@@ -66,15 +66,6 @@ protocol AudiobookPositionTraceHost: AnyObject {
 
 extension DefaultAudiobookManager: @MainActor AudiobookPositionTraceHost {}
 
-/// The slice of `DefaultAudiobookManager` that decides who writes Now Playing,
-/// so the hand-over is testable without the manager's timers and observers.
-@MainActor
-protocol AudiobookNowPlayingWriterHost: AnyObject {
-    var nowPlayingWriter: NowPlayingInfoWriting? { get set }
-}
-
-extension DefaultAudiobookManager: @MainActor AudiobookNowPlayingWriterHost {}
-
 @MainActor
 final class AudiobookLoader {
 
@@ -429,7 +420,7 @@ final class AudiobookLoader {
         )
         networkService.downloadOnlyOnWiFi = container.settings.downloadOnlyOnWiFi
 
-        let manager = DefaultAudiobookManager(
+        let manager = Self.makeManager(
             metadata: metadata,
             audiobook: audiobook,
             networkService: networkService,
@@ -441,8 +432,6 @@ final class AudiobookLoader {
         let skipSettings = AudiobookSkipIntervalSettings()
         manager.skipForwardInterval = skipSettings.forwardTimeInterval
         manager.skipBackInterval = skipSettings.backTimeInterval
-
-        leaveNowPlayingToCoordinator(manager: manager)
 
         // PP-4963: watch the save path against the playback clock, so a locked
         // listen that stops saving becomes an event instead of an absence.
@@ -510,10 +499,24 @@ final class AudiobookLoader {
         return positionTrace
     }
 
-    /// `NowPlayingCoordinator` is the only Now Playing writer (PP-5504); the
-    /// toolkit's own writes would race it on the lock screen and CarPlay.
-    func leaveNowPlayingToCoordinator(manager: AudiobookNowPlayingWriterHost) {
+    /// The only place the app builds an audiobook manager. It turns off the
+    /// toolkit's Now Playing writes: `NowPlayingCoordinator` is the only
+    /// writer (PP-5504), and a second writer races it on the lock screen and
+    /// CarPlay.
+    static func makeManager(
+        metadata: AudiobookMetadata,
+        audiobook: Audiobook,
+        networkService: AudiobookNetworkService,
+        playbackTrackerDelegate: AudiobookPlaybackTrackerDelegate?
+    ) -> DefaultAudiobookManager {
+        let manager = DefaultAudiobookManager(
+            metadata: metadata,
+            audiobook: audiobook,
+            networkService: networkService,
+            playbackTrackerDelegate: playbackTrackerDelegate
+        )
         manager.nowPlayingWriter = nil
+        return manager
     }
 
     private func logDecodingError(_ decodingError: DecodingError) {
