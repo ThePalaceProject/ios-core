@@ -3,7 +3,7 @@
 //  Palace
 //
 //  Coordinates all updates to MPNowPlayingInfoCenter.
-//  Eliminates race conditions by providing a single update path with debouncing.
+//  The only writer of Now Playing info in the app (PP-5504).
 //
 //  Note: Remote commands (play/pause/skip) are handled by the toolkit's MediaControlPublisher.
 //  This coordinator only manages Now Playing INFO, not commands.
@@ -43,27 +43,23 @@ public final class NowPlayingCoordinator {
     // MARK: - Configuration
 
     private enum Configuration {
-        /// Minimum interval between Now Playing updates (debounce) in the
-        /// `.active` state. Background writes bypass debounce entirely.
-        static let updateDebounceInterval: TimeInterval = 0.3
-
         /// HelpSpot 17865 — if the writer was dry for longer than this while
         /// `isPlaying` was true, log to Crashlytics on foreground return.
         /// Tuned just above the toolkit's `.background` 15s cadence with
         /// enough slack for one missed tick.
         static let dryStreamThreshold: TimeInterval = 30.0
 
-        /// Longest gap between background writes while nothing has changed.
+        /// Longest gap between writes while nothing has changed.
         /// Well under `dryStreamThreshold`, so a healthy stream never looks dry.
         static let backgroundKeepAliveInterval: TimeInterval = 10.0
 
-        /// A background elapsed time further than this from the extrapolated
+        /// An elapsed time further than this from the extrapolated
         /// value is a seek or skip, not timer jitter, and is written at once.
-        static let backgroundSeekTolerance: TimeInterval = 1.0
+        static let seekTolerance: TimeInterval = 1.0
     }
 
     /// Fields MediaPlayer cannot extrapolate; a change to any of them is
-    /// written immediately in the background.
+    /// always written.
     private static let nonExtrapolatedKeys = [
         MPMediaItemPropertyTitle,
         MPMediaItemPropertyArtist,
@@ -85,7 +81,6 @@ public final class NowPlayingCoordinator {
     /// rate it carried, so background ticks can be checked against the
     /// position MediaPlayer extrapolates on its own.
     private var lastWrite: (at: Date, elapsed: TimeInterval, rate: Double)?
-    private var pendingUpdate: Task<Void, Never>?
     /// Foreground-notification observer token. Held in a nonisolated
     /// `@unchecked Sendable` box so the nonisolated `deinit` can remove it
     /// WITHOUT reading a `@MainActor`-isolated stored property (which
@@ -162,7 +157,8 @@ public final class NowPlayingCoordinator {
     // MARK: - Public API
 
     /// Updates Now Playing info with all metadata.
-    /// This is the primary update method - handles debouncing automatically.
+    /// This is the primary update method. A tick whose elapsed time MediaPlayer
+    /// extrapolates on its own is not written.
     public func updateNowPlaying(
         title: String,
         artist: String?,
@@ -203,7 +199,6 @@ public final class NowPlayingCoordinator {
             info[MPMediaItemPropertyArtwork] = artwork
         }
 
-        // Apply update with debouncing
         applyUpdate(info, isPlaying: isPlaying)
     }
 
@@ -216,7 +211,6 @@ public final class NowPlayingCoordinator {
         let currentRate = info[MPNowPlayingInfoPropertyDefaultPlaybackRate] as? Double ?? 1.0
         info[MPNowPlayingInfoPropertyPlaybackRate] = playing ? currentRate : 0.0
 
-        // Apply immediately (no debounce for state changes)
         currentInfo = info
         lastIsPlaying = playing
         recordWrite(info)
@@ -246,8 +240,7 @@ public final class NowPlayingCoordinator {
         Log.debug(#file, "Playback rate updated: \(rateValue)x")
     }
 
-    /// Updates artwork separately from other info
-    /// This prevents artwork updates from being debounced
+    /// Updates artwork separately from other info, and writes it at once.
     public func updateArtwork(_ image: UIImage?) {
         guard let image = image else {
             currentArtwork = nil
@@ -280,9 +273,6 @@ public final class NowPlayingCoordinator {
 
     /// Clears all Now Playing info
     public func clearNowPlaying() {
-        pendingUpdate?.cancel()
-        pendingUpdate = nil
-
         currentInfo = [:]
         currentArtwork = nil
         lastWrite = nil
@@ -302,64 +292,25 @@ public final class NowPlayingCoordinator {
     // MARK: - Private Methods
 
     private func applyUpdate(_ info: [String: Any], isPlaying: Bool) {
-        // Cancel any pending update
-        pendingUpdate?.cancel()
-
-        // HelpSpot 17865 — when the app is NOT active, bypass debounce.
-        // The main-queue scheduler stalls during suspend, so debounced
-        // DispatchWorkItems can vanish — the coordinator's currentInfo and
-        // the system MPNowPlayingInfoCenter diverge and the patron sees
-        // stale info briefly on foreground return.
-        if applicationStateProvider() != .active {
-            // PP-4970: playback ticks arrive four times a second; skip the
-            // ones whose elapsed time MediaPlayer extrapolates from the rate.
-            guard backgroundWriteIsNeeded(info, isPlaying: isPlaying) else {
-                // Keep the latest values so a direct write (pause, rate,
-                // artwork) carries the current position, not the last written one.
-                currentInfo = info
-                return
-            }
-            performUpdate(info, isPlaying: isPlaying)
+        // Playback ticks arrive four times a second. MediaPlayer advances the
+        // elapsed time from the last written time and rate, so write only a
+        // change it cannot extrapolate (PP-4970, PP-5504). A needed write goes
+        // out at once in every app state: a delayed write can be lost while
+        // the app is suspended (HelpSpot 17865), and in the foreground it
+        // would show a seek or chapter change late on CarPlay.
+        guard writeIsNeeded(info, isPlaying: isPlaying) else {
+            // Keep the latest values so a direct write (pause, rate,
+            // artwork) carries the current position, not the last written one.
+            currentInfo = info
             return
         }
-
-        // Check if we should debounce
-        let now = Date()
-        let timeSinceLastUpdate = now.timeIntervalSince(lastUpdateTime)
-
-        if timeSinceLastUpdate >= Configuration.updateDebounceInterval {
-            // Apply immediately
-            performUpdate(info, isPlaying: isPlaying)
-        } else {
-            // Schedule debounced update.
-            //
-            // Cancel semantics — preserves prior `DispatchWorkItem.cancel()`
-            // behavior across two race windows:
-            //   1) Cancelled DURING the sleep — `Task.sleep` throws
-            //      `CancellationError`; we swallow and `return`. Matches a
-            //      cancelled work item simply not firing.
-            //   2) Cancelled AFTER the sleep returns but BEFORE `performUpdate`
-            //      — caught by the explicit `Task.isCancelled` guard. (Cancellation
-            //      between `try await Task.sleep` returning and the next instruction
-            //      executing is the narrow window the guard exists for.)
-            let delay = Configuration.updateDebounceInterval - timeSinceLastUpdate
-            let task = Task { @MainActor [weak self] in
-                do {
-                    try await Task.sleep(for: .seconds(delay))
-                } catch {
-                    return
-                }
-                guard !Task.isCancelled else { return }
-                self?.performUpdate(info, isPlaying: isPlaying)
-            }
-            pendingUpdate = task
-        }
+        performUpdate(info, isPlaying: isPlaying)
     }
 
     /// MediaPlayer advances the lock-screen time from the last written elapsed
-    /// time and rate, so a background write is needed only when something it
-    /// cannot extrapolate has changed, or the keep-alive interval has passed.
-    private func backgroundWriteIsNeeded(_ info: [String: Any], isPlaying: Bool) -> Bool {
+    /// time and rate, so a write is needed only when something it cannot
+    /// extrapolate has changed, or the keep-alive interval has passed.
+    private func writeIsNeeded(_ info: [String: Any], isPlaying: Bool) -> Bool {
         guard let last = lastWrite, isPlaying == lastIsPlaying else { return true }
         for key in Self.nonExtrapolatedKeys where info[key] as? AnyHashable != currentInfo[key] as? AnyHashable {
             return true
@@ -370,10 +321,10 @@ public final class NowPlayingCoordinator {
         }
         let elapsed = info[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? Double ?? 0
         let extrapolated = last.elapsed + sinceLastWrite * last.rate
-        return abs(elapsed - extrapolated) > Configuration.backgroundSeekTolerance
+        return abs(elapsed - extrapolated) > Configuration.seekTolerance
     }
 
-    /// Every write to the system center sets the base the background skip
+    /// Every write to the system center sets the base the tick skip
     /// extrapolates from.
     private func recordWrite(_ info: [String: Any]) {
         lastWrite = (
@@ -385,7 +336,7 @@ public final class NowPlayingCoordinator {
 
     private func performUpdate(_ info: [String: Any], isPlaying: Bool) {
         currentInfo = info
-        lastUpdateTime = Date()
+        lastUpdateTime = now()
         lastIsPlaying = isPlaying
         recordWrite(info)
 
@@ -433,17 +384,6 @@ public final class NowPlayingCoordinator {
     /// gating condition.
     func _test_setLastIsPlaying(_ playing: Bool) {
         lastIsPlaying = playing
-    }
-
-    /// Test-only join seam. Awaits the in-flight debounced update `Task`
-    /// (`pendingUpdate`) so a test can deterministically block on the actual
-    /// debounce work unit instead of polling `MPNowPlayingInfoCenter` against a
-    /// fixed wall-clock deadline (`awaitCondition(timeout:)`), which starves
-    /// under CI sim-clone oversubscription. Production behavior is unchanged —
-    /// nothing calls this outside tests. No-op when no debounced update is
-    /// pending (the immediate-apply path leaves `pendingUpdate` nil).
-    func _awaitPendingUpdateForTesting() async {
-        await pendingUpdate?.value
     }
 }
 
