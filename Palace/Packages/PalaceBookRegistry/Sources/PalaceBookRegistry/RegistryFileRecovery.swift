@@ -246,3 +246,76 @@ enum RegistryFileRecovery {
     return primaryHasRecords(for: registryURL) || backupHasRecords(for: registryURL)
   }
 }
+
+// MARK: - Reading for load
+
+extension RegistryFileRecovery {
+  /// What `load` read from `registry.json`: the records to parse and the
+  /// recovery flags. `data` and `isValid` let the per-book layout check its
+  /// trust record and migrate only from a valid file.
+  struct LoadRead {
+    var records: [TPPBookRegistryData]?
+    var needsRebuild = false
+    var needsRewrite = false
+    var data: Data?
+    var isValid = false
+  }
+
+  /// Reads and classifies `registry.json`, quarantining a corrupt file and
+  /// recovering from the last-good `.bak`.
+  static func readForLoad(at url: URL) -> LoadRead {
+    var read = LoadRead()
+
+    // Reliability WS-B / INV-1: distinguish an ABSENT registry file from an
+    // existing-but-CORRUPT one. The old code conflated both into a single
+    // `else` that silently zeroed the shelf, and the next save() then
+    // overwrote the (recoverable) corrupt file with a valid-but-empty one —
+    // erasing the patron's whole shelf on a single bad write. We now classify
+    // the bytes, quarantine a corrupt file (never destroy), and try the
+    // last-good `.bak` before falling back to empty + a rebuild flag.
+    let fileExists = FileManager.default.fileExists(atPath: url.path)
+    let fileData: Data? = fileExists ? try? Data(contentsOf: url) : nil
+    let classification: RegistryFileRecovery.Classification
+    if !fileExists {
+      classification = .empty
+    } else if let fileData {
+      classification = RegistryFileRecovery.classify(data: fileData)
+    } else {
+      // File exists but could not be read — treat as corrupt (recoverable).
+      classification = .corrupt
+    }
+
+    var recordsToParse: [TPPBookRegistryData]? = nil
+    var needsRebuild = false
+    var needsRewrite = false
+    switch classification {
+    case .valid(let records):
+      recordsToParse = records
+      if RegistryFileRecovery.needsMigration(data: fileData) {
+        Log.info(#file, "  Registry file is unversioned (legacy) — will migrate to schema v\(RegistryFileRecovery.currentSchemaVersion) on next save")
+        needsRewrite = true
+      }
+    case .empty:
+      Log.info(#file, "  No existing registry file found — starting with an empty registry")
+    case .corrupt:
+      Log.error(#file, "  Registry file exists but is CORRUPT — quarantining (never overwriting/destroying)")
+      if let quarantined = RegistryFileRecovery.quarantine(corruptFileAt: url) {
+        Log.error(#file, "  Quarantined corrupt registry to \(quarantined.lastPathComponent)")
+      }
+      if let recovered = RegistryFileRecovery.recoverFromBackup(for: url) {
+        Log.info(#file, "  Recovered \(recovered.count) record(s) from last-good .bak backup")
+        recordsToParse = recovered
+        needsRewrite = true
+      } else {
+        Log.error(#file, "  No usable .bak backup — leaving registry empty and flagging needsRebuildFromServer (next authenticated sync repopulates from the loans feed)")
+        needsRebuild = true
+      }
+    }
+    read.records = recordsToParse
+    read.needsRebuild = needsRebuild
+    read.needsRewrite = needsRewrite
+    read.data = fileData
+    if case .valid = classification { read.isValid = true }
+    return read
+  }
+}

@@ -556,7 +556,7 @@ public class TPPBookRegistry: @unchecked Sendable {
         self.bookmarks = BookmarkManager(
             store: store,
             save: { [weak sync] account in sync?.save(for: account) },
-            savePosition: { [weak sync] account in sync?.save(for: account, scope: .positionOnly) },
+            savePosition: { [weak sync] account, identifiers in sync?.savePosition(for: account, identifiers: identifiers) },
             saveSync: { [weak sync] account in sync?.saveSync(for: account) },
             now: dependencies.positionClock
         )
@@ -580,14 +580,15 @@ public class TPPBookRegistry: @unchecked Sendable {
         let sync = BookRegistrySync(
             store: store,
             accountScope: accountScope,
-            dependencies: dependencies
+            dependencies: dependencies,
+            allowsPerBookStorage: false
         )
         self.store = store
         self.syncEngine = sync
         self.bookmarks = BookmarkManager(
             store: store,
             save: { [weak sync] account in sync?.save(for: account) },
-            savePosition: { [weak sync] account in sync?.save(for: account, scope: .positionOnly) },
+            savePosition: { [weak sync] account, identifiers in sync?.savePosition(for: account, identifiers: identifiers) },
             saveSync: { [weak sync] account in sync?.saveSync(for: account) },
             now: dependencies.positionClock
         )
@@ -961,7 +962,11 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
 
     // PUBLIC_INTENT: TPPBookRegistryProvider requirement called by the app delegate and the EPUB reader.
     public func flushPendingPositions() {
-        bookmarks.flushPendingPositions(loadedAccount: loadedAccountID)
+        let loadedAccount = loadedAccountID
+        bookmarks.flushPendingPositions(loadedAccount: loadedAccount)
+        // With per-book files in use, this is where registry.json catches up
+        // with the position files (PP-5507).
+        if let loadedAccount { syncEngine.writeSingleFileIfBehind(for: loadedAccount) }
         syncEngine.waitForPendingDiskWrites()
     }
 

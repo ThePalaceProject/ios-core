@@ -15,8 +15,9 @@ class BookmarkManager {
 
   private let store: BookRegistryStore
   private let save: (String) -> Void
-  /// Persists a change that only moved a reading position. See `setLocation`.
-  private let savePosition: (String) -> Void
+  /// Persists a change that only moved the reading positions of the given
+  /// books of an account. See `setLocation`.
+  private let savePosition: (String, Set<String>) -> Void
   private let saveSync: (String) -> Void
   private let now: () -> Date
 
@@ -38,7 +39,7 @@ class BookmarkManager {
   init(
     store: BookRegistryStore,
     save: @escaping (String) -> Void,
-    savePosition: @escaping (String) -> Void,
+    savePosition: @escaping (String, Set<String>) -> Void,
     saveSync: @escaping (String) -> Void,
     now: @escaping () -> Date = { Date() }
   ) {
@@ -71,7 +72,7 @@ class BookmarkManager {
     }, announce: false, onComplete: { [self] in
       // Runs as a store barrier, so the write-or-defer decisions follow mutation order.
       guard let account, positionWriteIsDue(account: account, identifier: identifier, persistence: persistence) else { return }
-      savePosition(account)
+      savePosition(account, [identifier])
     })
   }
 
@@ -116,7 +117,7 @@ class BookmarkManager {
         Log.warn(#file, "Dropped \(dropped) pending reading position(s) of a library that is no longer loaded")
       }
       if let loadedAccount, !due.isEmpty {
-        savePosition(loadedAccount)
+        savePosition(loadedAccount, due)
       }
     }, operation: "flushPendingPositions")
   }
