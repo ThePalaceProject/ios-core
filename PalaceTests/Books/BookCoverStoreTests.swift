@@ -244,6 +244,26 @@ final class BookCoverStoreTests: XCTestCase {
         withExtendedLifetime(first) {}
     }
 
+    /// A thumbnail stands in for the color only while a book has no cover.
+    func testThumbnailArrival_setsTheColorOnlyForABookWithoutACover() async {
+        let loader = HeldThumbnailLoader()
+        TPPBookImageContext.imageLoaderProvider = { loader }
+        let cache = CountingCache()
+        let coverless = Self.makeBook("id-h1", cache: cache, store: store)
+        let covered = Self.makeBook("id-h2", cache: cache, store: store)
+        let cover = UIImage()
+        covered.coverImage = cover
+        covered.updateDominantColor(using: cover)
+        await awaitConditionAsync(timeout: 3) { covered.dominantUIColor == .red }
+
+        loader.answerThumbnails(with: UIImage())
+
+        await awaitConditionAsync(timeout: 3) { coverless.dominantUIColor == .blue }
+        await settle()
+        XCTAssertEqual(covered.dominantUIColor, .red, "the cover's color stays")
+        XCTAssertEqual(extractor.count, 2)
+    }
+
     // MARK: - Helpers
 
     /// Lets queued main-thread writes, color work and its write-back finish.
