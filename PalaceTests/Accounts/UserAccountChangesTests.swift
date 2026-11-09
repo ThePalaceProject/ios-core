@@ -36,6 +36,22 @@ final class UserAccountChangesTests: XCTestCase {
         XCTAssertEqual(counter.value, 1)
     }
 
+    /// Sign-out clears the stored credentials before it publishes, so the
+    /// account page and the 401 handling read signed-out state on the change.
+    func testSigningOut_SubscribersAlreadyReadSignedOutState() {
+        let account = TPPUserAccountTestFactory.makeIsolated()
+        account.setAuthToken("token", barcode: "1234", pin: "5678", expirationDate: nil)
+        XCTAssertTrue(account.credentialSnapshot().hasCredentials, "precondition: signed in")
+        let seen = CredentialRecorder()
+        account.changes
+            .sink { seen.append(account.credentialSnapshot().hasCredentials) }
+            .store(in: &cancellables)
+
+        account.removeAll()
+
+        XCTAssertEqual(seen.values, [false])
+    }
+
     func testStoringAToken_PublishesOneChange() {
         let account = TPPUserAccountTestFactory.makeIsolated()
         let counter = countChanges(of: account)
@@ -76,4 +92,11 @@ private final class ChangeCounter: @unchecked Sendable {
     private var count = 0
     var value: Int { lock.withLock { count } }
     func increment() { lock.withLock { count += 1 } }
+}
+
+private final class CredentialRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [Bool] = []
+    var values: [Bool] { lock.withLock { recorded } }
+    func append(_ value: Bool) { lock.withLock { recorded.append(value) } }
 }
