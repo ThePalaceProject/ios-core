@@ -24,11 +24,15 @@ struct AudiobookSampleToolbar: View {
     private let playbackButtonLength: CGFloat = 35
     private let buttonViewSpacing: CGFloat = 10
 
-    init?(book: TPPBook, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry) {
+    init?(
+        book: TPPBook,
+        activityPolicy: ActivityPolicy,
+        bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry
+    ) {
         self.bookRegistry = bookRegistry
         self.book = book
         guard let sample = book.sample as? AudiobookSample else { return nil }
-        player = AudiobookSamplePlayer(sample: sample)
+        player = AudiobookSamplePlayer(sample: sample, activityPolicy: activityPolicy)
 
         let placeholderImage = Self.generatePlaceholder(for: book)
         imageLoader = AsyncImage(image: placeholderImage)
@@ -148,15 +152,6 @@ struct AudiobookSampleToolbar: View {
             .progressViewStyle(CircularProgressViewStyle())
             .scaleEffect(1.25)
             .transition(.opacity)
-    }
-}
-
-@objc class AudiobookSampleToolbarWrapper: NSObject {
-
-    @MainActor @objc static func create(book: TPPBook) -> UIViewController {
-        let toolbar = AudiobookSampleToolbar(book: book)
-        let hostingController = UIHostingController(rootView: toolbar)
-        return hostingController
     }
 }
 

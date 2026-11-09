@@ -35,9 +35,9 @@ enum AudiobookSamplePlayerState {
 // itself owned by the `@MainActor SamplePreviewManager`). Every existing state
 // mutation already hopped to main via `DispatchQueue.main.async`, so isolating
 // the type is behavior-preserving and removes the manual hops. The framework
-// delegate callbacks (`AVAudioPlayerDelegate`, the `Timer` selector) are all
-// delivered on the main run loop because the player and timer are created on
-// main (see `setupPlayer(data:)` / `startTimer()`).
+// delegate callbacks (`AVAudioPlayerDelegate`) are delivered on the main run
+// loop because the player is created on main (see `setupPlayer(data:)`), and
+// the countdown ticks come from the main-actor `ActivityPolicy`.
 @MainActor
 class AudiobookSamplePlayer: NSObject, ObservableObject {
 
@@ -51,14 +51,18 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
 
     private var sample: any Sample & Sendable
     private var player: (any SampleAudioEngine)?
-    private var timer: Timer?
+    private let activityPolicy: ActivityPolicy
+    /// Refreshes `remainingTime` while the main scene is visible (PP-5508).
+    private var countdown: AnyCancellable?
     private let makeEngine: (Data, AVAudioPlayerDelegate) throws -> any SampleAudioEngine
 
     init(
         sample: any Sample & Sendable,
+        activityPolicy: ActivityPolicy,
         makeEngine: @escaping (Data, AVAudioPlayerDelegate) throws -> any SampleAudioEngine = AudiobookSamplePlayer.makeAudioPlayer
     ) {
         self.sample = sample
+        self.activityPolicy = activityPolicy
         self.makeEngine = makeEngine
         super.init()
 
@@ -101,14 +105,14 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
     }
 
     // `isolated deinit` (SE-0371, Xcode 26 / Swift 6.2): the class is
-    // `@MainActor`, so `timer` and `player` are main-actor-isolated,
+    // `@MainActor`, so `countdown` and `player` are main-actor-isolated,
     // non-Sendable stored properties. A plain nonisolated `deinit` cannot touch
     // them, and `MainActor.assumeIsolated` in a deinit is banned (deinit is not
     // guaranteed to run on the main thread). Isolating the deinit lets it clean
-    // up the timer and player on the main actor exactly as before.
+    // up the countdown and player on the main actor exactly as before.
     isolated deinit {
-        self.timer?.invalidate()
-        timer = nil
+        countdown?.cancel()
+        countdown = nil
         self.player?.stop()
         self.player = nil
     }
@@ -127,7 +131,7 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
 
     private func setupPlayer(data: Data) throws {
         player = try makeEngine(data, self)
-        startTimer()
+        startCountdown()
         player?.play()
         state = .playing
     }
@@ -154,29 +158,17 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
         remainingTime = player.duration - player.currentTime
     }
 
-    @objc private func setDuration() {
+    private func setDuration() {
         guard let player = player,
               player.currentTime < player.duration
         else { return }
 
-        // The Timer fires on the main run loop (scheduled on main), so we are
-        // already on the main actor here. Compute the new value now — capturing
-        // the non-Sendable `AVAudioPlayer` inside a `@Sendable` main-hop closure
-        // would be a concurrency violation — then assign directly.
         remainingTime = player.duration - player.currentTime
     }
 
-    private func startTimer() {
-        timer?.invalidate()
-        timer = nil
-
-        timer = Timer.scheduledTimer(
-            timeInterval: 1.0,
-            target: self,
-            selector: #selector(setDuration),
-            userInfo: nil,
-            repeats: true
-        )
+    private func startCountdown() {
+        countdown = activityPolicy.ticks(for: .previewCountdown)
+            .sink { [weak self] _ in self?.setDuration() }
     }
 
     private func downloadFile() {
