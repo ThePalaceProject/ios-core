@@ -1209,9 +1209,9 @@ private final class SnapshotBox {
 }
 
 /// Covers the two gaps #1222 left open:
-///  1. Regression-locks the off-main fix: every test posts
-///     `.TPPUserAccountDidChange` from a BACKGROUND queue — the production path
-///     (token-refresh → `TPPUserAccount.notifyAccountDidChange` posts off-main).
+///  1. Regression-locks the off-main fix: every test publishes an account
+///     change from a BACKGROUND queue — the production path (token refresh →
+///     `TPPUserAccount.notifyAccountDidChange` sends off-main).
 ///     `setupObservers()`'s `@MainActor` sink must hop to main via
 ///     `.receive(on: RunLoop.main)`; remove that hop and the sink is entered
 ///     off-main → Swift 6 `dispatch_assert_queue` trap → these tests die.
@@ -1323,7 +1323,7 @@ final class AccountDetailViewModelSignedInDerivationTests: PalaceTestCase {
         await fulfillment(of: [settled], timeout: 5.0)
     }
 
-    /// Posts `.TPPUserAccountDidChange` from a background queue (production shape)
+    /// Publishes a change from the library's account on a background queue (production shape)
     /// and waits for `isSignedIn` to reach `expected`. If `setupObservers()` were
     /// to lose its main-actor hop, entering the `@MainActor` sink off-main would
     /// trap here rather than fulfill.
@@ -1337,8 +1337,9 @@ final class AccountDetailViewModelSignedInDerivationTests: PalaceTestCase {
             .sink { if $0 == expected { reached.fulfill() } }
             .store(in: &cancellables)
 
+        let account = AppContainer.production().accountsManager.userAccount(for: seededLibraryID)
         DispatchQueue.global(qos: .userInitiated).async {
-            NotificationCenter.default.post(name: .TPPUserAccountDidChange, object: nil)
+            account._publishChangeForTesting()
         }
         await fulfillment(of: [reached], timeout: 3.0)
     }
