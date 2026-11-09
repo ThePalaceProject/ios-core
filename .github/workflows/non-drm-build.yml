@@ -38,7 +38,7 @@ jobs:
       NODRM_DERIVED_DATA_PATH: ${{ github.workspace }}/nodrm-derived-data
     steps:
       - name: Set up Xcode 26
-        uses: maxim-lobanov/setup-xcode@v1
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
         with:
           xcode-version: '26'
 
@@ -49,7 +49,7 @@ jobs:
       # builds this project: PalaceAudiobookToolkit is a submodule and the
       # noDRM target links it, so a bare checkout has nothing to build.
       - name: Checkout main repo
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: true
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}

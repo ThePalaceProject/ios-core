@@ -42,7 +42,7 @@ jobs:
       run: ${{ steps.decide.outputs.run }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           sparse-checkout: |
             scripts
@@ -88,7 +88,7 @@ jobs:
       xcode: ${{ steps.xcode.outputs.version }}
     steps:
       - name: Set up Xcode
-        uses: maxim-lobanov/setup-xcode@v1
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
         with:
           xcode-version: 'latest-stable'
 
@@ -102,7 +102,7 @@ jobs:
           echo "version=$(xcodebuild -version | awk 'NR==1 {print $2}')" >> "$GITHUB_OUTPUT"
 
       - name: Checkout main repo and submodules
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: true
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
@@ -115,7 +115,7 @@ jobs:
       # cache restored objects the build then discarded (measured: restore
       # ~0 min, save ~1 min per run, no compile reused).
       - name: Cache Swift packages
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ runner.temp }}/dd/SourcePackages
           key: ${{ runner.os }}-spm-${{ hashFiles('Palace.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
@@ -123,7 +123,7 @@ jobs:
             ${{ runner.os }}-spm-
 
       - name: Checkout Certificates
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           repository: ThePalaceProject/mobile-certificates
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
@@ -195,7 +195,7 @@ jobs:
       - name: Upload build results
         if: failure() && steps.build.outcome == 'failure'
         continue-on-error: true
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: build-results
           path: ${{ runner.temp }}/BuildResults.xcresult
@@ -249,7 +249,7 @@ jobs:
           ls -la "$RUNNER_TEMP/plan"
 
       - name: Upload test products
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: test-products
           path: ${{ runner.temp }}/plan
@@ -259,7 +259,7 @@ jobs:
 
       # Small and separate, so the gate can check the plan without the products.
       - name: Upload shard plan
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: shard-plan
           path: ${{ runner.temp }}/plan/shard-plan.json
@@ -286,7 +286,7 @@ jobs:
         shard: ${{ fromJSON(needs.build.outputs.shards) }}
     steps:
       - name: Set up Xcode
-        uses: maxim-lobanov/setup-xcode@v1
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
         with:
           xcode-version: ${{ needs.build.outputs.xcode }}
 
@@ -294,7 +294,7 @@ jobs:
       # repo is here for the scripts, the package tests, and the lint tests
       # that read Palace/ and PalaceTests/ sources through #filePath.
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # BookmarkSpecConformanceTests reads the mobile-specs corpus from the
       # checkout through #filePath, so the one submodule the tests read has to
@@ -304,7 +304,7 @@ jobs:
         run: git -c url."https://github.com/".insteadOf="git@github.com:" submodule update --init --depth 1 mobile-specs
 
       - name: Download test products
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: test-products
           path: ${{ runner.temp }}/plan
@@ -503,7 +503,7 @@ jobs:
 
       - name: Upload streaming-ON results
         if: steps.tests_streaming_on.outcome == 'failure'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: test-results-streaming-on
           overwrite: true
@@ -574,7 +574,7 @@ jobs:
       - name: Upload package coverage
         if: ${{ !cancelled() && steps.plan.outputs.packages == 'true' }}
         continue-on-error: true
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: package-coverage
           path: ${{ runner.temp }}/package-coverage/
@@ -605,7 +605,7 @@ jobs:
       - name: Upload Snapshot Failures
         if: always() && steps.snapshots.outputs.count != '0'
         continue-on-error: true
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: snapshot-failures-shard-${{ matrix.shard }}
           path: snapshot-failures/
@@ -617,7 +617,7 @@ jobs:
       - name: Upload Test Results
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: test-results-shard-${{ matrix.shard }}
           path: ${{ runner.temp }}/shard-out/TestResults.xcresult
@@ -640,7 +640,7 @@ jobs:
       - name: Upload partial test results
         if: always() && steps.partial.outputs.present == 'true'
         continue-on-error: true
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: partial-test-results-shard-${{ matrix.shard }}
           path: ${{ runner.temp }}/shard-out/partial/
@@ -652,7 +652,7 @@ jobs:
       # without it, and it must then fail rather than assume.
       - name: Upload shard report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: shard-report-${{ matrix.shard }}
           path: ${{ runner.temp }}/shard-out/shard-report.json
@@ -718,20 +718,20 @@ jobs:
 
       - name: Checkout
         if: steps.eval.outputs.verify == 'true'
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           sparse-checkout: scripts
 
       - name: Download shard plan
         if: steps.eval.outputs.verify == 'true'
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: shard-plan
           path: plan
 
       - name: Download shard reports
         if: steps.eval.outputs.verify == 'true'
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: shard-report-*
           path: reports
@@ -765,15 +765,15 @@ jobs:
       pull-requests: write
     steps:
       - name: Set up Xcode
-        uses: maxim-lobanov/setup-xcode@v1
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
         with:
           xcode-version: ${{ needs.build.outputs.xcode || 'latest-stable' }}
 
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Cache Test History
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: .test-history
           key: test-history-${{ github.head_ref || github.ref_name }}
@@ -785,7 +785,7 @@ jobs:
       - name: Download shard results
         if: needs.build.result == 'success'
         continue-on-error: true
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: test-results-shard-*
           path: shard-results
@@ -793,7 +793,7 @@ jobs:
       - name: Download shard plan
         if: needs.build.result == 'success'
         continue-on-error: true
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: shard-plan
           path: plan
@@ -801,7 +801,7 @@ jobs:
       - name: Download shard reports
         if: needs.build.result == 'success'
         continue-on-error: true
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: shard-report-*
           path: shard-reports
@@ -809,7 +809,7 @@ jobs:
       - name: Download package coverage
         if: needs.build.result == 'success'
         continue-on-error: true
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: package-coverage
           path: package-coverage
@@ -846,7 +846,7 @@ jobs:
       - name: Download build results
         if: needs.build.result == 'failure'
         continue-on-error: true
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: build-results
           path: build-results/BuildResults.xcresult
@@ -854,7 +854,7 @@ jobs:
       - name: Download snapshot failures
         if: needs.build.result == 'success'
         continue-on-error: true
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: snapshot-failures-shard-*
           path: snapshot-failures
@@ -1346,7 +1346,7 @@ jobs:
       - name: Upload Test Report
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           overwrite: true
           name: test-report
@@ -1357,7 +1357,7 @@ jobs:
       - name: Upload Test Data JSON
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           overwrite: true
           name: test-data
@@ -1370,7 +1370,7 @@ jobs:
       - name: Upload Snapshot Failures
         if: always() && steps.snapshots.outputs.found == 'true'
         continue-on-error: true
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           overwrite: true
           name: snapshot-failures
@@ -1394,7 +1394,7 @@ jobs:
         if: always() && steps.find_results.outputs.found == 'true'
         continue-on-error: true
         id: upload_results
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           overwrite: true
           name: test-results
@@ -1422,7 +1422,7 @@ jobs:
       - name: Post PR Comment with Results
         if: always() && github.event_name == 'pull_request'
         continue-on-error: true
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
             const fs = require('fs');
@@ -1703,21 +1703,21 @@ jobs:
     steps:
       - name: Download reports
         continue-on-error: true
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: test-report
           path: test-report
 
       - name: Download report data
         continue-on-error: true
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: test-data
           path: .
 
       - name: Download snapshot viewer
         continue-on-error: true
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: snapshot-failures
           path: snapshot-failures
@@ -1826,7 +1826,7 @@ jobs:
       - name: Publish to GitHub Pages
         if: steps.assemble.outcome == 'success'
         continue-on-error: true
-        uses: peaceiris/actions-gh-pages@v4
+        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./site
