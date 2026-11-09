@@ -81,8 +81,7 @@ extension TPPBook {
         // Synchronous memory-cache check (instant, no disk I/O on main thread)
         if let img = Self.firstCachedImage(in: imageCache, keys: lookupKeys) {
             DispatchQueue.main.async {
-                store.update(key) { $0.coverImage = img }
-                store.updateDominantColor(for: key, using: img)
+                store.offerCover(img, for: key)
             }
             return
         }
@@ -91,15 +90,8 @@ extension TPPBook {
 
         let placeholder = isLargeDisplay ? imageCache.get(for: identifier) : nil
         DispatchQueue.main.async {
-            store.update(key) { state in
-                if let placeholder {
-                    state.coverImage = placeholder
-                }
-                state.isCoverLoading = true
-            }
-            if let placeholder {
-                store.updateDominantColor(for: key, using: placeholder)
-            }
+            store.update(key) { $0.isCoverLoading = true }
+            store.offerCover(placeholder, for: key)
         }
 
         if let displayHeight {
@@ -117,11 +109,7 @@ extension TPPBook {
                 for lookupKey in lookupKeys {
                     if let cached = await cache.getAsync(for: lookupKey) {
                         await MainActor.run {
-                            store.update(key) {
-                                $0.coverImage = cached
-                                $0.isCoverLoading = false
-                            }
-                            store.updateDominantColor(for: key, using: cached)
+                            store.offerCover(cached, for: key, endingLoad: true)
                         }
                         return
                     }
@@ -136,16 +124,10 @@ extension TPPBook {
                 let img = await imageLoader.coverImage(for: self, displayPoints: displayHeight)
                 let final = img ?? placeholder ?? self.thumbnailImage
                 await MainActor.run {
-                    store.update(key) {
-                        $0.coverImage = final
-                        $0.isCoverLoading = false
+                    if let img = final, !isLargeDisplay {
+                        cache.set(img, for: sizeKey ?? key)
                     }
-                    if let img = final {
-                        if !isLargeDisplay {
-                            cache.set(img, for: sizeKey ?? key)
-                        }
-                        store.updateDominantColor(for: key, using: img)
-                    }
+                    store.offerCover(final, for: key, endingLoad: true)
                 }
             }
         } else {
@@ -159,15 +141,11 @@ extension TPPBook {
                     let final = image ?? store.state(for: key).thumbnailImage
 
                     DispatchQueue.main.async {
-                        store.update(key) {
-                            $0.coverImage = final
-                            $0.isCoverLoading = false
-                        }
                         if let img = final {
                             // Single cache key — no duplicate storage
                             cache.set(img, for: key)
-                            store.updateDominantColor(for: key, using: img)
                         }
+                        store.offerCover(final, for: key, endingLoad: true)
                     }
                 }
             }

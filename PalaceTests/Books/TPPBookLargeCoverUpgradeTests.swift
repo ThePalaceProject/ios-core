@@ -6,13 +6,15 @@
 import XCTest
 import UIKit
 @testable import Palace
-import PalaceBookModel
+@testable import PalaceBookModel
 
 @MainActor
 final class TPPBookLargeCoverUpgradeTests: XCTestCase {
 
     private var cache: MockImageCache!
     private var loader: MockImageLoader!
+    /// Per-test cover store, so cover state cannot leak between tests through the shared one.
+    private let coverStore = BookCoverStore()
     private let small = UIImage()
     private let sized = UIImage()
 
@@ -184,7 +186,8 @@ final class TPPBookLargeCoverUpgradeTests: XCTestCase {
             timeTrackingURL: nil,
             contributors: [:],
             bookDuration: nil,
-            imageCache: cache
+            imageCache: cache,
+            coverStore: coverStore
         )
     }
 }

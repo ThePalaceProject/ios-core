@@ -92,7 +92,8 @@ public class TPPBook: NSObject, ObservableObject {
 
     // Cover state lives in `coverStore` by book ID, shared by every live
     // object for the same book, so a sync's replacement objects keep it.
-    let coverStore: BookCoverStore
+    // PUBLIC_INTENT: app-side merges (BookMetadataService) build the merged book on the same store.
+    public let coverStore: BookCoverStore
     /// The ID this object registered under; `identifier` is mutable.
     let coverStoreKey: String
     private let coverStateChanged = PassthroughSubject<Void, Never>()

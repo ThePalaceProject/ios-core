@@ -108,6 +108,28 @@ public final class BookCoverStore: @unchecked Sendable {
         books.forEach { $0.coverStateDidChange() }
     }
 
+    /// Stores `image` as the cover unless the stored cover has more pixels, and
+    /// computes the color of an accepted cover. Views of different sizes fetch
+    /// into the same entry, so a lane-sized decode must not replace the detail
+    /// header's larger one. `endingLoad` also clears `isCoverLoading`.
+    /// Explicit assignment (`TPPBook.coverImage = …`, `clearCachedImages`) is
+    /// not limited this way.
+    func offerCover(_ image: UIImage?, for identifier: String, endingLoad: Bool = false) {
+        var accepted: UIImage?
+        update(identifier) { state in
+            if endingLoad {
+                state.isCoverLoading = false
+            }
+            guard let image else { return }
+            if let current = state.coverImage, current.pixelCount > image.pixelCount { return }
+            state.coverImage = image
+            accepted = image
+        }
+        if let accepted {
+            updateDominantColor(for: identifier, using: accepted)
+        }
+    }
+
     /// Computes the cover color from `image` unless the stored color already
     /// came from this image object, then stores it.
     func updateDominantColor(for identifier: String, using image: UIImage) {
@@ -141,5 +163,14 @@ public final class BookCoverStore: @unchecked Sendable {
 
     private func liveBooks(for identifier: String) -> [TPPBook] {
         lock.withLock { entries[identifier]?.books.values.compactMap(\.book) ?? [] }
+    }
+}
+
+private extension UIImage {
+    var pixelCount: CGFloat {
+        if let cgImage {
+            return CGFloat(cgImage.width * cgImage.height)
+        }
+        return size.width * scale * size.height * scale
     }
 }

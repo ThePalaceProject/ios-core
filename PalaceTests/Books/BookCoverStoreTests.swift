@@ -180,6 +180,70 @@ final class BookCoverStoreTests: XCTestCase {
         XCTAssertEqual(store.entryCount, 0)
     }
 
+    /// The detail header and a related-books lane cell can show the same book. The
+    /// lane's cache hit holds a smaller image and must not replace the header's cover.
+    func testLaneSizedCacheHitOnAnotherObject_keepsTheLargerCover() async {
+        let small = solidImage(width: 10, height: 15)
+        let large = solidImage(width: 200, height: 300)
+        let cache = CountingCache(hits: ["id-l": small])
+        let loader = MockImageLoader()
+        loader.stubbedCoverImage = large
+        TPPBookImageContext.imageLoaderProvider = { loader }
+        let header = Self.makeBook("id-l", cache: cache, store: store)
+        await awaitConditionAsync(timeout: 3) { header.coverImage === small }
+        header.fetchCoverImage(forDisplayHeight: 280)
+        await awaitConditionAsync(timeout: 3) { header.coverImage === large && !header.isCoverLoading }
+        await settle()
+        let colorCalculations = extractor.count
+
+        let laneCell = Self.makeBook("id-l", cache: cache, store: store)
+        laneCell.fetchCoverImage(forDisplayHeight: 160)
+        await settle()
+
+        XCTAssertIdentical(header.coverImage, large)
+        XCTAssertIdentical(laneCell.coverImage, large)
+        XCTAssertEqual(extractor.count, colorCalculations, "a refused cover computes no color")
+    }
+
+    /// Loader callbacks and merges write off the main thread; SwiftUI must still hear about it on main.
+    func testOffMainWrite_sendsObjectWillChangeOnMain() async {
+        let book = Self.makeBook("id-o", cache: CountingCache(), store: store)
+        await settle()
+        var noticesOnMain: [Bool] = []
+        let subscription = book.objectWillChange.sink { _ in noticesOnMain.append(Thread.isMainThread) }
+        let cover = UIImage()
+
+        DispatchQueue.global().async { book.coverImage = cover }
+
+        await awaitConditionAsync(timeout: 3) { !noticesOnMain.isEmpty }
+        XCTAssertEqual(noticesOnMain, [true])
+        XCTAssertIdentical(book.coverImage, cover)
+        subscription.cancel()
+    }
+
+    /// The object that started a thumbnail fetch can be released by a sync before the
+    /// loader answers; its replacement skipped its own fetch and depends on that answer.
+    func testThumbnailCallbackAfterStartingObjectIsReleased_reachesTheReplacement() async {
+        let loader = HeldThumbnailLoader()
+        TPPBookImageContext.imageLoaderProvider = { loader }
+        let cache = CountingCache()
+        var first: TPPBook? = Self.makeBook("id-t", cache: cache, store: store)
+        XCTAssertEqual(loader.pendingThumbnailCount, 1)
+        let second = Self.makeBook("id-t", cache: cache, store: store)
+        XCTAssertEqual(loader.pendingThumbnailCount, 1, "the replacement waits on the fetch in flight")
+        first = nil
+        await settle()
+        XCTAssertEqual(store.liveObjectCount(for: "id-t"), 1)
+        let thumbnail = UIImage()
+
+        loader.answerThumbnails(with: thumbnail)
+        await settle()
+
+        XCTAssertIdentical(second.thumbnailImage, thumbnail)
+        XCTAssertFalse(second.isThumbnailLoading)
+        withExtendedLifetime(first) {}
+    }
+
     // MARK: - Helpers
 
     /// Lets queued main-thread writes, color work and its write-back finish.
@@ -220,6 +284,87 @@ final class BookCoverStoreTests: XCTestCase {
             coverStore: store
         )
     }
+}
+
+final class DominantCoverColorTests: XCTestCase {
+
+    func testExtract_solidImage_returnsItsColor() {
+        let color = UIColor(red: 0.2, green: 0.6, blue: 0.4, alpha: 1)
+
+        let result = DominantCoverColor.extract(from: solidImage(width: 20, height: 30, color: color))
+
+        assertSameColor(result, color)
+    }
+
+    /// Images over 500 px are scaled down before averaging; the average must not move.
+    func testExtract_imageWiderThan500Pixels_returnsTheSameColor() {
+        let color = UIColor(red: 0.7, green: 0.1, blue: 0.3, alpha: 1)
+
+        let result = DominantCoverColor.extract(from: solidImage(width: 900, height: 200, color: color))
+
+        assertSameColor(result, color)
+    }
+
+    func testExtract_zeroSizeImage_returnsGray() {
+        XCTAssertEqual(DominantCoverColor.extract(from: UIImage()), .gray)
+    }
+
+    private func assertSameColor(_ actual: UIColor, _ expected: UIColor, file: StaticString = #filePath, line: UInt = #line) {
+        let a = rgba(actual)
+        let e = rgba(expected)
+        for index in 0..<4 {
+            XCTAssertEqual(a[index], e[index], accuracy: 0.02, "component \(index)", file: file, line: line)
+        }
+    }
+
+    private func rgba(_ color: UIColor) -> [CGFloat] {
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        XCTAssertTrue(color.getRed(&red, green: &green, blue: &blue, alpha: &alpha))
+        return [red, green, blue, alpha]
+    }
+}
+
+/// A solid-color image at scale 1, so its pixel size equals its point size.
+private func solidImage(width: Int, height: Int, color: UIColor = .red) -> UIImage {
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1
+    let size = CGSize(width: width, height: height)
+    return UIGraphicsImageRenderer(size: size, format: format).image { context in
+        color.setFill()
+        context.fill(CGRect(origin: .zero, size: size))
+    }
+}
+
+/// Holds every thumbnail completion until the test answers it; cover fetches never answer.
+private final class HeldThumbnailLoader: ImageLoading, @unchecked Sendable {
+    private let lock = NSLock()
+    private var pending: [(UIImage?) -> Void] = []
+    var pendingThumbnailCount: Int { lock.withLock { pending.count } }
+
+    func answerThumbnails(with image: UIImage?) {
+        let completions = lock.withLock { () -> [(UIImage?) -> Void] in
+            defer { pending = [] }
+            return pending
+        }
+        completions.forEach { $0(image) }
+    }
+
+    func thumbnailImage(for book: TPPBook, completion: @escaping (UIImage?) -> Void) {
+        lock.withLock { pending.append(completion) }
+    }
+
+    func coverImage(for book: TPPBook, completion: @escaping (UIImage?) -> Void) {}
+    func coverImage(for book: TPPBook) async -> UIImage? { nil }
+    func coverImage(for book: TPPBook, displayPoints: CGFloat) async -> UIImage? { nil }
+    func thumbnailImage(for book: TPPBook) async -> UIImage? { nil }
+    func playerCoverImage(for book: TPPBook) async -> UIImage? { nil }
+    func get(for key: String) -> UIImage? { nil }
+    func getAsync(for key: String) async -> UIImage? { nil }
+    func set(_ image: UIImage, for key: String, expiresIn: TimeInterval?) {}
+    func remove(for key: String) {}
+    func clearAll() {}
+    func evictDecodedImages() {}
+    func warmMemoryCache(for keys: [String]) async {}
 }
 
 /// Returns red, then blue, then green, so a test can tell which call produced the color.
