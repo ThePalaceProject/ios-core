@@ -37,6 +37,41 @@ final class MemoryEventRecorderTests: XCTestCase {
         ])
     }
 
+    /// Six names registered in reverse order: without sorting, the dictionary's
+    /// per-process order would almost never match.
+    func testRecord_ManyCaches_AreWrittenInNameOrder() {
+        let lines = Lines()
+        let recorder = MemoryEventRecorder(footprint: { 0 }, available: { 0 }, write: { lines.append($0) })
+        for name in ["f", "e", "d", "c", "b", "a"] {
+            recorder.registerCache(named: name) { 0 }
+        }
+
+        recorder.record(.warning)
+
+        XCTAssertEqual(lines.all, [
+            "event=warning footprintMB=0 availableMB=0 cache.aMB=0 cache.bMB=0 cache.cMB=0 cache.dMB=0 cache.eMB=0 cache.fMB=0"
+        ])
+    }
+
+    /// A reader that reports a negative size must not end the app.
+    func testRecord_NegativeCacheSize_IsWrittenAsZero() {
+        let lines = Lines()
+        let recorder = MemoryEventRecorder(footprint: { 0 }, available: { 0 }, write: { lines.append($0) })
+        recorder.registerCache(named: "broken") { -1 }
+
+        recorder.record(.warning)
+
+        XCTAssertEqual(lines.all, ["event=warning footprintMB=0 availableMB=0 cache.brokenMB=0"])
+    }
+
+    /// The budget data is split by pressure level, so a critical event must not
+    /// be labelled a warning.
+    func testKind_ForPressureEvents_CriticalWinsOverWarning() {
+        XCTAssertEqual(MemoryEventKind(pressure: .warning), .pressureWarning)
+        XCTAssertEqual(MemoryEventKind(pressure: .critical), .pressureCritical)
+        XCTAssertEqual(MemoryEventKind(pressure: [.warning, .critical]), .pressureCritical)
+    }
+
     func testRecord_EachEventKind_NamesItsSource() {
         let lines = Lines()
         let recorder = MemoryEventRecorder(footprint: { 0 }, available: { 0 }, write: { lines.append($0) })

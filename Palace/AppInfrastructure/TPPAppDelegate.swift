@@ -929,7 +929,7 @@ final class MemoryPressureMonitor: @unchecked Sendable {
         let source = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: monitorQueue)
         source.setEventHandler { [weak self, weak source] in
             guard let self, let event = source?.data else { return }
-            self.memoryEvents.record(event.contains(.critical) ? .pressureCritical : .pressureWarning)
+            self.memoryEvents.record(MemoryEventKind(pressure: event))
         }
         pressureSource.withLock { existing in
             existing?.cancel()

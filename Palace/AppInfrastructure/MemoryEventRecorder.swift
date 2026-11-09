@@ -17,6 +17,12 @@ enum MemoryEventKind: String, Sendable {
     case warning
     case pressureWarning = "pressure-warning"
     case pressureCritical = "pressure-critical"
+
+    /// The kind for a system memory pressure event: critical wins when both
+    /// flags are set.
+    init(pressure: DispatchSource.MemoryPressureEvent) {
+        self = pressure.contains(.critical) ? .pressureCritical : .pressureWarning
+    }
 }
 
 final class MemoryEventRecorder: @unchecked Sendable {
