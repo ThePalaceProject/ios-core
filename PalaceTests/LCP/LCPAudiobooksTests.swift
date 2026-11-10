@@ -680,6 +680,41 @@ final class LCPAudiobooksTests: XCTestCase {
         XCTAssertEqual((errorBox.error as NSError?)?.code, 404)
     }
 
+    /// After adoption a decrypt is answered from the package at once, not held.
+    func testDecrypt_afterAdoption_isServedFromThePackage() async throws {
+        let (audiobook, licenseURL) = try makeStreamingAudiobook(opener: { _ in Self.storedPublication() })
+        await audiobook.adoptStoredArchive(at: licenseURL.deletingPathExtension().appendingPathExtension("lcpa"))
+        let errorBox = ErrorBox()
+        let answered = expectation(description: "the decrypt completes")
+
+        audiobook.decrypt(url: URL(fileURLWithPath: "/missing-track.mp3"), to: Self.scratchFile()) { error in
+            errorBox.error = error
+            answered.fulfill()
+        }
+
+        await fulfillment(of: [answered], timeout: 2)
+        XCTAssertEqual((errorBox.error as NSError?)?.code, 404, "the package's own lookup answers")
+    }
+
+    /// Listening twice must not open the package twice for one announcement.
+    func testListeningTwice_opensThePackageOnce() async throws {
+        let center = NotificationCenter()
+        let opens = LockedCounter()
+        let (audiobook, licenseURL) = try makeStreamingAudiobook(opener: { _ in
+            opens.increment()
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            return Self.storedPublication()
+        }, center: center)
+        let packageURL = licenseURL.deletingPathExtension().appendingPathExtension("lcpa")
+        audiobook.observeStoredArchive()
+        audiobook.observeStoredArchive()
+
+        center.post(name: .lcpAudiobookArchiveStored, object: packageURL)
+        try await Task.sleep(nanoseconds: 400_000_000)
+
+        XCTAssertEqual(opens.value, 1)
+    }
+
     /// A session that ends before the package arrives fails what it held.
     func testHeldDecrypt_failsWhenTheSessionIsReleased() async throws {
         let (audiobook, _) = try makeStreamingAudiobook(opener: { _ in Self.storedPublication() })
@@ -731,6 +766,29 @@ final class LCPAudiobooksTests: XCTestCase {
             await tracker.enter(); try? await Task.sleep(nanoseconds: 100_000_000); await tracker.leave()
         }
         _ = await (first, second)
+
+        let maxConcurrent = await tracker.maxConcurrent
+        XCTAssertEqual(maxConcurrent, 1)
+    }
+
+    /// An open that arrives after an earlier one finished still waits for the
+    /// one running now.
+    func testPackageOpens_aLaterOpenWaitsForTheRunningOne() async throws {
+        let url = try XCTUnwrap(FileURL(url: FileManager.default.temporaryDirectory
+            .appendingPathComponent("gate-\(UUID().uuidString).lcpa")))
+        let tracker = OverlapTracker()
+        let open: @Sendable () async -> Void = {
+            await tracker.enter(); try? await Task.sleep(nanoseconds: 150_000_000); await tracker.leave()
+        }
+
+        let first = Task { await LCPAudiobooks.openSerialized(packageAt: url, open) }
+        try await Task.sleep(nanoseconds: 20_000_000)
+        let second = Task { await LCPAudiobooks.openSerialized(packageAt: url, open) }
+        await first.value
+        // The second is running now; a third must wait for it.
+        let third = Task { await LCPAudiobooks.openSerialized(packageAt: url, open) }
+        await second.value
+        await third.value
 
         let maxConcurrent = await tracker.maxConcurrent
         XCTAssertEqual(maxConcurrent, 1)
