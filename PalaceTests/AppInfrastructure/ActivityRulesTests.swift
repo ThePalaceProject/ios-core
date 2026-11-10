@@ -80,8 +80,7 @@ final class ActivityRulesTests: XCTestCase {
             case (true, true): return 120
             }
         case .telemetryUpload:
-            // One 15-minute schedule; the background transition flushes separately.
-            return 900
+            return expectedVisible(s) ? 60 : 900
         case .previewCountdown:
             // Main scene only, and never slowed: a slower countdown skips seconds.
             switch s.scene {

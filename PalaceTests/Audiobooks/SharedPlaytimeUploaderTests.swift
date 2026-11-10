@@ -86,6 +86,7 @@ final class SharedPlaytimeUploaderTests: XCTestCase {
     private var executor: HeldPlaytimeExecutor!
     private var sut: AudiobookDataManager!
     private var libraryChanges: PassthroughSubject<CurrentLibraryChange, Never>!
+    private var isAudioPlaying: CurrentValueSubject<Bool, Never>!
 
     override func setUp() async throws {
         try await super.setUp()
@@ -94,12 +95,14 @@ final class SharedPlaytimeUploaderTests: XCTestCase {
         policy = makeTestActivityPolicy(scheduler: scheduler)
         executor = HeldPlaytimeExecutor()
         libraryChanges = PassthroughSubject()
+        isAudioPlaying = CurrentValueSubject(false)
         await makeSut()
     }
 
     override func tearDown() async throws {
         sut = nil
         libraryChanges = nil
+        isAudioPlaying = nil
         executor = nil
         policy = nil
         scheduler = nil
@@ -109,19 +112,69 @@ final class SharedPlaytimeUploaderTests: XCTestCase {
 
     // MARK: - Schedule
 
-    func testSchedule_InEveryVisibility_ArmsFifteenMinuteTimer() {
-        XCTAssertEqual(scheduler.armedIntervals, [15 * 60], "launch state is background")
-
+    func testSchedule_WhileVisible_TicksEverySixtySeconds() {
         policy.setScene(.active)
+
+        XCTAssertEqual(scheduler.armedIntervals, [60])
+    }
+
+    func testSchedule_InBackgroundWhilePlaying_TicksEveryFifteenMinutes() {
+        policy.setScene(.active)
+        isAudioPlaying.send(true)
+
         policy.setScene(.background)
 
-        XCTAssertEqual(scheduler.armedIntervals, [15 * 60],
-                       "visibility changes must not re-arm or shorten the upload timer")
+        XCTAssertEqual(scheduler.armedIntervals, [60, 900])
+    }
+
+    func testPausedInBackground_SendsNothingAcrossSeveralTicks() {
+        policy.setScene(.active)
+        isAudioPlaying.send(true)
+        policy.setScene(.background)
+        drain()
+        isAudioPlaying.send(false)
+        save("entry-1")
+
+        tick()
+        tick()
+        tick()
+
+        XCTAssertEqual(executor.postCount, 0, "paused in the background, nothing is sent")
+    }
+
+    func testResumingPlaybackInBackground_LetsTheNextTickSend() {
+        policy.setScene(.active)
+        policy.setScene(.background)
+        drain()
+        save("entry-1")
+        tick()
+        XCTAssertEqual(executor.postCount, 0)
+
+        isAudioPlaying.send(true)
+        tick()
+
+        XCTAssertEqual(executor.sentEntryIds, [["entry-1"]])
+        XCTAssertEqual(scheduler.armedIntervals.last, 900)
+    }
+
+    func testReturnToVisibleAfterPausedBackground_SendsOnTheNextVisibleTick() {
+        policy.setScene(.active)
+        policy.setScene(.background)
+        drain()
+        save("entry-1")
+
+        policy.setScene(.active)
+        drain()
+        XCTAssertEqual(executor.postCount, 0, "the return itself does not send")
+        tick()
+
+        XCTAssertEqual(executor.sentEntryIds, [["entry-1"]])
     }
 
     // MARK: - Timer send
 
     func testTimerTick_WithQueuedEntry_SendsItAndClearsQueueOnSuccess() {
+        policy.setScene(.active)
         save("entry-1")
 
         tick()
@@ -133,6 +186,7 @@ final class SharedPlaytimeUploaderTests: XCTestCase {
     }
 
     func testTimerTick_WhenSendFailsWith500_KeepsEntryAndResendsOnNextTick() {
+        policy.setScene(.active)
         save("entry-1")
         tick()
         executor.respond(0, status: 500)
@@ -145,6 +199,7 @@ final class SharedPlaytimeUploaderTests: XCTestCase {
     }
 
     func testTimerTick_WhenNetworkFails_KeepsEntryAndResendsOnNextTick() {
+        policy.setScene(.active)
         save("entry-1")
         tick()
         executor.fail(0)
@@ -157,6 +212,7 @@ final class SharedPlaytimeUploaderTests: XCTestCase {
     }
 
     func testTimerTick_WithEmptyQueue_SendsNothing() {
+        policy.setScene(.active)
         tick()
 
         XCTAssertEqual(executor.postCount, 0)
@@ -250,6 +306,7 @@ final class SharedPlaytimeUploaderTests: XCTestCase {
 
         executor.respond(0, status: 503)
         drain()
+        policy.setScene(.active)
         tick()
 
         XCTAssertEqual(executor.sentEntryIds, [["entry-1"], ["entry-1"]],
@@ -257,6 +314,7 @@ final class SharedPlaytimeUploaderTests: XCTestCase {
     }
 
     func testEntrySavedWhileSendInFlight_IsSentAloneOnNextTrigger() {
+        policy.setScene(.active)
         save("entry-1")
         tick()
         save("entry-2")
@@ -273,6 +331,7 @@ final class SharedPlaytimeUploaderTests: XCTestCase {
     // MARK: - Not found
 
     func testNotFoundForOneBook_KeepsAnotherBooksEntriesInTheSameLibrary() {
+        policy.setScene(.active)
         save("gone-1")
         save("kept-1", bookId: "book-2", url: URL(string: "https://cm.example.com/lib/playtimes/book-2")!)
         tick()
@@ -290,6 +349,7 @@ final class SharedPlaytimeUploaderTests: XCTestCase {
     // MARK: - Library switch
 
     func testLibrarySwitch_ReleasesAnUnansweredSend_ForTheNextTrigger() {
+        policy.setScene(.active)
         save("entry-1")
         tick()
 
@@ -301,6 +361,7 @@ final class SharedPlaytimeUploaderTests: XCTestCase {
     }
 
     func testLateAnswerToACancelledSend_DoesNotReleaseTheNewerSend() {
+        policy.setScene(.active)
         save("entry-1")
         tick()
         libraryChanges.send(.selected)
@@ -321,7 +382,10 @@ final class SharedPlaytimeUploaderTests: XCTestCase {
             networkService: executor,
             currentAccountIdProvider: { libraryId },
             currentLibraryChanges: libraryChanges.eraseToAnyPublisher(),
-            uploadTriggers: PlaytimeUploadSchedule.triggers(from: policy)
+            uploadTriggers: PlaytimeUploadSchedule.triggers(
+                from: policy,
+                isAudioPlaying: isAudioPlaying.eraseToAnyPublisher()
+            )
         )
         sut.store.queue.removeAll()
         sut.store.urls.removeAll()

@@ -336,11 +336,20 @@ struct AppContainer: @unchecked Sendable {
     var playtimeUploader: AudiobookDataManager {
         if let cached = AppContainer._playtimeUploader { return cached }
         let accountsManager = self.accountsManager
+        let session = audiobookSession
+        let isAudioPlaying = session.playbackStatePublisher
+            .map { state -> Bool in
+                if case .playing = state { return true }
+                return false
+            }
+            .prepend(session.isPlaying)
+            .removeDuplicates()
+            .eraseToAnyPublisher()
         let uploader = AudiobookDataManager(
             networkService: networkExecutor,
             currentAccountIdProvider: { accountsManager.currentAccountId },
             currentLibraryChanges: accountsManager.currentLibraryChangePublisher,
-            uploadTriggers: PlaytimeUploadSchedule.triggers(from: activityPolicy)
+            uploadTriggers: PlaytimeUploadSchedule.triggers(from: activityPolicy, isAudioPlaying: isAudioPlaying)
         )
         AppContainer._playtimeUploader = uploader
         return uploader
