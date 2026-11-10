@@ -136,20 +136,6 @@ final class NotificationTokenDataTests: XCTestCase {
     }
 }
 
-// MARK: - NSNotification+TPP Tests
-
-@MainActor
-final class NSNotificationTPPTests: XCTestCase {
-
-    // SRS: Notification.Name constants exist
-    func testNotificationNames_exist() {
-        // .TPPBookRegistryStateDidChange was removed with the registry
-        // dual-write — its lifecycle/per-book signal moved to the
-        // registry's Combine publishers, so there is no longer a name to assert.
-    }
-
-}
-
 // MARK: - DPLAAudiobooks.DPLAError Tests
 
 @MainActor
