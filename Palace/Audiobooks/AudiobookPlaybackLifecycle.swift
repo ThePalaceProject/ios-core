@@ -44,9 +44,9 @@ enum AudiobookPlaybackLifecycleSignal: CaseIterable {
     /// documented in the toolkit as sometimes arriving several seconds late,
     /// and one that lands AFTER the next chapter's `.playbackBegan` leaves the
     /// app showing paused over playing audio. The toolkit's own
-    /// `AudiobookPlaybackModel` survives that because it re-syncs from a 0.5s
-    /// `isPlaying` poll. `AudiobookSessionManager` has no poll, so the wrong
-    /// state simply stays until the patron touches something.
+    /// `AudiobookPlaybackModel` survives that because it re-reads `isPlaying`
+    /// on player events, ticks and a stall check. `AudiobookSessionManager` does
+    /// not, so the wrong state simply stays until the patron touches something.
     ///
     /// The end of a BOOK does not depend on this signal to park the UI, and the
     /// route differs by player — worth stating exactly, because "every player
