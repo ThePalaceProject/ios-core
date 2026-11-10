@@ -29,19 +29,27 @@ class PerBookRegistryTestCase: XCTestCase {
         private var _steps: [RegistryWriteStep] = []
         private var crashIndex: Int?
         private var crashAtStep: RegistryWriteStep?
+        private var crashOccurrence = 1
         private var crashed = false
         private var failOnce: RegistryWriteStep?
         private var verifyHook: (@Sendable (URL) -> Void)?
 
-        init(crashAtStep index: Int? = nil, crashAtFirst kind: RegistryWriteStep? = nil,
+        /// - Parameter occurrence: with `crashAtFirst`, which occurrence of that step ends the launch.
+        init(crashAtStep index: Int? = nil, crashAtFirst kind: RegistryWriteStep? = nil, occurrence: Int = 1,
              failOnce step: RegistryWriteStep? = nil, beforeVerify hook: (@Sendable (URL) -> Void)? = nil) {
             crashIndex = index
             crashAtStep = kind
+            crashOccurrence = occurrence
             failOnce = step
             verifyHook = hook
         }
 
         var steps: [RegistryWriteStep] { lock.withLock { _steps } }
+
+        /// Ends the launch at the write step `offset` steps from now.
+        func armCrash(afterSteps offset: Int) {
+            lock.withLock { crashIndex = _steps.count + offset }
+        }
         var didCrash: Bool { lock.withLock { crashed } }
 
         func beforeWrite(_ step: RegistryWriteStep, _ url: URL) throws {
@@ -49,7 +57,8 @@ class PerBookRegistryTestCase: XCTestCase {
             if crashed { lock.unlock(); throw Crash() }
             let index = _steps.count
             _steps.append(step)
-            if index == crashIndex || step == crashAtStep { crashed = true; lock.unlock(); throw Crash() }
+            let isCrashStep = step == crashAtStep && _steps.filter { $0 == step }.count == crashOccurrence
+            if index == crashIndex || isCrashStep { crashed = true; lock.unlock(); throw Crash() }
             if failOnce == step { failOnce = nil; lock.unlock(); throw DiskFull() }
             let hook = step == .migrationVerify ? verifyHook : nil
             lock.unlock()
@@ -72,6 +81,23 @@ class PerBookRegistryTestCase: XCTestCase {
         }
     }
 
+    /// Runs a block once, at the next per-book save's sequence allocation.
+    final class SequenceHook: @unchecked Sendable {
+        private let lock = NSLock()
+        private var pending: (() -> Void)?
+        private var _fired = false
+        var fired: Bool { lock.withLock { _fired } }
+        func armOnce(_ block: @escaping () -> Void) { lock.withLock { pending = block; _fired = false } }
+        func fire() {
+            let block: (() -> Void)? = lock.withLock {
+                defer { pending = nil }
+                if pending != nil { _fired = true }
+                return pending
+            }
+            block?()
+        }
+    }
+
     /// What a patron sees of one book.
     struct ShelfEntry: Equatable, CustomStringConvertible {
         let title: String
@@ -90,6 +116,7 @@ class PerBookRegistryTestCase: XCTestCase {
     var settings: LaunchSettings!
     var launches: [TPPBookRegistry] = []
     let clock = PositionTestClock()
+    let sequenceHook = SequenceHook()
     let account = "perbook-\(UUID().uuidString)"
 
     override func setUp() {
@@ -120,6 +147,7 @@ class PerBookRegistryTestCase: XCTestCase {
         let root = self.root!
         let settings = self.settings!
         let clock = self.clock
+        let sequenceHook = self.sequenceHook
         return RegistryExternalDependencies(
             downloadService: { NoContentDownloadService() },
             loansFeedFetcher: { loansFeed ?? UnreachableLoansFeed() },
@@ -128,8 +156,10 @@ class PerBookRegistryTestCase: XCTestCase {
             onAvailabilityChange: { _, _ in },
             beforeRegistryWrite: { try log.beforeWrite($0, $1) },
             positionClock: { clock.now },
+            afterSaveSequence: { _ in sequenceHook.fire() },
             perBookStorageEnabled: { settings.flag },
-            appVersion: { settings.version }
+            appVersion: { settings.version },
+            backupClock: { clock.now }
         )
     }
 

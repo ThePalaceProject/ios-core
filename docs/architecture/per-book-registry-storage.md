@@ -16,7 +16,7 @@ Per library, in the folder that already holds `registry.json`:
 ```
 registry/
   registry.json               the single file, still written (see below)
-  registry.json.bak           last-good backup, unchanged
+  registry.json.bak           last-good backup, on a schedule (see Backup)
   books-state.json            {appVersion, attempts, verified, registryDigest, registrySequence}
   books/
     <sha256(id)>.record.json    {"identifier", "record": {...whole record, location included}, "sequence"}
@@ -40,10 +40,19 @@ written at. For each book the newest source wins:
   is a removal that already reached `registry.json`, and is ignored;
 - a position file newer than the location it competes with replaces it.
 
-A shelf save takes its sequence before it snapshots the in-memory shelf; a
-position save takes its sequence after it reads the position. A snapshot that
-missed a position change therefore always has the lower number and loses to the
-position file.
+A save takes its sequence in the same read of the in-memory shelf as its
+snapshot (a shelf save) or its positions (a position save), so no change can
+fall between the two. A save with a higher number therefore always saw a later
+shelf, and a snapshot that missed a position change loses to the position file.
+A position save also queues its write inside that read, so position writes reach
+the disk queue in sequence order.
+
+A position save skips the write when the book's position file already holds the
+same position. That is decided against what the file would win at load: a record
+write for the book makes its position file older than the record, so the next
+position save for that book writes the file again, even with the same position.
+At load, a position file that does not win over its record or `registry.json`
+counts as not written.
 
 One record file holds a book's whole record, so a save that changes a book's
 state and position together is one atomic write for that book.
@@ -100,7 +109,7 @@ per-book files that hold books.
 | Save | Writes |
 |---|---|
 | Position (`setLocation`, a due coalesced position, a position flush) | the book's position file, nothing else |
-| Shelf change (add, remove, state, bookmarks, metadata) | changed record files, then `registry.json` and `.bak` as before, then `books-state.json` |
+| Shelf change (add, remove, state, bookmarks, metadata) | changed record files, then `.bak` when due (see Backup), then `registry.json`, then `books-state.json`, then the files of removed books |
 | App events: background, terminate, library switch (all through `flushPendingPositions`), sync end | `registry.json` when files are newer than it |
 
 A crash at any step leaves each book as it was before or after the save:
@@ -110,6 +119,11 @@ A crash at any step leaves each book as it was before or after the save:
 - after `registry.json` and before the trust record, the digest no longer
   matches and the next launch migrates from the `registry.json` just written,
   which holds the whole in-memory shelf, positions included.
+- after the trust record and before a removed book's files are gone, the files
+  left behind are not newer than `registry.json`, which lacks the book, so they
+  are ignored and the next shelf save removes them. Until `registry.json` is
+  written a removed book's files stay, because its position file may hold its
+  newest position.
 
 A write error in the per-book files (a full disk) stops using them for the rest
 of the launch: the save still writes `registry.json`, later positions go to it,
@@ -117,6 +131,23 @@ and no trust record is written, so the next launch migrates again.
 
 An empty save without server authority is refused when per-book record files
 exist, in addition to the existing `registry.json` and `.bak` checks.
+
+## Backup
+
+`registry.json.bak` is the last-good copy that load uses when `registry.json` is
+corrupt. With the per-book files in use, a shelf save writes it only when it is
+due: at the first shelf save after each load, when the file is missing, when the
+last write failed, or when 10 minutes have passed since the last one. A
+synchronous save (the app-event write of `registry.json` at background,
+terminate and library switch, and a reader's teardown save) is a full snapshot
+and always writes it too. A position save never writes it. With
+the flag off, or after a per-book write error, every shelf save writes it as
+before.
+
+A corrupt `registry.json` therefore loads the shelf as of the last backup: shelf
+changes from at most the last 10 minutes, and positions saved since, can be
+missing until the next sync. Recovering them from the per-book files is not in
+this stage (below).
 
 ## Downgrade
 
@@ -131,7 +162,6 @@ always in `registry.json`.
 ## Not in this stage
 
 - Shelf changes still rewrite `registry.json`; only positions skip it.
-- The scheduled backup of the per-book files.
 - Recovering from per-book files when `registry.json` is corrupt: that launch
   follows the old recovery path, and the per-book files are replaced by the
   next migration.

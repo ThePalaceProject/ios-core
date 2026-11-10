@@ -154,6 +154,19 @@ final class PerBookRegistrySession: @unchecked Sendable {
     }
   }
 
+  /// After `singleFileWritten`: removes the files of books no longer on the
+  /// shelf, when this save's record files and trust record were written. On an
+  /// error the account stops using per-book files for this launch.
+  func removeFiles(_ save: Save?, notIn records: Any?, account: String) {
+    guard let save = stillActive(save, for: account) else { return }
+    do {
+      try save.files.removeFiles(notIn: records as? [TPPBookRegistryData] ?? [])
+    } catch {
+      Log.error(#file, "Per-book registry removal failed; using registry.json for this launch: \(error.localizedDescription)")
+      deactivate(account: account)
+    }
+  }
+
   /// Marks `registry.json` as behind before a position write is queued, so an
   /// app event that runs before the queued write still brings it up to date.
   func markSingleFileBehind(_ account: String) {
