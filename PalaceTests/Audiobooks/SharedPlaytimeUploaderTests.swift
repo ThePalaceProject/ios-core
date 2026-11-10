@@ -245,13 +245,33 @@ final class SharedPlaytimeUploaderTests: XCTestCase {
         XCTAssertEqual(executor.postCount, 1, "only the visible-to-background transition flushes")
     }
 
-    func testLaunchInBackground_DoesNotFlush() {
+    /// The entry is on disk before the uploader exists, so a send at init
+    /// would carry it. Counted at the uploader's trigger input: the
+    /// reachability subscription also syncs at init, so a POST count cannot
+    /// tell the two apart.
+    func testLaunchInBackground_DoesNotFlush() async {
         save("entry-1")
+        sut = nil
+        var triggers = 0
+        let libraryId = self.libraryId
 
+        sut = AudiobookDataManager(
+            networkService: executor,
+            currentAccountIdProvider: { libraryId },
+            currentLibraryChanges: libraryChanges.eraseToAnyPublisher(),
+            uploadTriggers: PlaytimeUploadSchedule.triggers(
+                from: policy,
+                isAudioPlaying: isAudioPlaying.eraseToAnyPublisher()
+            )
+            .handleEvents(receiveOutput: { triggers += 1 })
+            .eraseToAnyPublisher()
+        )
+        XCTAssertEqual(sut.store.queue.map(\.id), ["entry-1"], "the entry was loaded at init")
         policy.setPlayer(.expanded)
+        await drainMainQueueAsync()
         drain()
 
-        XCTAssertEqual(executor.postCount, 0, "the launch state is not a transition to the background")
+        XCTAssertEqual(triggers, 0, "the launch state is not a transition to the background")
     }
 
     func testInactiveScene_CountsAsVisible_AndDoesNotFlush() {
