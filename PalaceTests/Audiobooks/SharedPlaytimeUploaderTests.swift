@@ -270,6 +270,23 @@ final class SharedPlaytimeUploaderTests: XCTestCase {
         XCTAssertTrue(sut.store.queue.isEmpty, "both answers clear their own entries")
     }
 
+    // MARK: - Not found
+
+    func testNotFoundForOneBook_KeepsAnotherBooksEntriesInTheSameLibrary() {
+        save("gone-1")
+        save("kept-1", bookId: "book-2", url: URL(string: "https://cm.example.com/lib/playtimes/book-2")!)
+        tick()
+        guard let goneIndex = executor.sentEntryIds.firstIndex(of: ["gone-1"]) else {
+            return XCTFail("book-1 was not sent: \(executor.sentEntryIds)")
+        }
+
+        executor.respond(goneIndex, status: 404)
+        drain()
+
+        XCTAssertEqual(sut.store.queue.map(\.id), ["kept-1"],
+                       "a 404 drops only the entries of the book it answers for")
+    }
+
     // MARK: - Library switch
 
     func testLibrarySwitch_ReleasesAnUnansweredSend_ForTheNextTrigger() {
@@ -314,10 +331,10 @@ final class SharedPlaytimeUploaderTests: XCTestCase {
         drain()
     }
 
-    private func save(_ id: String) {
+    private func save(_ id: String, bookId: String = "book-1", url: URL? = nil) {
         sut.save(time: AudiobookTimeEntry(
-            id: id, bookId: "book-1", libraryId: libraryId,
-            timeTrackingUrl: trackingURL, duringMinute: "2026-11-10T10:00Z", duration: 30
+            id: id, bookId: bookId, libraryId: libraryId,
+            timeTrackingUrl: url ?? trackingURL, duringMinute: "2026-11-10T10:00Z", duration: 30
         ))
         drain()
     }
