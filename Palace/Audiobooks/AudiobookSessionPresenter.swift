@@ -135,6 +135,12 @@ class AudiobookSessionPresenter: ObservableObject {
     /// existing reset paths.
     @Published var isCollapsed: Bool = false
 
+    /// Drives the player's wait-for-audio check: ticks at the policy's UI rate
+    /// while the player is on screen and the app is visible, otherwise none.
+    /// A subject, so a view that re-subscribes on redraw does not re-arm the timer.
+    var audioWaitTicks: AnyPublisher<Date, Never> { audioWaitTickSubject.eraseToAnyPublisher() }
+    private let audioWaitTickSubject = PassthroughSubject<Date, Never>()
+
     // MARK: - Private state
 
     private let sessionManager: AudiobookSessionManaging
@@ -170,7 +176,8 @@ class AudiobookSessionPresenter: ObservableObject {
         applicationStateProvider: @escaping () -> UIApplication.State = {
             UIApplication.shared.applicationState
         },
-        notificationCenter: NotificationCenter = .default
+        notificationCenter: NotificationCenter = .default,
+        activityPolicy: ActivityPolicy? = nil
     ) {
         self.sessionManager = sessionManager
         self.applicationStateProvider = applicationStateProvider
@@ -182,6 +189,29 @@ class AudiobookSessionPresenter: ObservableObject {
         subscribeToSessionState()
         subscribeToAppLifecycle()
         subscribeToArchiveTransfers()
+        if let activityPolicy { reportPlayerVisibility(to: activityPolicy) }
+    }
+
+    /// The player is mounted while a book or playback model is bound (the
+    /// same test `AppTabHostView` uses) and hidden while a reader covers it.
+    nonisolated static func playerVisibility(isMounted: Bool, isReaderActive: Bool, isExpanded: Bool) -> PlayerVisibility {
+        guard isMounted else { return .none }
+        if isReaderActive { return .hidden }
+        return isExpanded ? .expanded : .mini
+    }
+
+    private func reportPlayerVisibility(to policy: ActivityPolicy) {
+        let isMounted = Publishers.CombineLatest($playbackModel, $currentBook)
+            .map { model, book in model != nil || book != nil }
+        Publishers.CombineLatest3(isMounted, $isReaderActive, $isPlayerExpanded)
+            .map { Self.playerVisibility(isMounted: $0, isReaderActive: $1, isExpanded: $2) }
+            .removeDuplicates()
+            .sink { policy.setPlayer($0) }
+            .store(in: &cancellables)
+
+        policy.ticks(for: .uiTick)
+            .sink { [weak self] in self?.audioWaitTickSubject.send($0) }
+            .store(in: &cancellables)
     }
 
     /// Injected so tests can drive the background gate in `applyPlaybackTick(_:)`
