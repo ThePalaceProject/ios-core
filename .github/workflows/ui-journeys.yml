@@ -25,18 +25,18 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Set up Xcode
-        uses: maxim-lobanov/setup-xcode@v1
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
-          xcode-version: 'latest-stable'
+          xcode-version: '26.3'
 
       - name: Checkout main repo and submodules
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: true
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
 
       - name: Cache Swift packages
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/dd/SourcePackages
           key: ${{ runner.os }}-spm-${{ hashFiles('Palace.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
@@ -44,11 +44,9 @@ jobs:
             ${{ runner.os }}-spm-
 
       - name: Checkout Certificates
-        uses: actions/checkout@v7
+        uses: ./.github/actions/checkout-certificates
         with:
-          repository: ThePalaceProject/mobile-certificates
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
-          path: ./mobile-certificates
 
       - name: Checkout Adobe RMSDK
         uses: ./.github/actions/checkout-adobe
@@ -68,9 +66,9 @@ jobs:
       - name: Select simulator
         id: sim
         run: |
-          SIMULATOR_ID=$(xcrun simctl list devices available | grep "iPhone" \
-            | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' | head -1)
-          [ -n "$SIMULATOR_ID" ] || { echo "::error::no iPhone simulator"; exit 1; }
+          SIMULATOR_ID=$(python3 scripts/reference_toolchain.py select-sim --profile reference)
+          python3 scripts/reference_toolchain.py report --profile reference \
+            --udid "$SIMULATOR_ID" --configuration Debug --strict
           echo "id=$SIMULATOR_ID" >> "$GITHUB_OUTPUT"
 
       # The app's own log, from before launch, so a slow or failed run shows
@@ -239,7 +237,7 @@ jobs:
       - name: Upload journey results
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ui-journeys-results
           path: |

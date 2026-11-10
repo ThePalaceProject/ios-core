@@ -15,12 +15,17 @@ on:
       - 'Palace.xcodeproj/**'
       - 'ios-audiobooktoolkit'
       - 'scripts/setup-repo-nodrm.sh'
+      - 'scripts/fetch-nodrm-submodules.sh'
       - 'scripts/build-3rd-party-dependencies.sh'
       - 'scripts/build-carthage.sh'
       - 'scripts/fetch-audioengine.sh'
       - 'scripts/xcode-build-nodrm.sh'
       - 'scripts/check-nodrm-app-excludes-audioengine.sh'
       - '.github/workflows/non-drm-build.yml'
+
+# Fork pull requests run unreviewed code; the token only needs to read.
+permissions:
+  contents: read
 
 # Every other macOS workflow cancels its superseded runs; this one did not, so
 # a re-push left the previous ~19-minute macos-26 build running to completion
@@ -38,22 +43,25 @@ jobs:
       NODRM_DERIVED_DATA_PATH: ${{ github.workspace }}/nodrm-derived-data
     steps:
       - name: Set up Xcode 26
-        uses: maxim-lobanov/setup-xcode@v1
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
-          xcode-version: '26'
+          xcode-version: '26.6'
 
       - name: Verify Xcode Version
         run: xcodebuild -version
 
-      # `submodules: true` + the CI token, like every other workflow that
-      # builds this project: PalaceAudiobookToolkit is a submodule and the
-      # noDRM target links it, so a bare checkout has nothing to build.
+      # No secrets in this job: pull requests from forks get none. The checkout
+      # takes no submodules (the private DRM ones are registered too) and keeps
+      # no token, so nothing later can reach a private repository.
       - name: Checkout main repo
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          submodules: true
-          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+          submodules: false
+          persist-credentials: false
 
+      # Fetches the public submodules (PalaceAudiobookToolkit among them)
+      # anonymously, through scripts/fetch-nodrm-submodules.sh, and fails
+      # naming any it cannot reach.
       - name: Set up repo for nonDRM build
         run: exec ./scripts/setup-repo-nodrm.sh
         env:

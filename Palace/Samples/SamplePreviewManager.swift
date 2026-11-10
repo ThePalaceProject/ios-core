@@ -7,7 +7,11 @@ final class SamplePreviewManager: ObservableObject {
     @Published private(set) var currentBookID: String?
     @Published private(set) var toolbar: AudiobookSampleToolbar?
 
-    init() {}
+    private let activityPolicy: ActivityPolicy
+
+    init(activityPolicy: ActivityPolicy) {
+        self.activityPolicy = activityPolicy
+    }
 
     func isShowingPreview(for book: TPPBook) -> Bool {
         currentBookID == book.identifier && toolbar != nil
@@ -27,7 +31,7 @@ final class SamplePreviewManager: ObservableObject {
 
         close()
 
-        guard let toolbarView = AudiobookSampleToolbar(book: book) else {
+        guard let toolbarView = AudiobookSampleToolbar(book: book, activityPolicy: activityPolicy) else {
             Log.warn(#file, "Could not create sample toolbar for '\(book.title)' " +
                      "(contentType=\(book.defaultBookContentType.rawValue), " +
                      "sampleAcq=\(book.sampleAcquisition?.type ?? "nil"), " +

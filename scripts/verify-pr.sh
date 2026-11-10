@@ -129,10 +129,12 @@ MUTATION_WHOLE_FILE=false
 CRITICAL_MUTATION_PATHS_REGEX='^Palace/(Audiobooks/|SignInLogic/|MyBooks/(Download|Borrow|BookSignInRedirectHandler|AdobeDRMHandler|LCPFulfillmentHandler|RightsManagementDispatcher|MyBooksDownload|BackgroundDownloadHandler|OverdriveDownloadHandler)|Book/UI/BookDetail/(BookButtonMapper|BorrowReducer|BookDetailErrorAdmission)|Accounts/User/TPPUserAccount|Accounts/Library/AccountsManager|Network/TPPNetworkExecutor|Packages/PalaceAuth/)'
 # Sim selection. Honors the harness allocator's per-session UDID so parallel
 # agents on the same machine don't collide on one device.
+# Without one, it uses the reference profile's device on its runtime
+# (scripts/reference-toolchain.ini), the simulator CI's unit-test shards use.
+# When that is not installed, scripts/reference_toolchain.py says how to install
+# it and falls back to the same device on the newest runtime.
 #
-# The fallback UDID below is a convenience for ONE machine and is absent from
-# most others — any outside contributor's, and this repo's own after a simulator
-# wipe. An unresolvable `-destination id=...` does NOT produce `BUILD FAILED`:
+# An unresolvable `-destination id=...` does NOT produce `BUILD FAILED`:
 # xcodebuild exits having printed "The requested device could not be found" and
 # NEITHER verdict string, which this script records as "Build did not complete".
 # Four legs (build, unit_tests, coverage_floors, audiobook_smoke) then go red
@@ -146,7 +148,7 @@ BASELINE_COMPARE="${BASELINE_COMPARE:-false}"
 # simulator another checkout holds is skipped by the scan and refused when
 # asked for; scripts/sim_lock.py holds the rule, shared with palace_mutate.py.
 SIM_LOCK_HELPER="$SCRIPT_DIR/sim_lock.py"
-SIM_FALLBACK_UDID="DF4A2A27-9888-429D-A749-2E157A049A37"
+TOOLCHAIN_HELPER="$SCRIPT_DIR/reference_toolchain.py"
 
 # Prints a usable simulator UDID, or nothing.
 resolve_sim_id() {
@@ -155,11 +157,10 @@ resolve_sim_id() {
   if [ -n "$want" ] && printf '%s' "$available" | grep -qF "$want"; then
     printf '%s' "$want"; return 0
   fi
-  # CLAUDE.md documents iPhone 16 Pro as the destination; accept newer iPhones
-  # too rather than fail on a machine that has moved on.
-  printf '%s' "$available" \
-    | grep -E "iPhone (1[6-9]|2[0-9])" \
-    | grep -oE "[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}" \
+  # The helper orders its candidates; the lock filter drops held ones.
+  xcrun simctl list -j 2>/dev/null \
+    | python3 "$TOOLCHAIN_HELPER" select-sim --profile reference --all --allow-fallback \
+        --simctl-json /dev/stdin \
     | if [ -n "${PALACE_SIM_LOCK_DIR:-}" ]; then
         python3 "$SIM_LOCK_HELPER" filter --root "$REPO_ROOT"
       else
@@ -168,11 +169,10 @@ resolve_sim_id() {
     | head -1
 }
 
-SIM_ID="$(resolve_sim_id "${HARNESS_SESSION_SIM_UDID:-$SIM_FALLBACK_UDID}")"
+SIM_ID="$(resolve_sim_id "${HARNESS_SESSION_SIM_UDID:-}")"
 if [ -z "$SIM_ID" ]; then
   echo "FATAL: no usable iOS simulator found." >&2
   echo "  HARNESS_SESSION_SIM_UDID=${HARNESS_SESSION_SIM_UDID:-<unset>}" >&2
-  echo "  fallback $SIM_FALLBACK_UDID is not present on this host," >&2
   echo "  and no available iPhone simulator matched." >&2
   echo "" >&2
   echo "Create one (Xcode > Window > Devices and Simulators), or run under an" >&2
@@ -186,6 +186,9 @@ fi
 if [ "$SIM_ID" != "${HARNESS_SESSION_SIM_UDID:-}" ]; then
   echo "note: using simulator $SIM_ID (HARNESS_SESSION_SIM_UDID unset or unavailable)" >&2
 fi
+# Records the Xcode, SDK, runtime and device in use, with a warning for each
+# that differs from the reference profile.
+python3 "$TOOLCHAIN_HELPER" report --profile reference --udid "$SIM_ID" --configuration Debug || true
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -519,6 +522,39 @@ record() {
   RESULTS+=("{\"check\":\"$check\",\"status\":\"$status\",\"detail\":\"$(echo "$detail" | sed 's/"/\\"/g')\"}")
 }
 
+# Writes the --report JSON, when asked for, with the build-input manifest
+# (scripts/build_manifest.py) that ties it to this tree; `build_manifest.py
+# check-stale <report>` later says whether it still applies. $1 = fast path
+# name, if any. A manifest that cannot be written is reported, not fatal: the
+# report then has none, and check-stale gives no verdict on it.
+BUILD_MANIFEST_ARGS=()
+write_report() {
+  [ -n "$REPORT_FILE" ] || return 0
+  local fast_path_line=""
+  if [ -n "${1:-}" ]; then fast_path_line="\"fast_path\": \"$1\","; fi
+  RESULTS_JSON=$(printf '%s,' "${RESULTS[@]}" | sed 's/,$//')
+  cat > "$REPORT_FILE" <<JSONEOF
+{
+  "branch": "$(git rev-parse --abbrev-ref HEAD)",
+  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  $fast_path_line
+  "pass_count": $PASS_COUNT,
+  "fail_count": $FAIL_COUNT,
+  "skip_count": $SKIP_COUNT,
+  "uncommitted_count": ${UNCOMMITTED_COUNT:-0},
+  "scanned_ref": "$(git rev-parse HEAD)",
+  "unit_tests": {"pass": $TEST_PASS, "fail": $TEST_FAIL},
+  "checks": [$RESULTS_JSON]
+}
+JSONEOF
+  if ! python3 "$SCRIPT_DIR/build_manifest.py" write --check verify-pr --from-checks \
+      --into "$REPORT_FILE" --udid "$SIM_ID" --configuration Debug \
+      ${BUILD_MANIFEST_ARGS[@]+"${BUILD_MANIFEST_ARGS[@]}"}; then
+    echo "  WARNING: the report has no build-input manifest (see the error above)"
+  fi
+  echo "  Report written to: $REPORT_FILE"
+}
+
 echo "=== Palace Pre-PR Verification ==="
 echo "Branch: $(git rev-parse --abbrev-ref HEAD)"
 # `echo "$EMPTY" | wc -l` is 1, not 0 — echo emits a newline even for an empty
@@ -568,29 +604,26 @@ if [ "$DOCS_ONLY" = "true" ]; then
   # does announce itself in stdout and in `"fast_path":"docs-only"`, so a
   # wrongly-taken fast path is legible even though a missing leg is not.
 
-  if [ -n "$REPORT_FILE" ]; then
-    RESULTS_JSON=$(printf '%s,' "${RESULTS[@]}" | sed 's/,$//')
-    cat > "$REPORT_FILE" <<JSONEOF
-{
-  "branch": "$(git rev-parse --abbrev-ref HEAD)",
-  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "fast_path": "docs-only",
-  "pass_count": $PASS_COUNT,
-  "fail_count": $FAIL_COUNT,
-  "skip_count": $SKIP_COUNT,
-  "uncommitted_count": ${UNCOMMITTED_COUNT:-0},
-  "scanned_ref": "$(git rev-parse HEAD)",
-  "unit_tests": {"pass": $TEST_PASS, "fail": $TEST_FAIL},
-  "checks": [$RESULTS_JSON]
-}
-JSONEOF
-    echo "  Report written to: $REPORT_FILE"
-  fi
+  write_report docs-only
 
   echo ""
   echo "CLEAR: docs-only fast-path — full battery skipped (no behavioral risk)."
   exit 0
 fi
+
+# 0. DRM connector revision. The build below links whatever tree adobe-rmsdk
+# (or ADEPT_RMSDK) points at; this leg fails when that tree is not the commit
+# recorded in .github/actions/checkout-adobe/action.yml, which CI builds.
+echo "--- DRM connector ---"
+CONNECTOR_OUTPUT=$(python3 "$REPO_ROOT/scripts/drm_connector.py" --repo-root "$REPO_ROOT" check 2>&1)
+CONNECTOR_RC=$?
+echo "$CONNECTOR_OUTPUT" | sed 's/^/  /'
+case "$CONNECTOR_RC" in
+  0) record "drm_connector" "pass" "Connector tree is at the recorded commit" ;;
+  2) record "drm_connector" "skip" "No connector tree (noDRM setup)" ;;
+  1) record "drm_connector" "fail" "Connector tree is not at the recorded commit (fix hint above)" ;;
+  *) record "drm_connector" "fail" "Connector revision could not be read (exit $CONNECTOR_RC)" ;;
+esac
 
 # 1. Build check
 # Skipped in --mutation-only mode: palace_mutate.py rebuilds per-mutant so the
@@ -1838,24 +1871,7 @@ echo "  Passed: $PASS_COUNT"
 echo "  Failed: $FAIL_COUNT"
 echo "  Skipped: $SKIP_COUNT (ran nothing — not a pass)"
 
-# Write JSON report if requested
-if [ -n "$REPORT_FILE" ]; then
-  RESULTS_JSON=$(printf '%s,' "${RESULTS[@]}" | sed 's/,$//')
-  cat > "$REPORT_FILE" <<JSONEOF
-{
-  "branch": "$(git rev-parse --abbrev-ref HEAD)",
-  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "pass_count": $PASS_COUNT,
-  "fail_count": $FAIL_COUNT,
-  "skip_count": $SKIP_COUNT,
-  "uncommitted_count": ${UNCOMMITTED_COUNT:-0},
-  "scanned_ref": "$(git rev-parse HEAD)",
-  "unit_tests": {"pass": $TEST_PASS, "fail": $TEST_FAIL},
-  "checks": [$RESULTS_JSON]
-}
-JSONEOF
-  echo "  Report written to: $REPORT_FILE"
-fi
+write_report
 
 if [ "$FAIL_COUNT" -gt 0 ]; then
   echo ""

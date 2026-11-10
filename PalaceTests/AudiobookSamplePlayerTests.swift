@@ -39,7 +39,11 @@ final class AudiobookSamplePlayerTests: XCTestCase {
         try await super.setUp()
         let engine = FakeSampleAudioEngine(duration: 120)
         self.engine = engine
-        player = AudiobookSamplePlayer(sample: StubSample(), makeEngine: { _, _ in engine })
+        player = AudiobookSamplePlayer(
+            sample: StubSample(),
+            activityPolicy: makeTestActivityPolicy(scheduler: FakeActivityTickScheduler()),
+            makeEngine: { _, _ in engine }
+        )
         await awaitConditionAsync { self.player.state == .playing }
     }
 

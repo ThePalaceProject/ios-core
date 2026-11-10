@@ -96,7 +96,7 @@ read -r -d '' ALLOWLIST <<'EOF'
 # moved to BorrowErrorAlert.swift; 1161 -> 1160 when the auth-retry handler's
 # composition moved to MyBooksDownloadCenter+AuthRetry.swift.
 1160 Palace/MyBooks/MyBooksDownloadCenter.swift
-899 Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift
+898 Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift
 # 867 -> 861 when the download-error admission rules moved to
 # BookDetailErrorAdmission.swift; 861 -> 840 when PP-5402 moved openBook and
 # the Listen-before-fetch handling to BookDetailViewModel+StreamableLoanListen.swift.

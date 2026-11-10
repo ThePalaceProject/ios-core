@@ -17,7 +17,7 @@ import XCTest
 import PalacePreferences
 import PalaceCatalog
 @testable import Palace
-import PalaceBookModel
+@testable import PalaceBookModel
 import PalaceBookRegistry
 
 @MainActor
@@ -25,6 +25,8 @@ final class BookDetailMetadataHydrationGuardTests: XCTestCase {
 
     private let alternateURL = URL(string: "https://example.org/works/guarded")!
     private var appContainer: AppContainer!
+    /// Per-test cover store, so cover state cannot leak between tests through the shared one.
+    private let coverStore = BookCoverStore()
 
     override func setUp() {
         super.setUp()
@@ -98,8 +100,8 @@ final class BookDetailMetadataHydrationGuardTests: XCTestCase {
     /// a fresh cover fetch completes. The resolved presentation state must ride
     /// along with the merge.
     ///
-    /// Mutation: dropping any one of the three carry-overs in
-    /// `BookMetadataService.merge` fails the matching assertion.
+    /// Mutation: building the merged book without `coverStore: current.coverStore`
+    /// in `BookMetadataService.merge` fails all three assertions.
     func testHydrate_onSuccess_keepsCoverThumbnailAndDominantColorOnTheMergedBook() async {
         let sparse = makeSparseBook(identifier: "keep-cover", title: "Kept Title")
         let cover = UIImage(systemName: "book")!
@@ -368,7 +370,8 @@ final class BookDetailMetadataHydrationGuardTests: XCTestCase {
             bookDuration: nil,
             audience: audience,
             language: language,
-            imageCache: MockImageCache()
+            imageCache: MockImageCache(),
+            coverStore: coverStore
         )
     }
 }

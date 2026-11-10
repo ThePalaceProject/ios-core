@@ -6,7 +6,7 @@ Library reading app supporting EPUB, PDF, and audiobooks with multiple DRM syste
 
 - Fork, branch from `develop` (never `main`), open the PR back to `develop`. Tests are mandatory for production changes.
 - Maintainer-only local tooling is wired through hooks that no-op when it is not installed. Nothing extra is needed to build, test, or open a PR.
-- **Pre-PR self-check:** `scripts/verify-pr.sh --quick` runs build, tests, lint, coverage and accessibility on the iPhone 16 Pro simulator; the unit-test leg is a full-scheme single pass. `--report /tmp/v.json` writes JSON.
+- **Pre-PR self-check:** `scripts/verify-pr.sh --quick` runs build, tests, lint, coverage and accessibility on the iPhone 16 Pro simulator; the unit-test leg is a full-scheme single pass. `--report /tmp/v.json` writes JSON, with a build-input manifest; `python3 scripts/build_manifest.py check-stale /tmp/v.json` says whether a report (local, or a CI `shard-report.json`) still applies to the current tree.
 - `--quick` skips exactly one leg: **mutation testing**. Drop the flag to include it, or use `--mutation-only`. A leg reported `skip` names its reason; a leg that recorded nothing fails the run.
 - Design rationale lives in [`docs/architecture/`](./docs/architecture/). Start at [`docs/README.md`](./docs/README.md).
 

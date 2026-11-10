@@ -11,8 +11,9 @@ pinned here, parsed as YAML rather than grepped, step by step.
 Three properties:
 
   1. the workflow triggers on pull_request (and stays dispatchable);
-  2. its checkout fetches submodules with the CI token, like every other
-     workflow that builds this project;
+  2. it reads no repository secret, so a fork pull request builds: the
+     checkout takes no submodules and persists no credentials, and
+     scripts/fetch-nodrm-submodules.sh fetches the public submodules anonymously;
   3. after the build, the product is checked by
      scripts/check-nodrm-app-excludes-audioengine.sh, and the build was told
      where to put that product (NODRM_DERIVED_DATA_PATH) so the check can find
@@ -88,7 +89,8 @@ def test_pull_request_trigger_is_scoped_to_build_inputs():
     # The scripts the job runs are inputs too: a change that breaks them must
     # run the job that would show it.
     for script in (_BUILD, _DEPS, _CHECK, "scripts/build-carthage.sh",
-                   "scripts/fetch-audioengine.sh", "scripts/setup-repo-nodrm.sh"):
+                   "scripts/fetch-audioengine.sh", "scripts/setup-repo-nodrm.sh",
+                   "scripts/fetch-nodrm-submodules.sh"):
         assert script in paths, f"pull_request.paths lacks {script!r}"
     assert ".github/workflows/non-drm-build.yml" in paths
 
@@ -126,17 +128,47 @@ def _checkout_steps() -> list[dict]:
     return [s for s in _steps() if str(s.get("uses", "")).startswith("actions/checkout@")]
 
 
-def test_checkout_fetches_submodules_with_the_ci_token():
+def test_workflow_reads_no_secrets():
+    """Fork pull requests get no repository secrets. A secret read anywhere in
+    this workflow is empty on a fork, so the job would fail or skip for a
+    reason unrelated to the contributor's change."""
+    text = _WORKFLOW.read_text()
+    assert "secrets." not in text, "the noDRM build must run without repository secrets"
+
+
+def test_workflow_token_is_read_only():
+    """A fork pull request runs code the maintainers have not reviewed; its
+    GITHUB_TOKEN should be able to read the repository and nothing more."""
+    assert _doc().get("permissions") == {"contents": "read"}, (
+        "non-drm-build.yml must set top-level `permissions: contents: read`"
+    )
+
+
+def test_checkout_fetches_no_submodules_and_keeps_no_credentials():
     checkouts = _checkout_steps()
     assert len(checkouts) == 1, f"expected one checkout step, found {len(checkouts)}"
     with_ = checkouts[0].get("with") or {}
-    assert with_.get("submodules") is True, (
-        "checkout must set `submodules: true` — PalaceAudiobookToolkit is a "
-        "submodule and the noDRM build links it"
+    # The private DRM submodules are registered in .gitmodules; checkout would
+    # try them and fail without a token. fetch-nodrm-submodules.sh fetches the
+    # public ones instead.
+    assert not with_.get("submodules"), "checkout must not fetch submodules"
+    assert "token" not in with_, "checkout must use the default read-only token"
+    # A persisted token would also authenticate later git fetches, so a
+    # private input could pass here and fail on a fork.
+    assert with_.get("persist-credentials") is False
+
+
+def test_public_submodules_are_fetched_before_dependencies_and_build():
+    steps = _steps()
+    order = [next(i for i, s in enumerate(steps) if frag in str(s.get("run", "")))
+             for frag in ("scripts/setup-repo-nodrm.sh", _DEPS, _BUILD)]
+    assert order == sorted(order), "setup must run before the dependency and app builds"
+    setup = (_REPO / "scripts/setup-repo-nodrm.sh").read_text()
+    assert "./scripts/fetch-nodrm-submodules.sh" in setup, (
+        "setup-repo-nodrm.sh must fetch submodules through fetch-nodrm-submodules.sh"
     )
-    assert with_.get("token") == "${{ secrets.CI_GITHUB_ACCESS_TOKEN }}", (
-        "checkout must pass the CI token like every other workflow that builds "
-        "this project; the submodule URLs are not anonymous"
+    assert "git submodule update" not in setup, (
+        "a direct submodule update in setup would bypass the anonymous fetch"
     )
 
 
