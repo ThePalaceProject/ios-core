@@ -90,11 +90,11 @@ jobs:
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: 'latest-stable'
+          xcode-version: '26.3'
 
-      # The shards select this exact version: products built by one Xcode are
-      # not guaranteed to run under another, and `latest-stable` is resolved
-      # per runner.
+      # The version is the reference profile's (scripts/reference-toolchain.ini).
+      # The shards select the version recorded here: products built by one
+      # Xcode are not guaranteed to run under another.
       - name: Record Xcode version
         id: xcode
         run: |
@@ -144,13 +144,15 @@ jobs:
         env:
           BUILD_CONTEXT: ci
 
+      # The reference profile's device on its runtime. A missing device fails
+      # here with an install hint; a different Xcode, SDK or arch fails the
+      # report.
       - name: Select simulator
         id: sim
         run: |
-          xcrun simctl list devices available | grep iPhone | head -10
-          SIMULATOR_ID=$(xcrun simctl list devices available | grep "iPhone" \
-            | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' | head -1)
-          [ -n "$SIMULATOR_ID" ] || { echo "::error::no iPhone simulator"; exit 1; }
+          SIMULATOR_ID=$(python3 scripts/reference_toolchain.py select-sim --profile reference)
+          python3 scripts/reference_toolchain.py report --profile reference \
+            --udid "$SIMULATOR_ID" --configuration Debug --strict
           echo "id=$SIMULATOR_ID" >> "$GITHUB_OUTPUT"
 
       # Same build settings as scripts/xcode-test-optimized.sh: ad-hoc signed
@@ -454,9 +456,10 @@ jobs:
           ON_SKIP_ARGS=(
           )
 
-          SIMULATOR_ID=$(xcrun simctl list devices available | grep "iPhone" \
-            | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' | head -1)
-          [ -n "$SIMULATOR_ID" ] || { echo "::error::no iPhone simulator"; exit 1; }
+          SIMULATOR_ID=$(python3 scripts/reference_toolchain.py select-sim --profile reference) \
+            || { echo "::error::the reference simulator is not installed"; exit 1; }
+          python3 scripts/reference_toolchain.py report --profile reference \
+            --udid "$SIMULATOR_ID" --configuration Debug --strict || exit 1
 
           RESULT="$RUNNER_TEMP/TestResults-streaming-on.xcresult"
           rm -rf "$RESULT"
@@ -767,7 +770,7 @@ jobs:
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: ${{ needs.build.outputs.xcode || 'latest-stable' }}
+          xcode-version: ${{ needs.build.outputs.xcode || '26.3' }}
 
       - name: Checkout
         uses: actions/checkout@v7

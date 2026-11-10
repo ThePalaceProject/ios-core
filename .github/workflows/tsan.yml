@@ -67,7 +67,7 @@ jobs:
       - name: Set up Xcode 26
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: '26'
+          xcode-version: '26.6'
 
       - name: Verify Xcode Version
         run: xcodebuild -version
@@ -167,9 +167,12 @@ jobs:
           done < "$RUNNER_TEMP/tsan-suites.txt"
           [ ${#ONLY_ARGS[@]} -gt 0 ] || { echo "::error::no suites resolved"; exit 1; }
 
-          SIMULATOR_ID=$(xcrun simctl list devices available | grep "iPhone" \
-            | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' | head -1)
-          [ -n "$SIMULATOR_ID" ] || { echo "::error::no iPhone simulator"; exit 1; }
+          # The release profile in scripts/reference-toolchain.ini: this lane
+          # runs on macos-26 with the Xcode the release builds use.
+          SIMULATOR_ID=$(python3 scripts/reference_toolchain.py select-sim --profile release) \
+            || { echo "::error::the release-profile simulator is not installed"; exit 1; }
+          python3 scripts/reference_toolchain.py report --profile release \
+            --udid "$SIMULATOR_ID" --configuration Debug --strict || exit 1
 
           RESULT="$RUNNER_TEMP/TestResults-tsan.xcresult"
           LOG="$RUNNER_TEMP/tsan.log"

@@ -40,6 +40,15 @@ AVAILABLE = textwrap.dedent(
         iPhone 17 Pro ({SECOND}) (Shutdown)
     """
 )
+# The same two devices as `simctl list -j` prints them; verify-pr.sh's scan
+# reads this form.
+LISTING_JSON = json.dumps({
+    "runtimes": [{"name": "iOS 26.0", "version": "26.0", "isAvailable": True,
+                  "identifier": "com.apple.CoreSimulator.SimRuntime.iOS-26-0"}],
+    "devices": {"com.apple.CoreSimulator.SimRuntime.iOS-26-0": [
+        {"name": "iPhone 16 Pro", "udid": FIRST, "state": "Booted", "isAvailable": True},
+        {"name": "iPhone 17 Pro", "udid": SECOND, "state": "Shutdown", "isAvailable": True}]},
+})
 OTHER_CHECKOUT = "/tmp/some-other-checkout"
 
 
@@ -157,10 +166,12 @@ def _run_verify_pr_selection(want: str, lock_dir: Path | None) -> subprocess.Com
     source = (_SCRIPTS / "verify-pr.sh").read_text()
     start = source.index('SIM_LOCK_HELPER="$SCRIPT_DIR/sim_lock.py"')
     end = source.index("while [[ $# -gt 0 ]]; do", start)
-    program = 'xcrun() { printf \'%s\' "$STUB_OUTPUT"; }\n' + source[start:end] + '\necho "SIM=$SIM_ID"\n'
+    program = ('xcrun() { if [ "$1 $2 $3" = "simctl list -j" ]; then printf \'%s\' "$STUB_JSON"; '
+               'else printf \'%s\' "$STUB_OUTPUT"; fi; }\n' + source[start:end] + '\necho "SIM=$SIM_ID"\n')
     env = {
         "PATH": os.environ["PATH"],
         "STUB_OUTPUT": AVAILABLE,
+        "STUB_JSON": LISTING_JSON,
         "SCRIPT_DIR": str(_SCRIPTS),
         "REPO_ROOT": str(_REPO_ROOT),
         "HARNESS_SESSION_SIM_UDID": want,

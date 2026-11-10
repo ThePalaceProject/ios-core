@@ -41,7 +41,7 @@ Last updated: 2026-07-08
 
 ### Unit Testing
 - **Framework**: XCTest (Xcode 26, iOS 17.0+ deployment target)
-- **Simulator**: iPhone 16 Pro (iOS 18.4, id: DF4A2A27-9888-429D-A749-2E157A049A37)
+- **Simulator and Xcode**: the reference profile in `scripts/reference-toolchain.ini`; see [Reference toolchain](reference-toolchain.md)
 - **Mock infrastructure**: 23 shared mocks in `PalaceTests/Mocks/`
 - **HTTP hermetic**: `NoNetworkURLProtocol` blocks real network in all unit tests
 - **HTTP stubbing**: `HTTPStubURLProtocol` for request/response injection
@@ -230,6 +230,7 @@ python3 scripts/generate-regression-report.py --csv findings.csv \
 - [Coverage Roadmap](Coverage_Roadmap.md) — per-module coverage targets
 - [Test Patterns](Test_Patterns.md) — mock patterns, stubbing, fixtures
 - [UI Journeys](UI_JOURNEYS.md): fixture-backed XCUITest journeys and how to run them
+- [Reference toolchain](reference-toolchain.md) — the Xcode build and simulator each lane uses, and how to update them
 - [Traceability Matrix](Traceability_Matrix.md) — requirements → tests mapping
 - [Legacy SpecterQA Regression Plan](../../.simdrive/_archive/REGRESSION_PLAN.md) — archive, kept for reference
 - [Active simdrive Gap Analysis](../../.simdrive/journeys/_GAP_ANALYSIS.md) — current coverage gaps + tier breakdown

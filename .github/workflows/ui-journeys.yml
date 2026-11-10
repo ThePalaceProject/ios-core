@@ -27,7 +27,7 @@ jobs:
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: 'latest-stable'
+          xcode-version: '26.3'
 
       - name: Checkout main repo and submodules
         uses: actions/checkout@v7
@@ -68,9 +68,9 @@ jobs:
       - name: Select simulator
         id: sim
         run: |
-          SIMULATOR_ID=$(xcrun simctl list devices available | grep "iPhone" \
-            | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' | head -1)
-          [ -n "$SIMULATOR_ID" ] || { echo "::error::no iPhone simulator"; exit 1; }
+          SIMULATOR_ID=$(python3 scripts/reference_toolchain.py select-sim --profile reference)
+          python3 scripts/reference_toolchain.py report --profile reference \
+            --udid "$SIMULATOR_ID" --configuration Debug --strict
           echo "id=$SIMULATOR_ID" >> "$GITHUB_OUTPUT"
 
       # The app's own log, from before launch, so a slow or failed run shows
