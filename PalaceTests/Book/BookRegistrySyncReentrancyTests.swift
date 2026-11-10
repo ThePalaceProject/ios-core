@@ -203,7 +203,7 @@ final class BookRegistrySyncReentrancyTests: XCTestCase {
         let bookmarkManager = BookmarkManager(
             store: store,
             save: { [syncManager] account in syncManager?.save(for: account) },
-            savePosition: { [syncManager] account in syncManager?.save(for: account, scope: .positionOnly) },
+            savePosition: { [syncManager] account, identifiers in syncManager?.savePosition(for: account, identifiers: identifiers) },
             saveSync: { [syncManager] account in syncManager?.saveSync(for: account) }
         )
 

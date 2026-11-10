@@ -31,7 +31,7 @@ class BookFileManager {
     /// `fileUrl(for:account:)` pin a side-loaded id to that account so a
     /// library switch cannot orphan its file. Production resolves it lazily
     /// through `AppContainer` (same cycle-avoidance pattern as elsewhere);
-    /// tests inject a fixed set. See sideloading-plan.md R6.
+    /// tests inject a fixed set.
     private let sideloadedIdentifiersProvider: () -> Set<String>
 
     init(
@@ -61,8 +61,8 @@ class BookFileManager {
         guard let book = bookRegistry.book(forIdentifier: identifier) else {
             return nil
         }
-        // Component 4 (sideloading-plan.md R6): side-loaded books are
-        // account-agnostic — their file is written under one fixed account.
+        // Side-loaded books are account-agnostic — their file is written
+        // under one fixed account.
         // If `currentAccount` (or the caller-supplied account) differs, the
         // per-account path would resolve the wrong directory → nil → the
         // reader can't open the book after a library switch. Pin the read to

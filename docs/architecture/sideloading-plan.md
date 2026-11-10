@@ -1,5 +1,7 @@
 <!-- audit-verified: PP-2677/2678/2679/2581/2580 fetched via jira_get_issue on 2026-07-01 -->
-# Side Loading — Architecture & Implementation Plan
+# Side Loading — Architecture
+
+Status: shipped in #1157 (PP-2677, PP-2678, PP-2679).
 
 Covers **PP-2677** (side-load manager + settings), **PP-2678** (side-load registry),
 **PP-2679** (side-loaded catalog lane). Parent investigation: **PP-2581**
@@ -26,19 +28,19 @@ end-to-end in the shipping reader.
    The flag is OFF in every build: the registered Remote Config default is
    `false` and there is no DEBUG-on fallback, so the Testing-screen toggle is
    the only way to turn it on without a global Firebase change (it does not
-   opt into the per-device override). An earlier revision of this line claimed
-   "DEBUG-on"; that was never true.
+   opt into the per-device override).
 3. **Content types:** EPUB + PDF + audiobook from the start (infra handles all
    three uniformly via `TPPBookContentType`).
 
 ## Load-bearing constraint
 
 The main registry's server `sync()` **evicts any book not in the loans feed and
-deletes its on-disk file** — `BookRegistrySync.swift:406` seeds
-`recordsToDelete = Set(registry.keys)`, removes feed entries, then at `:480-497`
-un-registers the remainder and calls `deleteLocalContent` for `.downloadSuccessful`
-ones. Therefore sideloaded books **must** be exempted from reconciliation, or the
-next sync silently destroys them. This is the reason for decision #1's exemption set.
+deletes its on-disk file**. `BookRegistrySync.sync()` computes the delete set with
+`LoansFeedReconciliation.identifiersToRemove` (local ids minus feed ids), then
+un-registers each one and calls `deleteLocalContent` for `.downloadSuccessful` and
+`.used` records. Sideloaded books therefore must be exempted from reconciliation, or
+the next sync destroys them. This is the reason for decision #1's exemption set:
+`identifiersToRemove` also subtracts `sideloadedIdentifiers`.
 
 ## Components
 
@@ -65,15 +67,16 @@ next sync silently destroys them. This is the reason for decision #1's exemption
   gated by the feature flag.
 
 ### Sync exemption (surgical, CRITICAL PATH)
-- In `BookRegistrySync` reconciliation: `recordsToDelete.subtract(sideloadedIDs)`.
-- Inject the id set from `SideloadedBookRegistry` via `AppContainer`.
-- Highest-risk change → independent review required.
+- In `BookRegistrySync` reconciliation, `LoansFeedReconciliation.identifiersToRemove`
+  subtracts the sideloaded ids from the delete set.
+- The id set comes from `SideloadedBookRegistry.identifiers` through
+  `RegistryExternalDependencies.sideloadedIdentifiers`, wired in `AppContainer`.
 
 ### PP-2679 — `SideloadedLane`
 - Inject `CatalogLaneModel(title:, books: sideloadedRegistry.allBooks, moreURL: nil)`
   into the catalog lanes, gated by the feature flag.
-- Seam: `CatalogViewModel.load()` / `MappedCatalog.toCatalogContent()`
-  (`CatalogUI/ViewModels/CatalogState.swift:129`).
+- Seam: `CatalogViewModel` passes its sideloaded lanes to
+  `MappedCatalog.toCatalogContent(prepending:)` (`CatalogUI/ViewModels/CatalogState.swift`).
 - Handle `.grouped` / `.ungrouped` / `.empty` so the lane shows even when the base
   feed isn't grouped.
 
@@ -94,60 +97,38 @@ Settings "Side Loading" → UIDocumentPicker → file URL
 ```
 
 ## Key files
-- New: `Palace/MyBooks/Sideload/SideloadedBookRegistry.swift`, `SideloadedBookManager.swift`
-- `Palace/Packages/PalaceBookRegistry/Sources/PalaceBookRegistry/BookRegistrySync.swift` — sync exemption (critical)
-- `Palace/Packages/PalacePreferences/Sources/PalacePreferences/TPPSettings.swift` + `Settings/NewSettings/TPPSettingsView.swift`
+- `Palace/MyBooks/Sideload/SideloadedBookRegistry.swift`, `SideloadedBookManager.swift`
+- `Palace/Packages/PalaceBookRegistry/Sources/PalaceBookRegistry/BookRegistrySync.swift`
+  and `LoansFeedReconciliation.swift` — sync exemption (critical)
+- `Palace/Packages/PalacePreferences/Sources/PalacePreferences/TPPSettings.swift`,
+  `Palace/Settings/NewSettings/TPPSettingsView.swift`, `SideLoadingView.swift`
 - `Palace/CatalogUI/ViewModels/CatalogViewModel.swift` / `CatalogState.swift`
-- `Palace/FeatureFlags/RemoteFeatureFlags.swift` — new flag + local override
-- `Palace/AppInfrastructure/AppContainer.swift` — wire services + inject exemption set
+- `Palace/FeatureFlags/RemoteFeatureFlags.swift` — flag + local override
+- `Palace/AppInfrastructure/AppContainer.swift` — wires services + the exemption set
 
-## Reference seams (from architecture map)
-- `TPPBook` designated init: `Palace/Packages/PalaceBookModel/Sources/PalaceBookModel/TPPBook.swift:122`; content type via
-  `defaultBookContentType` (`:669`), MIME→type `TPPBookContentType.from(mimeType:)`
-  (`Palace/Packages/PalaceBookModel/Sources/PalaceBookModel/TPPContentType.swift:20`).
-- `TPPBookRegistry.addBook(...)` `:387`; `setState` `:464`.
-- File path resolver `BookFileManager.fileUrl(for:account:)`
-  (`Palace/MyBooks/BookFileManager.swift:69`); content dir `:82`; extension `:123`.
+## Reference seams
+- `TPPBook` designated init and `defaultBookContentType`
+  (`Palace/Packages/PalaceBookModel/Sources/PalaceBookModel/TPPBook.swift`); MIME→type
+  `TPPBookContentType.from(mimeType:)` (`TPPContentType.swift` in the same package).
+- `TPPBookRegistry.addBook(...)` / `setState`
+  (`Palace/Packages/PalaceBookRegistry/Sources/PalaceBookRegistry/TPPBookRegistry.swift`).
+- File path resolver `BookFileManager.fileUrl(for:account:)`, `contentDirectoryURL`,
+  `pathExtension(for:)` (`Palace/MyBooks/BookFileManager.swift`).
 - Registry persistence `BookRegistrySync.swift` (registry.json under Application Support).
-- Lane model `CatalogLaneModel` (`CatalogUI/ViewModels/CatalogViewModel.swift:417`);
-  feed→lanes `mapFeed` `:444`; render `CatalogContentView.swift:104`.
-- Settings toggle pattern `TPPSettingsView.swift:244`; keys `TPPSettings.swift:62-73`.
-- Feature-flag template `RemoteFeatureFlags.inAppPlaybackNavEnabled` `:54` +
-  local-override switch `:462`.
+- Lane model `CatalogLaneModel` and feed→lanes `mapFeed`
+  (`CatalogUI/ViewModels/CatalogViewModel.swift`); render `CatalogUI/Views/CatalogContentView.swift`.
+- Feature-flag template `RemoteFeatureFlags.inAppPlaybackNavEnabled` and its local-override switch.
 
-## Verification
-
-1. **Unit (TDD, mandated by all three tickets):**
-   - `SideloadedBookRegistry`: manifest round-trip (persist→reload→identical),
-     add/remove/rename/update, edge cases (duplicate import, missing file, corrupt/
-     empty manifest, unsupported type).
-   - `SideloadedBookManager`: classification per type (EPUB/PDF/audiobook MIME →
-     correct `defaultBookContentType`), open-access minting, dedup, error paths,
-     exemption-set maintenance, launch rehydration.
-   - **Sync-exemption regression (critical):** drive `sync()` with a loans feed
-     lacking the sideloaded id → assert book + file survive.
-   - Lane injection: flag on + non-empty registry → lane present; flag off → absent;
-     empty/ungrouped base feed → lane still present.
-2. **Contract-snapshot** for the import pipeline (ordered calls: classify → copyFile →
-   registry.addBook → sideloadRegistry.add → exemption.insert).
-3. **Mutation** (`palace_mutate.py --diff-only`) on manager + registry, ≥50%
-   (critical-path files → 100% on touched lines).
-4. **Build + `scripts/verify-pr.sh --quick`** (full-suite parity).
-5. **simdrive E2E:** enable in Settings → import the LCP 2.x test EPUB (PP-2580) →
-   see lane → open in reader → renders.
-
-## Orchestration
-Spans ≥2 modules (Book/registry, MyBooks, Settings, CatalogUI) **and** touches a
-critical path (registry sync + DRM) → split the work by module and get an
-independent review focused on the sync-exemption change.
-
-## Open items / risks
+## Known limits and constraints
 - **My Books visibility:** decision #1 makes sideloaded books appear on the My Books
-  shelf. Acceptable for a test feature; revisit if noise is a problem (could filter
-  by exemption-id membership).
-- **Persistence location:** ticket says "Documents folder"; the app's registry lives
-  under Application Support. Recommend Application Support (consistent, backup-excluded)
-  and treat the ticket wording as illustrative — confirm during implementation.
-- **Sync-exemption ordering:** rehydration must populate the exemption set *before*
-  the first `sync()` after launch, or a race could still evict. Wire rehydration into
-  `AppContainer` startup ahead of the sync trigger.
+  shelf. Accepted for a test feature; filtering by exemption-id membership is the
+  option if it becomes noise.
+- **Persistence location:** the manifest lives under Application Support, next to
+  the main registry, not in Documents as the ticket wording suggests.
+- **Exemption does not depend on rehydration:** sync reads
+  `SideloadedBookRegistry.identifiers`, which the registry loads from its manifest
+  when it is created, so a sync that runs before launch rehydration does not evict
+  sideloaded books.
+  Rehydration into the main registry runs in the `TPPBookRegistry.load(completion:)`
+  callback (`TPPAppDelegate`), because a rehydrate before the disk snapshot lands is
+  overwritten when the store becomes `.loaded`.

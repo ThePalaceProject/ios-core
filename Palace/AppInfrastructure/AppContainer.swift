@@ -574,7 +574,13 @@ struct AppContainer: @unchecked Sendable {
         // The convenience init's dependency closures resolve
         // `AppContainer.production()` lazily, on first use, so construction here
         // does not re-enter the lock and a test rebuild can't capture a stale graph.
-        let bookRegistry = TPPBookRegistry(accountsManager: accountsManager, imageLoader: imageLoader)
+        // Composition root — the one legitimate binding site for the seam.
+        // `.shared` keeps the process-singleton identity (one lastFetchTime,
+        // one `.standard`-backed override store, the same instance CarPlay's
+        // cached-read path warms). Constructing a second instance here would
+        // fork the CarPlay UserDefaults cache writer.
+        let featureFlags: FeatureFlagProviding = RemoteFeatureFlags.shared
+        let bookRegistry = TPPBookRegistry(accountsManager: accountsManager, imageLoader: imageLoader, featureFlags: featureFlags)
         // One announcer shared by the service and MyBooksDownloadCenter (which
         // still calls `announceStatus` directly) keeps deduplication coherent.
         let accessibilityAnnouncer = TPPAccessibilityAnnouncementCenter()
@@ -636,12 +642,7 @@ struct AppContainer: @unchecked Sendable {
             reachability: reachability,
             accountsManager: accountsManager,
             settings: TPPSettings(),
-            // Composition root — the one legitimate binding site for the seam.
-            // `.shared` keeps the process-singleton identity (one lastFetchTime,
-            // one `.standard`-backed override store, the same instance CarPlay's
-            // cached-read path warms). Constructing a second instance here would
-            // fork the CarPlay UserDefaults cache writer.
-            featureFlags: RemoteFeatureFlags.shared,
+            featureFlags: featureFlags,
             downloadCenter: downloadCenter,
             downloadAnnouncementService: downloadAnnouncementService,
             debugSettings: DebugSettings(),

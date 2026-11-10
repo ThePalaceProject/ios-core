@@ -71,7 +71,7 @@ private final class PersistCountingRegistry: TPPBookRegistryMock, @unchecked Sen
             guard let self else { return }
             self.lock.withLock { self._persistCount += 1 }
         }
-        manager = BookmarkManager(store: store, save: count, savePosition: count, saveSync: count)
+        manager = BookmarkManager(store: store, save: count, savePosition: { account, _ in count(account) }, saveSync: count)
     }
 
     override func addBook(_ book: TPPBook, location: TPPBookLocation? = nil, state: TPPBookState, fulfillmentId: String? = nil, readiumBookmarks: [TPPReadiumBookmark]? = nil, genericBookmarks: [TPPBookLocation]? = nil) {
