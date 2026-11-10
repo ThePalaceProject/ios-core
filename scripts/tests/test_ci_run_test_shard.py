@@ -16,6 +16,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import platform
 import re
 import stat
 import subprocess
@@ -68,6 +69,9 @@ XCODEBUILD = textwrap.dedent("""\
     # =nobundle the bundle holds nothing readable, and with =loggedfail the log
     # shows a failed test the bundle records as passed; =noresult leaves a
     # readable bundle that records none of the re-run tests and logs no failure.
+    # The toolchain report reads the version; it is not a test pass, so it is
+    # not logged with them.
+    [ "$1" = "-version" ] && { printf 'Xcode 26.3\\nBuild version 17C529\\n'; exit 0; }
     echo "$*" >> "$STUB_LOG"
     bundle=""; prev=""; ids=()
     for a in "$@"; do
@@ -181,6 +185,15 @@ XCRUN = textwrap.dedent("""\
       [ "${STUB_BOOTSTATUS:-}" = "fail" ] && exit 164
       echo "All devices have finished booting."; exit 0
     fi
+    if [ "$1 $2 $3" = "simctl list -j" ]; then
+      echo '{"runtimes": [{"name": "iOS 18.5", "version": "18.5", "isAvailable": true,
+              "identifier": "com.apple.CoreSimulator.SimRuntime.iOS-18-5"}],
+             "devices": {"com.apple.CoreSimulator.SimRuntime.iOS-18-5": [
+               {"name": "iPhone 16", "udid": "99999999-2222-3333-4444-555555555555", "state": "Shutdown", "isAvailable": true},
+               {"name": "iPhone 16 Pro", "udid": "11111111-2222-3333-4444-555555555555", "state": "Shutdown", "isAvailable": true}]}}'
+      exit 0
+    fi
+    if [ "$*" = "--sdk iphonesimulator --show-sdk-version" ]; then echo "26.2"; exit 0; fi
     if [ "$1" = "simctl" ]; then
       echo "    iPhone 16 Pro (11111111-2222-3333-4444-555555555555) (Shutdown)"; exit 0
     fi
@@ -247,8 +260,14 @@ def env(tmp_path):
         "estimated_seconds": [1, 1], "hashed": [],
     }
     (tmp_path / "plan.json").write_text(json.dumps(plan))
+    # The stubs above report the reference toolchain; the arch is this host's.
+    (tmp_path / "toolchain.ini").write_text(
+        "[reference]\nrunner_image = test\nxcode_version = 26.3\nxcode_build = 17C529\n"
+        "sdk = iphonesimulator26.2\nruntime = iOS 18.5\ndevice = iPhone 16 Pro\n"
+        f"arch = {platform.machine()}\nconfiguration = Debug\n")
     e = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}",
-         "STUB_LOG": str(tmp_path / "xcodebuild.log"), "SHARD_BUDGET_SECONDS": "120"}
+         "STUB_LOG": str(tmp_path / "xcodebuild.log"), "SHARD_BUDGET_SECONDS": "120",
+         "REFERENCE_TOOLCHAIN_CONFIG": str(tmp_path / "toolchain.ini")}
     return tmp_path, e
 
 
@@ -942,6 +961,39 @@ def test_the_simulator_template_is_booted_before_any_test_pass(env):
     assert "is booted" in r.stdout
 
 
+# The shard runs the reference profile's simulator (scripts/reference-toolchain.ini),
+# not the first iPhone simctl lists (the stub lists an iPhone 16 first).
+
+def test_the_shard_runs_the_reference_device_and_records_its_toolchain(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "TOOLCHAIN xcode_version=26.3 xcode_build=17C529 sdk=iphonesimulator26.2 " \
+           "runtime=iOS_18.5 device=iPhone_16_Pro" in r.stdout
+    for call in (tmp_path / "xcodebuild.log").read_text().splitlines():
+        assert "-destination id=11111111-2222-3333-4444-555555555555" in call
+
+
+def test_a_missing_reference_device_fails_before_any_test_pass(env):
+    tmp_path, e = env
+    ini = tmp_path / "toolchain.ini"
+    ini.write_text(ini.read_text().replace("device = iPhone 16 Pro", "device = iPhone 99"))
+    r = _run(tmp_path, e)
+    assert r.returncode != 0
+    assert "iPhone 99 on iOS 18.5, is not installed" in r.stderr
+    assert not (tmp_path / "xcodebuild.log").exists()
+
+
+def test_a_different_xcode_build_fails_before_any_test_pass(env):
+    tmp_path, e = env
+    ini = tmp_path / "toolchain.ini"
+    ini.write_text(ini.read_text().replace("xcode_build = 17C529", "xcode_build = 17F113"))
+    r = _run(tmp_path, e)
+    assert r.returncode != 0
+    assert "::error title=Toolchain differs from the reference profile::xcode_build is 17C529" in r.stdout
+    assert not (tmp_path / "xcodebuild.log").exists()
+
+
 @pytest.mark.parametrize("mode", ["fail", "hang"])
 def test_a_template_that_will_not_warm_does_not_fail_the_shard(env, mode):
     """xcodebuild boots its own clones either way, so warming is best effort."""
@@ -999,3 +1051,53 @@ def test_a_relaunch_that_was_not_interrupted_does_not_blame_the_budget(env):
     r = _run(tmp_path, e, STUB_HANG="PalaceTests/A", STUB_HANG_AGAIN="1")
     assert "::error title=Runner failure not recovered::" in r.stdout
     assert "shard budget" not in r.stdout
+
+
+# --------------------------------------------------------------------------
+# The build-input manifest in shard-report.json (PP-5521)
+# --------------------------------------------------------------------------
+
+def _manifest(tmp_path):
+    return _report(tmp_path)["manifest"]
+
+
+def test_a_clean_shard_report_carries_a_passed_manifest(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, GITHUB_ACTIONS="true", ImageOS="macos15", ImageVersion="20261103.1.0")
+    assert r.returncode == 0, r.stdout + r.stderr
+    m = _manifest(tmp_path)
+    assert (m["check"], m["result"]) == ("unit-tests shard 0", "passed")
+    assert m["toolchain"]["device"] == "iPhone 16 Pro" and m["toolchain"]["xcode_build"] == "17C529"
+    assert m["runner"] == {"image_os": "macos15", "image_version": "20261103.1.0"}
+    assert "recovered_by" not in m
+
+
+def test_a_failed_shard_report_carries_a_failed_manifest(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_KILL="PalaceTests/A", STUB_KILL_AGAIN="1")
+    assert r.returncode == 1
+    assert _manifest(tmp_path)["result"] == "failed"
+
+
+def test_a_shard_that_passed_only_after_a_relaunch_is_recovered_not_passed(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_HANG="PalaceTests/A")
+    assert r.returncode == 0, r.stdout + r.stderr
+    m = _manifest(tmp_path)
+    assert (m["result"], m["recovered_by"]) == ("recovered", ["relaunch"])
+
+
+def test_a_shard_that_passed_on_the_second_chance_is_recovered(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_KILL="PalaceTests/A")
+    assert r.returncode == 0, r.stdout + r.stderr
+    m = _manifest(tmp_path)
+    assert (m["result"], m["recovered_by"]) == ("recovered", ["second-chance"])
+
+
+def test_a_shard_that_passed_after_a_crash_retry_is_recovered(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_CRASH="1")
+    assert r.returncode == 0, r.stdout + r.stderr
+    m = _manifest(tmp_path)
+    assert (m["result"], m["recovered_by"]) == ("recovered", ["crash-retry"])

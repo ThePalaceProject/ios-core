@@ -81,6 +81,12 @@ final class ActivityRulesTests: XCTestCase {
             }
         case .telemetryUpload:
             return expectedVisible(s) ? 60 : 900
+        case .previewCountdown:
+            // Main scene only, and never slowed: a slower countdown skips seconds.
+            switch s.scene {
+            case .active, .inactive: return 1
+            case .background: return nil
+            }
         }
     }
 

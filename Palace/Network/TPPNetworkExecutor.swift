@@ -739,6 +739,11 @@ extension TPPNetworkExecutor {
         return urlRequest
     }
 
+    /// Bytes the response cache holds in memory now (PP-5509).
+    var cacheMemoryUsage: Int {
+        transport.cacheMemoryUsage
+    }
+
     @objc func clearCache() {
         transport.clearCache()
     }

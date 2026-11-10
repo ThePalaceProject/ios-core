@@ -752,8 +752,8 @@ final class BookRegistrySync: @unchecked Sendable {
     let matches: Bool
   }
 
-  /// Compares a stored record with its feed entry. It leaves out the decoded
-  /// cover images, so it can run off the main thread.
+  /// Compares a stored record with its feed entry. It writes no cover image
+  /// (covers live in `BookCoverStore`), so it can run off the main thread.
   static func compare(
     record: TPPBookRegistryRecord,
     with book: TPPBook,
@@ -770,7 +770,7 @@ final class BookRegistrySync: @unchecked Sendable {
     // — without this guard, a later sync overwrites a previously-enriched record
     // and MyBooks cells lose their author line until a catalog visit refills it.
     let reconciled = reconciledRecord(
-      record, book: record.book.mergingPreservingMetadataWithoutImages(from: book), state: nextState
+      record, book: record.book.mergingPreservingMetadata(from: book), state: nextState
     )
     return FeedComparison(record: record, nextState: nextState, matches: recordsMatch(record, reconciled))
   }

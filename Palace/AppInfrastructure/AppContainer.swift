@@ -157,7 +157,7 @@ struct AppContainer: @unchecked Sendable {
     @MainActor
     var samplePreviewManager: SamplePreviewManager {
         if let cached = AppContainer._samplePreviewManager { return cached }
-        let manager = SamplePreviewManager()
+        let manager = SamplePreviewManager(activityPolicy: activityPolicy)
         AppContainer._samplePreviewManager = manager
         return manager
     }
@@ -253,7 +253,8 @@ struct AppContainer: @unchecked Sendable {
             archiveProgressPublisher: self.downloadCenter.progressReporter.downloadProgressPublisher.eraseToAnyPublisher(),
             isArchiveTransferActive: { [weak downloadCenter = self.downloadCenter] identifier in
                 downloadCenter?.progressReporter.isLCPContentTransferActive(for: identifier) ?? false
-            }
+            },
+            activityPolicy: activityPolicy
         )
         AppContainer._audiobookSessionPresenter = presenter
         return presenter

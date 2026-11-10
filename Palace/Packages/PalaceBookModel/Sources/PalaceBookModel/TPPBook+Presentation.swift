@@ -9,9 +9,6 @@
 
 import Foundation
 import UIKit
-import CoreImage
-import CoreImage.CIFilterBuiltins
-import PalaceLogging
 
 // MARK: - Cover Image Fetching & Cache
 
@@ -75,11 +72,16 @@ extension TPPBook {
             [identifier]
         }
 
+        // Writes go to the store by ID, not through `self`: a sync can release
+        // this object mid-fetch while its replacement waits on the same entry.
+        let store = coverStore
+        let key = coverStoreKey
+        let cache = imageCache
+
         // Synchronous memory-cache check (instant, no disk I/O on main thread)
         if let img = Self.firstCachedImage(in: imageCache, keys: lookupKeys) {
             DispatchQueue.main.async {
-                self.coverImage = img
-                self.updateDominantColor(using: img)
+                store.offerCover(img, for: key)
             }
             return
         }
@@ -88,28 +90,26 @@ extension TPPBook {
 
         let placeholder = isLargeDisplay ? imageCache.get(for: identifier) : nil
         DispatchQueue.main.async {
-            if let placeholder {
-                self.coverImage = placeholder
-                self.updateDominantColor(using: placeholder)
-            }
-            self.isCoverLoading = true
+            store.update(key) { $0.isCoverLoading = true }
+            store.offerCover(placeholder, for: key)
         }
 
         if let displayHeight {
             Task { [weak self] in
-                guard let self else { return }
+                guard let self else {
+                    await MainActor.run { store.update(key) { $0.isCoverLoading = false } }
+                    return
+                }
 
                 // Async cache check: promotes disk→memory before hitting network.
                 // This is the systemic fix for images "disappearing" on entry point
                 // switches — new TPPBook instances miss the sync check above (main
                 // thread returns nil for disk-only entries) but this async path finds
                 // them without a network round-trip.
-                for key in lookupKeys {
-                    if let cached = await self.imageCache.getAsync(for: key) {
+                for lookupKey in lookupKeys {
+                    if let cached = await cache.getAsync(for: lookupKey) {
                         await MainActor.run {
-                            self.coverImage = cached
-                            self.updateDominantColor(using: cached)
-                            self.isCoverLoading = false
+                            store.offerCover(cached, for: key, endingLoad: true)
                         }
                         return
                     }
@@ -118,42 +118,34 @@ extension TPPBook {
                 // Cache miss — fetch from network (no-op if the image context
                 // is unconfigured, e.g. in a unit test).
                 guard let imageLoader = self.imageLoader else {
-                    await MainActor.run { self.isCoverLoading = false }
+                    await MainActor.run { store.update(key) { $0.isCoverLoading = false } }
                     return
                 }
                 let img = await imageLoader.coverImage(for: self, displayPoints: displayHeight)
                 let final = img ?? placeholder ?? self.thumbnailImage
                 await MainActor.run {
-                    self.coverImage = final
-                    if let img = final {
-                        if !isLargeDisplay {
-                            self.imageCache.set(img, for: sizeKey ?? self.identifier)
-                        }
-                        self.updateDominantColor(using: img)
+                    if let img = final, !isLargeDisplay {
+                        cache.set(img, for: sizeKey ?? key)
                     }
-                    self.isCoverLoading = false
+                    store.offerCover(final, for: key, endingLoad: true)
                 }
             }
         } else {
             let startFetch = { @Sendable [weak self] in
-                guard let self else { return }
-                guard let imageLoader = self.imageLoader else {
-                    DispatchQueue.main.async { self.isCoverLoading = false }
+                guard let self, let imageLoader = self.imageLoader else {
+                    DispatchQueue.main.async { store.update(key) { $0.isCoverLoading = false } }
                     return
                 }
 
-                imageLoader.coverImage(for: self) { [weak self] image in
-                    guard let self = self else { return }
-                    let final = image ?? self.thumbnailImage
+                imageLoader.coverImage(for: self) { image in
+                    let final = image ?? store.state(for: key).thumbnailImage
 
                     DispatchQueue.main.async {
-                        self.coverImage = final
                         if let img = final {
                             // Single cache key — no duplicate storage
-                            self.imageCache.set(img, for: self.identifier)
-                            self.updateDominantColor(using: img)
+                            cache.set(img, for: key)
                         }
-                        self.isCoverLoading = false
+                        store.offerCover(final, for: key, endingLoad: true)
                     }
                 }
             }
@@ -167,12 +159,14 @@ extension TPPBook {
     }
 
     func fetchThumbnailImage() {
-        let simpleKey = identifier
+        let store = coverStore
+        let key = coverStoreKey
+        let cache = imageCache
         let thumbnailKey = "\(identifier)_thumbnail"
 
-        if let img = imageCache.get(for: simpleKey) ?? imageCache.get(for: thumbnailKey) {
+        if let img = imageCache.get(for: identifier) ?? imageCache.get(for: thumbnailKey) {
             DispatchQueue.main.async {
-                self.thumbnailImage = img
+                store.update(key) { $0.thumbnailImage = img }
             }
             return
         }
@@ -182,22 +176,23 @@ extension TPPBook {
             self.isThumbnailLoading = true
 
             guard let imageLoader = self.imageLoader else {
-                DispatchQueue.main.async { self.isThumbnailLoading = false }
+                DispatchQueue.main.async { store.update(key) { $0.isThumbnailLoading = false } }
                 return
             }
 
-            imageLoader.thumbnailImage(for: self) { [weak self] image in
-                guard let self = self else { return }
-
+            imageLoader.thumbnailImage(for: self) { image in
                 DispatchQueue.main.async {
-                    self.thumbnailImage = image
+                    let hasCover = store.state(for: key).coverImage != nil
+                    store.update(key) {
+                        $0.thumbnailImage = image
+                        $0.isThumbnailLoading = false
+                    }
                     if let img = image {
-                        self.imageCache.set(img, for: [self.identifier, thumbnailKey])
-                        if self.coverImage == nil {
-                            self.updateDominantColor(using: img)
+                        cache.set(img, for: [key, thumbnailKey])
+                        if !hasCover {
+                            store.updateDominantColor(for: key, using: img)
                         }
                     }
-                    self.isThumbnailLoading = false
                 }
             }
         }
@@ -213,10 +208,15 @@ extension TPPBook {
         imageCache.remove(for: identifier)
         imageCache.remove(for: "\(identifier)_cover")
         imageCache.remove(for: "\(identifier)_thumbnail")
+        let store = coverStore
+        let key = coverStoreKey
         DispatchQueue.main.async {
-            self.coverImage = nil
-            self.thumbnailImage = nil
-            self.dominantUIColor = .gray
+            store.update(key) {
+                $0.coverImage = nil
+                $0.thumbnailImage = nil
+                $0.dominantColor = .gray
+                $0.colorSource = nil
+            }
         }
     }
 }
@@ -233,183 +233,12 @@ extension TPPBook {
     }
 }
 
-// MARK: - Dominant Color (async, off main thread)
+// MARK: - Dominant Color
 
 extension TPPBook {
-    private static let colorProcessingQueue = DispatchQueue(label: "org.thepalaceproject.dominantcolor", qos: .utility)
-    private static let sharedCIContext: CIContext = {
-        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else {
-            return CIContext()
-        }
-        return CIContext(options: [
-            .workingColorSpace: colorSpace,
-            .outputColorSpace: colorSpace,
-            .useSoftwareRenderer: false
-        ])
-    }()
-
+    /// Computes the cover color off the main thread, once per cover image for
+    /// this book ID (see `BookCoverStore.updateDominantColor`).
     func updateDominantColor(using image: UIImage) {
-        let inputImage = image
-        Self.colorProcessingQueue.async { [weak self] in
-            guard let self = self else { return }
-
-            autoreleasepool {
-                let deviceMemoryMB = ProcessInfo.processInfo.physicalMemory / (1024 * 1024)
-                guard deviceMemoryMB >= 1024 else {
-                    Log.debug(#file, "Skipping dominant color extraction on low-memory device (\(deviceMemoryMB)MB)")
-                    DispatchQueue.main.async { self.dominantUIColor = .gray }
-                    return
-                }
-
-                guard inputImage.size.width > 0, inputImage.size.height > 0 else {
-                    Log.warn(#file, "Invalid image size for dominant color extraction: \(inputImage.size)")
-                    DispatchQueue.main.async { self.dominantUIColor = .gray }
-                    return
-                }
-
-                guard let cgImage = inputImage.cgImage else {
-                    Log.warn(#file, "No CGImage available for dominant color extraction")
-                    DispatchQueue.main.async { self.dominantUIColor = .gray }
-                    return
-                }
-
-                guard cgImage.width > 0, cgImage.height > 0, cgImage.bitsPerPixel > 0 else {
-                    Log.warn(#file, "Invalid CGImage properties: width=\(cgImage.width), height=\(cgImage.height), bpp=\(cgImage.bitsPerPixel)")
-                    DispatchQueue.main.async { self.dominantUIColor = .gray }
-                    return
-                }
-
-                let maxDimension: CGFloat = 500
-                let scaledImage: UIImage
-
-                let imageSize = inputImage.size
-                let maxSide = max(imageSize.width, imageSize.height)
-
-                if maxSide > maxDimension {
-                    let scale = maxDimension / maxSide
-                    let newSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
-
-                    guard newSize.width > 0, newSize.height > 0, Int(newSize.width) > 0, Int(newSize.height) > 0 else {
-                        Log.warn(#file, "Invalid scaled size for dominant color: \(newSize)")
-                        DispatchQueue.main.async { self.dominantUIColor = .gray }
-                        return
-                    }
-
-                    let colorSpace = CGColorSpaceCreateDeviceRGB()
-                    let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue)
-
-                    guard let context = CGContext(
-                        data: nil,
-                        width: Int(newSize.width),
-                        height: Int(newSize.height),
-                        bitsPerComponent: 8,
-                        bytesPerRow: 0,
-                        space: colorSpace,
-                        bitmapInfo: bitmapInfo.rawValue
-                    ) else {
-                        Log.warn(#file, "Failed to create CGContext for dominant color resize")
-                        DispatchQueue.main.async { self.dominantUIColor = .gray }
-                        return
-                    }
-
-                    context.interpolationQuality = .medium
-                    context.draw(cgImage, in: CGRect(origin: .zero, size: newSize))
-
-                    guard let resizedCGImage = context.makeImage() else {
-                        Log.warn(#file, "Failed to create resized CGImage for dominant color")
-                        DispatchQueue.main.async { self.dominantUIColor = .gray }
-                        return
-                    }
-
-                    scaledImage = UIImage(cgImage: resizedCGImage, scale: 1.0, orientation: inputImage.imageOrientation)
-                } else {
-                    scaledImage = inputImage
-                }
-
-                guard let ciImage = CIImage(image: scaledImage) else {
-                    Log.debug(#file, "Failed to create CIImage from UIImage for book: \(self.identifier)")
-                    DispatchQueue.main.async { self.dominantUIColor = .gray }
-                    return
-                }
-
-                let extent = ciImage.extent
-                guard !extent.isEmpty, extent.width > 0, extent.height > 0, extent.width.isFinite, extent.height.isFinite else {
-                    Log.debug(#file, "CIImage has invalid extent for book: \(self.identifier) - \(extent)")
-                    DispatchQueue.main.async { self.dominantUIColor = .gray }
-                    return
-                }
-
-                let filter = CIFilter.areaAverage()
-                filter.inputImage = ciImage
-                filter.extent = extent
-
-                guard let outputImage = filter.outputImage else {
-                    Log.debug(#file, "Failed to generate output image from filter for book: \(self.identifier)")
-                    DispatchQueue.main.async { self.dominantUIColor = .gray }
-                    return
-                }
-
-                guard !outputImage.extent.isEmpty else {
-                    Log.debug(#file, "Filter output image has empty extent for book: \(self.identifier)")
-                    DispatchQueue.main.async { self.dominantUIColor = .gray }
-                    return
-                }
-
-                guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) else {
-                    Log.debug(#file, "Failed to create sRGB color space for book: \(self.identifier)")
-                    DispatchQueue.main.async { self.dominantUIColor = .gray }
-                    return
-                }
-
-                let renderBounds = CGRect(x: 0, y: 0, width: 1, height: 1)
-
-                // CIContext.render(_:toBitmap:) aborts INTERNALLY (C++ abort →
-                // SIGABRT, Crashlytics 0f06402c) on degenerate/corrupt cover
-                // images that survive the guards above, and — being non-throwing
-                // — the do/catch that used to wrap it was dead code (a native
-                // abort cannot be caught by Swift, so there was no recovery path
-                // and the process was killed). Render the 1x1 areaAverage output
-                // via createCGImage, which returns nil on failure instead of
-                // aborting, then read the single averaged pixel back through a
-                // CGContext. Any failure now falls back to .gray.
-                guard let averagedCGImage = Self.sharedCIContext.createCGImage(
-                    outputImage,
-                    from: renderBounds,
-                    format: .RGBA8,
-                    colorSpace: colorSpace
-                ) else {
-                    Log.debug(#file, "areaAverage createCGImage returned nil for book: \(self.identifier)")
-                    DispatchQueue.main.async { self.dominantUIColor = .gray }
-                    return
-                }
-
-                var bitmap = [UInt8](repeating: 0, count: 4)
-                guard let readbackContext = CGContext(
-                    data: &bitmap,
-                    width: 1,
-                    height: 1,
-                    bitsPerComponent: 8,
-                    bytesPerRow: 4,
-                    space: colorSpace,
-                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-                ) else {
-                    Log.debug(#file, "Failed to create 1x1 readback context for book: \(self.identifier)")
-                    DispatchQueue.main.async { self.dominantUIColor = .gray }
-                    return
-                }
-                readbackContext.draw(averagedCGImage, in: renderBounds)
-
-                let color = UIColor(
-                    red: CGFloat(bitmap[0]) / 255.0,
-                    green: CGFloat(bitmap[1]) / 255.0,
-                    blue: CGFloat(bitmap[2]) / 255.0,
-                    alpha: CGFloat(bitmap[3]) / 255.0
-                )
-
-                DispatchQueue.main.async {
-                    self.dominantUIColor = color
-                }
-            }
-        }
+        coverStore.updateDominantColor(for: coverStoreKey, using: image)
     }
 }
