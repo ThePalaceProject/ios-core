@@ -1,10 +1,10 @@
 //  NowPlayingCoordinatorBackgroundTests.swift
 //
 //  HelpSpot 17865: NowPlaying froze after background -> foreground. Pins that
-//  MPNowPlayingInfoCenter writes bypass the debounce while not active (the main
-//  queue stalls during suspend and debounced work can be lost), that `.active`
-//  updates still coalesce, and that returning to foreground after >30s with no
-//  writes while playing logs an error.
+//  MPNowPlayingInfoCenter writes go out at once while not active (the main
+//  queue stalls during suspend and delayed work can be lost), that `.active`
+//  writes a change at once too (PP-5504), and that returning to foreground after
+//  >30s with no writes while playing logs an error.
 
 import MediaPlayer
 import UIKit
@@ -45,16 +45,15 @@ final class NowPlayingCoordinatorBackgroundTests: XCTestCase {
         super.tearDown()
     }
 
-    // MARK: - Test 4: Background bypasses debounce
+    // MARK: - Test 4: Background writes at once
 
-    /// HelpSpot 17865 — When the app is backgrounded the debounced
-    /// DispatchWorkItem can be silently dropped (the main queue stalls).
-    /// applyUpdate must therefore go direct in any non-`.active` state.
-    func testApplyUpdate_inBackground_bypassesDebounce() {
+    /// HelpSpot 17865 — when the app is in the background a delayed write can
+    /// be lost (the main queue stalls), so applyUpdate writes at once.
+    func testApplyUpdate_inBackground_writesEachChangeAtOnce() {
         // Arrange: background state
         fakeAppState.value = .background
 
-        // Act: two rapid writes within the debounce window (0.3s)
+        // Act: two writes in a row
         coordinator.updateNowPlaying(
             title: "Chapter A", artist: nil, album: nil,
             elapsed: 10, duration: 100, isPlaying: true, playbackRate: .normalTime
@@ -64,69 +63,36 @@ final class NowPlayingCoordinatorBackgroundTests: XCTestCase {
             elapsed: 20, duration: 100, isPlaying: true, playbackRate: .normalTime
         )
 
-        // Assert: second write applied SYNCHRONOUSLY — no waiting for
-        // debounce. A debounced write is queued via
-        // DispatchQueue.main.asyncAfter and never fires under suspend.
+        // Assert: the second write is applied synchronously.
         let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
         XCTAssertEqual(
             info?[MPMediaItemPropertyTitle] as? String,
             "Chapter B",
-            "Background updates must go direct, not via debounce — debounced work strands during suspend. HelpSpot 17865."
+            "Background updates must be written at once; delayed work strands during suspend. HelpSpot 17865."
         )
         let elapsed = info?[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? Double ?? -1
         XCTAssertEqual(elapsed, 20.0, accuracy: 0.01, "Second background write should be live, not queued.")
     }
 
-    // MARK: - Test 5: Foreground still debounces
+    // MARK: - Test 5: Foreground writes a change at once
 
-    /// Regression guard: in foreground, rapid updates must still coalesce so
-    /// we don't spam MPNowPlayingInfoCenter on every chapter-tick / scrub.
-    func testApplyUpdate_inForeground_debouncesAsBefore() async {
-        // Arrange: active state
+    /// PP-5504: a chapter change in the foreground is written at once, so the
+    /// lock screen and CarPlay show it without waiting for a later tick.
+    func testApplyUpdate_inForeground_writesEachChangeAtOnce() {
         fakeAppState.value = .active
 
-        // Act: first write goes through immediately (lastUpdateTime is
-        // distantPast). Sleep just long enough that the next write IS
-        // within the debounce window.
         coordinator.updateNowPlaying(
             title: "Chapter A", artist: nil, album: nil,
             elapsed: 10, duration: 100, isPlaying: true, playbackRate: .normalTime
         )
-
-        // Now schedule two more writes synchronously. They land within the
-        // 0.3s debounce window and the second should win, but the result is
-        // visible only after the runloop processes the scheduled work.
         coordinator.updateNowPlaying(
             title: "Chapter B", artist: nil, album: nil,
-            elapsed: 20, duration: 100, isPlaying: true, playbackRate: .normalTime
-        )
-        coordinator.updateNowPlaying(
-            title: "Chapter C", artist: nil, album: nil,
-            elapsed: 30, duration: 100, isPlaying: true, playbackRate: .normalTime
+            elapsed: 0, duration: 100, isPlaying: true, playbackRate: .normalTime
         )
 
-        // Immediately after, info should still show Chapter A — the next
-        // two writes are queued via debounce.
-        let infoBeforeWait = MPNowPlayingInfoCenter.default().nowPlayingInfo
         XCTAssertEqual(
-            infoBeforeWait?[MPMediaItemPropertyTitle] as? String,
-            "Chapter A",
-            "Foreground debounce must coalesce rapid updates — pre-fix behavior preserved."
-        )
-
-        // Production debounce schedules a `Task { try await Task.sleep(...) }`
-        // (NowPlayingCoordinator.swift). Deterministically JOIN that debounce
-        // Task via the `_awaitPendingUpdateForTesting()` seam instead of polling
-        // `MPNowPlayingInfoCenter` against a fixed wall-clock deadline, which
-        // starves under CI oversubscription.
-        await coordinator._awaitPendingUpdateForTesting()
-
-        // After waiting, Chapter C (the last one) should be live.
-        let infoAfter = MPNowPlayingInfoCenter.default().nowPlayingInfo
-        XCTAssertEqual(
-            infoAfter?[MPMediaItemPropertyTitle] as? String,
-            "Chapter C",
-            "After debounce flush, the latest title should be set."
+            MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyTitle] as? String,
+            "Chapter B"
         )
     }
 

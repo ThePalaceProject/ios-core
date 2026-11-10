@@ -322,10 +322,8 @@ final class NowPlayingCoordinatorBackgroundWriteTests: XCTestCase {
         XCTAssertEqual(lastWrittenElapsed ?? -1, latest, accuracy: 0.001)
     }
 
-    // MARK: - Foreground is unchanged
+    // MARK: - Foreground
 
-    /// In `.active` the existing debounce still decides; the background skip
-    /// must not apply.
     func testActive_firstWrite_isApplied() {
         appState.value = .active
 
@@ -334,8 +332,80 @@ final class NowPlayingCoordinatorBackgroundWriteTests: XCTestCase {
         XCTAssertEqual(infoCenter.infoWrites.count, 1)
     }
 
+    /// Foreground ticks the system can extrapolate are not written either, so a
+    /// patron with the app open does not cost a Now Playing write per tick.
+    func testActive_steadyPlayback_writesOnceThenSkipsExtrapolatedTicks() {
+        appState.value = .active
+        update(elapsed: 100)
+
+        _ = steadyTicks(from: 100, count: 20)
+
+        XCTAssertEqual(infoCenter.infoWrites.count, 1)
+    }
+
+    func testActive_steadyPlayback_writesKeepAliveAfterTenSeconds() {
+        appState.value = .active
+        update(elapsed: 100)
+
+        _ = steadyTicks(from: 100, count: 40)
+
+        XCTAssertEqual(infoCenter.infoWrites.count, 2)
+    }
+
+    /// A chapter change is written on the tick that carries it, however soon
+    /// after the last write, so CarPlay does not show the old chapter.
+    func testActive_chapterChangeHalfASecondAfterAWrite_isWrittenAtOnce() {
+        appState.value = .active
+        update(elapsed: 100)
+        clock.withValue { $0 = $0.addingTimeInterval(0.5) }
+
+        update(title: "Chapter 2", elapsed: 0)
+
+        XCTAssertEqual(infoCenter.infoWrites.count, 2)
+        XCTAssertEqual(infoCenter.nowPlayingInfo?[MPMediaItemPropertyTitle] as? String, "Chapter 2")
+    }
+
+    func testActive_seekHalfASecondAfterAWrite_isWrittenAtOnce() {
+        appState.value = .active
+        update(elapsed: 100)
+        clock.withValue { $0 = $0.addingTimeInterval(0.5) }
+
+        update(elapsed: 400)
+
+        XCTAssertEqual(infoCenter.infoWrites.count, 2)
+        XCTAssertEqual(lastWrittenElapsed ?? -1, 400, accuracy: 0.001)
+    }
+
+    /// A pause after skipped ticks writes the latest position, not the one
+    /// from the last write, and shows the lock screen as paused.
+    func testActive_pauseAfterSkippedTicks_writesTheLatestPositionAsPaused() {
+        appState.value = .active
+        update(elapsed: 100)
+        let latest = steadyTicks(from: 100, count: 8)
+
+        coordinator.setPlaybackState(playing: false)
+
+        XCTAssertEqual(infoCenter.playbackState, .paused)
+        XCTAssertEqual(infoCenter.nowPlayingInfo?[MPNowPlayingInfoPropertyPlaybackRate] as? Double, 0.0)
+        XCTAssertEqual(lastWrittenElapsed ?? -1, latest, accuracy: 0.001)
+    }
+
+    /// A paused tick, then a resumed one: each play-state change is written.
+    func testActive_pauseThenResumeTicks_writeEachStateChange() {
+        appState.value = .active
+        update(elapsed: 100)
+        clock.withValue { $0 = $0.addingTimeInterval(0.25) }
+
+        update(elapsed: 100.25, isPlaying: false)
+        clock.withValue { $0 = $0.addingTimeInterval(0.25) }
+        update(elapsed: 100.25, isPlaying: true)
+
+        XCTAssertEqual(infoCenter.infoWrites.count, 3)
+        XCTAssertEqual(infoCenter.stateWrites.suffix(2), [.paused, .playing])
+    }
+
     /// A chapter change on the first background tick after a foreground write
-    /// is written, whatever the foreground debounce last applied.
+    /// is written, whatever the foreground last wrote.
     func testBackground_firstTickAfterForegroundWrite_withChangedTitle_isWritten() {
         appState.value = .active
         update(elapsed: 100)

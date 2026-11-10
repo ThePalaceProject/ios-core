@@ -1924,15 +1924,17 @@ public final class AudiobookSessionManager: ObservableObject {
         // anthology audiobooks whose adjacent same-track chapters share a
         // title. The new policy keys on track-key change only; same-key /
         // different-title pairs do NOT count as a chapter crossing.
+        // One snapshot per tick: the chapter is resolved once for both uses.
+        let snapshot = manager?.playbackSnapshot
         if let newChapter = chapterNavigationHold.chapterToPublish(
-            from: manager?.currentChapter, replacing: currentChapter
+            from: snapshot?.chapter, replacing: currentChapter
         ) {
             currentChapter = newChapter
             chapterUpdatePublisher.send((chapters: currentChapters, current: currentChapter))
         }
 
-        // Update Now Playing (debounced in coordinator)
-        updateNowPlayingInfo(position: position)
+        // The coordinator writes only on change.
+        updateNowPlayingInfo(position: position, snapshot: snapshot)
     }
 
     /// Sends one playback-failure report, unless PP-5242's deduplicator has
@@ -1956,26 +1958,22 @@ public final class AudiobookSessionManager: ObservableObject {
         playbackStatePublisher.send(state)
     }
 
-    private func updateNowPlayingInfo(position: TrackPosition) {
+    private func updateNowPlayingInfo(position: TrackPosition, snapshot: PlaybackSnapshot? = nil) {
         guard let book = currentBook,
               let audiobook = audiobook,
               let mgr = manager else {
             return
         }
 
-        // Use manager's public properties for chapter info
-        let chapter = mgr.currentChapter
-        let chapterOffset = mgr.currentOffset
-        let chapterDuration = mgr.currentDuration
-
-        let title = chapter?.title ?? position.track.title ?? "Unknown"
+        let snapshot = snapshot ?? mgr.playbackSnapshot
+        let title = snapshot.chapter?.title ?? position.track.title ?? "Unknown"
 
         nowPlayingCoordinator?.updateNowPlaying(
             title: title,
             artist: book.title,
             album: book.authors,
-            elapsed: chapterOffset,
-            duration: chapterDuration,
+            elapsed: snapshot.chapterOffset,
+            duration: snapshot.chapterDuration,
             isPlaying: isPlaying,
             playbackRate: audiobook.player.playbackRate
         )
