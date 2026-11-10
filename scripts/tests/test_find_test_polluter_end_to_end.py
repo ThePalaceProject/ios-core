@@ -377,24 +377,17 @@ def test_no_available_simulator_exits_3_rather_than_guessing(tmp_path):
 
 # --- The duplicate precedence list must not silently diverge ---------------
 
-def test_simulator_precedence_agrees_with_xcode_test_optimized():
-    """Two scripts now carry this list. Nothing else pins them together.
+def test_simulator_preference_starts_with_the_reference_device():
+    """The other local runners pick the reference profile's device
+    (scripts/reference-toolchain.ini); this script's own list must prefer the
+    same one, or an isolation run reproduces on a different device than CI."""
+    import configparser
 
-    Extraction into one helper would mean rewriting a CI-critical gate and its
-    marker-based pytest inside a PR about a diagnostic, so the duplication is
-    deliberate — but a duplicate that can drift unnoticed is how the next
-    "why did CI pick THAT device" incident starts.
-    """
-    other = SCRIPT.parent / "xcode-test-optimized.sh"
-    pattern = re.compile(r'for PREFERRED in ((?:"[^"]+"\s*)+); do', re.I)
-
+    profile = configparser.ConfigParser()
+    profile.read(SCRIPT.parent / "reference-toolchain.ini")
     mine = re.search(r'for preferred in ((?:"[^"]+"\s*)+); do', SCRIPT.read_text())
-    theirs = pattern.search(other.read_text())
-    assert mine and theirs, "could not locate a preference list in both scripts"
-
-    assert re.findall(r'"([^"]+)"', mine.group(1)) == re.findall(r'"([^"]+)"', theirs.group(1)), (
-        "the two simulator-preference lists have diverged"
-    )
+    assert mine, "could not locate the preference list"
+    assert re.findall(r'"([^"]+)"', mine.group(1))[0] == profile["reference"]["device"]
 
 
 def test_the_abort_message_does_not_contradict_its_own_evidence(tmp_path):

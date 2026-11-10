@@ -10,14 +10,23 @@ inputs:
     required: false
     default: "./ios-drm-adeptconnector"
   ref:
-    description: "Branch to checkout"
+    description: "Connector commit to check out (the record; see below)"
     required: false
-    # The ByteBooks (Wipro 2.0) connector lives on a branch so that both
-    # connector generations stay available; main still holds the Adobe-era
-    # drop. AdobeConnectorGeneration.current must name the same generation as
-    # whatever this resolves to, which
-    # testCurrentGenerationDescribesTheLinkedConnector checks.
-    default: "feature/bytebooks-connector-20261104"
+    # These defaults are the connector record: repo, ref and generation.
+    # CI checks out `ref`, scripts/bootstrap-drm.sh clones it, and
+    # scripts/drm_connector.py check compares local connector trees with it.
+    # No workflow passes these inputs; change the defaults here to change the
+    # connector. `ref` is commit 7913158 on branch
+    # feature/bytebooks-connector-20261104, the ByteBooks (Wipro 2.0) drop every
+    # 3.4.1 build used. `generation` must equal AdobeConnectorGeneration.current;
+    # testCurrentGenerationDescribesTheLinkedConnector checks that the linked
+    # binaries report it. Update path:
+    # docs/architecture/adobe-drm-connector-linking.md.
+    default: "7913158fa6b04ef8387a0b3bf32454bd795284fb"
+  generation:
+    description: "AdobeConnectorGeneration of the connector at ref"
+    required: false
+    default: "2"
   repo:
     description: "Repository to checkout"
     required: false
@@ -27,12 +36,27 @@ runs:
   using: "composite"
   steps:
     - name: Checkout Adobe RMSDK
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       with:
         repository: ${{ inputs.repo }}
         token: ${{ inputs.token }}
         path: ${{ inputs.path }}
         ref: ${{ inputs.ref }}
+
+    - name: Verify Adobe RMSDK revision
+      working-directory: ${{ inputs.path }}
+      shell: bash
+      env:
+        CONNECTOR_REPO: ${{ inputs.repo }}
+        CONNECTOR_SHA: ${{ inputs.ref }}
+        CONNECTOR_GENERATION: ${{ inputs.generation }}
+      run: |
+        actual=$(git rev-parse HEAD)
+        echo "DRM connector $CONNECTOR_REPO at $actual (generation $CONNECTOR_GENERATION)"
+        test "$actual" = "$CONNECTOR_SHA" || {
+          echo "::error::Checked out $actual, but the connector record names $CONNECTOR_SHA."
+          exit 1
+        }
 
     # LFS Caching strategy taken from: https://github.com/actions/checkout/issues/165#issuecomment-2776048200
     - name: Create Adobe RMSDK Git LFS file list
@@ -41,7 +65,7 @@ runs:
       shell: bash
 
     - name: Restore Adobe RMSDK Git LFS object cache
-      uses: actions/cache@v4
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ${{ inputs.path }}/.git/lfs
         key: ${{ runner.os }}-rmsdk-lfsdata-v1-${{ hashFiles(format('{0}/.git/lfs-hashes.txt', inputs.path)) }}

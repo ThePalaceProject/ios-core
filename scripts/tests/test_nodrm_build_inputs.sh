@@ -88,8 +88,8 @@ grep -q "^carthage" "$TMP/fetchfail/calls.log" 2>/dev/null \
 # ---------- fetch-audioengine.sh, for real, with curl stubbed -----------------
 # The stub curl writes a zip shaped like Findaway's: AudioEngine/ containing
 # AudioEngine.xcframework/ (with a slice) plus Licenses/. `-o <file>` is honored.
-make_fetch_root() {  # make_fetch_root <dir> <curl-mode: ok|fail|empty>
-  local root="$1" mode="$2"
+make_fetch_root() {  # make_fetch_root <dir> <curl-mode: ok|fail|empty> [checksum: fixture|recorded]
+  local root="$1" mode="$2" checksum="${3:-fixture}"
   mkdir -p "$root/scripts" "$root/bin"
   cp "$SCRIPTS/fetch-audioengine.sh" "$root/scripts/"
   # Build the fixture archive once per root.
@@ -98,6 +98,16 @@ make_fetch_root() {  # make_fetch_root <dir> <curl-mode: ok|fail|empty>
       && printf 'bin' > AudioEngine/AudioEngine.xcframework/ios-arm64_x86_64-simulator/AudioEngine.framework/AudioEngine \
       && printf 'MIT' > AudioEngine/Licenses/FBKVOController.txt \
       && zip -q -r fixture.zip AudioEngine && rm -rf AudioEngine )
+  # The script pins Findaway's archive by SHA-256. "fixture" re-points the
+  # copy at the fixture's hash; "recorded" keeps the real one, so the fixture
+  # is a changed binary and must be rejected.
+  if [ "$checksum" = "fixture" ]; then
+    local fixture_sha
+    fixture_sha="$(shasum -a 256 "$root/fixture.zip" | cut -d' ' -f1)"
+    sed -i.bak "s/^AUDIOENGINE_SHA256=.*/AUDIOENGINE_SHA256=\"$fixture_sha\"/" "$root/scripts/fetch-audioengine.sh"
+    grep -q "^AUDIOENGINE_SHA256=\"$fixture_sha\"$" "$root/scripts/fetch-audioengine.sh" \
+      || { echo "  FAIL: could not re-point AUDIOENGINE_SHA256 in the sandbox copy"; exit 1; }
+  fi
   cat > "$root/bin/curl" <<EOF
 #!/bin/bash
 # accept: -fsSL -o <out> <url>
@@ -147,6 +157,21 @@ run_fetch "$TMP/fetch-fail"; rc=$?
 make_fetch_root "$TMP/fetch-empty" empty
 run_fetch "$TMP/fetch-empty"; rc=$?
 [ "$rc" -ne 0 ] && ok "fetch: corrupt archive exits non-zero ($rc)" || bad "fetch: corrupt archive exited 0"
+
+# Case 9 — a download whose bytes differ from the recorded SHA-256 (a changed or
+# substituted binary): must exit non-zero, name both hashes, and install nothing.
+make_fetch_root "$TMP/fetch-mismatch" ok recorded
+run_fetch "$TMP/fetch-mismatch"; rc=$?
+[ "$rc" -ne 0 ] && ok "fetch: checksum mismatch exits non-zero ($rc)" || bad "fetch: checksum mismatch exited 0"
+recorded_sha="$(sed -n 's/^AUDIOENGINE_SHA256="\([0-9a-f]*\)"$/\1/p' "$SCRIPTS/fetch-audioengine.sh")"
+fixture_sha="$(shasum -a 256 "$TMP/fetch-mismatch/fixture.zip" | cut -d' ' -f1)"
+[ "${#recorded_sha}" -eq 64 ] && ok "fetch: the real script records a 64-hex SHA-256" || bad "fetch: no 64-hex AUDIOENGINE_SHA256 in the real script"
+grep -q "$recorded_sha" "$TMP/fetch-mismatch/out.log" && grep -q "$fixture_sha" "$TMP/fetch-mismatch/out.log" \
+  && ok "fetch: mismatch message names the expected and actual hashes" || { bad "fetch: mismatch message lacks the hashes"; cat "$TMP/fetch-mismatch/out.log"; }
+[ ! -e "$TMP/fetch-mismatch/Carthage/Build/AudioEngine.xcframework" ] \
+  && ok "fetch: no xcframework after a checksum mismatch" || bad "fetch: xcframework installed from a mismatched archive"
+[ ! -e "$TMP/fetch-mismatch/AudioEngine6.5.6.zip" ] \
+  && ok "fetch: mismatched archive removed" || bad "fetch: mismatched archive left behind"
 
 echo "[test_nodrm_build_inputs] $PASS passed / $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -78,10 +78,10 @@ trap cleanup EXIT INT TERM
 #     single biggest speedup on a cold tree; the test-run timing (the part that
 #     must match CI) is unchanged.
 if [ -z "${CI_PARITY_NO_PREBUILD:-}" ]; then
-    PREBUILD_SIM="$(xcrun simctl list devices available \
-        | grep "iPhone" \
-        | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' \
-        | head -1)"
+    # The simulator xcode-test-optimized.sh will pick, so its incremental
+    # build reuses this one.
+    PREBUILD_SIM="$(python3 "$(dirname "$0")/reference_toolchain.py" select-sim --profile reference \
+        --allow-fallback || true)"
     if [ -n "$PREBUILD_SIM" ]; then
         echo "🏗  Pre-building at full speed (no throttle)…"
         if xcodebuild build-for-testing \
