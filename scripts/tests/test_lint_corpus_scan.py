@@ -13,9 +13,6 @@ plus the shapes that distinguish a lexer from a grep (prose, trailing comments,
 block comments, multiline string bodies, raw strings), the empty-corpus refusal,
 the --expect-files pin, and lint mode.
 
-Prior art: no other script under scripts/ reads Swift source through a lexer, so
-this is not a second path to an existing one (prior-art-checked).
-
 The behavioural cases drive the real script, so they need a Swift toolchain.
 There is none on the ubuntu runner that hosts `pytest scripts/tests/`, so they
 skip there and run on any machine with the Command Line Tools installed — which

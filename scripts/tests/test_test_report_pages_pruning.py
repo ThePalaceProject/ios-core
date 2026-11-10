@@ -4,8 +4,6 @@ growing past the 1 GB Pages limit.
 Every report since the first was kept on gh-pages until the site reached
 1.15 GB, and every deploy from 2026-10-01 on failed. The assemble step runs
 here against a local gh-pages branch.
-
-prior-art-checked: extends the workflow tests in test_coverage_workflow_wiring.py.
 """
 
 from __future__ import annotations

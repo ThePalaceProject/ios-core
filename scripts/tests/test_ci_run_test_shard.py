@@ -1,7 +1,6 @@
 """End-to-end wiring test for scripts/ci-run-test-shard.sh, with Xcode stubbed.
 
-prior-art-checked: follows the scripts/tests/ pytest convention; the stubbed-PATH
-shape is the one test_find_test_polluter_end_to_end.py uses.
+The stubbed-PATH shape is the one test_find_test_polluter_end_to_end.py uses.
 
 The planner's own tests prove the plan partitions the classes. This proves the
 shell that CONSUMES the plan: that it hands each class to the right pass, keeps

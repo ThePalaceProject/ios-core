@@ -21,8 +21,8 @@ runner image (CI only), and the check with its result. A new pinned input is
 one more entry in INPUT_READERS. Each value is read from the file that pins it,
 never from the environment, so no credential can reach the report.
 
-prior-art-checked: reference_toolchain.py records the toolchain to the log only,
-and drm_connector.py reads the connector record; this reuses both.
+It reuses reference_toolchain.py for the toolchain and drm_connector.py for
+the connector record.
 """
 
 from __future__ import annotations

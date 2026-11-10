@@ -3,10 +3,9 @@
 # check-file-size-ceiling.sh — no app-target Swift file may exceed a CODE-line
 # ceiling unless it is explicitly allowlisted at a recorded size.
 #
-# prior-art-checked: this REPLACES scripts/check-godclass-loc-freeze.sh rather
-# than paralleling it. That gate watches six named files. `harness capabilities`
-# has no file-size capability. The counting function below is lifted verbatim
-# from the freeze script so both gates agree on what a "code line" is.
+# This replaces scripts/check-godclass-loc-freeze.sh, which watched six named
+# files. The counting function below is lifted verbatim from the freeze script
+# so both gates agree on what a "code line" is.
 #
 # WHY A GENERIC CEILING AND NOT A NAMED LIST
 #

@@ -3,13 +3,10 @@
 # PP-5219 — drive a GENUINE first launch with an MDM configuration already
 # waiting, on a simulator.
 #
-# prior-art-checked: `harness capabilities` offers sim ALLOCATION (harness test,
-# harness sim claim) and UI DRIVING (simdrive), and this script uses neither's
-# job. What it does is seed Apple's managed-configuration dictionary into an
-# app's data container between install and first launch — impersonating the MDM
-# at the one moment that cannot be reproduced from inside a running app. Nothing
-# in the harness writes an app container, and simdrive starts after launch, which
-# is after the window this exists to exercise.
+# It seeds Apple's managed-configuration dictionary into an app's data
+# container between install and first launch, standing in for the MDM at the one
+# moment that cannot be reproduced from inside a running app. UI drivers attach
+# after launch, which is after the window this exists to exercise.
 #
 # ## Why this is a script rather than a note in a ticket
 #

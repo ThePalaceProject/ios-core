@@ -6,9 +6,6 @@ N matrix jobs (`test-without-building`), so a flaky or failing test costs one
 shard's re-run instead of the whole ~50-minute job. Everything that decides
 which class runs where lives in this file, so it can be tested without Xcode.
 
-prior-art-checked: nothing under scripts/ splits a CI test run, and the harness
-tooling that allocates simulators is local-only by design (CLAUDE.local.md #8).
-
 The risk sharding adds is a class that runs in NO shard. xcodebuild ignores an
 `-only-testing:` name that matches nothing, so a class dropped by the split, or
 misspelt in the plan, produces a green shard and simply never executes. Three

@@ -11,8 +11,6 @@ simulator are the same. These tests pin three things:
   * Every setup-xcode step names the exact version of the profile for its
     runner, no lane picks a simulator with `head -1`, and the CI lanes and the
     local runners call the selector.
-
-prior-art-checked: no existing test covers simulator or Xcode selection.
 """
 
 from __future__ import annotations

@@ -6,9 +6,8 @@ a different workflow, tooling pytests, docs or agent metadata cannot change what
 the Swift suite does, so the build and test jobs are skipped for it and the
 `build-and-test` gate reports success. Everything else runs.
 
-prior-art-checked: the workflow's `paths-ignore` covered only `**.md` and
-`docs/**`, and a workflow-level ignore leaves a required check pending forever;
-nothing else in scripts/ classifies changed paths.
+A workflow-level `paths-ignore` leaves a required check pending forever, so the
+skip decision is made here instead.
 
 The rule is deliberately one-sided. A path is SKIPPABLE only if it matches the
 explicit list below; any path the list does not name makes the run happen. A

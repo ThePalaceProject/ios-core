@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Git merge driver for Palace.xcodeproj/project.pbxproj.
 
-prior-art-checked: `harness capabilities` has no pbxproj, merge-driver or
-conflict entry, and scripts/ has pbxproj_add_swift.rb, pbxproj_remove_swift.rb
-and pbxproj_add_registry_freshness_phase.rb, none of which merge. This driver
+scripts/ has pbxproj_add_swift.rb, pbxproj_remove_swift.rb and
+pbxproj_add_registry_freshness_phase.rb, none of which merge. This driver
 calls the first of those on refusal rather than reimplementing it.
 
 A pbxproj is a keyed dictionary, so `merge=union` is unsafe: it emits both

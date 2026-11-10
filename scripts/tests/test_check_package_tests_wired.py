@@ -1,8 +1,5 @@
 """Tests for scripts/check-package-tests-wired.sh.
 
-prior-art-checked: follows the scripts/tests/ pytest convention used by the
-other gate tests. `harness capabilities` has no SPM test-wiring capability.
-
 This gate exists because 144 package tests ran nowhere for four months while
 reading as coverage. A gate against that failure mode which is itself only
 hand-proved would be the same joke one level up, so every arm below asserts

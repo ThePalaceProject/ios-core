@@ -1,7 +1,5 @@
 """Tests for scripts/drm_connector.py: the connector record, the local clone,
 and the drift check that compares a local connector tree with the record.
-
-prior-art-checked: no existing script under scripts/ reads the connector record.
 """
 
 from __future__ import annotations

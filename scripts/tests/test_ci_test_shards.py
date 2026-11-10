@@ -1,7 +1,5 @@
 """Tests for scripts/ci-test-shards.py — the CI test-shard planner and checks.
 
-prior-art-checked: follows the scripts/tests/ pytest convention for a new script.
-
 The failure this tooling must never have is a test class that runs in NO
 shard. xcodebuild ignores an `-only-testing:` name that matches nothing, so a
 class the split drops produces a green shard and simply never executes. Most

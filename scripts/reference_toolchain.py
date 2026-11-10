@@ -20,10 +20,10 @@ docs/Testing/reference-toolchain.md.
       The --simctl-json, --xcode-version-text, --sdk-version and --arch flags
       replace the live readings (used by the tests).
 
-prior-art-checked: the simulator lock helper filters by lock only, and the
-local runners' old selection matched a device name on any runtime; neither
-reads a pinned runtime or records the Xcode build. (Script names are left out
-of this text on purpose: ci-unit-test-relevance.py follows them.)
+The simulator lock helper filters by lock only, and the local runners' old
+selection matched a device name on any runtime; neither reads a pinned runtime
+or records the Xcode build. (Script names are left out of this text on purpose:
+ci-unit-test-relevance.py follows them.)
 """
 
 from __future__ import annotations

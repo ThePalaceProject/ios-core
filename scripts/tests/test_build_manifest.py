@@ -1,8 +1,8 @@
 """Tests for scripts/build_manifest.py: the build-input manifest a verification
 report carries, and the check that says when a report no longer applies.
 
-prior-art-checked: follows test_drm_connector.py, which builds a throwaway git
-repository holding the record files the script reads.
+Follows test_drm_connector.py, which builds a throwaway git repository holding
+the record files the script reads.
 """
 
 from __future__ import annotations

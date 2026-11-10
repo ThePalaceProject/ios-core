@@ -1,9 +1,6 @@
 """Tests for scripts/pre-push-test-gate.sh: the file-size ceiling step, and
 (further down) test-class selection and the executed-count check.
 
-prior-art-checked: nothing under scripts/tests exercised pre-push-test-gate.sh;
-this follows the existing scripts/tests pytest convention.
-
 The hook is run for real against a throwaway repo with a bare origin, with
 `check-file-size-ceiling.sh` copied next to it. The ceiling fixtures have no
 PalaceTests/, so after the ceiling step the hook derives no test classes and

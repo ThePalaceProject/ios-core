@@ -9,9 +9,6 @@ restarts in one mutation run). When PALACE_SIM_LOCK_DIR names a directory of
 Rule under test: a lock is live if its pid is alive OR its lease has not
 expired; a live lock whose worktree is not this checkout refuses; a missing or
 malformed lock proceeds.
-
-prior-art-checked: the lock files are written outside this repo; nothing in
-scripts/ read them before, and the two resolvers share one reader here.
 """
 from __future__ import annotations
 
