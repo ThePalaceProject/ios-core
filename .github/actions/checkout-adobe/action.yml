@@ -48,13 +48,13 @@ runs:
       shell: bash
       env:
         CONNECTOR_REPO: ${{ inputs.repo }}
-        CONNECTOR_SHA: ${{ inputs.ref }}
+        RECORDED_SHA: ${{ inputs.ref }}
         CONNECTOR_GENERATION: ${{ inputs.generation }}
       run: |
         actual=$(git rev-parse HEAD)
         echo "DRM connector $CONNECTOR_REPO at $actual (generation $CONNECTOR_GENERATION)"
-        test "$actual" = "$CONNECTOR_SHA" || {
-          echo "::error::Checked out $actual, but the connector record names $CONNECTOR_SHA."
+        test "$actual" = "$RECORDED_SHA" || {
+          echo "::error::Checked out $actual, but the connector record names $RECORDED_SHA."
           exit 1
         }
 

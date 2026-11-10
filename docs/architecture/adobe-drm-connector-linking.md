@@ -196,8 +196,32 @@ tests that set the identifiers directly and leave the marker absent are assertin
 
 ## The other pinned build inputs
 
-The connector is one of three outside inputs whose revision a DRM build
-depends on. The other two are recorded where they already live:
+The connector is one of several outside inputs whose revision a DRM build
+depends on. The others are recorded the same way or where they already live:
+
+* **mobile-certificates** holds the reader certificate, `AddLCP.swift` (which
+  sets the LCP library version and download location) and the release-notes
+  script. Its record is the input defaults of
+  `.github/actions/checkout-certificates/action.yml` (`repo`, `ref`), first set
+  to `855e8752fab169afd262102f75f3b22d793d013e`, the commit every 3.4.1 build
+  used. Every workflow checks it out through that action and bootstrap clones
+  it at `ref`. Because people also develop tooling in that repository in place,
+  `drm_connector.py check` compares content, not the commit: the files listed
+  in `paths` (the ones `build-carthage.sh` and `update-certificates.sh` read)
+  must match `ref`, committed or not, in `../mobile-certificates` locally or
+  `./mobile-certificates` in CI. Files in `tooling` (the release-notes script)
+  are not compared. `test_drm_connector.py` derives every certificates path the
+  scripts read and fails if one is in neither list. A change to a build file
+  reaches builds only when the record moves.
+* **liblcp**, the LCP library Carthage downloads, is checked after
+  `carthage bootstrap` by `scripts/build-carthage.sh`, which records its
+  version and the SHA-256 of the archive. A different version in
+  `Cartfile.resolved` or a different archive fails the build and removes the
+  framework built from it. Carthage itself does not verify binary-only
+  frameworks. The script prints no download URL; it is licensed.
+* **The sibling `ios-audiobook-overdrive` checkout** that bootstrap clones is
+  checked out at the commit the `ios-audiobook-overdrive` submodule records.
+  The build reads the submodule, not the sibling.
 
 * **The audiobook toolkit** is the `ios-audiobooktoolkit` submodule. The
   gitlink in this repository is its exact commit; CI runs

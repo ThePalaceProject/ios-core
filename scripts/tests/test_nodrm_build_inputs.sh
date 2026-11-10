@@ -27,7 +27,7 @@ bad(){ echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
 # ---------- a sandbox repo root with stubbed tools on PATH -------------------
 # build-carthage.sh calls ./scripts/fetch-audioengine.sh by relative path and
 # `rm -rf ~/Library/Caches/...`, so it runs from a fake root with a fake HOME.
-make_root() {  # make_root <dir>
+make_root() {  # make_root <dir> [liblcp checksum: fixture|recorded]
   local root="$1"
   mkdir -p "$root/scripts" "$root/bin" "$root/home" "$root/mobile-certificates/Certificates/Palace/iOS"
   cp "$SCRIPTS/build-carthage.sh" "$root/scripts/"
@@ -39,10 +39,31 @@ make_root() {  # make_root <dir>
 echo "fetch-audioengine ran" >> "$STUB_LOG"
 EOF
   chmod +x "$root/scripts/fetch-audioengine.sh"
-  # carthage / swift stubs.
-  printf '#!/bin/bash\necho "carthage $*" >> "$STUB_LOG"\n' > "$root/bin/carthage"
-  printf '#!/bin/bash\necho "swift $*" >> "$STUB_LOG"\n' > "$root/bin/swift"
+  # carthage stub: on the DRM path (Cartfile names liblcp, as AddLCP.swift
+  # leaves it) it resolves liblcp, caches a fixture archive where Carthage
+  # caches binary downloads, and unpacks a framework, like the real tool.
+  cat > "$root/bin/carthage" <<'EOF'
+#!/bin/bash
+echo "carthage $*" >> "$STUB_LOG"
+if grep -q liblcp Cartfile 2>/dev/null; then
+  printf 'binary "https://example.invalid/licensed/liblcp.json" "%s"\n' "${STUB_LIBLCP_VERSION:-4.1.0}" > Cartfile.resolved
+  cache="$HOME/Library/Caches/org.carthage.CarthageKit/binaries/liblcp/${STUB_LIBLCP_VERSION:-4.1.0}"
+  mkdir -p "$cache" Carthage/Build/R2LCPClient.xcframework
+  printf 'liblcp-fixture' > "$cache/${STUB_LIBLCP_VERSION:-4.1.0}-0000.zip"
+fi
+EOF
+  # swift stub: AddLCP.swift adds the liblcp binary line to the Cartfile.
+  printf '#!/bin/bash\necho "swift $*" >> "$STUB_LOG"\necho "binary \\"https://example.invalid/licensed/liblcp.json\\" ~> 4.1.0" >> Cartfile\n' > "$root/bin/swift"
   chmod +x "$root/bin/carthage" "$root/bin/swift"
+  # The script pins the liblcp archive by SHA-256; point the sandbox copy at
+  # the fixture's hash unless the case keeps the recorded one.
+  if [ "${2:-fixture}" = "fixture" ]; then
+    local fixture_sha
+    fixture_sha="$(printf 'liblcp-fixture' | shasum -a 256 | cut -d' ' -f1)"
+    sed -i.bak "s/^LIBLCP_SHA256=.*/LIBLCP_SHA256=\"$fixture_sha\"/" "$root/scripts/build-carthage.sh"
+    grep -q "^LIBLCP_SHA256=\"$fixture_sha\"$" "$root/scripts/build-carthage.sh" \
+      || { echo "  FAIL: could not re-point LIBLCP_SHA256 in the sandbox copy"; exit 1; }
+  fi
 }
 
 run_build_carthage() {  # run_build_carthage <root> [args...]
@@ -84,6 +105,33 @@ run_build_carthage "$TMP/fetchfail" --no-private; rc=$?
 [ "$rc" -ne 0 ] && ok "--no-private: a failing fetch fails build-carthage (exit $rc)" || bad "--no-private: failing fetch was swallowed (exit 0)"
 grep -q "^carthage" "$TMP/fetchfail/calls.log" 2>/dev/null \
   && bad "--no-private: carthage ran after the fetch failed" || ok "--no-private: carthage not reached after a failed fetch"
+
+grep -q "liblcp" "$TMP/drm/out.log" && grep -q "SHA-256 matches" "$TMP/drm/out.log" \
+  && ok "drm: liblcp archive verified after carthage" || { bad "drm: liblcp archive not verified"; cat "$TMP/drm/out.log"; }
+grep -q "example.invalid" "$TMP/drm/out.log" \
+  && bad "drm: the licensed liblcp URL was printed" || ok "drm: the liblcp URL is not printed"
+
+# Case 4b — a liblcp archive whose bytes differ from the recorded SHA-256 fails,
+# names both hashes, and removes the framework carthage unpacked from it.
+make_root "$TMP/lcp-mismatch" recorded
+run_build_carthage "$TMP/lcp-mismatch"; rc=$?
+[ "$rc" -ne 0 ] && ok "drm: liblcp checksum mismatch exits non-zero ($rc)" || bad "drm: liblcp checksum mismatch exited 0"
+lcp_recorded="$(sed -n 's/^LIBLCP_SHA256="\([0-9a-f]*\)"$/\1/p' "$SCRIPTS/build-carthage.sh")"
+lcp_fixture="$(printf 'liblcp-fixture' | shasum -a 256 | cut -d' ' -f1)"
+[ "${#lcp_recorded}" -eq 64 ] && ok "drm: the real script records a 64-hex liblcp SHA-256" || bad "drm: no 64-hex LIBLCP_SHA256 in the real script"
+grep -q "$lcp_recorded" "$TMP/lcp-mismatch/out.log" && grep -q "$lcp_fixture" "$TMP/lcp-mismatch/out.log" \
+  && ok "drm: liblcp mismatch names both hashes" || { bad "drm: liblcp mismatch message lacks the hashes"; cat "$TMP/lcp-mismatch/out.log"; }
+[ ! -e "$TMP/lcp-mismatch/Carthage/Build/R2LCPClient.xcframework" ] \
+  && ok "drm: unverified R2LCPClient.xcframework removed" || bad "drm: unverified R2LCPClient.xcframework left in Carthage/Build"
+grep -q "example.invalid" "$TMP/lcp-mismatch/out.log" \
+  && bad "drm: the licensed liblcp URL was printed on mismatch" || ok "drm: no URL printed on mismatch"
+
+# Case 4c — Cartfile.resolved names a liblcp version other than the recorded one.
+make_root "$TMP/lcp-version"
+( export STUB_LIBLCP_VERSION=4.2.0; run_build_carthage "$TMP/lcp-version" ); rc=$?
+[ "$rc" -ne 0 ] && ok "drm: an unrecorded liblcp version exits non-zero ($rc)" || bad "drm: an unrecorded liblcp version exited 0"
+grep -q "4.2.0" "$TMP/lcp-version/out.log" && grep -q "4.1.0" "$TMP/lcp-version/out.log" \
+  && ok "drm: version mismatch names both versions" || { bad "drm: version mismatch message unclear"; cat "$TMP/lcp-version/out.log"; }
 
 # ---------- fetch-audioengine.sh, for real, with curl stubbed -----------------
 # The stub curl writes a zip shaped like Findaway's: AudioEngine/ containing
