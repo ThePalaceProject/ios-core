@@ -11,10 +11,13 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
-import PalaceBookModel
+@testable import PalaceBookModel
 
 @MainActor
 final class TPPBookTests: XCTestCase {
+
+    /// Per-test cover store, so cover state cannot leak between tests through the shared one.
+    private let coverStore = BookCoverStore()
 
     // MARK: - Helpers
 
@@ -74,7 +77,8 @@ final class TPPBookTests: XCTestCase {
             timeTrackingURL: timeTrackingURL,
             contributors: contributors,
             bookDuration: bookDuration,
-            imageCache: MockImageCache()
+            imageCache: MockImageCache(),
+            coverStore: coverStore
         )
     }
 

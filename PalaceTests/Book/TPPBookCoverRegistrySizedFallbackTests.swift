@@ -47,6 +47,33 @@ final class TPPBookCoverRegistrySizedFallbackTests: XCTestCase {
         XCTAssertNotNil(result, "with no cached cover the TenPrint placeholder is still shown")
     }
 
+    /// BookCoverStore ranks marked covers below real ones, so the TenPrint fallback must carry the mark.
+    func testSizedCover_whenFetchFailsAndNothingIsCached_marksThePlaceholderAsGenerated() async throws {
+        let book = makeBook()
+
+        let fetched = await registry.coverImage(for: book, displayPoints: 280)
+        let result = try XCTUnwrap(fetched)
+
+        XCTAssertTrue(result.isGeneratedCoverPlaceholder)
+    }
+
+    func testSizedCover_whenFetchFailsAndBareCoverIsCached_leavesTheRealCoverUnmarked() async throws {
+        let book = makeBook()
+        cache.set(UIImage(), for: book.identifier, expiresIn: nil)
+
+        let fetched = await registry.coverImage(for: book, displayPoints: 280)
+        let result = try XCTUnwrap(fetched)
+
+        XCTAssertFalse(result.isGeneratedCoverPlaceholder)
+    }
+
+    func testGeneratePlaceholder_marksTheImageAsGenerated() async throws {
+        let generated = await registry.generatePlaceholder(title: "Title", authors: nil)
+        let result = try XCTUnwrap(generated)
+
+        XCTAssertTrue(result.isGeneratedCoverPlaceholder)
+    }
+
     /// The detail view treats heights above this as large; the registry serves thumbnails at or below it.
     func testLargeCoverThreshold_matchesRegistryThumbnailThreshold() {
         XCTAssertEqual(TPPBook.largeCoverMinimumDisplayHeight, TPPBookCoverRegistry.smallDisplayThreshold)
