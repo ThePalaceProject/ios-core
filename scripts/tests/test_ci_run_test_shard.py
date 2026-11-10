@@ -1051,3 +1051,53 @@ def test_a_relaunch_that_was_not_interrupted_does_not_blame_the_budget(env):
     r = _run(tmp_path, e, STUB_HANG="PalaceTests/A", STUB_HANG_AGAIN="1")
     assert "::error title=Runner failure not recovered::" in r.stdout
     assert "shard budget" not in r.stdout
+
+
+# --------------------------------------------------------------------------
+# The build-input manifest in shard-report.json (PP-5521)
+# --------------------------------------------------------------------------
+
+def _manifest(tmp_path):
+    return _report(tmp_path)["manifest"]
+
+
+def test_a_clean_shard_report_carries_a_passed_manifest(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, GITHUB_ACTIONS="true", ImageOS="macos15", ImageVersion="20261103.1.0")
+    assert r.returncode == 0, r.stdout + r.stderr
+    m = _manifest(tmp_path)
+    assert (m["check"], m["result"]) == ("unit-tests shard 0", "passed")
+    assert m["toolchain"]["device"] == "iPhone 16 Pro" and m["toolchain"]["xcode_build"] == "17C529"
+    assert m["runner"] == {"image_os": "macos15", "image_version": "20261103.1.0"}
+    assert "recovered_by" not in m
+
+
+def test_a_failed_shard_report_carries_a_failed_manifest(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_KILL="PalaceTests/A", STUB_KILL_AGAIN="1")
+    assert r.returncode == 1
+    assert _manifest(tmp_path)["result"] == "failed"
+
+
+def test_a_shard_that_passed_only_after_a_relaunch_is_recovered_not_passed(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_HANG="PalaceTests/A")
+    assert r.returncode == 0, r.stdout + r.stderr
+    m = _manifest(tmp_path)
+    assert (m["result"], m["recovered_by"]) == ("recovered", ["relaunch"])
+
+
+def test_a_shard_that_passed_on_the_second_chance_is_recovered(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_KILL="PalaceTests/A")
+    assert r.returncode == 0, r.stdout + r.stderr
+    m = _manifest(tmp_path)
+    assert (m["result"], m["recovered_by"]) == ("recovered", ["second-chance"])
+
+
+def test_a_shard_that_passed_after_a_crash_retry_is_recovered(env):
+    tmp_path, e = env
+    r = _run(tmp_path, e, STUB_CRASH="1")
+    assert r.returncode == 0, r.stdout + r.stderr
+    m = _manifest(tmp_path)
+    assert (m["result"], m["recovered_by"]) == ("recovered", ["crash-retry"])
