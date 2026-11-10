@@ -19,6 +19,39 @@
 #
 set -eo pipefail
 
+# The liblcp binary Carthage downloads for the DRM build (AddLCP.swift in
+# mobile-certificates adds it to the Cartfile). Carthage does not verify
+# binary-only frameworks, so the archive is checked here. To move to a new
+# version, change both values together after checking the new archive, and
+# check that a DRM build opens an LCP-protected book.
+LIBLCP_VERSION="4.1.0"
+LIBLCP_SHA256="e12923e47e0f7d20f4c39c3dda4004785a176cc3e81a8520a17969f147dee17a"
+
+# Prints versions, hashes and cache paths only: the download URL is licensed.
+verify_liblcp()
+{
+  local resolved actual archives
+  resolved=$(sed -n 's/^binary ".*\/liblcp\.json" "\(.*\)"$/\1/p' Cartfile.resolved)
+  if [ "$resolved" != "$LIBLCP_VERSION" ]; then
+    echo "$0: Cartfile.resolved has liblcp ${resolved:-<none>}, but this script records $LIBLCP_VERSION; update LIBLCP_VERSION and LIBLCP_SHA256 together" 1>&2
+    exit 1
+  fi
+  # The cache was emptied at the start of this script, so the only archive
+  # here is the one this run downloaded.
+  archives=("$HOME/Library/Caches/org.carthage.CarthageKit/binaries/liblcp/$LIBLCP_VERSION/"*.zip)
+  if [ "${#archives[@]}" -ne 1 ] || [ ! -f "${archives[0]}" ]; then
+    echo "$0: expected one downloaded liblcp $LIBLCP_VERSION archive in Carthage's cache" 1>&2
+    exit 1
+  fi
+  actual=$(shasum -a 256 "${archives[0]}" | cut -d' ' -f1)
+  if [ "$actual" != "$LIBLCP_SHA256" ]; then
+    rm -rf Carthage/Build/R2LCPClient.xcframework
+    echo "$0: liblcp $LIBLCP_VERSION archive has SHA-256 $actual, expected $LIBLCP_SHA256; removed the framework built from it" 1>&2
+    exit 1
+  fi
+  echo "liblcp $LIBLCP_VERSION archive SHA-256 matches the record"
+}
+
 if [ "$BUILD_CONTEXT" == "" ]; then
   echo "Building Carthage..."
 else
@@ -54,4 +87,8 @@ fi
 
 echo "Carthage build..."
 carthage bootstrap --use-xcframeworks --platform ios
+
+if [ "$1" != "--no-private" ]; then
+  verify_liblcp
+fi
 

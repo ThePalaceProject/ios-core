@@ -34,7 +34,9 @@ DECISION without launching Xcode.
 
 from __future__ import annotations
 
+import json
 import subprocess
+import tempfile
 import textwrap
 from pathlib import Path
 
@@ -55,24 +57,57 @@ _AVAILABLE = textwrap.dedent(
 
 _NONE_AVAILABLE = "== Devices ==\n"
 
+_R260 = "com.apple.CoreSimulator.SimRuntime.iOS-26-0"
+_R185 = "com.apple.CoreSimulator.SimRuntime.iOS-18-5"
 
-def _run_resolver(available_output: str, want: str) -> subprocess.CompletedProcess:
+
+def _listing(devices_by_runtime: dict) -> str:
+    """`simctl list -j` shape for the given {runtime name: [(name, udid)]}."""
+    runtimes, devices = [], {}
+    for name, devs in devices_by_runtime.items():
+        ident = "com.apple.CoreSimulator.SimRuntime.iOS-" + name.split()[1].replace(".", "-")
+        runtimes.append({"name": name, "identifier": ident, "version": name.split()[1], "isAvailable": True})
+        devices[ident] = [{"name": n, "udid": u, "state": "Shutdown", "isAvailable": True} for n, u in devs]
+    return json.dumps({"runtimes": runtimes, "devices": devices})
+
+
+_AVAILABLE_JSON = _listing({"iOS 26.0": [("iPhone 16 Pro", "AAAAAAAA-1111-2222-3333-444444444444"),
+                                         ("iPad Pro 13-inch (M5)", "BBBBBBBB-1111-2222-3333-444444444444")]})
+_NONE_JSON = _listing({})
+
+
+_PROFILE = (
+    "[reference]\nrunner_image = test\nxcode_version = 26.3\nxcode_build = 17C529\n"
+    "sdk = iphonesimulator26.2\nruntime = iOS 18.5\ndevice = iPhone 16 Pro\n"
+    "arch = arm64\nconfiguration = Debug\n")
+
+
+def _run_resolver(available_output: str, want: str, listing: str | None = None) -> subprocess.CompletedProcess:
     """Extract resolve_sim_id from the script and run it against a stubbed device list."""
     source = _SCRIPT.read_text()
     start = source.index("resolve_sim_id() {")
     end = source.index("\n}", start) + 2
     func = source[start:end]
+    if listing is None:
+        listing = _NONE_JSON if available_output == _NONE_AVAILABLE else _AVAILABLE_JSON
 
     program = f"""
-    xcrun() {{ printf '%s' "$STUB_OUTPUT"; }}
+    xcrun() {{
+      if [ "$1 $2 $3" = "simctl list -j" ]; then printf '%s' "$STUB_JSON"; else printf '%s' "$STUB_OUTPUT"; fi
+    }}
+    TOOLCHAIN_HELPER="{_REPO_ROOT / 'scripts' / 'reference_toolchain.py'}"
     {func}
     resolve_sim_id "{want}"
     """
+    profile = Path(tempfile.mkdtemp()) / "toolchain.ini"
+    profile.write_text(_PROFILE)
     return subprocess.run(
         ["bash", "-c", program],
         capture_output=True,
         text=True,
-        env={"PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "STUB_OUTPUT": available_output},
+        env={"PATH": "/usr/bin:/bin:/usr/sbin:/sbin:/usr/local/bin:/opt/homebrew/bin",
+             "STUB_OUTPUT": available_output, "STUB_JSON": listing,
+             "REFERENCE_TOOLCHAIN_CONFIG": str(profile)},
     )
 
 
@@ -124,6 +159,25 @@ def test_caller_exits_with_a_named_reason_when_nothing_resolves():
     assert 'echo "FATAL: no usable iOS simulator found." >&2' in source
     assert "exit 2" in source
     assert "HARNESS_SESSION_SIM_UDID" in source
+
+
+def test_without_a_claimed_udid_the_reference_device_wins():
+    """Not the first iPhone listed, and not the same name on a newer runtime."""
+    listing = _listing({
+        "iOS 18.5": [("iPhone 16", "CCCCCCCC-1111-2222-3333-444444444444"),
+                     ("iPhone 16 Pro", "DDDDDDDD-1111-2222-3333-444444444444")],
+        "iOS 26.0": [("iPhone 16 Pro", "AAAAAAAA-1111-2222-3333-444444444444")],
+    })
+    out = _run_resolver(_AVAILABLE, "", listing=listing)
+    assert out.stdout.strip() == "DDDDDDDD-1111-2222-3333-444444444444"
+    assert out.stderr == ""
+
+
+def test_without_the_reference_device_the_fallback_says_so():
+    out = _run_resolver(_AVAILABLE, "")
+    assert out.stdout.strip() == "AAAAAAAA-1111-2222-3333-444444444444"
+    assert "is not installed" in out.stderr
+    assert "not on the reference setup" in out.stderr
 
 
 # ------------------------------------------------- hang guard (CI asymmetry)

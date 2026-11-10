@@ -90,11 +90,63 @@ public class TPPBook: NSObject, ObservableObject {
     /// Use ``displayLanguage`` for a localized name (PP-4046).
     public var language: String?
 
-    @Published public var coverImage: UIImage?
-    @Published public var thumbnailImage: UIImage?
-    @Published public var isCoverLoading: Bool = false
-    @Published public var isThumbnailLoading: Bool = false
-    @Published public var dominantUIColor: UIColor = .gray
+    // Cover state lives in `coverStore` by book ID, shared by every live
+    // object for the same book, so a sync's replacement objects keep it.
+    // PUBLIC_INTENT: app-side merges (BookMetadataService) build the merged book on the same store.
+    public let coverStore: BookCoverStore
+    /// The ID this object registered under; `identifier` is mutable.
+    let coverStoreKey: String
+    private let coverStateChanged = PassthroughSubject<Void, Never>()
+
+    // PUBLIC_INTENT: explicit so the store can notify views; a class with no @Published property gets no shared publisher.
+    public let objectWillChange = ObservableObjectPublisher()
+
+    // PUBLIC_INTENT: existing book property, now a pass-through to the cover store.
+    public var coverImage: UIImage? {
+        get { coverStore.state(for: coverStoreKey).coverImage }
+        set { coverStore.update(coverStoreKey) { $0.coverImage = newValue } }
+    }
+
+    // PUBLIC_INTENT: existing book property, now a pass-through to the cover store.
+    public var thumbnailImage: UIImage? {
+        get { coverStore.state(for: coverStoreKey).thumbnailImage }
+        set { coverStore.update(coverStoreKey) { $0.thumbnailImage = newValue } }
+    }
+
+    // PUBLIC_INTENT: existing book property, now a pass-through to the cover store.
+    public var isCoverLoading: Bool {
+        get { coverStore.state(for: coverStoreKey).isCoverLoading }
+        set { coverStore.update(coverStoreKey) { $0.isCoverLoading = newValue } }
+    }
+
+    // PUBLIC_INTENT: existing book property, now a pass-through to the cover store.
+    public var isThumbnailLoading: Bool {
+        get { coverStore.state(for: coverStoreKey).isThumbnailLoading }
+        set { coverStore.update(coverStoreKey) { $0.isThumbnailLoading = newValue } }
+    }
+
+    // PUBLIC_INTENT: existing book property, now a pass-through to the cover store.
+    public var dominantUIColor: UIColor {
+        get { coverStore.state(for: coverStoreKey).dominantColor }
+        set { coverStore.update(coverStoreKey) { $0.dominantColor = newValue } }
+    }
+
+    /// The current color on subscribe, then each new color, on the main thread.
+    // PUBLIC_INTENT: BookDetailView follows the header color through this publisher.
+    public var dominantUIColorPublisher: AnyPublisher<UIColor, Never> {
+        Deferred { [weak self] in Just(self?.dominantUIColor ?? .gray) }
+            .append(coverStateChanged.compactMap { [weak self] in self?.dominantUIColor })
+            .removeDuplicates()
+            .eraseToAnyPublisher()
+    }
+
+    func coverStateWillChange() {
+        objectWillChange.send()
+    }
+
+    func coverStateDidChange() {
+        coverStateChanged.send()
+    }
 
     public static let SimplifiedScheme = "http://librarysimplified.org/terms/genres/Simplified/"
 
@@ -148,7 +200,8 @@ public class TPPBook: NSObject, ObservableObject {
         bookDuration: String?,
         audience: String? = nil,
         language: String? = nil,
-        imageCache: ImageCacheType
+        imageCache: ImageCacheType,
+        coverStore: BookCoverStore = .shared
     ) {
         self.acquisitions = acquisitions
         self.bookAuthors = authors
@@ -179,10 +232,23 @@ public class TPPBook: NSObject, ObservableObject {
         self.audience = audience
         self.language = language
         self.imageCache = imageCache
+        self.coverStore = coverStore
+        self.coverStoreKey = identifier
 
         super.init()
-        self.fetchThumbnailImage()
-        self.fetchCoverImage()
+        coverStore.register(self, for: identifier)
+        // Another live object for this book may already hold the images.
+        let stored = coverStore.state(for: identifier)
+        if stored.thumbnailImage == nil {
+            fetchThumbnailImage()
+        }
+        if stored.coverImage == nil {
+            fetchCoverImage()
+        }
+    }
+
+    deinit {
+        coverStore.unregister(ObjectIdentifier(self), for: coverStoreKey)
     }
 
     public convenience init?(entry: TPPOPDSEntry?) {
@@ -385,7 +451,8 @@ public class TPPBook: NSObject, ObservableObject {
             bookDuration: book.bookDuration,
             audience: book.audience,
             language: book.language,
-            imageCache: self.imageCache
+            imageCache: self.imageCache,
+            coverStore: self.coverStore
         )
     }
 
@@ -403,14 +470,6 @@ public class TPPBook: NSObject, ObservableObject {
     /// - Returns: A book with fresh state and preserved-non-empty metadata.
     public func mergingPreservingMetadata(from fresh: TPPBook) -> TPPBook {
         merging(from: fresh, acquisitions: fresh.acquisitions)
-    }
-
-    /// `mergingPreservingMetadata(from:)` without the decoded cover images, which
-    /// the main thread writes. For a comparison that runs off the main thread;
-    /// the images are not part of a record's stored form.
-    // PUBLIC_INTENT: called by PalaceBookRegistry's loans sync.
-    public func mergingPreservingMetadataWithoutImages(from fresh: TPPBook) -> TPPBook {
-        merging(from: fresh, acquisitions: fresh.acquisitions, carryingImages: false)
     }
 
     /// Enrichment-only merge, for an entry that is NOT authoritative about the
@@ -435,8 +494,7 @@ public class TPPBook: NSObject, ObservableObject {
     }
 
     private func merging(from fresh: TPPBook,
-                         acquisitions: [TPPOPDSAcquisition],
-                         carryingImages: Bool = true) -> TPPBook {
+                         acquisitions: [TPPOPDSAcquisition]) -> TPPBook {
         func preferNonEmpty(_ a: String?, _ b: String?) -> String? {
             if let a, !a.isEmpty { return a }
             return b
@@ -474,16 +532,11 @@ public class TPPBook: NSObject, ObservableObject {
             bookDuration: fresh.bookDuration ?? self.bookDuration,
             audience: preferNonEmpty(fresh.audience, self.audience),
             language: preferNonEmpty(fresh.language, self.language),
-            imageCache: self.imageCache
+            imageCache: self.imageCache,
+            coverStore: self.coverStore
         )
-        // Carry the resolved images onto the merged instance so the view
-        // doesn't flash a skeleton for one frame while fetchCoverImage
-        // re-hydrates them asynchronously — TPPBook.init dispatches the
-        // cache-hit assignment through DispatchQueue.main.async, which is
-        // just late enough for SwiftUI to render a nil image first.
-        guard carryingImages else { return merged }
-        merged.coverImage = self.coverImage ?? fresh.coverImage
-        merged.thumbnailImage = self.thumbnailImage ?? fresh.thumbnailImage
+        // No image copy: `self` is alive here, so the merged object reads the
+        // same cover state by ID from the store.
         return merged
     }
 

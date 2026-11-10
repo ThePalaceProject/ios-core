@@ -121,7 +121,7 @@ struct BookDetailView: View {
             .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
                 handleOrientationChange()
             }
-            .onReceive(viewModel.book.$dominantUIColor) { newColor in
+            .onReceive(viewModel.book.dominantUIColorPublisher) { newColor in
                 // Don't update while half sheet is showing to prevent unnecessary re-renders
                 guard !viewModel.showHalfSheet else { return }
 

@@ -81,6 +81,18 @@ public final class Log {
         log(.debug, tag, message)
     }
 
+    /// An info line that is also written to the app's log file, which keeps
+    /// it across launches and is not throttled. For measurement lines that a
+    /// device run reads back (PP-5509).
+    // PUBLIC_INTENT: called by the app target's memory event record.
+    public static func record(_ tag: String, _ message: String) {
+        let tag = trimTag(tag)
+        os_log("%{public}@: %{public}@", log: palaceLog, type: .info, tag, message)
+        Task {
+            await PersistentLogger.shared.log(level: .info, tag: tag, message: message)
+        }
+    }
+
     public static func info(_ tag: String, _ message: String) {
         log(.info, tag, message)
     }

@@ -164,7 +164,12 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
 
         registerBackgroundTasks()
 
-        MemoryPressureMonitor.shared.start()
+        let memoryMonitor = MemoryPressureMonitor.shared
+        memoryMonitor.start()
+        let networkExecutor = AppContainer.production().networkExecutor
+        memoryMonitor.memoryEvents.registerCache(named: "networkResponses") {
+            networkExecutor.cacheMemoryUsage
+        }
 
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
@@ -875,9 +880,18 @@ final class MemoryPressureMonitor: @unchecked Sendable {
     /// lifetime.
     private let proactiveMonitoringTask = OSAllocatedUnfairLock<Task<Void, Never>?>(initialState: nil)
 
+    /// Writes the footprint and cache sizes at each memory event (PP-5509).
+    let memoryEvents = MemoryEventRecorder()
+
+    /// The system memory pressure source. It only records; what is released on
+    /// pressure is unchanged (the memory warning handler still does that).
+    private let pressureSource = OSAllocatedUnfairLock<DispatchSourceMemoryPressure?>(initialState: nil)
+
     private init() {}
 
     func start() {
+        startMemoryPressureSource()
+
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleMemoryWarning),
@@ -909,6 +923,19 @@ final class MemoryPressureMonitor: @unchecked Sendable {
 
         // Start proactive memory monitoring
         startProactiveMonitoring()
+    }
+
+    private func startMemoryPressureSource() {
+        let source = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: monitorQueue)
+        source.setEventHandler { [weak self, weak source] in
+            guard let self, let event = source?.data else { return }
+            self.memoryEvents.record(MemoryEventKind(pressure: event))
+        }
+        pressureSource.withLock { existing in
+            existing?.cancel()
+            existing = source
+        }
+        source.resume()
     }
 
     /// Proactively monitors memory usage and cleans up before hitting critical levels
@@ -971,6 +998,10 @@ final class MemoryPressureMonitor: @unchecked Sendable {
     }
 
     func stop() {
+        pressureSource.withLock { source in
+            source?.cancel()
+            source = nil
+        }
         proactiveMonitoringTask.withLock { task in
             task?.cancel()
             task = nil
@@ -979,6 +1010,9 @@ final class MemoryPressureMonitor: @unchecked Sendable {
 
     @objc private func handleMemoryWarning() {
         monitorQueue.async {
+            // Record before releasing, so the line shows what the warning found.
+            self.memoryEvents.record(.warning)
+
             // N1: clear the executor's PRIVATE URLCache (feeds live there, not
             // in `URLCache.shared`).
             AppContainer.production().networkExecutor.clearCache()
