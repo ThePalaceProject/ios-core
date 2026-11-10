@@ -19,11 +19,8 @@
 # release. An error that persists across attempts fails loudly, because a release
 # decision made on an unknown is worse than a stopped pipeline.
 #
-# prior-art-checked: this is deliberately dependency-free so any contributor can
-# run it unaided, and it is called from .github/workflows. Nothing in the local
-# tooling applies — the nearest matches are a signed release-feed advisory and a
-# governance changeset flow, neither of which answers "does this tag have a
-# GitHub release".
+# This is deliberately dependency-free so any contributor can run it unaided,
+# and it is called from .github/workflows.
 #
 # Usage: gh-release-exists.sh <tag> [attempts]
 set -euo pipefail

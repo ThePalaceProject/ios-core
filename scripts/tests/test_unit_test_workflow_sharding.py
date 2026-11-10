@@ -1,7 +1,7 @@
 """Wiring of the sharded Unit Tests workflow (.github/workflows/unit-testing.yml).
 
-prior-art-checked: follows test_ci_reporting_never_reddens_board.py, which reads
-the same workflow as YAML.
+Follows test_ci_reporting_never_reddens_board.py, which reads the same workflow
+as YAML.
 
 The scripts have their own tests. These pin how the workflow connects them,
 because each connection below is one whose loss would leave CI green while

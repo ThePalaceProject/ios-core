@@ -3,14 +3,9 @@
 test_verify_pr_simulator_resolution.py — self-verify verify-pr.sh's simulator
 resolution and its test-execution timeouts.
 
-prior-art-checked: this is a repo-local pytest in the established
-`scripts/tests/test_*.py` family (65 siblings), directly modelled on
-`test_xcode_test_optimized_simulator_selection.py`, which does the same job for
-the CI script. The harness tools surfaced at capture time (bridge spawn, glyphs
-push, memory files, the critical-path push hook) solve unrelated problems and
-none of them can gate a shell script that outside contributors run unaided —
-which is the whole requirement here, per CLAUDE.local.md's rule that
-harness-free tooling belongs in the shared repo.
+Modelled on `test_xcode_test_optimized_simulator_selection.py`, which does the
+same job for the CI script. Outside contributors run verify-pr.sh unaided, so
+this gate depends only on the repository.
 
 WHY THIS EXISTS. `verify-pr.sh` used to build with
 `-destination "id=${HARNESS_SESSION_SIM_UDID:-<a hardcoded UDID>}"`, unchecked.

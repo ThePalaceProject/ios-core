@@ -1,7 +1,5 @@
 """enforce_coverage_floors.py: an incomplete report can never pass, module and
 package floors compare raw line counts, and a genuine violation fails.
-
-prior-art-checked: tests for the existing enforce_coverage_floors.py.
 """
 
 from __future__ import annotations

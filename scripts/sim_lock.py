@@ -13,8 +13,7 @@ if the realpath of its worktree is not one of this checkout's roots.
 Fail open: a missing, unreadable or malformed lock proceeds; only a clearly
 live foreign lock refuses.
 
-prior-art-checked: the lock files are written outside this repo, and nothing in
-scripts/ read them before this.
+The lock files are written outside this repo.
 
 CLI:
   sim_lock.py check UDID --root PATH [--root PATH]   exit 0 free, 3 held (message on stderr)

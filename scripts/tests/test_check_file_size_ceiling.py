@@ -1,9 +1,6 @@
 """Tests for scripts/check-file-size-ceiling.sh.
 
-prior-art-checked: this is a direct replacement for the deleted
-test_check_godclass_loc_freeze.py, following the existing scripts/tests/
-pytest convention. `harness capabilities` offers nothing for testing a repo
-shell gate — its near matches are glyph tagging and SoD enforcement.
+This replaces the deleted test_check_godclass_loc_freeze.py.
 
 Replaces the six-file LOC freeze's tests. That gate watched six NAMED files;
 this one watches every app-target Swift file against a ceiling.

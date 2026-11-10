@@ -11,9 +11,6 @@ the only place CI executes it from this repo. Three properties, parsed as YAML:
      selects no tests, so without the gate an empty run is green;
   4. AudioEngine (Findaway's licensed SDK) is fetched only in same-repo runs,
      and a fork PR gets a job that says the tests were skipped.
-
-prior-art-checked: this pins a public GitHub workflow; the pattern follows
-test_nodrm_workflow_wiring.py, and the test runs on a clean ubuntu runner.
 """
 
 from __future__ import annotations

@@ -10,8 +10,8 @@ in the kernel's `lck_rw_sleep` on page faults — the simulator's own
 `xpcproxy_sim` among them. Reading that took downloading a ~200 MB artifact
 and opening an 8 MB text file. This prints it as one line in the job log.
 
-prior-art-checked: ci-test-history.py labels kills from the log but cannot see
-host state; nothing in scripts/ reads a spindump or samples runner memory.
+ci-test-history.py labels kills from the log but cannot see host state; this
+reads spindumps and samples runner memory.
 
     ci-runner-diagnostics.py sample <file> [--interval S]    append samples until killed
     ci-runner-diagnostics.py memory-summary <file>           peak pressure over the samples

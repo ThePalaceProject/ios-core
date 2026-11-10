@@ -15,10 +15,8 @@ import Foundation
 ///
 /// Because there are two copies, they can silently drift. This copy is kept
 /// **semantically identical** to the canonical one: `Environment: Sendable`,
-/// an `@Sendable` `run` closure, and `Action: Sendable` on `.send`. The
-/// architecture probe in Contract F pins the total `struct Effect<Action, Environment`
-/// count at exactly **2, both `Sendable`-constrained** — a third copy, or one of
-/// these two losing the `Sendable` bound, fails that probe.
+/// an `@Sendable` `run` closure, and `Action: Sendable` on `.send`. Change
+/// both copies together, and do not add a third.
 ///
 /// ## Semantics (mirrors `Store.Effect`)
 /// Effects run on an unstructured `Task` and may feed a follow-up `Action`

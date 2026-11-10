@@ -12,8 +12,6 @@
 #   Non-zero, naming the submodule and its URL, when a submodule cannot be
 #   fetched without credentials.
 #
-# prior-art-checked: no existing script under scripts/ fetches submodules anonymously.
-
 set -euo pipefail
 
 # Private repositories. The noDRM target does not build them; an anonymous

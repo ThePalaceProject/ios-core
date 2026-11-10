@@ -8,7 +8,6 @@
 # otool is replaced by a fixture command through NODRM_CHECK_OTOOL so the test
 # needs no built binary; the real-otool path is exercised by the NonDRM Build
 # workflow against the product it just built.
-# prior-art-checked: the harness has no product-inspection fixture to reuse.
 set -uo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"

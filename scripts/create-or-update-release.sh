@@ -10,8 +10,7 @@
 # API, and gh-release-exists.sh is what decides it: it distinguishes "no release
 # yet" from "the API did not answer" and refuses to answer on the latter.
 #
-# prior-art-checked: dependency-free shared-repo CI tooling, called from
-# .github/workflows; the local tooling has no equivalent.
+# Dependency-free, and called from .github/workflows.
 #
 # Usage: create-or-update-release.sh <version> <notes-file>
 set -euo pipefail

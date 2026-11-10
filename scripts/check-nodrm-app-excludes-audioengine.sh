@@ -18,9 +18,7 @@
 #      build step can see.
 #
 # This runs in the public NonDRM Build workflow, so it depends on nothing but
-# bash, find and otool — no maintainer-local tooling (prior-art-checked: the
-# harness has no post-build product inspector, and could not be used here if
-# it did).
+# bash, find and otool — no maintainer-local tooling.
 #
 # USAGE
 #   scripts/check-nodrm-app-excludes-audioengine.sh <path/to/Palace-noDRM.app>

@@ -1,7 +1,5 @@
 """unit-testing.yml carries package coverage from collection to the report, and
 cannot mask a coverage failure as a measurement.
-
-prior-art-checked: extends the workflow tests in test_unit_test_workflow_sharding.py.
 """
 
 from __future__ import annotations

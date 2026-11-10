@@ -4,9 +4,6 @@ that reads as a measurement.
 
 The fixtures are xccov `--report --json` and llvm-cov export shapes reduced to
 the fields the script reads.
-
-prior-art-checked: tests for the existing coverage-report.py; nothing else in
-the tree parses xccov or llvm-cov output.
 """
 
 from __future__ import annotations

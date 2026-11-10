@@ -17,12 +17,6 @@ file, stubbing the run and the order reading, so they assert the retry DECISION
 without launching Xcode. They sit beside the existing
 `test_find_test_polluter_verdicts.py`, which uses the same fragment-extraction
 approach for the classifier and the decision table.
-
-prior-art-checked: this is a pytest for one repo script's retry predicate, run
-by tooling-checks.yml alongside the other `scripts/tests/` files. The harness
-capabilities the hook offered (glyphs push/harm, gc, bridge rails, memory
-writes) are disk, provenance and coordination tools; none of them tests a shell
-function, and `harness capabilities` lists no pytest runner for repo scripts.
 """
 
 import subprocess

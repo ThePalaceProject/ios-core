@@ -4,8 +4,6 @@ Each finding kind has a fixture that fails on it alone, next to a clean
 fixture of the same shape that passes, so a check that cannot fail cannot
 pass this suite. The historical case replays the project as it stood before
 the orphaned entries were removed.
-
-prior-art-checked: follows the scripts/tests/ pytest convention for checks.
 """
 import importlib.util
 import itertools

@@ -1,7 +1,5 @@
 """Tests for scripts/ci-runner-diagnostics.py — runner stall vs code hang, in one line.
 
-prior-art-checked: follows the scripts/tests/ pytest convention for a new script.
-
 The spindump fixture below keeps the lines the summary reads from the real
 spindump XCTest attached to the allowance kill of
 TPPBookRegistryLargeCorpusTests.testRoundTrip_5000Books_AllFieldsPreserved in

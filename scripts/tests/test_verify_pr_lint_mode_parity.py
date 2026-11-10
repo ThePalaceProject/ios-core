@@ -14,11 +14,6 @@ no local run had evaluated.
 The first test is a census rather than a hardcoded flag: it fails on the NEXT
 mode CI gains and the local script does not, which is the divergence class, not
 just this instance.
-
-prior-art-checked: this asserts parity between two files in THIS repo
-(`scripts/verify-pr.sh` and `.github/workflows/*`), so no local tooling applies;
-the repository convention for it is the sibling `test_verify_pr_*.py` wiring
-tests, whose shape this follows.
 """
 import os
 import re
