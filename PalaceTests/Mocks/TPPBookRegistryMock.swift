@@ -199,7 +199,15 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider, @unchecked Sendabl
                 _processingBooks.remove(bookIdentifier)
             }
         }
+        processingSubject.send(BookProcessingChange(bookIdentifier: bookIdentifier, isProcessing: processing))
     }
+
+    /// Sends synchronously on the caller's thread, unlike the real registry,
+    /// which sends on main; subscribers that hop to main see no difference.
+    var bookProcessingPublisher: AnyPublisher<BookProcessingChange, Never> {
+        processingSubject.eraseToAnyPublisher()
+    }
+    private let processingSubject = PassthroughSubject<BookProcessingChange, Never>()
 
     func processing(forIdentifier bookIdentifier: String) -> Bool {
         lock.withLock { _processingBooks.contains(bookIdentifier) }

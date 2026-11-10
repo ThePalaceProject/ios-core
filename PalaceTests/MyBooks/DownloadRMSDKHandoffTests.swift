@@ -87,8 +87,6 @@ final class DownloadRMSDKHandoffTests: XCTestCase {
                        "Successful handoff must mark the book .downloadSuccessful")
         XCTAssertEqual(spy.failed, [],
                        "Successful handoff must not invoke the failure alert path")
-        XCTAssertEqual(spy.broadcastCount, 1,
-                       "Successful handoff must broadcast exactly one update")
         XCTAssertEqual(registry.fulfillmentId(forIdentifier: book.identifier), "rmsdk-fulfillment-77",
                        "Returnable + fulfillment ID must be persisted in the registry")
 
@@ -121,8 +119,6 @@ final class DownloadRMSDKHandoffTests: XCTestCase {
                        "RMSDK didFinishDownload=false must propagate to failDownloadWithAlert")
         XCTAssertEqual(spy.markedSuccessful, [],
                        "Failed handoff must NOT mark .downloadSuccessful")
-        XCTAssertEqual(spy.broadcastCount, 0,
-                       "Failed handoff must NOT broadcast a successful update")
         XCTAssertNil(registry.fulfillmentId(forIdentifier: book.identifier),
                      "Failed handoff must NOT persist a fulfillment ID")
     }
@@ -211,8 +207,8 @@ final class DownloadRMSDKHandoffTests: XCTestCase {
     }
 
     /// Destination URL resolution returns nil (e.g. unknown account).
-    /// Handler must early-return: no failure alert, no success, no
-    /// broadcast. Pin this guard.
+    /// Handler must early-return: no failure alert, no success. Pin this
+    /// guard.
     func testHandoff_destinationURLUnresolvable_silentEarlyReturn() {
         spy.destURLOverride = nil
 
@@ -228,22 +224,18 @@ final class DownloadRMSDKHandoffTests: XCTestCase {
 
         XCTAssertEqual(spy.markedSuccessful, [])
         XCTAssertEqual(spy.failed, [])
-        XCTAssertEqual(spy.broadcastCount, 0)
     }
 
     // MARK: - Cancellation handoff: registry flips to .downloadNeeded
 
     /// User cancels mid-fulfilment: RMSDK fires `didCancelDownloadWithTag`,
-    /// the handler must flip the registry back to .downloadNeeded and
-    /// broadcast. Mutation target: a no-op cancellation handler would be
-    /// caught by both assertions.
-    func testHandoff_cancellation_resetsRegistryAndBroadcasts() {
+    /// the handler must flip the registry back to .downloadNeeded. A no-op
+    /// cancellation handler fails the state assertion.
+    func testHandoff_cancellation_resetsRegistryToDownloadNeeded() {
         handler.handleCancellation(tag: book.identifier)
 
         XCTAssertEqual(registry.state(for: book.identifier), .downloadNeeded,
                        "Cancellation must roll back the registry to .downloadNeeded")
-        XCTAssertEqual(spy.broadcastCount, 1,
-                       "Cancellation must broadcast so the UI refreshes")
     }
 
     // MARK: - No-authorization signal: diagnostic-only (post PP-3649)
@@ -255,7 +247,6 @@ final class DownloadRMSDKHandoffTests: XCTestCase {
 
         XCTAssertEqual(spy.failed, [])
         XCTAssertEqual(spy.markedSuccessful, [])
-        XCTAssertEqual(spy.broadcastCount, 0)
         XCTAssertEqual(registry.state(for: book.identifier), .downloading,
                        "No-authorization is diagnostic — must not mutate registry")
     }
@@ -277,7 +268,6 @@ final class DownloadRMSDKHandoffTests: XCTestCase {
 
         XCTAssertEqual(spy.failed, [])
         XCTAssertEqual(spy.markedSuccessful, [])
-        XCTAssertEqual(spy.broadcastCount, 0)
         XCTAssertFalse(FileManager.default.fileExists(atPath: contentDestURL.path))
     }
 
@@ -342,7 +332,6 @@ private final class RMSDKHandoffSpy: AdobeDRMHandlerDelegate {
 
     private(set) var markedSuccessful: [String] = []
     private(set) var failed: [String] = []
-    private(set) var broadcastCount = 0
     private(set) var progressUpdates: [(Double, String)] = []
 
     init(bookRegistry: TPPBookRegistryProvider, destURL: URL?) {
@@ -363,9 +352,6 @@ private final class RMSDKHandoffSpy: AdobeDRMHandlerDelegate {
         bookRegistry.setState(.downloadSuccessful, for: book.identifier)
     }
 
-    func broadcastUpdate() {
-        broadcastCount += 1
-    }
 
     func handleAdobeDownloadProgress(_ progress: Double, for tag: String) {
         progressUpdates.append((progress, tag))

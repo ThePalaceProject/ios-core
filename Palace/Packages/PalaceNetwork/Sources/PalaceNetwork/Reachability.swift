@@ -12,13 +12,6 @@ import Network
 import SystemConfiguration
 import PalaceLogging
 
-extension Notification.Name {
-    /// Posted when network connectivity transitions between connected and disconnected.
-    /// Object payload is the new connectivity `Bool`. Modern consumers should
-    /// observe `Reachability.connectivityPublisher` instead.
-    public static let TPPReachabilityChanged = Notification.Name("TPPReachabilityChanged")
-}
-
 /// `@unchecked Sendable`: `Reachability` is captured in the NWPathMonitor
 /// `pathUpdateHandler`, which is a `@Sendable` closure (Swift 6
 /// `#SendableClosureCaptures`). The class is manually thread-safe, which is what
@@ -37,10 +30,10 @@ open class Reachability: NSObject, @unchecked Sendable {
     private let monitorQueue = DispatchQueue(label: "NetworkMonitor")
     private let stateLock = NSLock()
 
-    /// Publishes connectivity changes (replaces `.TPPReachabilityChanged` notification)
+    /// Publishes this instance's connectivity changes.
     private let connectivitySubject = CurrentValueSubject<Bool, Never>(false)
 
-    /// Publisher for connectivity state. Use instead of observing `.TPPReachabilityChanged`.
+    /// Publisher for this instance's connectivity state.
     open var connectivityPublisher: AnyPublisher<Bool, Never> {
         connectivitySubject
             .removeDuplicates()
@@ -64,20 +57,29 @@ open class Reachability: NSObject, @unchecked Sendable {
             let newStatus = (path.status == .satisfied)
 
             guard newStatus != self.isConnected else { return }
-            self.isConnected = newStatus
-            DispatchQueue.main.async {
-                self.connectivitySubject.send(newStatus)
-            }
-
-            DispatchQueue.main.async {
-                NotificationCenter.default.post(
-                    name: .TPPReachabilityChanged,
-                    object: newStatus
-                )
-            }
+            self.connectivityDidChange(to: newStatus)
         }
         connectionMonitor.start(queue: monitorQueue)
     }
+
+    /// Records a connectivity change and publishes it on main.
+    func connectivityDidChange(to newStatus: Bool) {
+        isConnected = newStatus
+        DispatchQueue.main.async {
+            self.connectivitySubject.send(newStatus)
+            Self.connectivityChannel.subject.send(newStatus)
+        }
+    }
+
+    /// Each connectivity change seen by any monitoring `Reachability`, on main.
+    /// For consumers built without a `Reachability`, such as the book-cover
+    /// registry; anything that holds an instance uses `connectivityPublisher`.
+    // PUBLIC_INTENT: the app target's book-cover registry follows connectivity changes.
+    public static var connectivityChanges: AnyPublisher<Bool, Never> {
+        connectivityChannel.subject.eraseToAnyPublisher()
+    }
+
+    private static let connectivityChannel = ConnectivityChannel()
 
     public func stopMonitoring() {
         connectionMonitor.cancel()
@@ -189,4 +191,10 @@ open class Reachability: NSObject, @unchecked Sendable {
             return (false, "Unknown", "Unknown network status")
         }
     }
+}
+
+/// `@unchecked Sendable`: the only state is the `let` subject, which is sent
+/// to only on the main queue.
+private final class ConnectivityChannel: @unchecked Sendable {
+    let subject = PassthroughSubject<Bool, Never>()
 }

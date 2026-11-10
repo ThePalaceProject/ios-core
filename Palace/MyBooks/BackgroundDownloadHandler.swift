@@ -217,10 +217,6 @@ final class BackgroundDownloadHandler: NSObject, @unchecked Sendable {
 
                 progressReporter.sendProgress(bookIdentifier: book.identifier, progress: progress)
                 progressReporter.announceDownloadProgress(for: book, progress: progress)
-
-                if progress > 0.95 || Int(progress * 100) % 20 == 0 {
-                    progressReporter.broadcastUpdate()
-                }
             }
         }
     }

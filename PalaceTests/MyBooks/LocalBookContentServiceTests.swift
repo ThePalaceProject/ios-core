@@ -1745,7 +1745,6 @@ private final class SpyProgressReporter: DownloadProgressPublishing {
     }
 
     func publishAndAnnounceError(_ errorInfo: DownloadErrorInfo) {}
-    func broadcastUpdate() {}
 }
 
 #endif

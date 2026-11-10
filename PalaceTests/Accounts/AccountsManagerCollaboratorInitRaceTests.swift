@@ -112,7 +112,7 @@ final class AccountsManagerCollaboratorInitRaceTests: PalaceWiringTestCase {
     /// that actually matters, is that `init` has already forced its construction
     /// before returning.
     ///
-    /// Why it matters: `init` registers the `.TPPUseBetaDidChange` observer, whose
+    /// Why it matters: `init` subscribes to the beta-libraries switch, whose
     /// handler dispatches to a global queue and reaches `registryLoader` via
     /// `updateAccountSet` -> `loadCatalogs`. A Swift `lazy var` has no
     /// synchronisation, so two concurrent first-touches can both run the initialiser.
@@ -166,7 +166,7 @@ final class AccountsManagerCollaboratorInitRaceTests: PalaceWiringTestCase {
             let isNilOptional = value.displayStyle == .optional && value.children.isEmpty
             XCTAssertFalse(isNilOptional,
                            "registryLoader was still unconstructed when init returned, so the "
-                           + "TPPUseBetaDidChange handler's background first-touch can race it")
+                           + "beta-switch handler's background first-touch can race it")
         }
     }
 

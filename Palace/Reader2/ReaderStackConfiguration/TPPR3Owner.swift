@@ -27,7 +27,7 @@ import PalaceBookRegistry
 
     init(bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry) {
         super.init()
-        libraryService = LibraryService()
+        libraryService = LibraryService(bookRegistry: bookRegistry)
         readerModule = ReaderModule(delegate: self,
                                     bookRegistry: bookRegistry)
 

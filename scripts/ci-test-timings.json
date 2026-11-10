@@ -621,7 +621,6 @@
   "MyBooksViewModelStateTransitionTests": 0.328,
   "MyBooksViewModelUIBindingTests": 0.013,
   "NSErrorAdditionsTests": 0.061,
-  "NSNotificationTPPTests": 0.004,
   "NavigationCoordinatorHubTests": 0.082,
   "NavigationCoordinatorTests": 0.135,
   "NavigationFreezePreventionTests": 0.015,

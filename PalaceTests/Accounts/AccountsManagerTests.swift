@@ -280,47 +280,6 @@ final class AccountsManagerTests: XCTestCase {
 
     // MARK: - Beta Libraries Toggle Tests
 
-    func testUseBetaDidChange_NotificationExists() {
-        // Verify the notification name constant is stable (its value drives UserDefaults observation)
-        XCTAssertEqual(
-            Notification.Name.TPPUseBetaDidChange.rawValue,
-            "TPPUseBetaDidChange"
-        )
-        XCTAssertFalse(Notification.Name.TPPUseBetaDidChange.rawValue.isEmpty,
-                       "TPPUseBetaDidChange notification name must not be empty")
-    }
-
-    func testUseBetaDidChange_PostsNotificationWhenSettingChanges() {
-        // Given: a `.main`-queue observer — its dispatch is asynchronous
-        // regardless of the posting thread, so this needs a real main-queue
-        // barrier rather than a fixed-delay wait.
-        var notificationReceived = false
-        let observer = NotificationCenter.default.addObserver(
-            forName: .TPPUseBetaDidChange,
-            object: nil,
-            queue: .main
-        ) { _ in
-            notificationReceived = true
-        }
-
-        // Capture original value to restore later
-        let settings = TPPSettings()
-        let originalValue = settings.useBetaLibraries
-
-        // When: Toggling the beta libraries setting
-        settings.useBetaLibraries = !originalValue
-
-        // Then: Should receive notification. Deterministic main-queue
-        // barrier (see `XCTestCase+drainMainQueue.swift`) — the observer's
-        // dispatch is FIFO-ordered after the setting change above.
-        drainMainQueue()
-        XCTAssertTrue(notificationReceived)
-
-        // Cleanup
-        NotificationCenter.default.removeObserver(observer)
-        settings.useBetaLibraries = originalValue
-    }
-
     // MARK: - Account Creation Tests (via Mock)
 
     func testCreateOPDS2Publication_ReturnsValidPublication() {

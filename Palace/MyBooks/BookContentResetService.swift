@@ -14,8 +14,7 @@ import PalaceBookRegistry
 
 /// Coordinates per-account content obliteration. Cancels in-flight
 /// downloads, clears state-manager bookkeeping, removes the on-disk
-/// content directory, and (for current-account paths) broadcasts a UI
-/// update.
+/// content directory.
 ///
 /// - Sendable invariant (Swift 6 `complete`-mode): every stored dependency is a
 ///   `let` bound at init (`bookRegistry`, `accountsManager`, `stateManager`,
@@ -84,8 +83,7 @@ final class BookContentResetService: @unchecked Sendable {
 
     /// Resets the *current* account: cancels every in-flight download,
     /// clears stateManager dictionaries + the download coordinator,
-    /// deletes audiobooks, removes the content directory, broadcasts a
-    /// UI update.
+    /// deletes audiobooks, and removes the content directory.
     func reset() {
         guard let currentAccountId = accountsManager.currentAccountId else {
             return
@@ -112,8 +110,6 @@ final class BookContentResetService: @unchecked Sendable {
         } catch {
             // Handle error, if needed
         }
-
-        progressReporter.broadcastUpdate()
     }
 
     // MARK: - deleteAudiobooks(forAccount:)

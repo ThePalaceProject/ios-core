@@ -15,6 +15,7 @@ import UIKit
 @preconcurrency import ReadiumShared
 @preconcurrency import ReadiumStreamer
 import PalaceBookModel
+import PalaceBookRegistry
 
 /// The LibraryService makes a book ready for presentation without dealing
 /// with the specifics of how a book should be presented.
@@ -26,8 +27,10 @@ final class LibraryService: Loggable {
     private let assetRetriever: AssetRetriever
     private let publicationOpener: PublicationOpener
     private var drmLibraryServices = [DRMLibraryService]()
+    private let bookRegistry: TPPBookRegistryProvider
 
-    init() {
+    init(bookRegistry: TPPBookRegistryProvider) {
+        self.bookRegistry = bookRegistry
         let httpClient = DefaultHTTPClient()
         assetRetriever = AssetRetriever(httpClient: httpClient)
 
@@ -133,11 +136,7 @@ final class LibraryService: Loggable {
     }
 
     private func stopOpeningIndicator(identifier: String) {
-        let userInfo: [String: Any] = [
-            TPPNotificationKeys.bookProcessingBookIDKey: identifier,
-            TPPNotificationKeys.bookProcessingValueKey: false
-        ]
-        NotificationCenter.default.post(name: NSNotification.TPPBookProcessingDidChange, object: nil, userInfo: userInfo)
+        bookRegistry.setProcessing(false, for: identifier)
     }
 }
 

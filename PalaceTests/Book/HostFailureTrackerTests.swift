@@ -50,7 +50,7 @@ final class HostFailureTrackerTests: XCTestCase {
             "One failure at threshold 1 must trip the circuit (precondition for the reset)"
         )
 
-        // The registry installs a `.TPPReachabilityChanged` observer that calls
+        // The registry subscribes to `Reachability.connectivityChanges` and calls
         // exactly this `reset()`; drive that side effect directly.
         await tracker.reset()
 

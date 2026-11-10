@@ -112,8 +112,6 @@ final class DownloadCancellationHandlerTests: XCTestCase {
         // than sleeping and hoping).
         await handler.lastCancelTeardownTask?.value
 
-        XCTAssertEqual(spyDelegate.broadcastCount, 0,
-                       "Nonsensical cancel must NOT broadcast an update")
         XCTAssertEqual(spyDelegate.scheduleCount, 0,
                        "Nonsensical cancel must NOT schedule pending starts")
         XCTAssertEqual(bookRegistry.state(for: book.identifier), .downloadSuccessful,
@@ -133,8 +131,6 @@ final class DownloadCancellationHandlerTests: XCTestCase {
 
         XCTAssertEqual(bookRegistry.state(for: book.identifier), .downloadNeeded,
                        "No-task cancel from .downloading must drop back to .downloadNeeded")
-        XCTAssertEqual(spyDelegate.broadcastCount, 1,
-                       "No-task cancel must broadcastUpdate so UI reflects the rollback")
         XCTAssertEqual(spyDelegate.scheduleCount, 1,
                        "No-task cancel must schedulePending so the freed slot is reused")
     }
@@ -208,8 +204,6 @@ final class DownloadCancellationHandlerTests: XCTestCase {
         // and does NOT clear the dictionaries (Adobe handles its own lifecycle).
         XCTAssertEqual(task.cancelByProducingResumeDataCount, 0,
                        "Adobe-DRM short-circuit must NOT cancel the URL session task — adobeDRMService.cancelFulfillment owns it")
-        XCTAssertEqual(spyDelegate.broadcastCount, 0,
-                       "Adobe-DRM short-circuit must NOT broadcastUpdate from this path")
         XCTAssertEqual(bookRegistry.state(for: book.identifier), .downloading,
                        "Adobe-DRM short-circuit must NOT touch registry state — Adobe's own callbacks drive transitions")
     }
@@ -218,10 +212,8 @@ final class DownloadCancellationHandlerTests: XCTestCase {
 // MARK: - Stubs
 
 private final class SpyDelegate: DownloadCancellationHandlerDelegate {
-    private(set) var broadcastCount = 0
     private(set) var scheduleCount = 0
 
-    func broadcastUpdate() { broadcastCount += 1 }
     func schedulePendingStartsIfPossible() { scheduleCount += 1 }
 }
 

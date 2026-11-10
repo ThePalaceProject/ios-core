@@ -162,9 +162,6 @@ final class LCPFulfillmentHandler: @unchecked Sendable {
             copyLicenseForStreaming(book: book, sourceLicenseUrl: licenseUrl)
             Log.info(#file, "PP-4957 streaming ON — LCP audiobook playable on license alone, skipping .lcpa download: \(book.identifier)")
             delegate?.markDownloadSuccessful(for: book)
-            runOnMainAsync { [weak self] in
-                self?.progressReporter.broadcastUpdate()
-            }
             return
         }
 
@@ -184,7 +181,6 @@ final class LCPFulfillmentHandler: @unchecked Sendable {
                 // audiobooks run 438 MB to 1.9 GB and all take over three minutes
                 // on an ordinary connection, so that is the common case.
                 self.progressReporter.sendProgress(bookIdentifier: book.identifier, progress: progressValue)
-                self.progressReporter.broadcastUpdate()
             }
         }
 
@@ -356,10 +352,6 @@ final class LCPFulfillmentHandler: @unchecked Sendable {
             }
 
             copyLicenseForStreaming(book: book, sourceLicenseUrl: licenseUrl)
-
-            runOnMainAsync { [weak self] in
-                self?.progressReporter.broadcastUpdate()
-            }
         }
 
         if let fulfillmentDownloadTask = fulfillmentDownloadTask {

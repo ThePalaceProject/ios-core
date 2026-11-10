@@ -30,8 +30,7 @@ final class MyBooksDownloadCenterConcurrencyTests: XCTestCase {
         startSpy = StartSpyDelegate()
         orchestrator = DownloadQueueOrchestrator(
             bookRegistry: bookRegistry,
-            stateManager: stateManager,
-            notificationCenter: notificationCenter
+            stateManager: stateManager
         )
         orchestrator.delegate = startSpy
 
@@ -741,10 +740,8 @@ private final class StartSpyDelegate: DownloadQueueOrchestratorDelegate {
 }
 
 private final class CancellationSpyDelegate: DownloadCancellationHandlerDelegate {
-    private(set) var broadcastCount = 0
     private(set) var scheduleCount = 0
 
-    func broadcastUpdate() { broadcastCount += 1 }
     func schedulePendingStartsIfPossible() { scheduleCount += 1 }
 }
 
