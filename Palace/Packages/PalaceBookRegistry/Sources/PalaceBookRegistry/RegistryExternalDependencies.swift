@@ -144,6 +144,10 @@ public struct RegistryExternalDependencies: Sendable {
     /// leaves it as a no-op; tests hold a save here to place a sign-out inside
     /// that window.
     let afterSaveSnapshot: @Sendable (_ accountID: String) -> Void
+    /// Runs on the saving thread right after a per-book save has taken its
+    /// sequence number. Production leaves it as a no-op; tests change the shelf
+    /// here to check that a sequence and the shelf it is saved with are taken together.
+    let afterSaveSequence: @Sendable (_ accountID: String) -> Void
     /// Runs off the main thread after a loans sync has compared the feed with
     /// the shelf and before it applies the result. Production leaves it as a
     /// no-op; tests write to the shelf here to change it after the comparison.
@@ -154,6 +158,9 @@ public struct RegistryExternalDependencies: Sendable {
     /// The app version and build. A shelf gets three tries to move to the
     /// per-book layout for each value.
     let appVersion: @Sendable () -> String
+    /// The clock that times the last-good backup in the per-book layout.
+    /// Production uses the wall clock; tests step it.
+    let backupClock: @Sendable () -> Date
 
     public init(
         downloadService: @escaping @Sendable () -> any RegistryDownloadServicing,
@@ -164,9 +171,11 @@ public struct RegistryExternalDependencies: Sendable {
         beforeRegistryWrite: @escaping @Sendable (_ step: RegistryWriteStep, _ url: URL) throws -> Void = { _, _ in },
         positionClock: @escaping @Sendable () -> Date = { Date() },
         afterSaveSnapshot: @escaping @Sendable (_ accountID: String) -> Void = { _ in },
+        afterSaveSequence: @escaping @Sendable (_ accountID: String) -> Void = { _ in },
         afterLoansFeedCompared: @escaping @Sendable () -> Void = {},
         perBookStorageEnabled: @escaping @Sendable () -> Bool = { false },
-        appVersion: @escaping @Sendable () -> String = RegistryExternalDependencies.bundleVersion
+        appVersion: @escaping @Sendable () -> String = RegistryExternalDependencies.bundleVersion,
+        backupClock: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.downloadService = downloadService
         self.loansFeedFetcher = loansFeedFetcher
@@ -176,9 +185,11 @@ public struct RegistryExternalDependencies: Sendable {
         self.beforeRegistryWrite = beforeRegistryWrite
         self.positionClock = positionClock
         self.afterSaveSnapshot = afterSaveSnapshot
+        self.afterSaveSequence = afterSaveSequence
         self.afterLoansFeedCompared = afterLoansFeedCompared
         self.perBookStorageEnabled = perBookStorageEnabled
         self.appVersion = appVersion
+        self.backupClock = backupClock
     }
 
     /// `CFBundleShortVersionString (CFBundleVersion)` of the main bundle.

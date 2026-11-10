@@ -848,9 +848,7 @@ final class BookRegistrySync: @unchecked Sendable {
     guard let registryUrl = registryUrl(for: account) else { return }
 
     let generation = resetGeneration(for: account)
-    // Before the snapshot, so position files written later win over it.
-    let perBookSave = perBookSession.beginSave(for: account)
-    let snapshot = store.registrySnapshot()
+    let (perBookSave, snapshot) = sequenceAndSnapshot(for: account)
     let isEmpty = snapshot.isEmpty
     let needsRebuild = needsRebuildFromServer
     // Box the JSON payload so the `@Sendable` `diskWriteQueue.async` closure
@@ -904,14 +902,20 @@ final class BookRegistrySync: @unchecked Sendable {
         // A position-only save leaves the backup to the next shelf save: the
         // backup exists to recover the SHELF after corruption, and one that is
         // a few positions behind still recovers it.
-        if scope == .shelf, !isEmpty || serverAuthoritative {
-          try? RegistryFileRecovery.writeBackup(data: registryData, for: registryUrl, beforeWrite: dependencies.beforeRegistryWrite)
+        // With per-book files in use the backup is scheduled rather than taken
+        // at every shelf save (docs/architecture/per-book-registry-storage.md).
+        let now = dependencies.backupClock()
+        if scope == .shelf, !isEmpty || serverAuthoritative,
+           perBookWritten?.files.backupIsDue(now: now) ?? true,
+           (try? RegistryFileRecovery.writeBackup(data: registryData, for: registryUrl, beforeWrite: dependencies.beforeRegistryWrite)) != nil {
+          perBookWritten?.files.backupWritten(at: now)
         }
         try dependencies.beforeRegistryWrite(.primary, registryUrl)
         try registryData.write(to: registryUrl, options: .atomic)
         needsPrimaryRewrite = false
         perBookSession.singleFileWritten(account: account, registryData: registryData,
                                          save: perBookWritten, appVersion: dependencies.appVersion())
+        perBookSession.removeFiles(perBookWritten, notIn: payload.value[TPPBookRegistryKey.records.rawValue], account: account)
         if !isEmpty || serverAuthoritative {
           needsRebuildFromServer = false
         }
@@ -943,8 +947,7 @@ final class BookRegistrySync: @unchecked Sendable {
     // race). The in-memory snapshot is independent of disk-flush ordering, so
     // reading it here is behavior-equivalent for persistence.
     let generation = resetGeneration(for: account)
-    let perBookSave = perBookSession.beginSave(for: account)
-    let snapshot = store.registrySnapshot()
+    let (perBookSave, snapshot) = sequenceAndSnapshot(for: account)
     let isEmpty = snapshot.isEmpty
     let needsRebuild = needsRebuildFromServer
     let registryObject: [String: Any] = [
@@ -985,14 +988,18 @@ final class BookRegistrySync: @unchecked Sendable {
         directoryURL.registryExcludeFromBackup()
         let registryData = try JSONSerialization.data(withJSONObject: registryObject, options: .fragmentsAllowed)
         let perBookWritten = self.perBookSession.writeShelf(perBook, records: registryObject[TPPBookRegistryKey.records.rawValue], account: account)
-        if !isEmpty {
-          try? RegistryFileRecovery.writeBackup(data: registryData, for: registryUrl, beforeWrite: self.dependencies.beforeRegistryWrite)
+        // A synchronous save is the full snapshot at app events and teardown,
+        // so it refreshes the backup whatever the schedule says.
+        if !isEmpty,
+           (try? RegistryFileRecovery.writeBackup(data: registryData, for: registryUrl, beforeWrite: self.dependencies.beforeRegistryWrite)) != nil {
+          perBookWritten?.files.backupWritten(at: self.dependencies.backupClock())
         }
         try self.dependencies.beforeRegistryWrite(.primary, registryUrl)
         try registryData.write(to: registryUrl, options: .atomic)
         self.needsPrimaryRewrite = false
         self.perBookSession.singleFileWritten(account: account, registryData: registryData,
                                               save: perBookWritten, appVersion: self.dependencies.appVersion())
+        self.perBookSession.removeFiles(perBookWritten, notIn: registryObject[TPPBookRegistryKey.records.rawValue], account: account)
         if !isEmpty {
           self.needsRebuildFromServer = false
         }
@@ -1013,19 +1020,35 @@ final class BookRegistrySync: @unchecked Sendable {
       save(for: account, scope: .positionOnly)
       return
     }
-    // After the read, so a shelf snapshot that missed this position has the
-    // lower sequence and loses to the position file.
     let generation = resetGeneration(for: account)
-    let positions = SendablePositions(value: store.readRegistry { registry in
-      identifiers.sorted().compactMap { identifier in
-        registry[identifier].map { (identifier: identifier, location: $0.location?.dictionaryRepresentation) }
+    // The read, the sequence and the queued write are one store read: no change
+    // falls between them, and position writes reach the disk queue in
+    // sequence order, so a later position always has the higher number.
+    store.performSync {
+      let positions = SendablePositions(value: store.readRegistry { registry in
+        identifiers.sorted().compactMap { identifier in
+          registry[identifier].map { (identifier: identifier, location: $0.location?.dictionaryRepresentation) }
+        }
+      })
+      let perBookSave = PerBookRegistrySession.Save(files: files, sequence: files.allocateSequence())
+      dependencies.afterSaveSequence(account)
+      perBookSession.markSingleFileBehind(account)
+      diskWriteQueue.async { [self] in
+        if isStale(generation, for: account) { return }
+        perBookSession.writePositions(positions.value, save: perBookSave, account: account)
       }
-    })
-    let perBookSave = PerBookRegistrySession.Save(files: files, sequence: files.allocateSequence())
-    perBookSession.markSingleFileBehind(account)
-    diskWriteQueue.async { [self] in
-      if isStale(generation, for: account) { return }
-      perBookSession.writePositions(positions.value, save: perBookSave, account: account)
+    }
+  }
+
+  /// A save's per-book sequence and the shelf snapshot it writes, taken in one
+  /// store read so no change falls between them: a save with a higher sequence
+  /// always saw a later shelf. The sequence is nil when `account` uses only
+  /// `registry.json`.
+  private func sequenceAndSnapshot(for account: String) -> (PerBookRegistrySession.Save?, [[String: Any]]) {
+    store.performSync {
+      let perBookSave = perBookSession.beginSave(for: account)
+      if perBookSave != nil { dependencies.afterSaveSequence(account) }
+      return (perBookSave, store.registrySnapshot())
     }
   }
 
