@@ -608,6 +608,28 @@ final class LCPAudiobooksTests: XCTestCase {
         poll.cancel()
     }
 
+    /// A package stored before the session started listening was announced to
+    /// nobody; the session adopts it when it starts listening.
+    func testPackageAlreadyStoredWhenListeningStarts_isAdopted() async throws {
+        let stored = PublicationBox(Self.storedPublication())
+        let (audiobook, licenseURL) = try makeStreamingAudiobook(opener: { _ in stored.publication })
+        let packageURL = licenseURL.deletingPathExtension().appendingPathExtension("lcpa")
+        try Data("package".utf8).write(to: packageURL)
+        addTeardownBlock { try? FileManager.default.removeItem(at: packageURL) }
+
+        audiobook.observeStoredArchive()
+
+        let moved = expectation(description: "the session reads the package")
+        let poll = Task {
+            while !Task.isCancelled {
+                if audiobook.getPublication() === stored.publication { moved.fulfill(); return }
+                try? await Task.sleep(nanoseconds: 10_000_000)
+            }
+        }
+        await fulfillment(of: [moved], timeout: 2)
+        poll.cancel()
+    }
+
     /// A released session stops listening, so a later announcement opens nothing.
     func testAnnouncementAfterRelease_opensNothing() async throws {
         let center = NotificationCenter()

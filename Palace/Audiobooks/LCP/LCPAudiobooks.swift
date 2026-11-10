@@ -71,6 +71,9 @@ extension Notification.Name {
     /// Track decryptions asked of a streaming session, held until the package
     /// is stored (then decrypted from it) or the session ends (then failed).
     private var heldDecrypts: [(source: URL, destination: URL, completion: SendableDecryptCompletion)] = []
+    /// Track reads in progress, cancelled on release so a closed session stops
+    /// reading tracks through its publication.
+    private var decryptTasks: [UUID: Task<Void, Never>] = [:]
     private let publicationCacheQueue = DispatchQueue(label: "org.thepalaceproject.lcpaudiobooks.publicationcache")
 
     /// Where each track's bytes begin in the archive, learned for free while
@@ -1181,7 +1184,7 @@ extension LCPAudiobooks {
             if held { return }
         }
         if let publication = getPublication() {
-            Self.decryptWithPublication(publication, url: url, to: resultUrl, completion: completion)
+            trackedDecrypt(publication, url: url, to: resultUrl, completion: SendableDecryptCompletion(completion))
             return
         }
         // No cached publication means this decryptor's session has ended (either never
@@ -1190,7 +1193,8 @@ extension LCPAudiobooks {
         completion(Self.releasedError())
     }
 
-    static func decryptWithPublication(_ publication: Publication, url: URL, to resultUrl: URL, completion: @escaping (Error?) -> Void) {
+    @discardableResult
+    static func decryptWithPublication(_ publication: Publication, url: URL, to resultUrl: URL, completion: @escaping (Error?) -> Void) -> Task<Void, Never>? {
         if let resource = publication.getResource(at: url.path) {
             // The completion originates from the toolkit's `@objc public
             // protocol DRMDecryptor` (off-limits submodule), so its parameter
@@ -1200,7 +1204,7 @@ extension LCPAudiobooks {
             // entering the `Task`, so the `@Sendable` closures capture the
             // Sendable box rather than the bare non-Sendable closure.
             let completionBox = SendableDecryptCompletion(completion)
-            Task {
+            return Task {
                 do {
                     try await LCPTrackFileWriter.write(resource, to: resultUrl)
                     DispatchQueue.main.async {
@@ -1214,6 +1218,20 @@ extension LCPAudiobooks {
             }
         } else {
             completion(NSError(domain: "AudiobookResourceError", code: 404, userInfo: [NSLocalizedDescriptionKey: "Resource not found at path: \(url.path)"]))
+            return nil
+        }
+    }
+
+    /// Runs a track decryption and keeps it cancellable until it ends.
+    private func trackedDecrypt(_ publication: Publication, url: URL, to resultUrl: URL, completion: SendableDecryptCompletion) {
+        let id = UUID()
+        let task = Self.decryptWithPublication(publication, url: url, to: resultUrl) { [weak self] error in
+            self?.publicationCacheQueue.async { self?.decryptTasks[id] = nil }
+            completion.fire(error)
+        }
+        guard let task else { return }
+        publicationCacheQueue.sync {
+            if isReleased { task.cancel() } else { decryptTasks[id] = task }
         }
     }
 
@@ -1235,6 +1253,8 @@ extension LCPAudiobooks {
             trackLengthTask?.cancel()
             trackLengthTask = nil
             cachedPublication = nil
+            decryptTasks.values.forEach { $0.cancel() }
+            decryptTasks = [:]
         }
         stopObservingStoredArchive()
         let held = publicationCacheQueue.sync { () -> [SendableDecryptCompletion] in
@@ -1300,9 +1320,7 @@ extension LCPAudiobooks {
         guard let held else { return false }
         Log.info(#file, "LCP audiobook: the package is stored; new chapters read it instead of streaming")
         for request in held {
-            Self.decryptWithPublication(publication, url: request.source, to: request.destination) { error in
-                request.completion.fire(error)
-            }
+            trackedDecrypt(publication, url: request.source, to: request.destination, completion: request.completion)
         }
         return true
     }
@@ -1344,6 +1362,11 @@ extension LCPAudiobooks {
             Task { await self.adoptStoredArchive(at: url) }
         }
         publicationCacheQueue.sync { storedArchiveObserver = token }
+        // A package stored before this session started listening was announced
+        // to nobody. It is moved into place whole, so being there means complete.
+        if let stored = storedArchiveURL, FileManager.default.fileExists(atPath: stored.path) {
+            Task { [weak self] in await self?.adoptStoredArchive(at: stored) }
+        }
     }
 
     /// Keeps the first streamed open from replacing a package adopted while it
@@ -1426,6 +1449,9 @@ enum LCPTrackFileWriter {
             do {
                 var offset: UInt64 = 0
                 while true {
+                    // A released session stops here rather than reading the rest
+                    // of the track (PP-5532).
+                    try Task.checkCancellation()
                     let chunk = try await resource.read(range: offset ..< offset + chunkSize).get()
                     try handle.write(contentsOf: chunk)
                     offset += UInt64(chunk.count)
