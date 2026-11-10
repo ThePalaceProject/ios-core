@@ -216,6 +216,19 @@ cleanup() {
             --tests-json "$OUT/tests.json" --out "$OUT/shard-report.json" || true
         echo "Shard $SHARD: wrote shard-report.json from the results it had when it stopped"
     fi
+    # The build-input manifest (scripts/build_manifest.py) ties the report to
+    # the commit, pinned inputs, toolchain and runner image it ran on. A pass
+    # reached only through a crash retry, relaunch or second chance is recorded
+    # as recovered, not passed.
+    local result=failed
+    if [ "$rc" -eq 0 ]; then
+        result=passed
+        if [ -n "${RECOVERED_BY:-}" ]; then result=recovered; fi
+    fi
+    python3 "$HERE/build_manifest.py" write --check "unit-tests shard $SHARD" --result "$result" \
+        --recovered-by "${RECOVERED_BY:-}" --into "$OUT/shard-report.json" \
+        --udid "${SIMULATOR_ID:-}" --configuration Debug \
+        || echo "::warning title=No build-input manifest::shard $SHARD: shard-report.json has no manifest; see the error above."
     python3 "$DIAG_PY" sample "$OUT/memory-samples.txt" --once >/dev/null 2>&1 || true
     python3 "$DIAG_PY" memory-summary "$OUT/memory-samples.txt" | sed "s/^/Shard $SHARD /" || true
     exit "$rc"
@@ -256,6 +269,7 @@ XCB_TEST_FAILED="Test [Cc]ase '[^']+' failed"
 XCB_INTERRUPTED='** TEST EXECUTE INTERRUPTED **'
 PASS_EXIT=0
 PASS_INTERRUPTED=0
+RECOVERED_BY=""  # each recovery that turned a failure into a pass, for the manifest
 run_xcodebuild() {  # $1 = bundle, $2 = log, rest = xcodebuild args
     local bundle="$1" log="$2" fired_before=0; shift 2
     if [ -e "$BUDGET_MARK" ]; then fired_before=1; fi
@@ -323,6 +337,7 @@ run_pass() {
     fi
     if [ -d "$fresh" ]; then mv "$fresh" "$bundle"; fi
     PASS_LOG="$OUT/$name-crash-retry.log"
+    RECOVERED_BY="$RECOVERED_BY crash-retry"
     echo "Shard $SHARD, $name pass: the retry after the crash exited $PASS_EXIT"
 }
 
@@ -480,6 +495,7 @@ if [ "$LOST_COUNT" -gt 0 ] && [ "$RELAUNCH_SKIPPED" -eq 0 ]; then
     STILL_LOST=$( { read_lost parallel; read_lost serial; } | wc -l | tr -d ' ')
     if [ "$RELAUNCH_EXIT" -eq 0 ] && [ "$STILL_LOST" -eq 0 ]; then
         RUNNER_RECOVERED=1
+        RECOVERED_BY="$RECOVERED_BY relaunch"
         echo "::warning title=Runner failure recovered::shard $SHARD: the $LOST_COUNT class(es) the runner lost ran on relaunch and passed."
     else
         CUT_SHORT=""
@@ -528,6 +544,7 @@ if [ "$TEST_EXIT" -ne 0 ]; then
                     if python3 "$SHARDS_PY" check-rerun --tests-json "$OUT/rerun-tests.json" "${IDS[@]}" \
                             && ! grep -qE "$XCB_TEST_FAILED" "$RERUN_LOG"; then
                         TEST_EXIT=0
+                        RECOVERED_BY="$RECOVERED_BY second-chance"
                         if [ "$RERUN_EXIT" -ne 0 ]; then
                             echo "::warning title=Second chance exited $RERUN_EXIT after its tests passed::shard $SHARD: xcodebuild exited $RERUN_EXIT, but the bundle records every re-run test as passed and the log has no failed test. Judged by the test results."
                         fi
