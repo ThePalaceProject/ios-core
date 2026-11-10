@@ -1420,15 +1420,13 @@ final class LocalBookContentServiceTests: XCTestCase {
         let fulfiller = SpyLCPContentFulfiller()
         let service = makeService(fulfiller: fulfiller)
         let destURL = try XCTUnwrap(bookFileManager.fileUrl(for: book.identifier, account: nil))
-        let announced = expectation(forNotification: .lcpAudiobookArchiveStored, object: nil) { note in
-            (note.object as? URL)?.standardizedFileURL == destURL.standardizedFileURL
-        }
+        let announced = recordStoredPackageAnnouncements(for: destURL)
 
         service.redownloadLCPContentFile(for: book)
         let landed = try writeFile(at: tempDir.appendingPathComponent("landed-\(UUID().uuidString).lcpa"))
         fulfiller.finishWithSuccess(localURL: landed)
 
-        wait(for: [announced], timeout: 1)
+        XCTAssertEqual(announced.value, 1)
         #endif
     }
 
@@ -1440,16 +1438,27 @@ final class LocalBookContentServiceTests: XCTestCase {
         let fulfiller = SpyLCPContentFulfiller()
         let service = makeService(fulfiller: fulfiller)
         let destURL = try XCTUnwrap(bookFileManager.fileUrl(for: book.identifier, account: nil))
-        let announced = expectation(forNotification: .lcpAudiobookArchiveStored, object: nil) { note in
-            (note.object as? URL)?.standardizedFileURL == destURL.standardizedFileURL
-        }
-        announced.isInverted = true
+        let announced = recordStoredPackageAnnouncements(for: destURL)
 
         service.redownloadLCPContentFile(for: book)
         fulfiller.finishWithSuccess(localURL: tempDir.appendingPathComponent("does-not-exist.lcpa"))
 
-        wait(for: [announced], timeout: 0.5)
+        XCTAssertEqual(announced.value, 0)
         #endif
+    }
+
+    /// Counts stored-package announcements for one destination. The service
+    /// posts on the thread that finishes the download, so the count is final
+    /// when `finishWithSuccess` returns.
+    private func recordStoredPackageAnnouncements(for destURL: URL) -> AnnouncementCount {
+        let count = AnnouncementCount()
+        let token = NotificationCenter.default.addObserver(
+            forName: .lcpAudiobookArchiveStored, object: nil, queue: nil
+        ) { note in
+            if (note.object as? URL)?.standardizedFileURL == destURL.standardizedFileURL { count.increment() }
+        }
+        addTeardownBlock { NotificationCenter.default.removeObserver(token) }
+        return count
     }
 
     /// Must not overwrite a terminal state a concurrent path already set.
@@ -1830,4 +1839,11 @@ private final class SpyBookFileManager: BookFileManager {
         if book.identifier == failResolutionForIdentifier { return nil }
         return fakeURLFor(book)
     }
+}
+
+private final class AnnouncementCount: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    var value: Int { lock.withLock { count } }
+    func increment() { lock.withLock { count += 1 } }
 }

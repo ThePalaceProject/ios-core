@@ -74,6 +74,9 @@ extension Notification.Name {
     /// Track reads in progress, cancelled on release so a closed session stops
     /// reading tracks through its publication.
     private var decryptTasks: [UUID: Task<Void, Never>] = [:]
+    /// The latest move to the package started by an announcement or by
+    /// listening, kept so a caller can wait for it to end.
+    private var adoptionTask: Task<Bool, Never>?
     private let publicationCacheQueue = DispatchQueue(label: "org.thepalaceproject.lcpaudiobooks.publicationcache")
 
     /// Where each track's bytes begin in the archive, learned for free while
@@ -1061,14 +1064,23 @@ extension LCPAudiobooks {
             forName: .lcpAudiobookArchiveStored, object: nil, queue: nil
         ) { [weak self] note in
             guard let self, let url = note.object as? URL else { return }
-            Task { await self.adoptStoredArchive(at: url) }
+            self.trackAdoption(Task { await self.adoptStoredArchive(at: url) })
         }
         publicationCacheQueue.sync { storedArchiveObserver = token }
         // A package stored before this session started listening was announced
         // to nobody. It is moved into place whole, so being there means complete.
         if let stored = storedArchiveURL, FileManager.default.fileExists(atPath: stored.path) {
-            Task { [weak self] in await self?.adoptStoredArchive(at: stored) }
+            trackAdoption(Task { [weak self] in await self?.adoptStoredArchive(at: stored) ?? false })
         }
+    }
+
+    /// The latest move to the package that listening started, or nil if none.
+    var pendingAdoption: Task<Bool, Never>? {
+        publicationCacheQueue.sync { adoptionTask }
+    }
+
+    private func trackAdoption(_ task: Task<Bool, Never>) {
+        publicationCacheQueue.sync { adoptionTask = task }
     }
 
     /// Keeps the first streamed open from replacing a package adopted while it
@@ -1092,8 +1104,12 @@ extension LCPAudiobooks {
         guard let fileURL = url as? FileURL, fileURL.url.pathExtension.lowercased() == "lcpa" else {
             return await open()
         }
-        return await LocalPackageOpenGate.shared.run(key: fileURL.url.standardizedFileURL.path, open)
+        return await packageOpenGate.run(key: fileURL.url.standardizedFileURL.path, open)
     }
+
+    /// One gate for the process: the opens it orders can come from different
+    /// sessions of the same book.
+    private static let packageOpenGate = LocalPackageOpenGate()
 
     fileprivate func stopObservingStoredArchive() {
         let token = publicationCacheQueue.sync { () -> NSObjectProtocol? in
@@ -1289,7 +1305,6 @@ private final class DemandedTracks: @unchecked Sendable {
 
 /// Runs one package open at a time per file, in arrival order.
 final class LocalPackageOpenGate: @unchecked Sendable {
-    static let shared = LocalPackageOpenGate()
     private let lock = NSLock()
     private var tails: [String: Task<Void, Never>] = [:]
 

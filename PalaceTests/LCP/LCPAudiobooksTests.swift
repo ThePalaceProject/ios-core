@@ -597,15 +597,9 @@ final class LCPAudiobooksTests: XCTestCase {
 
         center.post(name: .lcpAudiobookArchiveStored, object: packageURL)
 
-        let moved = expectation(description: "the session reads the package")
-        let poll = Task {
-            while !Task.isCancelled {
-                if audiobook.getPublication() === stored.publication { moved.fulfill(); return }
-                try? await Task.sleep(nanoseconds: 10_000_000)
-            }
-        }
-        await fulfillment(of: [moved], timeout: 2)
-        poll.cancel()
+        let adopted = await audiobook.pendingAdoption?.value
+        XCTAssertEqual(adopted, true)
+        XCTAssertTrue(audiobook.getPublication() === stored.publication, "the session reads the package")
     }
 
     /// A package stored before the session started listening was announced to
@@ -619,15 +613,9 @@ final class LCPAudiobooksTests: XCTestCase {
 
         audiobook.observeStoredArchive()
 
-        let moved = expectation(description: "the session reads the package")
-        let poll = Task {
-            while !Task.isCancelled {
-                if audiobook.getPublication() === stored.publication { moved.fulfill(); return }
-                try? await Task.sleep(nanoseconds: 10_000_000)
-            }
-        }
-        await fulfillment(of: [moved], timeout: 2)
-        poll.cancel()
+        let adopted = await audiobook.pendingAdoption?.value
+        XCTAssertEqual(adopted, true)
+        XCTAssertTrue(audiobook.getPublication() === stored.publication, "the session reads the package")
     }
 
     /// A released session stops listening, so a later announcement opens nothing.
@@ -659,22 +647,21 @@ final class LCPAudiobooksTests: XCTestCase {
             answered.fulfill()
         }
 
-        await fulfillment(of: [answered], timeout: 0.3)
+        // Inverted: a slow machine can only make this pass, never fail falsely.
+        await fulfillment(of: [answered], timeout: 0.3) // STARVE-001-OK: inverted expectation
     }
 
     /// Once the package is stored, a held decrypt is answered from it.
     func testHeldDecrypt_isServedFromThePackageOnceAdopted() async throws {
         let (audiobook, licenseURL) = try makeStreamingAudiobook(opener: { _ in Self.storedPublication() })
         let errorBox = ErrorBox()
-        let answered = expectation(description: "the held decrypt completes after adoption")
         audiobook.decrypt(url: URL(fileURLWithPath: "/missing-track.mp3"), to: Self.scratchFile()) { error in
             errorBox.error = error
-            answered.fulfill()
         }
+        XCTAssertNil(errorBox.error, "held until the package is stored")
 
         await audiobook.adoptStoredArchive(at: licenseURL.deletingPathExtension().appendingPathExtension("lcpa"))
 
-        await fulfillment(of: [answered], timeout: 2)
         // The stub package has no such track, so the package's own lookup answers.
         XCTAssertEqual((errorBox.error as NSError?)?.domain, "AudiobookResourceError")
         XCTAssertEqual((errorBox.error as NSError?)?.code, 404)
@@ -685,14 +672,11 @@ final class LCPAudiobooksTests: XCTestCase {
         let (audiobook, licenseURL) = try makeStreamingAudiobook(opener: { _ in Self.storedPublication() })
         await audiobook.adoptStoredArchive(at: licenseURL.deletingPathExtension().appendingPathExtension("lcpa"))
         let errorBox = ErrorBox()
-        let answered = expectation(description: "the decrypt completes")
 
         audiobook.decrypt(url: URL(fileURLWithPath: "/missing-track.mp3"), to: Self.scratchFile()) { error in
             errorBox.error = error
-            answered.fulfill()
         }
 
-        await fulfillment(of: [answered], timeout: 2)
         XCTAssertEqual((errorBox.error as NSError?)?.code, 404, "the package's own lookup answers")
     }
 
@@ -719,15 +703,14 @@ final class LCPAudiobooksTests: XCTestCase {
     func testHeldDecrypt_failsWhenTheSessionIsReleased() async throws {
         let (audiobook, _) = try makeStreamingAudiobook(opener: { _ in Self.storedPublication() })
         let errorBox = ErrorBox()
-        let answered = expectation(description: "the held decrypt is failed on release")
         audiobook.decrypt(url: URL(fileURLWithPath: "/track1.mp3"), to: Self.scratchFile()) { error in
             errorBox.error = error
-            answered.fulfill()
         }
 
         audiobook.releaseResources()
+        // Release answers held requests on the main queue.
+        await drainMainQueueAsync()
 
-        await fulfillment(of: [answered], timeout: 2)
         XCTAssertEqual((errorBox.error as NSError?)?.domain, "Palace.LCPAudiobooks")
     }
 
