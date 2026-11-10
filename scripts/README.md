@@ -39,6 +39,7 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 |--------|--------------|-----------|
 | `setup-repo-drm.sh` | Initial repo setup with Adobe RMSDK / LCP wired in. | `unit-testing.yml`, `upload.yml`, `upload-on-merge.yml` |
 | `setup-repo-nodrm.sh` | Initial repo setup for the open-source `Palace-noDRM` target. | `non-drm-build.yml` |
+| `fetch-nodrm-submodules.sh` | Removes the private DRM submodules and fetches the public ones over anonymous HTTPS; fails naming any it cannot reach. | `setup-repo-nodrm.sh` |
 | `build-3rd-party-dependencies.sh` | Builds non-Carthage third-party deps (Readium etc.). | `unit-testing.yml`, `non-drm-build.yml`, `upload*.yml` |
 | `build-carthage.sh` | Carthage bootstrap for binary frameworks (DRM path: also fetches AudioEngine + builds R2LCPClient). | invoked by `build-3rd-party-dependencies.sh` |
 | `bootstrap-drm.sh` | Pulls Adobe RMSDK / LCP into the working tree; clones the connector at its recorded commit. | dev/local |
