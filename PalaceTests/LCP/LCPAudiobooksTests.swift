@@ -539,6 +539,24 @@ final class LCPAudiobooksTests: XCTestCase {
         XCTAssertNil(audiobook.getPublication())
     }
 
+    /// A session closed while its package was opening keeps nothing: the
+    /// patron has left the book, and the package must not be served for it.
+    func testSessionReleasedDuringTheOpen_doesNotAdoptThePackage() async throws {
+        let holder = AudiobookHolder()
+        let (audiobook, licenseURL) = try makeStreamingAudiobook(opener: { _ in
+            holder.audiobook?.releaseResources()
+            return Self.storedPublication()
+        })
+        holder.audiobook = audiobook
+        let packageURL = licenseURL.deletingPathExtension().appendingPathExtension("lcpa")
+
+        let adopted = await audiobook.adoptStoredArchive(at: packageURL)
+
+        XCTAssertFalse(adopted)
+        XCTAssertFalse(audiobook.readsFromStoredArchive)
+        XCTAssertNil(audiobook.getPublication())
+    }
+
     /// The package is opened once: a second announcement does not reopen it.
     func testSecondAnnouncement_doesNotReopenThePackage() async throws {
         let opens = LockedCounter()
@@ -1697,4 +1715,9 @@ private final class LockedCounter: @unchecked Sendable {
 private final class PublicationBox: @unchecked Sendable {
     let publication: Publication
     init(_ publication: Publication) { self.publication = publication }
+}
+
+/// Lets a `@Sendable` opener reach the instance it belongs to.
+private final class AudiobookHolder: @unchecked Sendable {
+    weak var audiobook: LCPAudiobooks?
 }
