@@ -9,8 +9,8 @@ input is a failed job rather than a build that never ran.
 Submodule URLs here are local paths; a URL that points at nothing stands in for
 a private repository that an anonymous fetch cannot reach.
 
-prior-art-checked: no harness capability fetches a repository's submodules,
-and tooling-checks runs this on a clean ubuntu runner without the harness.
+prior-art-checked: no existing script under scripts/ fetches submodules
+anonymously, and no existing test exercises a submodule fetch.
 """
 
 from __future__ import annotations

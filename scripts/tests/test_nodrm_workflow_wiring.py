@@ -136,6 +136,14 @@ def test_workflow_reads_no_secrets():
     assert "secrets." not in text, "the noDRM build must run without repository secrets"
 
 
+def test_workflow_token_is_read_only():
+    """A fork pull request runs code the maintainers have not reviewed; its
+    GITHUB_TOKEN should be able to read the repository and nothing more."""
+    assert _doc().get("permissions") == {"contents": "read"}, (
+        "non-drm-build.yml must set top-level `permissions: contents: read`"
+    )
+
+
 def test_checkout_fetches_no_submodules_and_keeps_no_credentials():
     checkouts = _checkout_steps()
     assert len(checkouts) == 1, f"expected one checkout step, found {len(checkouts)}"

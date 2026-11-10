@@ -12,7 +12,7 @@
 #   Non-zero, naming the submodule and its URL, when a submodule cannot be
 #   fetched without credentials.
 #
-# prior-art-checked: a public repository script; no harness capability applies.
+# prior-art-checked: no existing script under scripts/ fetches submodules anonymously.
 
 set -euo pipefail
 
