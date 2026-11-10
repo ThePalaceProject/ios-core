@@ -671,7 +671,7 @@ final class BookRegistrySync: @unchecked Sendable {
 
           // Side-loaded books never appear in the loans feed, so they are
           // exempt; an empty feed or an unreadable entry removes nothing
-          // (sideloading-plan.md R1, PP-5452).
+          // (docs/architecture/sideloading-plan.md, PP-5452).
           let recordsToDelete = LoansFeedReconciliation.identifiersToRemove(
             localIdentifiers: localIdentifiers,
             feedIdentifiers: feedIdentifiers,

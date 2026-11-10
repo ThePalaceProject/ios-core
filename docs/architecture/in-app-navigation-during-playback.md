@@ -1,7 +1,7 @@
 ---
 name: in-app-navigation-during-playback
 type: evolving
-status: draft
+status: active
 created: 2026-06-01
 last_refresh: 2026-06-01
 freshness_window: 365d
@@ -20,10 +20,9 @@ description: "Design — let users navigate the app while an audiobook is playin
 
 # In-app navigation during audiobook playback and ebook reading
 
-> Today, once a user enters the audiobook player or the EPUB/PDF reader, the rest of the app is unreachable without either backing out completely or losing the session. This doc proposes a persistent mini-player for audiobooks and a "Continue Reading" resume surface for ebooks — patterns validated by Audible, Libby, Apple Books, and Spotify.
+> Before this work, once a user entered the audiobook player or the EPUB/PDF reader, the rest of the app was unreachable without backing out or losing the session. This doc records the design for a persistent mini-player for audiobooks and a "Continue Reading" resume surface for ebooks.
 
-**Target release:** 3.3.0 (post-3.2.0, off `develop`)
-**Status (2026-06-01):** Draft. Approach selected (A1 + B1); all open product questions resolved (§9). Ready for engineering review before P1 kickoff.
+**Status:** shipped. The mini-player (A1) lives in `AppTabHostView` behind the `inAppPlaybackNavEnabled` Remote Config flag (default off); with the flag off, `AudiobookSessionManager.presentSession` still pushes the `.audio` route. The expanded player is one view that reflows between full screen and the mini bar (`AudiobookMorphingPlayerView`), not a separate `fullScreenCover`. The Catalog "Continue" rows (B1) shipped and were removed in PP-4910 (#1373) as redundant with the mini-player.
 
 ---
 
@@ -203,7 +202,7 @@ There is **one source of truth** for "an audiobook is currently active" (the ses
 
 ### 7.2 CarPlay
 
-`CarPlayAudiobookBridge` and `NowPlayingCoordinator` subscribe to `AudiobookSessionManager`, not to the phone UI. The hoist must not change those publisher contracts. **Verification gate:** the CarPlay smoke flow must pass on the in-progress branch before the hoist lands.
+`CarPlayAudiobookBridge` and `NowPlayingCoordinator` subscribe to `AudiobookSessionManager`, not to the phone UI. The hoist must not change those publisher contracts.
 
 ### 7.3 Reader screens
 
@@ -221,25 +220,22 @@ The recent `PlaybackReadinessGate` work (PR #1020, F-011 fix) means the player c
 
 ### 7.5 LCP streaming (FINDING-B)
 
-The LCP-streaming gate skip (`AudiobookSessionManager.swift:716`-) is orthogonal; A1 doesn't change the readiness flow. Verify the LCP-streaming smoke path stays green.
+The LCP readiness-gate bypass (`PlaybackOpenPolicy.decideForLoad(decryptor:)`, used by `AudiobookSessionManager`) is orthogonal; A1 does not change the readiness flow.
 
 ---
 
-## 8. Phased implementation outline
+## 8. Phases
 
-Each phase is independently shippable and reviewable. **No code in this doc** — phase scoping only.
+The work was delivered in these phases. Code and test comments cite them by ID.
 
-| Phase | Scope | Module count | Rigor bar |
-|---|---|---|---|
-| **P0** | This design doc, reviewed and merged on `develop`. | 0 | `/clean-code` |
-| **P1** | `ActiveSessionsViewModel` + `RecentlyReadingService` + "Continue Reading" row on Catalog (and/or My Books). Reader unchanged. | 1 (`MyBooks` / `CatalogUI`) | `/clean-code` + TDD; mutation on `RecentlyReadingService` |
-| **P2** | Add "Continue Listening" row to the same viewmodel. Wires only — no player hoist yet. | 1 (`Audiobooks`) | Same as P1 |
-| **P3** | `AudiobookSessionPresenter` introduced. Mini-player rendered as `safeAreaInset` of `AppTabHostView`. Tap = push existing `.audio` route (no expand yet — pure visibility win). | 2 (`AppInfrastructure`, `Audiobooks`) | `/swarm` (multi-module) OR `/rigorous-fix` (critical-path) |
-| **P4** | Root-level full-player presentation (`fullScreenCover`). Migrate `AudiobookSessionManager` off `pushAudioRoute`. Suppress mini-player while reader route is active. | 2 | `/rigorous-fix` (critical-path; audiobook hoist + CarPlay smoke + LCP smoke) |
-| **P5** | Polish: VoiceOver focus, Dynamic Type, reduce-motion transitions, swipe-down dismissal gesture on the full player. | 1 | `/clean-code` |
-| **P6** | Remove legacy `AppRoute.audio` push sites once migration is complete. | 1 | `/clean-code` |
-
-P1 + P2 are pure additions, low risk, can ship under 3.3.0 or earlier. P3 + P4 are the audiobook player architectural change and gate the user-visible feature. P5 + P6 are cleanup.
+| Phase | Scope |
+|---|---|
+| **P1** | `ActiveSessionsViewModel` + `RecentlyReadingService` + "Continue Reading" row on Catalog. Reader unchanged. |
+| **P2** | "Continue Listening" row on the same viewmodel. |
+| **P3** | `AudiobookSessionPresenter`. Mini-player rendered as a `safeAreaInset` of `AppTabHostView`. |
+| **P4** | Root-level full-player presentation. `AudiobookSessionManager` presents through the presenter instead of `pushAudioRoute` when the flag is on. Mini-player suppressed while a reader route is active. |
+| **P5** | VoiceOver focus, Dynamic Type, reduce-motion transitions, swipe-down dismissal on the full player. |
+| **P6** | Remove the legacy `AppRoute.audio` push sites. Not done: the flag-off path still uses them. |
 
 ---
 
@@ -247,9 +243,9 @@ P1 + P2 are pure additions, low risk, can ship under 3.3.0 or earlier. P3 + P4 a
 
 ### Risks
 
-1. **CarPlay regression.** Any change to `AudiobookSessionManager` presentation path risks regressing the CarPlay bridge or `NowPlayingCoordinator`. **Mitigation:** keep the session-manager public publishers identical; the hoist only changes where the UI renders, not what the manager publishes. Verify via the existing CarPlay smoke flow before each phase ships.
+1. **CarPlay regression.** Any change to `AudiobookSessionManager` presentation path risks regressing the CarPlay bridge or `NowPlayingCoordinator`. **Mitigation:** keep the session-manager public publishers identical; the hoist only changes where the UI renders, not what the manager publishes.
 2. **Readiness-gate UX regression.** If we minimize the player too eagerly during first-open, the user sees a mini-player with no audio playing yet and may tap play repeatedly. **Mitigation:** see §7.4 — first-open always expands.
-3. **Reader full-screen hiding.** If the suppression hook in §7.3 has a race or misses a route case, the mini-player could flash over the reader. **Mitigation:** drive `isReaderActive` from `path.last`-style observation, not from per-screen `onAppear`/`onDisappear` (which can drop frames on push).
+3. **Reader full-screen hiding.** If the suppression hook in §7.3 has a race or misses a route case, the mini-player could flash over the reader. **Mitigation:** drive `isReaderActive` from `path.last`-style observation, not from per-screen `onAppear`/`onDisappear` (which can drop frames on push). As built, `IsReaderActiveTrackingModifier` uses `onAppear`/`onDisappear`, applied to each rendered reader sub-branch in `NavigationHostView` rather than per route case.
 4. **Tab-switching + back-stack semantics.** Today `pushAudioRoute` has subtle behavior around "switching audiobooks vs opening from book detail" (`NavigationCoordinator.swift:194-196`, PP-3783). The hoist must preserve "open new audiobook while one is already playing → replaces the active session, doesn't stack".
 
 ### Resolved (2026-06-01)
