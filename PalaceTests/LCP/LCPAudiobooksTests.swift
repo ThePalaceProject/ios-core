@@ -482,6 +482,194 @@ final class LCPAudiobooksTests: XCTestCase {
         )
     }
 
+    // MARK: - Moving a streamed session to the stored package (PP-5532)
+
+    /// After the package lands, new chapter loads read it instead of the server.
+    func testStoredPackage_replacesTheStreamedPublication() async throws {
+        let stored = PublicationBox(Self.storedPublication())
+        let (audiobook, licenseURL) = try makeStreamingAudiobook(opener: { _ in stored.publication })
+        let packageURL = licenseURL.deletingPathExtension().appendingPathExtension("lcpa")
+
+        let adopted = await audiobook.adoptStoredArchive(at: packageURL)
+
+        XCTAssertTrue(adopted)
+        XCTAssertTrue(audiobook.getPublication() === stored.publication,
+                      "a chapter loaded now must read the package, not the origin")
+        XCTAssertTrue(audiobook.readsFromStoredArchive)
+    }
+
+    /// Another book's package must not replace this book's publication.
+    func testAnotherBooksPackage_leavesThisSessionStreaming() async throws {
+        let (audiobook, _) = try makeStreamingAudiobook(opener: { _ in Self.storedPublication() })
+        let otherPackage = FileManager.default.temporaryDirectory
+            .appendingPathComponent("other-\(UUID().uuidString).lcpa")
+
+        let adopted = await audiobook.adoptStoredArchive(at: otherPackage)
+
+        XCTAssertFalse(adopted)
+        XCTAssertNil(audiobook.getPublication(), "another book's audio must never be served for this one")
+        XCTAssertFalse(audiobook.readsFromStoredArchive)
+    }
+
+    /// A package that cannot be opened keeps the session streaming.
+    func testStoredPackageThatFailsToOpen_keepsStreaming() async throws {
+        let (audiobook, licenseURL) = try makeStreamingAudiobook(opener: { _ in nil })
+        let packageURL = licenseURL.deletingPathExtension().appendingPathExtension("lcpa")
+
+        let adopted = await audiobook.adoptStoredArchive(at: packageURL)
+
+        XCTAssertFalse(adopted)
+        XCTAssertFalse(audiobook.readsFromStoredArchive)
+    }
+
+    /// A released session is a dead one-shot and must not reopen anything.
+    func testReleasedSession_doesNotOpenTheStoredPackage() async throws {
+        let opens = LockedCounter()
+        let (audiobook, licenseURL) = try makeStreamingAudiobook(opener: { _ in
+            opens.increment()
+            return Self.storedPublication()
+        })
+        let packageURL = licenseURL.deletingPathExtension().appendingPathExtension("lcpa")
+        audiobook.releaseResources()
+
+        let adopted = await audiobook.adoptStoredArchive(at: packageURL)
+
+        XCTAssertFalse(adopted)
+        XCTAssertEqual(opens.value, 0, "a released instance must not open a publication")
+        XCTAssertNil(audiobook.getPublication())
+    }
+
+    /// The package is opened once: a second announcement does not reopen it.
+    func testSecondAnnouncement_doesNotReopenThePackage() async throws {
+        let opens = LockedCounter()
+        let first = PublicationBox(Self.storedPublication())
+        let (audiobook, licenseURL) = try makeStreamingAudiobook(opener: { _ in
+            opens.increment()
+            return opens.value == 1 ? first.publication : Self.storedPublication()
+        })
+        let packageURL = licenseURL.deletingPathExtension().appendingPathExtension("lcpa")
+
+        await audiobook.adoptStoredArchive(at: packageURL)
+        let again = await audiobook.adoptStoredArchive(at: packageURL)
+
+        XCTAssertFalse(again)
+        XCTAssertEqual(opens.value, 1)
+        XCTAssertTrue(audiobook.getPublication() === first.publication)
+    }
+
+    /// An instance opened from the package has no stream to move off.
+    func testSessionOpenedFromThePackage_hasNoStoredPackageToMoveTo() throws {
+        let packageURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("local-\(UUID().uuidString).lcpa")
+        let audiobook = try XCTUnwrap(LCPAudiobooks(
+            for: packageURL, licenseUrl: nil, sessions: LCPPublicationSessionRegistry(),
+            storedArchiveOpener: { _ in Self.storedPublication() }
+        ))
+
+        XCTAssertNil(audiobook.storedArchiveURL)
+    }
+
+    /// The wiring: the download's announcement reaches an open session.
+    func testAnnouncement_movesAnOpenSessionToThePackage() async throws {
+        let center = NotificationCenter()
+        let stored = PublicationBox(Self.storedPublication())
+        let (audiobook, licenseURL) = try makeStreamingAudiobook(opener: { _ in stored.publication }, center: center)
+        let packageURL = licenseURL.deletingPathExtension().appendingPathExtension("lcpa")
+
+        center.post(name: .lcpAudiobookArchiveStored, object: packageURL)
+
+        let moved = expectation(description: "the session reads the package")
+        let poll = Task {
+            while !Task.isCancelled {
+                if audiobook.getPublication() === stored.publication { moved.fulfill(); return }
+                try? await Task.sleep(nanoseconds: 10_000_000)
+            }
+        }
+        await fulfillment(of: [moved], timeout: 2)
+        poll.cancel()
+    }
+
+    /// A released session stops listening, so a later announcement opens nothing.
+    func testAnnouncementAfterRelease_opensNothing() async throws {
+        let center = NotificationCenter()
+        let opens = LockedCounter()
+        let (audiobook, licenseURL) = try makeStreamingAudiobook(opener: { _ in
+            opens.increment()
+            return Self.storedPublication()
+        }, center: center)
+        let packageURL = licenseURL.deletingPathExtension().appendingPathExtension("lcpa")
+        audiobook.releaseResources()
+
+        center.post(name: .lcpAudiobookArchiveStored, object: packageURL)
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        XCTAssertEqual(opens.value, 0)
+    }
+
+    /// A streaming session must not decrypt whole tracks: each one would be
+    /// read from the content server by byte ranges (PP-5532).
+    func testDecrypt_whileStreaming_refusesWithoutReadingAnything() async throws {
+        let (audiobook, _) = try makeStreamingAudiobook(opener: { _ in Self.storedPublication() })
+        let destination = FileManager.default.temporaryDirectory
+            .appendingPathComponent("track-\(UUID().uuidString).mp3")
+
+        let error = await decryptError(audiobook, track: "track1.mp3", to: destination)
+
+        let nsError = try XCTUnwrap(error as NSError?, "a streaming session must refuse to decrypt")
+        XCTAssertEqual(nsError.userInfo["httpStatusCode"] as? Int, 403,
+                       "the toolkit retries any other error, which repeats the whole-track read")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+    }
+
+    /// Once the package is stored and adopted, decryption reads it.
+    func testDecrypt_afterTheStoredPackageIsAdopted_isNotRefused() async throws {
+        let (audiobook, licenseURL) = try makeStreamingAudiobook(opener: { _ in Self.storedPublication() })
+        await audiobook.adoptStoredArchive(at: licenseURL.deletingPathExtension().appendingPathExtension("lcpa"))
+        let destination = FileManager.default.temporaryDirectory
+            .appendingPathComponent("track-\(UUID().uuidString).mp3")
+
+        let error = await decryptError(audiobook, track: "missing-track.mp3", to: destination)
+
+        // The stub package has no such track, so this fails, but on the
+        // package's own lookup rather than the streaming refusal.
+        XCTAssertNotEqual((error as NSError?)?.userInfo["httpStatusCode"] as? Int, 403)
+    }
+
+    private func decryptError(_ audiobook: LCPAudiobooks, track: String, to destination: URL) async -> Error? {
+        await withCheckedContinuation { continuation in
+            audiobook.decrypt(url: URL(fileURLWithPath: "/" + track), to: destination) { error in
+                continuation.resume(returning: error)
+            }
+        }
+    }
+
+    nonisolated private static func storedPublication() -> Publication {
+        Publication(manifest: Manifest(
+            metadata: Metadata(title: "stored"),
+            readingOrder: [Link(href: "track1.mp3")]
+        ))
+    }
+
+    private func makeStreamingAudiobook(
+        opener: @escaping @Sendable (URL) async -> Publication?,
+        center: NotificationCenter = NotificationCenter()
+    ) throws -> (LCPAudiobooks, URL) {
+        let license: [String: Any] = [
+            "id": UUID().uuidString,
+            "links": [["rel": "publication", "type": "application/audiobook+lcp",
+                       "href": "https://archive.test/\(UUID().uuidString).lcpa"]]
+        ]
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("stream-\(UUID().uuidString).lcpl")
+        try JSONSerialization.data(withJSONObject: license).write(to: url)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        let audiobook = try XCTUnwrap(LCPAudiobooks(
+            for: url, licenseUrl: nil, sessions: LCPPublicationSessionRegistry(),
+            storedArchiveOpener: opener, notificationCenter: center
+        ))
+        return (audiobook, url)
+    }
+
     /// Builds an instance whose licence names `publicationHref`, which is what
     /// the cache keys on.
     private func makeAudiobook(publicationHref: String) throws -> LCPAudiobooks {
@@ -1494,4 +1682,19 @@ private final class FakeHoldTask: OutstandingArchiveTask, @unchecked Sendable {
     func cancelTransfer() {}
     func suspendTransfer() { suspensions += 1; isRunning = false }
     func resumeTransfer() { resumptions += 1; isRunning = true }
+}
+
+/// Counts calls made from a `@Sendable` closure.
+private final class LockedCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    var value: Int { lock.lock(); defer { lock.unlock() }; return count }
+    func increment() { lock.lock(); count += 1; lock.unlock() }
+}
+
+/// Carries a test publication into a `@Sendable` opener. The publication is
+/// built once and only read afterwards.
+private final class PublicationBox: @unchecked Sendable {
+    let publication: Publication
+    init(_ publication: Publication) { self.publication = publication }
 }

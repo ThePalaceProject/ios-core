@@ -1412,6 +1412,46 @@ final class LocalBookContentServiceTests: XCTestCase {
         )
     }
 
+    /// A player opened before the package landed is still streaming, and only
+    /// this announcement moves its later chapters to the package (PP-5532).
+    func testRedownload_onSuccess_announcesTheStoredPackageByItsDestination() throws {
+        #if LCP
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller)
+        let destURL = try XCTUnwrap(bookFileManager.fileUrl(for: book.identifier, account: nil))
+        let announced = expectation(forNotification: .lcpAudiobookArchiveStored, object: nil) { note in
+            (note.object as? URL)?.standardizedFileURL == destURL.standardizedFileURL
+        }
+
+        service.redownloadLCPContentFile(for: book)
+        let landed = try writeFile(at: tempDir.appendingPathComponent("landed-\(UUID().uuidString).lcpa"))
+        fulfiller.finishWithSuccess(localURL: landed)
+
+        wait(for: [announced], timeout: 1)
+        #endif
+    }
+
+    /// A package that never reached its destination must not be announced: an
+    /// open session would try to read a file that is not there.
+    func testRedownload_whenTheMoveFails_doesNotAnnounceAStoredPackage() throws {
+        #if LCP
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller)
+        let destURL = try XCTUnwrap(bookFileManager.fileUrl(for: book.identifier, account: nil))
+        let announced = expectation(forNotification: .lcpAudiobookArchiveStored, object: nil) { note in
+            (note.object as? URL)?.standardizedFileURL == destURL.standardizedFileURL
+        }
+        announced.isInverted = true
+
+        service.redownloadLCPContentFile(for: book)
+        fulfiller.finishWithSuccess(localURL: tempDir.appendingPathComponent("does-not-exist.lcpa"))
+
+        wait(for: [announced], timeout: 0.5)
+        #endif
+    }
+
     /// Must not overwrite a terminal state a concurrent path already set.
     func testRedownload_onSuccess_doesNotOverwriteATerminalState() throws {
         let book = try seedLicenseOnlyLCPAudiobook()

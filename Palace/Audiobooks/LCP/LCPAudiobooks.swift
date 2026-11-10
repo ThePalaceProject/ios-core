@@ -18,6 +18,12 @@ import PalaceCatalog
 @preconcurrency import PalaceAudiobookToolkit
 import PalaceBookModel
 
+extension Notification.Name {
+    /// Posted once a whole `.lcpa` has been moved into place. `object` is the
+    /// archive's file URL.
+    static let lcpAudiobookArchiveStored = Notification.Name("LCPAudiobookArchiveStored")
+}
+
 /// - Sendable invariant: instances are safe to share across concurrency
 ///   domains (they are captured by the `@Sendable` closures
 ///   `publicationCacheQueue.async`/`DispatchQueue.global().async` schedules,
@@ -53,6 +59,15 @@ import PalaceBookModel
     private let httpClient: HTTPClient
 
     private var cachedPublication: Publication?
+
+    /// Opens the package once it is stored, for a session that began by
+    /// streaming. Nil uses this instance's own opener; a test supplies one
+    /// because a real open needs a licence the test cannot issue.
+    private let storedArchiveOpener: (@Sendable (URL) async -> Publication?)?
+    private var storedArchiveObserver: NSObjectProtocol?
+    private let notificationCenter: NotificationCenter
+    /// Set once chapter loads read from the stored package (PP-5532).
+    private var readsStoredArchive = false
     private let publicationCacheQueue = DispatchQueue(label: "org.thepalaceproject.lcpaudiobooks.publicationcache")
 
     /// Where each track's bytes begin in the archive, learned for free while
@@ -98,9 +113,13 @@ import PalaceBookModel
     init?(
         for audiobookUrl: URL,
         licenseUrl: URL? = nil,
-        sessions: LCPPublicationSessionRegistry
+        sessions: LCPPublicationSessionRegistry,
+        storedArchiveOpener: (@Sendable (URL) async -> Publication?)? = nil,
+        notificationCenter: NotificationCenter = .default
     ) {
         self.sessions = sessions
+        self.storedArchiveOpener = storedArchiveOpener
+        self.notificationCenter = notificationCenter
 
         if let fileUrl = FileURL(url: audiobookUrl) {
             self.audiobookUrl = fileUrl
@@ -141,6 +160,14 @@ import PalaceBookModel
             parser: parser,
             contentProtections: [contentProtection]
         )
+        super.init()
+        observeStoredArchive()
+    }
+
+    deinit {
+        if let storedArchiveObserver {
+            notificationCenter.removeObserver(storedArchiveObserver)
+        }
     }
 
     @objc func contentDictionary(completion: @escaping @Sendable (_ json: NSDictionary?, _ error: NSError?) -> Void) {
@@ -167,6 +194,21 @@ import PalaceBookModel
 
     private func isReleasedSnapshot() -> Bool {
         publicationCacheQueue.sync { isReleased }
+    }
+
+    /// Carries status 403 because that is the toolkit's only signal not to
+    /// retry a track for the rest of the session
+    /// (`AudiobookNetworkService.isRefusedLink`). Any other error is retried,
+    /// and each retry would repeat the whole-track read.
+    private static func streamingDecryptRefusal() -> NSError {
+        NSError(
+            domain: "Palace.LCPAudiobooks",
+            code: 403,
+            userInfo: [
+                NSLocalizedDescriptionKey: "Tracks are not decrypted while the audiobook streams",
+                "httpStatusCode": 403
+            ]
+        )
     }
 
     private static func releasedError() -> NSError {
@@ -1132,6 +1174,14 @@ extension LCPAudiobooks {
             completion(Self.releasedError())
             return
         }
+        // Decrypting a track reads the whole track. Through a streamed
+        // publication that is the whole track again from the content server,
+        // in byte ranges, on top of the package download (PP-5532). The track
+        // is decrypted from the package once it is stored instead.
+        if storedArchiveURL != nil, !readsFromStoredArchive {
+            completion(Self.streamingDecryptRefusal())
+            return
+        }
         if let publication = getPublication() {
             Self.decryptWithPublication(publication, url: url, to: resultUrl, completion: completion)
             return
@@ -1187,6 +1237,103 @@ extension LCPAudiobooks {
             trackLengthTask?.cancel()
             trackLengthTask = nil
             cachedPublication = nil
+        }
+        stopObservingStoredArchive()
+    }
+}
+
+// MARK: - Moving a streamed session to the stored package (PP-5532)
+
+extension LCPAudiobooks {
+
+    /// Where this book's package is stored once downloaded: beside its licence
+    /// (`LCPAdapter.licenseURL(besideContentAt:)` is the inverse). Nil for an
+    /// instance opened from the package, which has nothing to move to.
+    var storedArchiveURL: URL? {
+        guard let licenseUrl, licenseUrl.isFileURL else { return nil }
+        return licenseUrl.deletingPathExtension().appendingPathExtension("lcpa")
+    }
+
+    /// Whether chapter loads now read from the stored package.
+    var readsFromStoredArchive: Bool {
+        publicationCacheQueue.sync { readsStoredArchive }
+    }
+
+    /// Makes later chapter loads read the stored package instead of the server.
+    ///
+    /// The stream-or-package choice is made when the player opens, so a
+    /// session that started streaming kept fetching every new chapter from the
+    /// origin after the download finished, until it was closed. The resource
+    /// loader asks `getPublication()` for each new track, so replacing the
+    /// cached publication moves new chapters to the package, while a track
+    /// already being served keeps the resource it was built from and plays on.
+    ///
+    /// Returns whether the swap happened. A failed open keeps streaming.
+    @discardableResult
+    func adoptStoredArchive(at archiveURL: URL) async -> Bool {
+        guard let expected = storedArchiveURL,
+              archiveURL.standardizedFileURL == expected.standardizedFileURL
+        else { return false }
+        let alreadyDone = publicationCacheQueue.sync { isReleased || readsStoredArchive }
+        guard !alreadyDone else { return false }
+
+        guard let publication = await openStoredArchive(archiveURL) else {
+            Log.error(#file, "LCP audiobook: the stored package could not be opened; chapters keep streaming")
+            return false
+        }
+        let adopted = publicationCacheQueue.sync { () -> Bool in
+            guard !isReleased, !readsStoredArchive else { return false }
+            cachedPublication = publication
+            readsStoredArchive = true
+            return true
+        }
+        if adopted {
+            Log.info(#file, "LCP audiobook: the package is stored; new chapters read it instead of streaming")
+        }
+        return adopted
+    }
+
+    private func openStoredArchive(_ url: URL) async -> Publication? {
+        if let storedArchiveOpener {
+            return await storedArchiveOpener(url)
+        }
+        guard let fileURL = FileURL(url: url) else { return nil }
+        switch await assetRetriever.retrieve(url: fileURL) {
+        case .success(let asset):
+            // No user interaction: this runs in the background during playback,
+            // and a prompt here would interrupt a chapter that is playing fine.
+            switch await publicationOpener.open(asset: asset, allowUserInteraction: false, credentials: nil, sender: nil) {
+            case .success(let publication):
+                return publication
+            case .failure(let error):
+                Log.error(#file, "LCP audiobook: opening the stored package failed: \(error)")
+                return nil
+            }
+        case .failure(let error):
+            Log.error(#file, "LCP audiobook: reading the stored package failed: \(error)")
+            return nil
+        }
+    }
+
+    /// Only a session that streams has a package to move to.
+    fileprivate func observeStoredArchive() {
+        guard storedArchiveURL != nil else { return }
+        let token = notificationCenter.addObserver(
+            forName: .lcpAudiobookArchiveStored, object: nil, queue: nil
+        ) { [weak self] note in
+            guard let self, let url = note.object as? URL else { return }
+            Task { await self.adoptStoredArchive(at: url) }
+        }
+        publicationCacheQueue.sync { storedArchiveObserver = token }
+    }
+
+    fileprivate func stopObservingStoredArchive() {
+        let token = publicationCacheQueue.sync { () -> NSObjectProtocol? in
+            defer { storedArchiveObserver = nil }
+            return storedArchiveObserver
+        }
+        if let token {
+            notificationCenter.removeObserver(token)
         }
     }
 }
