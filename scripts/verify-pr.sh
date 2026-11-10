@@ -595,6 +595,20 @@ JSONEOF
   exit 0
 fi
 
+# 0. DRM connector revision. The build below links whatever tree adobe-rmsdk
+# (or ADEPT_RMSDK) points at; this leg fails when that tree is not the commit
+# recorded in .github/actions/checkout-adobe/action.yml, which CI builds.
+echo "--- DRM connector ---"
+CONNECTOR_OUTPUT=$(python3 "$REPO_ROOT/scripts/drm_connector.py" --repo-root "$REPO_ROOT" check 2>&1)
+CONNECTOR_RC=$?
+echo "$CONNECTOR_OUTPUT" | sed 's/^/  /'
+case "$CONNECTOR_RC" in
+  0) record "drm_connector" "pass" "Connector tree is at the recorded commit" ;;
+  2) record "drm_connector" "skip" "No connector tree (noDRM setup)" ;;
+  1) record "drm_connector" "fail" "Connector tree is not at the recorded commit (fix hint above)" ;;
+  *) record "drm_connector" "fail" "Connector revision could not be read (exit $CONNECTOR_RC)" ;;
+esac
+
 # 1. Build check
 # Skipped in --mutation-only mode: palace_mutate.py rebuilds per-mutant so the
 # pre-flight build adds nothing; the CI workflow that uses --mutation-only

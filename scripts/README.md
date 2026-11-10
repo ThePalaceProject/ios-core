@@ -41,8 +41,9 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 | `setup-repo-nodrm.sh` | Initial repo setup for the open-source `Palace-noDRM` target. | `non-drm-build.yml` |
 | `build-3rd-party-dependencies.sh` | Builds non-Carthage third-party deps (Readium etc.). | `unit-testing.yml`, `non-drm-build.yml`, `upload*.yml` |
 | `build-carthage.sh` | Carthage bootstrap for binary frameworks (DRM path: also fetches AudioEngine + builds R2LCPClient). | invoked by `build-3rd-party-dependencies.sh` |
-| `bootstrap-drm.sh` | Pulls Adobe RMSDK / LCP into the working tree. | dev/local |
-| `fetch-audioengine.sh` | Fetches AudioEngine and unzips it into the build tree. | dev/local |
+| `bootstrap-drm.sh` | Pulls Adobe RMSDK / LCP into the working tree; clones the connector at its recorded commit. | dev/local |
+| `drm_connector.py` | Reads the DRM connector record (`checkout-adobe` action defaults), clones it, and checks that the local connector tree is at the recorded commit. | `bootstrap-drm.sh`, `setup-repo-drm.sh`, `verify-pr.sh` |
+| `fetch-audioengine.sh` | Fetches AudioEngine, checks its SHA-256 against the recorded value, and unzips it into the build tree. | `build-carthage.sh`, `audiobook-toolkit-tests.yml` |
 | `xcode-build-nodrm.sh` | Builds the `Palace-noDRM` scheme. | `non-drm-build.yml` |
 | `xcode-archive.sh` | Creates a release archive of the app. | `upload*.yml` |
 | `xcode-settings.sh` | Sources common build env vars. | `release-rc.yml`, dev/local |
