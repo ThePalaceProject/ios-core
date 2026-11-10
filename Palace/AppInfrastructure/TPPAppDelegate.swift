@@ -167,7 +167,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         let memoryMonitor = MemoryPressureMonitor.shared
         memoryMonitor.start()
         let networkExecutor = AppContainer.production().networkExecutor
-        memoryMonitor.memoryEvents.registerCache(named: "networkResponses") {
+        AppCacheSizes.register(on: memoryMonitor.memoryEvents) {
             networkExecutor.cacheMemoryUsage
         }
 

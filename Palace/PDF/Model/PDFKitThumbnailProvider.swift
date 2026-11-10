@@ -25,11 +25,19 @@ final class PDFKitThumbnailProvider: ObservableObject {
 
     private let document: PDFDocument
     private let thumbnailSize: CGSize
-    private let cache = NSCache<NSNumber, UIImage>()
+    private let cache: CountedCache<Int, UIImage>
 
-    init(document: PDFDocument, thumbnailSize: CGSize = .pdfThumbnailSize) {
+    /// Bytes of every provider's thumbnails; a provider is made per document.
+    nonisolated static let liveThumbnailBytes = CacheByteCounter()
+
+    init(
+        document: PDFDocument,
+        thumbnailSize: CGSize = .pdfThumbnailSize,
+        byteCounter: CacheByteCounter = PDFKitThumbnailProvider.liveThumbnailBytes
+    ) {
         self.document = document
         self.thumbnailSize = thumbnailSize
+        cache = CountedCache(counter: byteCounter)
         cache.countLimit = 64
     }
 
@@ -39,19 +47,18 @@ final class PDFKitThumbnailProvider: ObservableObject {
     /// Returns a previously rendered thumbnail if one is cached, without
     /// triggering a render. Lets the strip show a placeholder immediately.
     func cachedThumbnail(for page: Int) -> UIImage? {
-        cache.object(forKey: NSNumber(value: page))
+        cache.object(forKey: page)
     }
 
     /// Renders (or returns the cached) thumbnail for `page`. Safe to call off
     /// the main thread. Returns `nil` for out-of-range pages.
     func thumbnail(for page: Int) -> UIImage? {
         guard page >= 0, page < document.pageCount else { return nil }
-        let key = NSNumber(value: page)
-        if let cached = cache.object(forKey: key) { return cached }
+        if let cached = cache.object(forKey: page) { return cached }
         guard let image = document.page(at: page)?.thumbnail(of: thumbnailSize, for: .mediaBox) else {
             return nil
         }
-        cache.setObject(image, forKey: key)
+        cache.setObject(image, forKey: page, cost: 0, bytes: image.decodedByteCount)
         return image
     }
 }

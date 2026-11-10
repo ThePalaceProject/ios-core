@@ -96,9 +96,12 @@ actor OPDS2FeedCache: OPDSFeedCaching {
     private var memoryCache: [String: OPDSCacheEntry<OPDS2Feed>] = [:]
     private var accessOrder: [String] = []
     private let configuration: Configuration
-    private let diskCache: GeneralCache<String, Data>?
+    nonisolated private let diskCache: GeneralCache<String, Data>?
 
     public static let shared = OPDS2FeedCache()
+
+    /// Bytes of feed data held in memory now (PP-5509).
+    nonisolated var dataMemoryBytes: Int { diskCache?.memoryBytes ?? 0 }
 
     // MARK: - Initialization
 

@@ -25,15 +25,15 @@ import UIKit
 /// `NotificationCenter` listener purges everything on a system memory
 /// warning (or our pre-emptive `ReaderService.openPDF` notification).
 /// `@unchecked Sendable` invariant: the sole stored property `cache` is an
-/// immutable `let` and `NSCache` is documented thread-safe, so concurrent
+/// immutable `let` and `CountedCache` is thread-safe, so concurrent
 /// `decrypted(for:)` / `store(_:for:)` calls are safe. The observer is
 /// registered once in `init`, and `handleMemoryWarning` only calls the
 /// thread-safe `removeAllObjects()`. No unsynchronized mutable state exists.
-private final class LCPDecryptCache: @unchecked Sendable {
+final class LCPDecryptCache: @unchecked Sendable {
     static let shared = LCPDecryptCache()
-    private let cache = NSCache<NSData, NSData>()
+    private let cache = CountedCache<NSData, NSData>()
 
-    private init() {
+    init() {
         cache.totalCostLimit = 16 * 1024 * 1024  // 16MB
         NotificationCenter.default.addObserver(
             self,
@@ -46,6 +46,9 @@ private final class LCPDecryptCache: @unchecked Sendable {
     @objc private func handleMemoryWarning() {
         cache.removeAllObjects()
     }
+
+    /// Bytes of plaintext held now (PP-5509).
+    var byteCount: Int { cache.byteCount }
 
     func decrypted(for ciphertext: Data) -> Data? {
         cache.object(forKey: ciphertext as NSData) as Data?
