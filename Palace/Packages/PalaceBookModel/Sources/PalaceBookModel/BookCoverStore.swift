@@ -76,6 +76,28 @@ public final class BookCoverStore: @unchecked Sendable {
         lock.withLock { entries[identifier]?.books.count ?? 0 }
     }
 
+    /// Bytes of the decoded images the store holds now (PP-5509). An image held
+    /// in more than one field counts once. Walks every entry, so it is meant for
+    /// the memory event line, not a hot path.
+    // PUBLIC_INTENT: read by the app's memory event line.
+    public var imageByteCount: Int {
+        lock.withLock {
+            var seen = Set<ObjectIdentifier>()
+            var bytes = 0
+            for entry in entries.values {
+                for image in [entry.state.coverImage, entry.state.thumbnailImage, entry.state.colorSource] {
+                    guard let image, seen.insert(ObjectIdentifier(image)).inserted, let cgImage = image.cgImage else { continue }
+                    bytes += cgImage.bytesPerRow * cgImage.height
+                }
+            }
+            return bytes
+        }
+    }
+
+    /// `imageByteCount` of the default store that TPPBook uses.
+    // PUBLIC_INTENT: read by the app's memory event line.
+    public static var defaultStoreImageByteCount: Int { shared.imageByteCount }
+
     var entryCount: Int {
         lock.withLock { entries.count }
     }

@@ -22,14 +22,14 @@ public enum CachePolicy {
 // that publishes a written file, `pendingWrites`, and every memory-cache access
 // that has to stay consistent with them happen under `lock`. Only the byte
 // write of a new entry runs outside it, into a staging file no reader can
-// name. The memory-only clears skip the lock because `NSCache` is itself
+// name. The memory-only clears skip the lock because `CountedCache` is itself
 // thread-safe and dropping a memory entry can never make a read wrong (the
 // value is still on disk, or in `.memoryOnly` mode it is simply gone).
 // `memoryWarningObserver` is set once during `init` and only read in `deinit`.
 // `Key`/`Value` are constrained to `Sendable` so cached values can cross
 // threads safely (all call sites use `GeneralCache<String, Data>`).
 public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codable & Sendable>: @unchecked Sendable {
-    private let memoryCache = NSCache<WrappedKey, Entry>()
+    private let memoryCache: CountedCache<Key, Entry>
     private let fileManager = FileManager.default
     private let cacheDirectory: URL
     private let mode: CachingMode
@@ -75,18 +75,6 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
         }
     }
 
-    // `@unchecked Sendable`: immutable `let key` (which is itself `Sendable`);
-    // used only as an `NSCache` key.
-    private final class WrappedKey: NSObject, @unchecked Sendable {
-        let key: Key
-        init(_ key: Key) { self.key = key }
-        override var hash: Int { key.hashValue }
-        override func isEqual(_ object: Any?) -> Bool {
-            guard let other = object as? WrappedKey else { return false }
-            return other.key == key
-        }
-    }
-
     /// Writes the encoded bytes of one entry. Injected only by tests, to hold
     /// a write open while other calls run.
     private let writeData: @Sendable (Data, URL) throws -> Void
@@ -95,7 +83,18 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
         self.init(cacheName: cacheName, mode: mode, writeData: { try $0.write(to: $1) })
     }
 
-    init(cacheName: String, mode: CachingMode, writeData: @escaping @Sendable (Data, URL) throws -> Void) {
+    /// `byteCounter` receives the memory layer's bytes (PP-5509).
+    convenience init(cacheName: String, mode: CachingMode, byteCounter: CacheByteCounter) {
+        self.init(cacheName: cacheName, mode: mode, writeData: { try $0.write(to: $1) }, byteCounter: byteCounter)
+    }
+
+    init(
+        cacheName: String,
+        mode: CachingMode,
+        writeData: @escaping @Sendable (Data, URL) throws -> Void,
+        byteCounter: CacheByteCounter = CacheByteCounter()
+    ) {
+        memoryCache = CountedCache(counter: byteCounter)
         self.mode = mode
         self.writeData = writeData
         guard let cachesDir = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else {
@@ -173,7 +172,7 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
             if mode == .memoryOnly || mode == .memoryAndDisk {
                 let cost = estimatedCost(for: value)
                 for key in keys {
-                    memoryCache.setObject(entry, forKey: WrappedKey(key), cost: cost)
+                    memoryCache.setObject(entry, forKey: key, cost: cost)
                 }
             }
             guard writesToDisk else { return 0 }
@@ -214,9 +213,8 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
 
     public func get(for key: Key) -> Value? {
         return lock.withLock {
-            let wrappedKey = WrappedKey(key)
             if mode == .memoryOnly || mode == .memoryAndDisk,
-               let entry = memoryCache.object(forKey: wrappedKey), !entry.isExpired {
+               let entry = memoryCache.object(forKey: key), !entry.isExpired {
                 return entry.value
             }
             if mode == .memoryOnly { return nil }
@@ -243,7 +241,7 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
                     let exp = attrs[.modificationDate] as? Date
                     let reentry = Entry(value: value, expiration: exp)
                     let cost = estimatedCost(for: value)
-                    memoryCache.setObject(reentry, forKey: wrappedKey, cost: cost)
+                    memoryCache.setObject(reentry, forKey: key, cost: cost)
                 }
                 return value
             } catch {
@@ -312,7 +310,7 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
     /// alone, for `get` discarding an expired file. Caller holds `lock`.
     private func removeStoredWhileLocked(_ key: Key) {
         if mode == .memoryOnly || mode == .memoryAndDisk {
-            memoryCache.removeObject(forKey: WrappedKey(key))
+            memoryCache.removeObject(forKey: key)
         }
         if mode == .diskOnly || mode == .memoryAndDisk {
             try? fileManager.removeItem(at: fileURL(for: key))
@@ -332,6 +330,9 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
             }
         }
     }
+
+    /// Bytes the memory layer holds now (PP-5509).
+    var memoryBytes: Int { memoryCache.byteCount }
 
     public func clearMemory() {
         // No `lock`: see `handleMemoryWarning` and the type comment.

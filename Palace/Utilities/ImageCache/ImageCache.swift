@@ -34,7 +34,7 @@ private final class ImageDecodeOperation: BlockOperation, @unchecked Sendable {}
 
 /// `@unchecked Sendable` invariant: every stored property is either an
 /// immutable `let` (`defaultTTL`, `maxDimension`, `compressionQuality`) or a
-/// reference to a type that is itself internally thread-safe — `NSCache`
+/// reference to a type that is itself internally thread-safe — `CountedCache`
 /// (`memoryImages`) and `OperationQueue` (`processingQueue`) are documented
 /// thread-safe by Apple, and `dataCache` (`GeneralCache`) serializes its own
 /// access. There is no unguarded mutable stored state on `ImageCache` itself,
@@ -81,7 +81,7 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
     public static let shared = ImageCache()
 
     private let dataCache: GeneralCache<String, Data>
-    private let memoryImages = NSCache<NSString, UIImage>()
+    private let memoryImages: CountedCache<String, UIImage>
     private let defaultTTL: TimeInterval = 14 * 24 * 60 * 60
     private let limits: Limits
     private var maxDimension: CGFloat { limits.maxDimension }
@@ -123,15 +123,22 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
     }
 
     private convenience init() {
-        self.init(deviceMemoryMB: ProcessInfo.processInfo.physicalMemory / (1024 * 1024))
+        self.init(
+            deviceMemoryMB: ProcessInfo.processInfo.physicalMemory / (1024 * 1024),
+            decodedImageBytes: AppCacheCounters.decodedImages,
+            compressedDataBytes: AppCacheCounters.imageData
+        )
     }
 
     private init(
         deviceMemoryMB: UInt64,
         cacheName: String = "ImageCache",
-        encode: @escaping @Sendable (UIImage, CGFloat) -> Data? = { $0.jpegData(compressionQuality: $1) }
+        encode: @escaping @Sendable (UIImage, CGFloat) -> Data? = { $0.jpegData(compressionQuality: $1) },
+        decodedImageBytes: CacheByteCounter = CacheByteCounter(),
+        compressedDataBytes: CacheByteCounter = CacheByteCounter()
     ) {
-        dataCache = GeneralCache<String, Data>(cacheName: cacheName, mode: .memoryAndDisk)
+        memoryImages = CountedCache(counter: decodedImageBytes)
+        dataCache = GeneralCache<String, Data>(cacheName: cacheName, mode: .memoryAndDisk, byteCounter: compressedDataBytes)
         self.encode = encode
         limits = Self.limits(forDeviceMemoryMB: deviceMemoryMB)
         memoryImages.countLimit = limits.countLimit
@@ -203,7 +210,7 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
             if let cgImage = image.cgImage, max(cgImage.width, cgImage.height) <= Int(maxDimension) {
                 let cost = imageCost(image)
                 for key in keys {
-                    memoryImages.setObject(image, forKey: key as NSString, cost: cost)
+                    memoryImages.setObject(image, forKey: key, cost: cost)
                 }
             }
             return
@@ -233,7 +240,7 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
         }
 
         for key in keys {
-            memoryImages.setObject(processed, forKey: key as NSString, cost: cost)
+            memoryImages.setObject(processed, forKey: key, cost: cost)
         }
 
         let data = autoreleasepool { () -> Data? in
@@ -276,7 +283,7 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
 
     public func get(for key: String) -> UIImage? {
         // Always check memory cache first (fast, safe on any thread)
-        if let img = memoryImages.object(forKey: key as NSString) {
+        if let img = memoryImages.object(forKey: key) {
             return img
         }
 
@@ -296,7 +303,7 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
             return nil
         }
         let cost = imageCost(img)
-        memoryImages.setObject(img, forKey: key as NSString, cost: cost)
+        memoryImages.setObject(img, forKey: key, cost: cost)
         return img
     }
 
@@ -304,7 +311,7 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
     /// on the processing queue. Use this in async contexts (registry, view model)
     /// to get disk-cached images without blocking any thread.
     public nonisolated func getAsync(for key: String) async -> UIImage? {
-        if let img = memoryImages.object(forKey: key as NSString) {
+        if let img = memoryImages.object(forKey: key) {
             return img
         }
         return await withCheckedContinuation { continuation in
@@ -339,7 +346,7 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
                     return
                 }
                 // Double-check memory (another task may have promoted it)
-                if let img = self.memoryImages.object(forKey: key as NSString) {
+                if let img = self.memoryImages.object(forKey: key) {
                     resumer.resume(img)
                     return
                 }
@@ -353,7 +360,7 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
                     return
                 }
                 let cost = self.imageCost(img)
-                self.memoryImages.setObject(img, forKey: key as NSString, cost: cost)
+                self.memoryImages.setObject(img, forKey: key, cost: cost)
                 resumer.resume(img)
             }
             operation.addExecutionBlock(executionBlock)
@@ -392,11 +399,11 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
         // (Xcode 26.2 ClangImporter @MainActor poisoning of addOperation).
         let work: @Sendable () -> Void = { [weak self] in
             guard let self else { return }
-            if self.memoryImages.object(forKey: key as NSString) != nil { return }
+            if self.memoryImages.object(forKey: key) != nil { return }
             guard let data = self.dataCache.get(for: key) else { return }
             guard let img = UIImage(data: data) else { return }
             let cost = self.imageCost(img)
-            self.memoryImages.setObject(img, forKey: key as NSString, cost: cost)
+            self.memoryImages.setObject(img, forKey: key, cost: cost)
         }
         let operation = ImageDecodeOperation()
         operation.addExecutionBlock(work)
@@ -404,7 +411,7 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
     }
 
     public func remove(for key: String) {
-        memoryImages.removeObject(forKey: key as NSString)
+        memoryImages.removeObject(forKey: key)
         dataCache.remove(for: key)
     }
 
@@ -445,6 +452,12 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
         processingQueue.cancelAllOperations()
         processingQueue.isSuspended = false
     }
+
+    /// Bytes of decoded images held in memory now (PP-5509).
+    var decodedImageBytes: Int { memoryImages.byteCount }
+
+    /// Bytes of compressed image data held in memory now (PP-5509).
+    var compressedDataMemoryBytes: Int { dataCache.memoryBytes }
 
     /// Evict decoded in-memory images without touching the compressed disk
     /// cache. The disk cache retains JPEG data, so the next fetchCoverImage
