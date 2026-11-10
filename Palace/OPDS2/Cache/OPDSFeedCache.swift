@@ -98,18 +98,29 @@ actor OPDS2FeedCache: OPDSFeedCaching {
     private let configuration: Configuration
     nonisolated private let diskCache: GeneralCache<String, Data>?
 
-    public static let shared = OPDS2FeedCache()
+    static let shared = OPDS2FeedCache(dataByteCounter: sharedDataBytes)
+    /// Bytes of the shared cache's feed data. The memory event line reads this,
+    /// so it never creates the cache or its disk directory.
+    static let sharedDataBytes = CacheByteCounter()
 
     /// Bytes of feed data held in memory now (PP-5509).
     nonisolated var dataMemoryBytes: Int { diskCache?.memoryBytes ?? 0 }
 
     // MARK: - Initialization
 
-    public init(configuration: Configuration = .default) {
+    init(
+        configuration: Configuration = .default,
+        diskCacheName: String = "OPDS2Feeds",
+        dataByteCounter: CacheByteCounter = CacheByteCounter()
+    ) {
         self.configuration = configuration
 
         if configuration.persistToDisk {
-            self.diskCache = GeneralCache<String, Data>(cacheName: "OPDS2Feeds", mode: .memoryAndDisk)
+            self.diskCache = GeneralCache<String, Data>(
+                cacheName: diskCacheName,
+                mode: .memoryAndDisk,
+                byteCounter: dataByteCounter
+            )
         } else {
             self.diskCache = nil
         }

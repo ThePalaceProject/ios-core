@@ -12,6 +12,7 @@ import PDFKit
 import UIKit
 @testable import Palace
 @testable import PalaceBookModel
+import PalaceCatalog
 
 final class AppCacheSizesTests: XCTestCase {
 
@@ -26,23 +27,38 @@ final class AppCacheSizesTests: XCTestCase {
 
     // MARK: - Registration
 
-    func testRegister_PutsEveryAppCacheOnTheMemoryEventLine() throws {
+    /// Each field must show its own cache's size; a swapped pair of sources
+    /// would put plausible numbers under the wrong names.
+    func testRegister_EachFieldShowsItsOwnSourcesSize() throws {
         let lines = Lines()
         let recorder = MemoryEventRecorder(footprint: { 0 }, available: { 0 }, write: { lines.append($0) })
         let mb = megabyte
+        var sources = AppCacheSizes.Sources(
+            networkResponses: { 1 * mb },
+            decodedImages: { 2 * mb },
+            imageData: { 3 * mb },
+            coverSourceData: { 4 * mb },
+            bookCovers: { 5 * mb },
+            opdsFeedData: { 6 * mb },
+            pdfPreviews: { 7 * mb },
+            pdfThumbnails: { 8 * mb }
+        )
+        sources.lcpDecrypt = { 9 * mb }
 
-        AppCacheSizes.register(on: recorder, networkResponses: { 3 * mb })
+        AppCacheSizes.register(on: recorder, sources: sources)
         recorder.record(.warning)
 
         let line = try XCTUnwrap(lines.all.first)
-        XCTAssertTrue(line.contains("cache.networkResponsesMB=3"), line)
-        var expected = ["decodedImages", "imageData", "coverSourceData", "bookCovers",
-                        "opdsFeedData", "pdfPreviews", "pdfThumbnails"]
+        var expected = [
+            "networkResponses": 1, "decodedImages": 2, "imageData": 3, "coverSourceData": 4,
+            "bookCovers": 5, "opdsFeedData": 6, "pdfPreviews": 7, "pdfThumbnails": 8
+        ]
         #if LCP
-        expected.append("lcpDecrypt")
+        expected["lcpDecrypt"] = 9
         #endif
-        for name in expected {
-            XCTAssertTrue(line.contains("cache.\(name)MB="), "missing \(name) in \(line)")
+        for (name, value) in expected {
+            XCTAssertTrue(line.contains("cache.\(name)MB=\(value) ") || line.hasSuffix("cache.\(name)MB=\(value)"),
+                          "\(name) should be \(value) in \(line)")
         }
     }
 
@@ -109,6 +125,31 @@ final class AppCacheSizesTests: XCTestCase {
     }
     #endif
 
+    // MARK: - OPDS feed data
+
+    func testOPDSFeedCache_CountsStoredFeedDataUntilRemoved() async throws {
+        let counter = CacheByteCounter()
+        let cache = OPDS2FeedCache(
+            configuration: .init(staleTTL: 60, maxAge: 600, maxMemoryEntries: 10, persistToDisk: true),
+            diskCacheName: "AppCacheSizes-\(UUID().uuidString)",
+            dataByteCounter: counter
+        )
+        let url = try XCTUnwrap(URL(string: "https://example.com/feed"))
+        let entry = OPDSCacheEntry(feed: OPDS2Feed(
+            metadata: OPDS2FeedMetadata(title: "Counted"),
+            links: [OPDS2Link(href: "https://example.com", rel: "self")]
+        ))
+        let encoded = try JSONEncoder().encode(entry)
+
+        await cache.set(entry, for: url)
+        XCTAssertEqual(counter.bytes, encoded.count)
+        XCTAssertEqual(cache.dataMemoryBytes, encoded.count)
+
+        await cache.remove(for: url)
+        XCTAssertEqual(counter.bytes, 0)
+        await cache.clear()
+    }
+
     // MARK: - PDF thumbnails
 
     func testPDFThumbnailProvider_CountsRenderedThumbnailsAndReleasesThemOnDeinit() throws {
@@ -174,6 +215,88 @@ final class AppCacheSizesTests: XCTestCase {
 
     static func makePDF(pageCount: Int) throws -> PDFDocument {
         try XCTUnwrap(PDFDocument(data: makePDFData(pageCount: pageCount)))
+    }
+}
+
+/// The registry keeps the fetched source bytes so one cover decodes at several
+/// sizes without a second request; those bytes are on the memory event line.
+@MainActor
+final class TPPBookCoverRegistrySourceBytesTests: XCTestCase {
+
+    private let host = "covers.source-bytes.example"
+    private var jpeg = Data()
+
+    override func setUp() async throws {
+        try await super.setUp()
+        HTTPStubURLProtocol.reset()
+        let jpeg = try Self.coverJPEG()
+        self.jpeg = jpeg
+        let host = host
+        HTTPStubURLProtocol.register { request in
+            guard request.url?.host == host else { return nil }
+            return .init(statusCode: 200, headers: ["Content-Type": "image/jpeg"], body: jpeg)
+        }
+    }
+
+    override func tearDown() async throws {
+        HTTPStubURLProtocol.reset()
+        try await super.tearDown()
+    }
+
+    func testFetchedCover_CountsItsSourceBytes() async throws {
+        let counter = CacheByteCounter()
+        let cache = ImageCache._makeIsolatedForTesting(cacheName: "SourceBytes-\(UUID().uuidString)")
+        let registry = TPPBookCoverRegistry(imageCache: cache, urlSession: .stubbedSession(), sourceDataCounter: counter)
+        let book = makeBook()
+
+        let cover = await registry.coverImage(for: book, displayPoints: 280)
+        Self.drain(cache)
+
+        XCTAssertNotNil(cover, "precondition: the stubbed cover was fetched")
+        XCTAssertEqual(counter.bytes, jpeg.count)
+        XCTAssertEqual(registry.sourceDataBytes, counter.bytes)
+        cache.clear()
+    }
+
+    private func makeBook() -> TPPBook {
+        let id = "source-bytes-\(UUID().uuidString)"
+        return TPPBook(
+            acquisitions: [],
+            authors: [],
+            categoryStrings: [],
+            distributor: "",
+            identifier: id,
+            imageURL: URL(string: "https://\(host)/full/\(id).jpg"),
+            imageThumbnailURL: URL(string: "https://\(host)/thumb/\(id).jpg"),
+            published: Date(),
+            publisher: "",
+            subtitle: "",
+            summary: "",
+            title: "Source Bytes",
+            updated: Date(),
+            annotationsURL: nil,
+            analyticsURL: nil,
+            alternateURL: nil,
+            relatedWorksURL: nil,
+            previewLink: nil,
+            seriesURL: nil,
+            revokeURL: nil,
+            reportURL: nil,
+            timeTrackingURL: nil,
+            contributors: [:],
+            bookDuration: nil,
+            imageCache: MockImageCache()
+        )
+    }
+
+    /// Synchronous so async tests can call it: `waitUntilAllOperationsAreFinished`
+    /// is unavailable from async contexts.
+    private static func drain(_ cache: ImageCache) {
+        cache.processingQueue.waitUntilAllOperationsAreFinished()
+    }
+
+    private static func coverJPEG() throws -> Data {
+        try XCTUnwrap(AppCacheSizesTests.solidImage(width: 40, height: 60).jpegData(compressionQuality: 0.8))
     }
 }
 

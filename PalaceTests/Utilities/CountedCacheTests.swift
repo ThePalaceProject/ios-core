@@ -112,15 +112,81 @@ final class CountedCacheTests: XCTestCase {
     }
 
     func testConcurrentSetAndRemove_EndsWithCountOfRemainingEntries() {
-        let cache = CountedCache<Int, NSString>()
+        let cache = CountedCache<Int, Payload>()
 
         DispatchQueue.concurrentPerform(iterations: 200) { index in
-            cache.setObject("v", forKey: index, cost: 10)
+            cache.setObject(Payload(index), forKey: index, cost: 10)
             if index.isMultiple(of: 2) {
                 cache.removeObject(forKey: index)
             }
         }
 
         XCTAssertEqual(cache.byteCount, 100 * 10)
+    }
+
+    /// ImageCache and GeneralCache store one object under several keys; its
+    /// memory is held once, so it counts once until the last key goes.
+    func testOneObjectUnderTwoKeys_CountsOnceUntilBothKeysAreRemoved() {
+        let cache = CountedCache<String, Payload>()
+        let shared = Payload(1)
+
+        cache.setObject(shared, forKey: "a", cost: 100)
+        cache.setObject(shared, forKey: "b", cost: 100)
+        XCTAssertEqual(cache.byteCount, 100)
+
+        cache.removeObject(forKey: "a")
+        XCTAssertEqual(cache.byteCount, 100, "key b still holds the object")
+
+        cache.removeObject(forKey: "b")
+        XCTAssertEqual(cache.byteCount, 0)
+    }
+
+    func testOneObjectUnderTwoKeys_ReplacingOneKeyKeepsTheSharedBytes() {
+        let cache = CountedCache<String, Payload>()
+        let shared = Payload(1)
+        cache.setObject(shared, forKey: "a", cost: 100)
+        cache.setObject(shared, forKey: "b", cost: 100)
+
+        cache.setObject(Payload(2), forKey: "a", cost: 30)
+
+        XCTAssertEqual(cache.byteCount, 130)
+    }
+
+    func testTotalCostLimitEviction_SubtractsTheEvictedEntrysBytes() {
+        let cache = CountedCache<String, Payload>()
+        cache.totalCostLimit = 100
+
+        cache.setObject(Payload(1), forKey: "a", cost: 80)
+        cache.setObject(Payload(2), forKey: "b", cost: 80)
+
+        XCTAssertNil(cache.object(forKey: "a"), "precondition: NSCache evicted the first entry")
+        XCTAssertEqual(cache.byteCount, 80)
+    }
+
+    /// Concurrent sets of one key: whichever value NSCache keeps, the count is
+    /// that value's bytes. Many trials, because a bad interleaving is rare.
+    func testConcurrentSetsOfOneKey_CountEqualsTheBytesOfTheHeldValue() {
+        var mismatches = 0
+        for _ in 0..<2_000 {
+            let cache = CountedCache<String, Payload>()
+            DispatchQueue.concurrentPerform(iterations: 8) { thread in
+                for round in 0..<4 {
+                    let bytes = thread * 10 + round + 1
+                    cache.setObject(Payload(bytes), forKey: "k", cost: bytes)
+                }
+            }
+            let held = cache.object(forKey: "k")?.id ?? 0
+            if cache.byteCount != held {
+                mismatches += 1
+            }
+        }
+
+        XCTAssertEqual(mismatches, 0, "trials where the count did not match the held value")
+    }
+
+    /// A distinct object per value, so identity never merges two entries.
+    private final class Payload {
+        let id: Int
+        init(_ id: Int) { self.id = id }
     }
 }

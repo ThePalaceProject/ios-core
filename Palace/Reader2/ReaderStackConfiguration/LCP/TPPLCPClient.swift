@@ -30,10 +30,14 @@ import UIKit
 /// registered once in `init`, and `handleMemoryWarning` only calls the
 /// thread-safe `removeAllObjects()`. No unsynchronized mutable state exists.
 final class LCPDecryptCache: @unchecked Sendable {
-    static let shared = LCPDecryptCache()
-    private let cache = CountedCache<NSData, NSData>()
+    static let shared = LCPDecryptCache(byteCounter: sharedBytes)
+    /// Bytes of the shared cache. The memory event line reads this, so it never
+    /// creates the cache.
+    static let sharedBytes = CacheByteCounter()
+    private let cache: CountedCache<NSData, NSData>
 
-    init() {
+    init(byteCounter: CacheByteCounter = CacheByteCounter()) {
+        cache = CountedCache(counter: byteCounter)
         cache.totalCostLimit = 16 * 1024 * 1024  // 16MB
         NotificationCenter.default.addObserver(
             self,

@@ -29,7 +29,7 @@ public enum CachePolicy {
 // `Key`/`Value` are constrained to `Sendable` so cached values can cross
 // threads safely (all call sites use `GeneralCache<String, Data>`).
 public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codable & Sendable>: @unchecked Sendable {
-    private let memoryCache = CountedCache<Key, Entry>()
+    private let memoryCache: CountedCache<Key, Entry>
     private let fileManager = FileManager.default
     private let cacheDirectory: URL
     private let mode: CachingMode
@@ -83,7 +83,18 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
         self.init(cacheName: cacheName, mode: mode, writeData: { try $0.write(to: $1) })
     }
 
-    init(cacheName: String, mode: CachingMode, writeData: @escaping @Sendable (Data, URL) throws -> Void) {
+    /// `byteCounter` receives the memory layer's bytes (PP-5509).
+    convenience init(cacheName: String, mode: CachingMode, byteCounter: CacheByteCounter) {
+        self.init(cacheName: cacheName, mode: mode, writeData: { try $0.write(to: $1) }, byteCounter: byteCounter)
+    }
+
+    init(
+        cacheName: String,
+        mode: CachingMode,
+        writeData: @escaping @Sendable (Data, URL) throws -> Void,
+        byteCounter: CacheByteCounter = CacheByteCounter()
+    ) {
+        memoryCache = CountedCache(counter: byteCounter)
         self.mode = mode
         self.writeData = writeData
         guard let cachesDir = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else {

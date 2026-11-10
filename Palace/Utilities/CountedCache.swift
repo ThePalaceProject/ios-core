@@ -3,8 +3,7 @@
 //  Palace
 //
 //  An NSCache that keeps a count of the bytes it holds, for the memory event
-//  line (PP-5509). NSCache does not report its size, so the count is kept here:
-//  added on insert, subtracted on remove and on NSCache's own evictions.
+//  line (PP-5509). NSCache does not report its size, so the count is kept here.
 //
 
 import Foundation
@@ -22,11 +21,21 @@ final class CacheByteCounter: @unchecked Sendable {
     }
 }
 
-/// `@unchecked Sendable`: `cache` is thread-safe, and `entries`, `ownBytes`
-/// are only touched under `lock`. `lock` is never held while calling into
-/// `cache`, because NSCache can call the eviction delegate on the thread that
-/// holds its own lock.
-final class CountedCache<Key: Hashable, Value>: @unchecked Sendable {
+/// Counts what NSCache holds, not what was asked of it. Every insert is a new
+/// box: its bytes are added before NSCache gets it and subtracted only when
+/// NSCache reports that exact box evicted. NSCache reports a box on
+/// replacement, `removeObject(forKey:)`, `removeAllObjects()` and its own limit
+/// evictions, so the count equals the boxes NSCache holds whatever order
+/// concurrent calls run in.
+///
+/// A value stored under several keys (ImageCache and GeneralCache do this)
+/// is held in memory once, so its bytes count once, while any key holds it.
+///
+/// `@unchecked Sendable`: `cache` is thread-safe; `live`, `values` and
+/// `ownBytes` are only touched under `lock`. `lock` is never held while calling
+/// into `cache`, because NSCache calls the eviction delegate while it holds its
+/// own lock.
+final class CountedCache<Key: Hashable, Value: AnyObject>: @unchecked Sendable {
 
     private final class WrappedKey: NSObject {
         let key: Key
@@ -37,19 +46,13 @@ final class CountedCache<Key: Hashable, Value>: @unchecked Sendable {
         }
     }
 
-    /// One insert. The count is tied to the box, not the key, so the eviction
-    /// of a value that was already replaced subtracts nothing.
     private final class Box {
-        let key: Key
         let value: Value
-        init(key: Key, value: Value) {
-            self.key = key
-            self.value = value
-        }
+        init(_ value: Value) { self.value = value }
     }
 
-    private struct Entry {
-        let box: ObjectIdentifier
+    private struct ValueCount {
+        var boxes: Int
         let bytes: Int
     }
 
@@ -58,7 +61,10 @@ final class CountedCache<Key: Hashable, Value>: @unchecked Sendable {
     private let evictionDelegate: EvictionDelegate
     private let counter: CacheByteCounter
     private let lock = NSLock()
-    private var entries: [Key: Entry] = [:]
+    /// Box identity to its value's identity, for every box NSCache holds.
+    private var live: [ObjectIdentifier: ObjectIdentifier] = [:]
+    /// Value identity to the number of live boxes holding it and its bytes.
+    private var values: [ObjectIdentifier: ValueCount] = [:]
     private var ownBytes = 0
 
     init(counter: CacheByteCounter = CacheByteCounter()) {
@@ -67,7 +73,7 @@ final class CountedCache<Key: Hashable, Value>: @unchecked Sendable {
         evictionDelegate = delegate
         delegate.onEvict = { [weak self] object in
             guard let box = object as? Box else { return }
-            self?.forget(box)
+            self?.release(box)
         }
         cache.delegate = delegate
     }
@@ -103,43 +109,45 @@ final class CountedCache<Key: Hashable, Value>: @unchecked Sendable {
     /// count. They differ where a cache sets no cost today, so counting does
     /// not start a limit that was never enforced.
     func setObject(_ value: Value, forKey key: Key, cost: Int, bytes: Int? = nil) {
-        let box = Box(key: key, value: value)
-        let counted = max(0, bytes ?? cost)
+        let box = Box(value)
+        let valueID = ObjectIdentifier(value)
         lock.withLock {
-            let previous = entries.updateValue(Entry(box: ObjectIdentifier(box), bytes: counted), forKey: key)
-            adjust(counted - (previous?.bytes ?? 0))
+            live[ObjectIdentifier(box)] = valueID
+            if values[valueID] != nil {
+                values[valueID]?.boxes += 1
+            } else {
+                let counted = max(0, bytes ?? cost)
+                values[valueID] = ValueCount(boxes: 1, bytes: counted)
+                adjust(counted)
+            }
         }
         cache.setObject(box, forKey: WrappedKey(key), cost: cost)
     }
 
     func removeObject(forKey key: Key) {
-        lock.withLock {
-            if let removed = entries.removeValue(forKey: key) {
-                adjust(-removed.bytes)
-            }
-        }
         cache.removeObject(forKey: WrappedKey(key))
     }
 
     func removeAllObjects() {
-        lock.withLock {
-            entries.removeAll()
-            adjust(-ownBytes)
-        }
         cache.removeAllObjects()
     }
 
-    private func forget(_ box: Box) {
+    private func release(_ box: Box) {
         lock.withLock {
-            guard let entry = entries[box.key], entry.box == ObjectIdentifier(box) else { return }
-            entries[box.key] = nil
-            adjust(-entry.bytes)
+            guard let valueID = live.removeValue(forKey: ObjectIdentifier(box)),
+                  var count = values[valueID] else { return }
+            count.boxes -= 1
+            if count.boxes > 0 {
+                values[valueID] = count
+            } else {
+                values[valueID] = nil
+                adjust(-count.bytes)
+            }
         }
     }
 
     /// Caller holds `lock`.
     private func adjust(_ delta: Int) {
-        guard delta != 0 else { return }
         ownBytes += delta
         counter.add(delta)
     }

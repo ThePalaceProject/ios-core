@@ -167,9 +167,10 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
         let memoryMonitor = MemoryPressureMonitor.shared
         memoryMonitor.start()
         let networkExecutor = AppContainer.production().networkExecutor
-        AppCacheSizes.register(on: memoryMonitor.memoryEvents) {
-            networkExecutor.cacheMemoryUsage
-        }
+        AppCacheSizes.register(
+            on: memoryMonitor.memoryEvents,
+            sources: .production(networkResponses: { networkExecutor.cacheMemoryUsage })
+        )
 
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }

@@ -79,9 +79,13 @@ private final class ImageDecodeOperation: BlockOperation, @unchecked Sendable {}
 /// remove this workaround once the toolchain is fixed.)
 public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
     public static let shared = ImageCache()
+    /// Bytes of the shared cache's decoded images and compressed data. The
+    /// memory event line reads these, so it never creates the shared cache.
+    static let sharedDecodedImageBytes = CacheByteCounter()
+    static let sharedCompressedDataBytes = CacheByteCounter()
 
     private let dataCache: GeneralCache<String, Data>
-    private let memoryImages = CountedCache<String, UIImage>()
+    private let memoryImages: CountedCache<String, UIImage>
     private let defaultTTL: TimeInterval = 14 * 24 * 60 * 60
     private let limits: Limits
     private var maxDimension: CGFloat { limits.maxDimension }
@@ -123,15 +127,22 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
     }
 
     private convenience init() {
-        self.init(deviceMemoryMB: ProcessInfo.processInfo.physicalMemory / (1024 * 1024))
+        self.init(
+            deviceMemoryMB: ProcessInfo.processInfo.physicalMemory / (1024 * 1024),
+            decodedImageBytes: Self.sharedDecodedImageBytes,
+            compressedDataBytes: Self.sharedCompressedDataBytes
+        )
     }
 
     private init(
         deviceMemoryMB: UInt64,
         cacheName: String = "ImageCache",
-        encode: @escaping @Sendable (UIImage, CGFloat) -> Data? = { $0.jpegData(compressionQuality: $1) }
+        encode: @escaping @Sendable (UIImage, CGFloat) -> Data? = { $0.jpegData(compressionQuality: $1) },
+        decodedImageBytes: CacheByteCounter = CacheByteCounter(),
+        compressedDataBytes: CacheByteCounter = CacheByteCounter()
     ) {
-        dataCache = GeneralCache<String, Data>(cacheName: cacheName, mode: .memoryAndDisk)
+        memoryImages = CountedCache(counter: decodedImageBytes)
+        dataCache = GeneralCache<String, Data>(cacheName: cacheName, mode: .memoryAndDisk, byteCounter: compressedDataBytes)
         self.encode = encode
         limits = Self.limits(forDeviceMemoryMB: deviceMemoryMB)
         memoryImages.countLimit = limits.countLimit

@@ -77,18 +77,16 @@ actor TPPBookCoverRegistry {
     /// `nonisolated let` (no `(unsafe)`) because `ImageCacheType` is `Sendable`.
     nonisolated let imageCache: ImageCacheType
 
-    static let shared = TPPBookCoverRegistry(imageCache: ImageCache.shared)
+    static let shared = TPPBookCoverRegistry(imageCache: ImageCache.shared, sourceDataCounter: sharedSourceDataBytes)
+    /// Bytes of the shared registry's source data. The memory event line reads
+    /// this, so it never creates the registry.
+    static let sharedSourceDataBytes = CacheByteCounter()
 
     /// URL-keyed cache of raw image bytes, so one source decoded at several sizes
     /// (cell, detail, player) costs one network round-trip.
     ///
     /// `CountedCache` is `Sendable`, so it needs no `nonisolated(unsafe)`.
-    nonisolated private let sourceDataCache: CountedCache<String, NSData> = {
-        let cache = CountedCache<String, NSData>()
-        cache.totalCostLimit = 40 * 1024 * 1024 // 40MB of source bytes
-        cache.name = "TPPBookCoverRegistry.sourceData"
-        return cache
-    }()
+    nonisolated private let sourceDataCache: CountedCache<String, NSData>
 
     /// Bytes of source image data held now (PP-5509).
     nonisolated var sourceDataBytes: Int { sourceDataCache.byteCount }
@@ -192,9 +190,14 @@ actor TPPBookCoverRegistry {
         imageCache: ImageCacheType,
         hostFailureTracker: HostFailureTracker = HostFailureTracker(),
         urlSession: URLSession = TPPBookCoverRegistry.imageSession,
-        now: @escaping @Sendable () -> Date = Date.init
+        now: @escaping @Sendable () -> Date = Date.init,
+        sourceDataCounter: CacheByteCounter = CacheByteCounter()
     ) {
         self.imageCache = imageCache
+        let sourceDataCache = CountedCache<String, NSData>(counter: sourceDataCounter)
+        sourceDataCache.totalCostLimit = 40 * 1024 * 1024 // 40MB of source bytes
+        sourceDataCache.name = "TPPBookCoverRegistry.sourceData"
+        self.sourceDataCache = sourceDataCache
         self.hostFailureTracker = hostFailureTracker
         self.urlSession = urlSession
         self.now = now
