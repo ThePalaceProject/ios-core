@@ -22,6 +22,9 @@ VERIFY_PR = REPO / "scripts" / "verify-pr.sh"
 
 CONNECTOR_SHA = "7913158fa6b04ef8387a0b3bf32454bd795284fb"
 TOOLKIT_SHA = "1111111111111111111111111111111111111111"
+OVERDRIVE_SHA = "4444444444444444444444444444444444444444"
+CERTS_SHA = "855e8752fab169afd262102f75f3b22d793d013e"
+CERT_PATHS = "Certificates/Palace/iOS/AddLCP.swift Certificates/Palace/iOS/ReaderClientCert.sig"
 UDID = "11111111-2222-3333-4444-555555555555"
 
 ACTION = """name: 'Checkout Adobe RMSDK'
@@ -40,6 +43,26 @@ runs:
 FETCH = """#!/bin/bash
 AUDIOENGINE_VERSION="6.5.6"
 AUDIOENGINE_SHA256="{sha}"
+"""
+
+CERTS_ACTION = """name: 'Checkout Certificates'
+inputs:
+  ref:
+    default: "{ref}"
+  repo:
+    default: "ThePalaceProject/mobile-certificates"
+  paths:
+    default: "{paths}"
+  tooling:
+    default: "Certificates/Palace/iOS/ReleaseNotes.py"
+runs:
+  using: "composite"
+  steps: []
+"""
+
+CARTHAGE = """#!/bin/bash
+LIBLCP_VERSION="{version}"
+LIBLCP_SHA256="{sha}"
 """
 
 TOOLCHAIN = """[reference]
@@ -73,6 +96,7 @@ def commit_all(repo: Path, message: str) -> None:
 def tree(tmp_path):
     repo = tmp_path / "repo"
     (repo / ".github/actions/checkout-adobe").mkdir(parents=True)
+    (repo / ".github/actions/checkout-certificates").mkdir(parents=True)
     (repo / "scripts").mkdir()
     write_inputs(repo)
     (repo / "app.txt").write_text("app\n")
@@ -80,6 +104,7 @@ def tree(tmp_path):
     git(repo, "config", "user.email", "t@example.com")
     git(repo, "config", "user.name", "t")
     git(repo, "update-index", "--add", "--cacheinfo", f"160000,{TOOLKIT_SHA},ios-audiobooktoolkit")
+    git(repo, "update-index", "--add", "--cacheinfo", f"160000,{OVERDRIVE_SHA},ios-audiobook-overdrive")
     commit_all(repo, "base")
     (tmp_path / "toolchain.ini").write_text(TOOLCHAIN)
     (tmp_path / "simctl.json").write_text(json.dumps(SIMCTL))
@@ -88,9 +113,13 @@ def tree(tmp_path):
 
 
 def write_inputs(repo: Path, ref: str = CONNECTOR_SHA, sha256: str = "ab" * 32,
-                 repo_name: str = "ThePalaceProject/ios-drm-adeptconnector") -> None:
+                 repo_name: str = "ThePalaceProject/ios-drm-adeptconnector", certs_ref: str = CERTS_SHA,
+                 cert_paths: str = CERT_PATHS, lcp_version: str = "4.1.0", lcp_sha256: str = "ef" * 32) -> None:
     (repo / ".github/actions/checkout-adobe/action.yml").write_text(ACTION.format(ref=ref, repo=repo_name))
+    (repo / ".github/actions/checkout-certificates/action.yml").write_text(
+        CERTS_ACTION.format(ref=certs_ref, paths=cert_paths))
     (repo / "scripts/fetch-audioengine.sh").write_text(FETCH.format(sha=sha256))
+    (repo / "scripts/build-carthage.sh").write_text(CARTHAGE.format(version=lcp_version, sha=lcp_sha256))
 
 
 def run(repo: Path, *args: str, xcode: str | None = None, env: dict | None = None):
@@ -126,6 +155,10 @@ def test_manifest_records_each_pinned_input_from_the_file_that_pins_it(tree):
                                         "sha": CONNECTOR_SHA, "generation": "2"}
     assert m["inputs"]["audioengine"] == {"version": "6.5.6", "sha256": "ab" * 32}
     assert m["inputs"]["toolkit"] == {"recorded_sha": TOOLKIT_SHA}
+    assert m["inputs"]["certificates"] == {"repo": "ThePalaceProject/mobile-certificates", "sha": CERTS_SHA,
+                                           "paths": CERT_PATHS.split()}
+    assert m["inputs"]["liblcp"] == {"version": "4.1.0", "sha256": "ef" * 32}
+    assert m["inputs"]["overdrive"] == {"recorded_sha": OVERDRIVE_SHA}
     assert m["toolchain"] == {"xcode_version": "26.3", "xcode_build": "17C529", "sdk": "iphonesimulator26.2",
                               "runtime": "iOS 18.5", "device": "iPhone 16 Pro", "arch": "arm64",
                               "configuration": "Debug"}
@@ -274,6 +307,11 @@ def test_uncommitted_changes_make_a_clean_report_stale(tree):
 @pytest.mark.parametrize("change, field", [
     (lambda t: write_inputs(t, sha256="cd" * 32), "inputs.audioengine.sha256"),
     (lambda t: write_inputs(t, ref="2" * 40), "inputs.connector.sha"),
+    (lambda t: write_inputs(t, certs_ref="5" * 40), "inputs.certificates.sha"),
+    (lambda t: write_inputs(t, cert_paths=CERT_PATHS + " Certificates/Palace/iOS/APIKeys.json"),
+     "inputs.certificates.paths"),
+    (lambda t: write_inputs(t, lcp_version="4.2.0"), "inputs.liblcp.version"),
+    (lambda t: write_inputs(t, lcp_sha256="01" * 32), "inputs.liblcp.sha256"),
 ])
 def test_a_changed_pinned_input_names_the_input(tree, change, field):
     report = write_report(tree)
@@ -283,12 +321,16 @@ def test_a_changed_pinned_input_names_the_input(tree, change, field):
     assert r.returncode == 1 and field in r.stdout
 
 
-def test_a_toolkit_bump_names_the_toolkit(tree):
+@pytest.mark.parametrize("submodule, field", [
+    ("ios-audiobooktoolkit", "inputs.toolkit.recorded_sha"),
+    ("ios-audiobook-overdrive", "inputs.overdrive.recorded_sha"),
+])
+def test_a_submodule_bump_names_the_submodule(tree, submodule, field):
     report = write_report(tree)
-    git(tree, "update-index", "--cacheinfo", f"160000,{'3' * 40},ios-audiobooktoolkit")
-    git(tree, "commit", "-q", "-m", "bump toolkit")
+    git(tree, "update-index", "--cacheinfo", f"160000,{'3' * 40},{submodule}")
+    git(tree, "commit", "-q", "-m", "bump")
     r = run(tree, "check-stale", str(report))
-    assert r.returncode == 1 and "inputs.toolkit.recorded_sha" in r.stdout
+    assert r.returncode == 1 and field in r.stdout
 
 
 def test_a_different_xcode_is_stale_unless_only_the_tree_is_compared(tree):
