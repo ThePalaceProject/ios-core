@@ -522,6 +522,39 @@ record() {
   RESULTS+=("{\"check\":\"$check\",\"status\":\"$status\",\"detail\":\"$(echo "$detail" | sed 's/"/\\"/g')\"}")
 }
 
+# Writes the --report JSON, when asked for, with the build-input manifest
+# (scripts/build_manifest.py) that ties it to this tree; `build_manifest.py
+# check-stale <report>` later says whether it still applies. $1 = fast path
+# name, if any. A manifest that cannot be written is reported, not fatal: the
+# report then has none, and check-stale gives no verdict on it.
+BUILD_MANIFEST_ARGS=()
+write_report() {
+  [ -n "$REPORT_FILE" ] || return 0
+  local fast_path_line=""
+  if [ -n "${1:-}" ]; then fast_path_line="\"fast_path\": \"$1\","; fi
+  RESULTS_JSON=$(printf '%s,' "${RESULTS[@]}" | sed 's/,$//')
+  cat > "$REPORT_FILE" <<JSONEOF
+{
+  "branch": "$(git rev-parse --abbrev-ref HEAD)",
+  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  $fast_path_line
+  "pass_count": $PASS_COUNT,
+  "fail_count": $FAIL_COUNT,
+  "skip_count": $SKIP_COUNT,
+  "uncommitted_count": ${UNCOMMITTED_COUNT:-0},
+  "scanned_ref": "$(git rev-parse HEAD)",
+  "unit_tests": {"pass": $TEST_PASS, "fail": $TEST_FAIL},
+  "checks": [$RESULTS_JSON]
+}
+JSONEOF
+  if ! python3 "$SCRIPT_DIR/build_manifest.py" write --check verify-pr --from-checks \
+      --into "$REPORT_FILE" --udid "$SIM_ID" --configuration Debug \
+      ${BUILD_MANIFEST_ARGS[@]+"${BUILD_MANIFEST_ARGS[@]}"}; then
+    echo "  WARNING: the report has no build-input manifest (see the error above)"
+  fi
+  echo "  Report written to: $REPORT_FILE"
+}
+
 echo "=== Palace Pre-PR Verification ==="
 echo "Branch: $(git rev-parse --abbrev-ref HEAD)"
 # `echo "$EMPTY" | wc -l` is 1, not 0 — echo emits a newline even for an empty
@@ -571,29 +604,26 @@ if [ "$DOCS_ONLY" = "true" ]; then
   # does announce itself in stdout and in `"fast_path":"docs-only"`, so a
   # wrongly-taken fast path is legible even though a missing leg is not.
 
-  if [ -n "$REPORT_FILE" ]; then
-    RESULTS_JSON=$(printf '%s,' "${RESULTS[@]}" | sed 's/,$//')
-    cat > "$REPORT_FILE" <<JSONEOF
-{
-  "branch": "$(git rev-parse --abbrev-ref HEAD)",
-  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "fast_path": "docs-only",
-  "pass_count": $PASS_COUNT,
-  "fail_count": $FAIL_COUNT,
-  "skip_count": $SKIP_COUNT,
-  "uncommitted_count": ${UNCOMMITTED_COUNT:-0},
-  "scanned_ref": "$(git rev-parse HEAD)",
-  "unit_tests": {"pass": $TEST_PASS, "fail": $TEST_FAIL},
-  "checks": [$RESULTS_JSON]
-}
-JSONEOF
-    echo "  Report written to: $REPORT_FILE"
-  fi
+  write_report docs-only
 
   echo ""
   echo "CLEAR: docs-only fast-path — full battery skipped (no behavioral risk)."
   exit 0
 fi
+
+# 0. DRM connector revision. The build below links whatever tree adobe-rmsdk
+# (or ADEPT_RMSDK) points at; this leg fails when that tree is not the commit
+# recorded in .github/actions/checkout-adobe/action.yml, which CI builds.
+echo "--- DRM connector ---"
+CONNECTOR_OUTPUT=$(python3 "$REPO_ROOT/scripts/drm_connector.py" --repo-root "$REPO_ROOT" check 2>&1)
+CONNECTOR_RC=$?
+echo "$CONNECTOR_OUTPUT" | sed 's/^/  /'
+case "$CONNECTOR_RC" in
+  0) record "drm_connector" "pass" "Connector tree is at the recorded commit" ;;
+  2) record "drm_connector" "skip" "No connector tree (noDRM setup)" ;;
+  1) record "drm_connector" "fail" "Connector tree is not at the recorded commit (fix hint above)" ;;
+  *) record "drm_connector" "fail" "Connector revision could not be read (exit $CONNECTOR_RC)" ;;
+esac
 
 # 1. Build check
 # Skipped in --mutation-only mode: palace_mutate.py rebuilds per-mutant so the
@@ -1841,24 +1871,7 @@ echo "  Passed: $PASS_COUNT"
 echo "  Failed: $FAIL_COUNT"
 echo "  Skipped: $SKIP_COUNT (ran nothing — not a pass)"
 
-# Write JSON report if requested
-if [ -n "$REPORT_FILE" ]; then
-  RESULTS_JSON=$(printf '%s,' "${RESULTS[@]}" | sed 's/,$//')
-  cat > "$REPORT_FILE" <<JSONEOF
-{
-  "branch": "$(git rev-parse --abbrev-ref HEAD)",
-  "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-  "pass_count": $PASS_COUNT,
-  "fail_count": $FAIL_COUNT,
-  "skip_count": $SKIP_COUNT,
-  "uncommitted_count": ${UNCOMMITTED_COUNT:-0},
-  "scanned_ref": "$(git rev-parse HEAD)",
-  "unit_tests": {"pass": $TEST_PASS, "fail": $TEST_FAIL},
-  "checks": [$RESULTS_JSON]
-}
-JSONEOF
-  echo "  Report written to: $REPORT_FILE"
-fi
+write_report
 
 if [ "$FAIL_COUNT" -gt 0 ]; then
   echo ""

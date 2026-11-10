@@ -27,6 +27,8 @@ enum ActivityCategory: String, CaseIterable, Sendable {
     case housekeeping
     /// Audiobook play-time upload.
     case telemetryUpload
+    /// The audiobook preview's remaining-time label.
+    case previewCountdown
 }
 
 enum AmbientSyncDecision: String, Sendable {
@@ -63,6 +65,7 @@ enum ActivityRules {
     static let uiTickInterval: TimeInterval = 0.2
     static let housekeepingInterval: TimeInterval = 60
     static let telemetryUploadInterval: TimeInterval = 60
+    static let previewCountdownInterval: TimeInterval = 1
     /// While not visible the process stays alive only while audio plays.
     static let backgroundTelemetryUploadInterval: TimeInterval = 15 * 60
 
@@ -78,6 +81,9 @@ enum ActivityRules {
             return isConstrained(state) ? housekeepingInterval * 2 : housekeepingInterval
         case .telemetryUpload:
             return isVisible(state) ? telemetryUploadInterval : backgroundTelemetryUploadInterval
+        case .previewCountdown:
+            // Drawn only by the main scene. Never slowed: a slower countdown skips seconds.
+            return isMainSceneVisible(state) ? previewCountdownInterval : nil
         }
     }
 

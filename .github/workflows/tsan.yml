@@ -65,7 +65,7 @@ jobs:
     timeout-minutes: 120
     steps:
       - name: Set up Xcode 26
-        uses: maxim-lobanov/setup-xcode@v1
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
           xcode-version: '26.6'
 
@@ -73,7 +73,7 @@ jobs:
         run: xcodebuild -version
 
       - name: Checkout main repo and submodules
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: true
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
@@ -88,7 +88,7 @@ jobs:
           cat "$RUNNER_TEMP/tsan-suites.txt"
 
       - name: Cache Swift packages
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             .build
@@ -99,7 +99,7 @@ jobs:
             ${{ runner.os }}-spm-
 
       - name: Cache TSan DerivedData
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.temp }}/tsan-derived-data
           key: ${{ runner.os }}-tsan-deriveddata-${{ github.head_ref || github.ref_name }}
@@ -109,11 +109,9 @@ jobs:
             ${{ runner.os }}-tsan-deriveddata-
 
       - name: Checkout Certificates
-        uses: actions/checkout@v7
+        uses: ./.github/actions/checkout-certificates
         with:
-          repository: ThePalaceProject/mobile-certificates
           token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
-          path: ./mobile-certificates
 
       - name: Checkout Adobe RMSDK
         uses: ./.github/actions/checkout-adobe
@@ -215,7 +213,7 @@ jobs:
 
       - name: Upload TSan log and results
         if: ${{ failure() && steps.tsan.outcome == 'failure' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tsan-results
           path: |

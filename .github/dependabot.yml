@@ -16,11 +16,23 @@ updates:
     commit-message:
       prefix: "chore(deps)"
 
-  - package-ecosystem: "github-actions" # the CI workflows under .github/workflows/
-    directory: "/"
+  # Every third-party Action is pinned to a full commit SHA with its full
+  # version as a trailing comment (`uses: owner/repo@<sha> # v7.0.1`), so a
+  # moved tag cannot change what CI runs; scripts/tests/test_actions_pinned.py
+  # fails on any other form. Dependabot updates the SHA and the comment
+  # together, in one grouped PR a week. To move one by hand, resolve the tag
+  # with `gh api repos/<owner>/<repo>/commits/<tag> -q .sha` and replace both.
+  - package-ecosystem: "github-actions" # .github/workflows/ and the composite actions
+    directories:
+      - "/"
+      - "/.github/actions/*"
     schedule:
       interval: "weekly"
     target-branch: "develop"
     open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"
     commit-message:
       prefix: "chore(ci)"

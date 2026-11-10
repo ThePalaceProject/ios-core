@@ -62,6 +62,7 @@ Refresh the relevant one before changing code in that area.
 | [`account-state-machine.md`](./account-state-machine.md) | Systemic fix for the load-readiness race class: the account state machine, its transition table, and the races it closes. |
 | [`audiobook-systemic-overhaul.md`](./audiobook-systemic-overhaul.md) | Three-phase Palace-side refactor of the audiobook stack — vendor adapter extraction, position-writer unification, singleton elimination. Closes six recurring failure patterns including the PP-4407 Marketplace regression class. <!-- audit-verified --> |
 | [`in-app-navigation-during-playback.md`](./in-app-navigation-during-playback.md) | Design for letting users navigate the app while an audiobook plays or an ebook session is open. |
+| [`per-book-registry-storage.md`](./per-book-registry-storage.md) | The shelf as a record file and a position file per book, behind a flag: on-disk layout, when the per-book files are trusted, migration with read-back verification, write order and crash behavior. |
 | [`sideloading-plan.md`](./sideloading-plan.md) | Sideloaded-content design: registry sync exemption, content-type handling, and the settings surface. |
 | [`lcp-first-open-reliable-start.md`](./lcp-first-open-reliable-start.md) | Making the first open of an LCP title start reliably. DRAFT — proposed, not ratified. |
 | [`ws3-overdrive-refulfill-loader-seam.md`](./ws3-overdrive-refulfill-loader-seam.md) | The loader seam that lets an expired OverDrive URL re-fulfill instead of failing. Accepted. |

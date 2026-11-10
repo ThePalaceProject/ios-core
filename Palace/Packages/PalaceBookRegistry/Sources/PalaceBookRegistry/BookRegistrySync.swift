@@ -59,6 +59,11 @@ final class BookRegistrySync: @unchecked Sendable {
 
   private let contentRedownloadDelay: TimeInterval
   private let orphanRedownloadDelay: TimeInterval
+  /// False for the account-scoped instance `with(account:)` builds, which reads
+  /// another library's shelf and must not move or trust its files.
+  private let allowsPerBookStorage: Bool
+  /// Which account uses per-book files this launch (PP-5507).
+  private let perBookSession = PerBookRegistrySession()
   /// Serial queue for disk writes — prevents out-of-order save races where a stale
   /// snapshot could overwrite a newer one if two saves dispatch concurrently.
   private let diskWriteQueue = DispatchQueue(label: "com.palace.registryDiskWrite")
@@ -142,8 +147,10 @@ final class BookRegistrySync: @unchecked Sendable {
     accountScope: any AccountScopeProviding,
     dependencies: RegistryExternalDependencies,
     contentRedownloadDelay: TimeInterval = BookRegistrySync.defaultContentRedownloadDelay,
-    orphanRedownloadDelay: TimeInterval = BookRegistrySync.defaultOrphanRedownloadDelay
+    orphanRedownloadDelay: TimeInterval = BookRegistrySync.defaultOrphanRedownloadDelay,
+    allowsPerBookStorage: Bool = true
   ) {
+    self.allowsPerBookStorage = allowsPerBookStorage
     self.contentRedownloadDelay = contentRedownloadDelay
     self.orphanRedownloadDelay = orphanRedownloadDelay
     self.store = store
@@ -282,52 +289,38 @@ final class BookRegistrySync: @unchecked Sendable {
       var orphanedBooksNeedingRedownload = [TPPBook]()
 
       var newRegistry = [String: TPPBookRegistryRecord]()
-      var needsRebuild = false
-      var needsRewrite = false
-
-      // Reliability WS-B / INV-1: distinguish an ABSENT registry file from an
-      // existing-but-CORRUPT one. The old code conflated both into a single
-      // `else` that silently zeroed the shelf, and the next save() then
-      // overwrote the (recoverable) corrupt file with a valid-but-empty one —
-      // erasing the patron's whole shelf on a single bad write. We now classify
-      // the bytes, quarantine a corrupt file (never destroy), and try the
-      // last-good `.bak` before falling back to empty + a rebuild flag.
-      let fileExists = FileManager.default.fileExists(atPath: url.path)
-      let fileData: Data? = fileExists ? try? Data(contentsOf: url) : nil
-      let classification: RegistryFileRecovery.Classification
-      if !fileExists {
-        classification = .empty
-      } else if let fileData {
-        classification = RegistryFileRecovery.classify(data: fileData)
+      let fileRead: RegistryFileRecovery.LoadRead
+      if self.allowsPerBookStorage && self.dependencies.perBookStorageEnabled() {
+        // On the disk queue, so no queued save writes either file between
+        // reading `registry.json` and deciding whether the per-book files are newer.
+        var result = RegistryFileRecovery.LoadRead()
+        self.runOnDiskWriteQueue {
+          result = RegistryFileRecovery.readForLoad(at: url)
+          result.records = self.perBookSession.prepare(
+            account: account, registryURL: url,
+            primaryRecords: result.records, primaryData: result.data, primaryIsValid: result.isValid,
+            appVersion: self.dependencies.appVersion(), beforeWrite: self.dependencies.beforeRegistryWrite
+          )
+        }
+        fileRead = result
       } else {
-        // File exists but could not be read — treat as corrupt (recoverable).
-        classification = .corrupt
+        self.perBookSession.deactivate(account: nil)
+        var read = RegistryFileRecovery.readForLoad(at: url)
+        // With the flag off, positions saved to trusted per-book files after
+        // registry.json was last written are still the patron's newest; take
+        // them read-only and write them to registry.json below.
+        if self.allowsPerBookStorage, let records = read.records,
+           let merged = PerBookRegistryFiles.newerPositions(registryURL: url, primaryRecords: records, primaryData: read.data) {
+          Log.info(#file, "  Took positions saved in per-book files after registry.json was written")
+          read.records = merged
+          read.tookPerBookPositions = true
+        }
+        fileRead = read
       }
-
-      var recordsToParse: [TPPBookRegistryData]? = nil
-      switch classification {
-      case .valid(let records):
-        recordsToParse = records
-        if RegistryFileRecovery.needsMigration(data: fileData) {
-          Log.info(#file, "  Registry file is unversioned (legacy) — will migrate to schema v\(RegistryFileRecovery.currentSchemaVersion) on next save")
-          needsRewrite = true
-        }
-      case .empty:
-        Log.info(#file, "  No existing registry file found — starting with an empty registry")
-      case .corrupt:
-        Log.error(#file, "  Registry file exists but is CORRUPT — quarantining (never overwriting/destroying)")
-        if let quarantined = RegistryFileRecovery.quarantine(corruptFileAt: url) {
-          Log.error(#file, "  Quarantined corrupt registry to \(quarantined.lastPathComponent)")
-        }
-        if let recovered = RegistryFileRecovery.recoverFromBackup(for: url) {
-          Log.info(#file, "  Recovered \(recovered.count) record(s) from last-good .bak backup")
-          recordsToParse = recovered
-          needsRewrite = true
-        } else {
-          Log.error(#file, "  No usable .bak backup — leaving registry empty and flagging needsRebuildFromServer (next authenticated sync repopulates from the loans feed)")
-          needsRebuild = true
-        }
-      }
+      let recordsToParse = fileRead.records
+      let needsRebuild = fileRead.needsRebuild
+      let needsRewrite = fileRead.needsRewrite
+      let tookPerBookPositions = fileRead.tookPerBookPositions
 
       if let records = recordsToParse {
         Log.debug(#file, "  Found \(records.count) books in registry")
@@ -397,6 +390,9 @@ final class BookRegistrySync: @unchecked Sendable {
         // until an authoritative server sync repopulates the shelf.
         self.needsRebuildFromServer = needsRebuild
         self.needsPrimaryRewrite = needsRewrite
+        if tookPerBookPositions {
+          self.save(for: loadedAccount, scope: .positionOnly)
+        }
 
         // Register the delayed recovery work BEFORE announcing the load.
         //
@@ -731,6 +727,10 @@ final class BookRegistrySync: @unchecked Sendable {
             || self.needsPrimaryRewrite
             || (self.needsRebuildFromServer && !feedIdentifiers.isEmpty) {
           self.save(for: accountUUID, serverAuthoritative: true)
+        } else if self.perBookSession.needsSingleFileWrites(for: accountUUID) {
+          // Sync end is one of the events that bring `registry.json` up to the
+          // position files.
+          self.save(for: accountUUID, serverAuthoritative: false, scope: .positionOnly, onlyIfSingleFileBehind: true)
         }
 
         for change in stateChanges {
@@ -752,8 +752,8 @@ final class BookRegistrySync: @unchecked Sendable {
     let matches: Bool
   }
 
-  /// Compares a stored record with its feed entry. It leaves out the decoded
-  /// cover images, so it can run off the main thread.
+  /// Compares a stored record with its feed entry. It writes no cover image
+  /// (covers live in `BookCoverStore`), so it can run off the main thread.
   static func compare(
     record: TPPBookRegistryRecord,
     with book: TPPBook,
@@ -770,7 +770,7 @@ final class BookRegistrySync: @unchecked Sendable {
     // — without this guard, a later sync overwrites a previously-enriched record
     // and MyBooks cells lose their author line until a catalog visit refills it.
     let reconciled = reconciledRecord(
-      record, book: record.book.mergingPreservingMetadataWithoutImages(from: book), state: nextState
+      record, book: record.book.mergingPreservingMetadata(from: book), state: nextState
     )
     return FeedComparison(record: record, nextState: nextState, matches: recordsMatch(record, reconciled))
   }
@@ -837,10 +837,19 @@ final class BookRegistrySync: @unchecked Sendable {
     save(for: account, serverAuthoritative: serverAuthoritative, scope: .shelf)
   }
 
-  private func save(for account: String, serverAuthoritative: Bool, scope: RegistrySaveScope) {
+  /// - Parameter onlyIfSingleFileBehind: write only when position files are
+  ///   newer than `registry.json`; the per-book layout's app-event catch-up.
+  private func save(
+    for account: String,
+    serverAuthoritative: Bool,
+    scope: RegistrySaveScope,
+    onlyIfSingleFileBehind: Bool = false
+  ) {
     guard let registryUrl = registryUrl(for: account) else { return }
 
     let generation = resetGeneration(for: account)
+    // Before the snapshot, so position files written later win over it.
+    let perBookSave = perBookSession.beginSave(for: account)
     let snapshot = store.registrySnapshot()
     let isEmpty = snapshot.isEmpty
     let needsRebuild = needsRebuildFromServer
@@ -857,6 +866,8 @@ final class BookRegistrySync: @unchecked Sendable {
 
     diskWriteQueue.async { [self] in
       if isStale(generation, for: account) { return }
+      if onlyIfSingleFileBehind, !perBookSession.isSingleFileBehind(account) { return }
+      let perBook = perBookSession.stillActive(perBookSave, for: account)
       // INV-1: during the post-corrupt-load rebuild window, only an authoritative
       // server sync may persist an empty shelf. Refuse any other empty save — the
       // corrupt original is quarantined and the last-good `.bak` (if present) still
@@ -875,6 +886,10 @@ final class BookRegistrySync: @unchecked Sendable {
         Log.error(#file, "INV-1: refusing to persist an EMPTY registry (no server authority) over a non-empty on-disk shelf — needsRebuild: \(needsRebuild), onDiskHasRecords: \(RegistryFileRecovery.onDiskHasRecords(for: registryUrl))")
         return
       }
+      if isEmpty, !serverAuthoritative, perBook?.files.hasRecordFiles() == true {
+        Log.error(#file, "INV-1: refusing to persist an EMPTY registry (no server authority) over non-empty per-book files")
+        return
+      }
       do {
         let directoryURL = registryUrl.deletingLastPathComponent()
         if !FileManager.default.fileExists(atPath: directoryURL.path) {
@@ -882,6 +897,7 @@ final class BookRegistrySync: @unchecked Sendable {
         }
         directoryURL.registryExcludeFromBackup()
         let registryData = try JSONSerialization.data(withJSONObject: payload.value, options: .fragmentsAllowed)
+        let perBookWritten = perBookSession.writeShelf(perBook, records: payload.value[TPPBookRegistryKey.records.rawValue], account: account)
         // Refresh the last-good `.bak` BEFORE overwriting the primary, but only
         // for a good snapshot (non-empty, or a server-authoritative empty) so a
         // transient empty can never clobber the backup.
@@ -894,6 +910,8 @@ final class BookRegistrySync: @unchecked Sendable {
         try dependencies.beforeRegistryWrite(.primary, registryUrl)
         try registryData.write(to: registryUrl, options: .atomic)
         needsPrimaryRewrite = false
+        perBookSession.singleFileWritten(account: account, registryData: registryData,
+                                         save: perBookWritten, appVersion: dependencies.appVersion())
         if !isEmpty || serverAuthoritative {
           needsRebuildFromServer = false
         }
@@ -910,7 +928,10 @@ final class BookRegistrySync: @unchecked Sendable {
 
   /// Blocking save — used on teardown (scene disconnect, last-read-position) where
   /// the caller cannot yield. Same account-capture contract as `save(for:)`.
-  func saveSync(for account: String) {
+  ///
+  /// - Parameter onlyIfSingleFileBehind: write only when position files are
+  ///   newer than `registry.json`; see `writeSingleFileIfBehind(for:)`.
+  func saveSync(for account: String, onlyIfSingleFileBehind: Bool = false) {
     guard let registryUrl = registryUrl(for: account) else { return }
 
     // Snapshot in the CALLER's context — NOT inside `diskWriteQueue`. `saveSync`
@@ -922,6 +943,7 @@ final class BookRegistrySync: @unchecked Sendable {
     // race). The in-memory snapshot is independent of disk-flush ordering, so
     // reading it here is behavior-equivalent for persistence.
     let generation = resetGeneration(for: account)
+    let perBookSave = perBookSession.beginSave(for: account)
     let snapshot = store.registrySnapshot()
     let isEmpty = snapshot.isEmpty
     let needsRebuild = needsRebuildFromServer
@@ -938,6 +960,8 @@ final class BookRegistrySync: @unchecked Sendable {
     // `diskWriteQueue.sync` would deadlock against itself.
     let write = {
       if self.isStale(generation, for: account) { return }
+      if onlyIfSingleFileBehind, !self.perBookSession.isSingleFileBehind(account) { return }
+      let perBook = self.perBookSession.stillActive(perBookSave, for: account)
       // INV-1: saveSync is teardown persistence (bookmarks/location), never a
       // server reconciliation — so it is always non-authoritative. Refuse an
       // empty snapshot over a non-empty backup during the rebuild window.
@@ -949,6 +973,10 @@ final class BookRegistrySync: @unchecked Sendable {
         Log.error(#file, "INV-1: refusing synchronous EMPTY registry save over a non-empty on-disk shelf — needsRebuild: \(needsRebuild), onDiskHasRecords: \(RegistryFileRecovery.onDiskHasRecords(for: registryUrl))")
         return
       }
+      if isEmpty, perBook?.files.hasRecordFiles() == true {
+        Log.error(#file, "INV-1: refusing synchronous EMPTY registry save over non-empty per-book files")
+        return
+      }
       do {
         let directoryURL = registryUrl.deletingLastPathComponent()
         if !FileManager.default.fileExists(atPath: directoryURL.path) {
@@ -956,12 +984,15 @@ final class BookRegistrySync: @unchecked Sendable {
         }
         directoryURL.registryExcludeFromBackup()
         let registryData = try JSONSerialization.data(withJSONObject: registryObject, options: .fragmentsAllowed)
+        let perBookWritten = self.perBookSession.writeShelf(perBook, records: registryObject[TPPBookRegistryKey.records.rawValue], account: account)
         if !isEmpty {
           try? RegistryFileRecovery.writeBackup(data: registryData, for: registryUrl, beforeWrite: self.dependencies.beforeRegistryWrite)
         }
         try self.dependencies.beforeRegistryWrite(.primary, registryUrl)
         try registryData.write(to: registryUrl, options: .atomic)
         self.needsPrimaryRewrite = false
+        self.perBookSession.singleFileWritten(account: account, registryData: registryData,
+                                              save: perBookWritten, appVersion: self.dependencies.appVersion())
         if !isEmpty {
           self.needsRebuildFromServer = false
         }
@@ -972,6 +1003,38 @@ final class BookRegistrySync: @unchecked Sendable {
     }
 
     runOnDiskWriteQueue(write)
+  }
+
+  /// Persists the positions of `identifiers`. With per-book files in use for
+  /// `account` it writes one small position file per book and nothing else;
+  /// otherwise it is the position-only save of `registry.json`.
+  func savePosition(for account: String, identifiers: Set<String>) {
+    guard let files = perBookSession.files(for: account) else {
+      save(for: account, scope: .positionOnly)
+      return
+    }
+    // After the read, so a shelf snapshot that missed this position has the
+    // lower sequence and loses to the position file.
+    let generation = resetGeneration(for: account)
+    let positions = SendablePositions(value: store.readRegistry { registry in
+      identifiers.sorted().compactMap { identifier in
+        registry[identifier].map { (identifier: identifier, location: $0.location?.dictionaryRepresentation) }
+      }
+    })
+    let perBookSave = PerBookRegistrySession.Save(files: files, sequence: files.allocateSequence())
+    perBookSession.markSingleFileBehind(account)
+    diskWriteQueue.async { [self] in
+      if isStale(generation, for: account) { return }
+      perBookSession.writePositions(positions.value, save: perBookSave, account: account)
+    }
+  }
+
+  /// Writes `registry.json` when the account's position files are newer than
+  /// it. `flushPendingPositions` runs it at the app events: background,
+  /// terminate and a library switch. Does nothing when the flag was off at load.
+  func writeSingleFileIfBehind(for account: String) {
+    guard perBookSession.needsSingleFileWrites(for: account) else { return }
+    saveSync(for: account, onlyIfSingleFileBehind: true)
   }
 
   /// Runs `work` on `diskWriteQueue` and returns after it, inline when already
@@ -1038,8 +1101,12 @@ final class BookRegistrySync: @unchecked Sendable {
     syncUrl = nil
     store.removeAll()
     advanceResetGeneration(for: account)
+    perBookSession.forget(account)
     if let registryUrl = registryUrl(for: account) {
       runOnDiskWriteQueue {
+        // Whatever the flag says: per-book files from an earlier launch hold
+        // the same shelf and must not outlive the sign-out.
+        PerBookRegistryFiles.purge(for: registryUrl)
         do {
           try FileManager.default.removeItem(at: registryUrl)
         } catch {
@@ -1303,6 +1370,12 @@ public struct SendableErrorDocument: @unchecked Sendable {
 /// read-off-thread confinement. Mirrors `SendableErrorDocument`.
 private struct SendableRegistryPayload: @unchecked Sendable {
   let value: [String: Any]
+}
+
+/// Sendable carrier for the location dictionaries `savePosition` reads from
+/// the store and writes on `diskWriteQueue`. Built once, only read after.
+private struct SendablePositions: @unchecked Sendable {
+  let value: [(identifier: String, location: [String: Any]?)]
 }
 
 /// What a registry save persists. Decides the side effects, not the bytes: both

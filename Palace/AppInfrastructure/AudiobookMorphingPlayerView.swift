@@ -213,12 +213,10 @@ struct AudiobookMorphingPlayerView: View {
                 }
         }
         .ignoresSafeArea()
-        .onReceive(Self.audioWaitTicker) { sampleAudioWait(at: $0) }
+        // Polled rather than observed: `isLoaded` and the transport's waiting
+        // state are read off the player and not published.
+        .onReceive(presenter.audioWaitTicks) { sampleAudioWait(at: $0) }
     }
-
-    /// Samples the wait for audio. Polled rather than observed: `isLoaded` and
-    /// the transport's waiting state are read off the player and not published.
-    private static let audioWaitTicker = Timer.publish(every: 0.2, on: .main, in: .common).autoconnect()
 
     private func sampleAudioWait(at now: Date) {
         let waiting = Self.isAwaitingAudio(
