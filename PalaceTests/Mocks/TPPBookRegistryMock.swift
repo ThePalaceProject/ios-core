@@ -152,11 +152,20 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider, @unchecked Sendabl
         holdsDidChangeSubject.send(())
     }
 
+    private var _syncCallCount = 0
+    /// Calls to either `sync` overload.
+    var syncCallCount: Int { lock.withLock { _syncCallCount } }
+    private var _loadCallCount = 0
+    var loadCallCount: Int { lock.withLock { _loadCallCount } }
+
     func sync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)?) {
+        lock.withLock { _syncCallCount += 1 }
         completion?(nil, false)
     }
 
-    func load() {}
+    func load() {
+        lock.withLock { _loadCallCount += 1 }
+    }
 
     // MARK: - Mock Data Storage
     private var _registry = [String: TPPBookRegistryRecord]()
@@ -409,6 +418,7 @@ extension TPPBookRegistryMock: TPPBookRegistrySyncing {
 
     func sync() {
         lock.withLock {
+            _syncCallCount += 1
             _isSyncing = true
             // Mock completes synchronously - no delay needed for tests
             _isSyncing = false

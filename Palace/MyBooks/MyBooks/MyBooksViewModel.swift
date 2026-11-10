@@ -61,6 +61,17 @@ enum Group: Int {
     /// stale-data guard from F-007). Tests can override this closure to
     /// bypass the guard when seeding a registry with mock books.
     private let isUserAuthorizedForRegistry: () -> Bool
+    private let hasCredentials: () -> Bool
+    /// Replays the current state first, which the observer drops.
+    private let authStateChanges: AnyPublisher<TPPAccountAuthState, Never>
+    private let activityPolicy: ActivityPolicy?
+    /// The sign-in change sync waits while the app is not visible (PP-5508).
+    /// Credentials are checked again when it runs: a sign-out while it waits
+    /// would otherwise make `reloadData()` present a sign-in sheet.
+    private lazy var signInSync = DeferredAmbientSync(policy: activityPolicy) { [weak self] in
+        guard let self, self.hasCredentials() else { return }
+        self.reloadData()
+    }
 
     /// Tracks whether the My Books tab is currently visible. When false,
     /// notification-driven reloads are deferred until the tab reappears,
@@ -84,7 +95,8 @@ enum Group: Int {
             accountsManager: appContainer.accountsManager,
             settings: appContainer.settings,
             downloadCenter: appContainer.downloadCenter,
-            isOnline: { reachability.isConnectedToNetwork() }
+            isOnline: { reachability.isConnectedToNetwork() },
+            activityPolicy: appContainer.activityPolicy
         )
     }
 
@@ -94,7 +106,10 @@ enum Group: Int {
         settings: TPPSettings,
         downloadCenter: MyBooksDownloadCenter,
         isUserAuthorizedForRegistry: (() -> Bool)? = nil,
-        isOnline: (() -> Bool)? = nil
+        isOnline: (() -> Bool)? = nil,
+        hasCredentials: (() -> Bool)? = nil,
+        authStateChanges: AnyPublisher<TPPAccountAuthState, Never>? = nil,
+        activityPolicy: ActivityPolicy? = nil
     ) {
         self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager
@@ -114,6 +129,11 @@ enum Group: Int {
             guard let acc = accountsManager?.currentUserAccount else { return false }
             return !acc.needsAuth || acc.hasCredentials()
         }
+        self.hasCredentials = hasCredentials ?? { [weak accountsManager] in
+            accountsManager?.currentUserAccount.hasCredentials() ?? false
+        }
+        self.authStateChanges = authStateChanges ?? UserAccountPublisher.shared.authStateDidChangePublisher
+        self.activityPolicy = activityPolicy
         super.init()
 
         registerPublishers()
@@ -412,15 +432,13 @@ enum Group: Int {
         // fires in tests against a mock account that has no real
         // credentials and clobbers test fixtures (18 MyBooks tests
         // regressed locally without this guard during 3.0.1 hotfix work).
-        UserAccountPublisher.shared.authStateDidChangePublisher
+        authStateChanges
             .dropFirst()
             .filter { $0 == .loggedIn }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                guard let self,
-                      self.accountsManager.currentUserAccount.hasCredentials()
-                else { return }
-                self.reloadData()
+                guard let self, self.hasCredentials() else { return }
+                self.signInSync.request()
             }
             .store(in: &observers)
     }

@@ -97,6 +97,12 @@ final class ActivityPolicy {
         return decision
     }
 
+    /// Marks a deferred ambient sync running on the transition to visible,
+    /// so a device trace counts runs as well as decisions.
+    func recordDeferredAmbientSyncRun() {
+        signposter.emitEvent("ambientSync", "ranOnVisible")
+    }
+
     /// Ticks at the category's current interval. Re-arms when the interval
     /// changes and emits nothing while it is nil.
     func ticks(for category: ActivityCategory) -> AnyPublisher<Date, Never> {
