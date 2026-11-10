@@ -882,6 +882,13 @@ public class TPPBookRegistry: @unchecked Sendable {
         }
     }
 
+    /// Test-only: the position save of `identifiers` for the current library,
+    /// called from outside a store write. Production calls it inside one.
+    @_spi(Testing) public func _savePositionForTesting(_ identifiers: Set<String>) {
+        guard let account = accountScope.currentAccountID else { return }
+        syncEngine.savePosition(for: account, identifiers: identifiers)
+    }
+
     /// Test-only: like `_awaitPendingWritesForTesting`, but ALSO drains the sync
     /// engine's async disk-write queue so a subsequent ON-DISK assertion is
     /// race-free. Order is load-bearing: drain the store-write barrier FIRST (so

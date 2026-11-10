@@ -34,6 +34,10 @@ final class PerBookRegistryFiles: @unchecked Sendable {
   /// `registry.json` until the next version.
   static let maxMigrationAttempts = 3
 
+  /// While these files are in use, a shelf save refreshes the last-good
+  /// backup at most this often.
+  static let backupInterval: TimeInterval = 10 * 60
+
   static let booksFolderName = "books"
   static let stagingFolderName = "books.migrating"
   static let stateFileName = "books-state.json"
@@ -68,9 +72,17 @@ final class PerBookRegistryFiles: @unchecked Sendable {
   let stateURL: URL
   private let beforeWrite: BeforeWrite
 
-  /// Content of each book's files as on disk, so a save writes only what changed.
+  /// Content of each book's files as on disk, so a save writes only what
+  /// changed. A position is kept only while its file is the one load would
+  /// take: a record write for the book clears it, so the next position save
+  /// for that book writes its file even when the position is the same.
   private var recordContent: [String: Data] = [:]
   private var positionContent: [String: Data] = [:]
+  /// Books with a record or position file on disk, so a removal finds a file
+  /// whose content is no longer cached.
+  private var booksWithFiles = Set<String>()
+  /// When this load last wrote the last-good backup; nil before the first.
+  private var lastBackup: Date?
   private let sequenceLock = NSLock()
   /// Guarded by `sequenceLock`.
   private var nextSequence = 1
@@ -166,7 +178,8 @@ final class PerBookRegistryFiles: @unchecked Sendable {
     return state
   }
 
-  /// A new sequence number for a save.
+  /// A new sequence number for a save. The caller takes it in the same store
+  /// read as the shelf or positions the save writes.
   func allocateSequence() -> Int {
     sequenceLock.withLock {
       defer { nextSequence += 1 }
@@ -218,6 +231,7 @@ final class PerBookRegistryFiles: @unchecked Sendable {
     let contents = Self.read(from: booksDirectory)
     recordContent = [:]
     positionContent = [:]
+    booksWithFiles = Set(contents.records.keys).union(contents.positions.keys)
     var highest = state.registrySequence
     for (identifier, entry) in contents.records {
       recordContent[identifier] = try? Self.encode(Self.recordObject(identifier, entry.record))
@@ -230,13 +244,19 @@ final class PerBookRegistryFiles: @unchecked Sendable {
     continueSequence(after: highest)
     let merged = Self.merge(primary: primaryRecords, contents: contents,
                             registrySequence: state.registrySequence, includeRecords: true)
+    // A position file that lost to its record or to registry.json is not what
+    // load shows, so the same position saved again must still be written.
+    for identifier in Set(positionContent.keys).subtracting(merged.positionWinners) {
+      positionContent[identifier] = nil
+    }
     return (merged.records, merged.newer)
   }
 
   /// For each book, the newest of `registry.json` (at `registrySequence`), its
   /// record file and its position file. A record file older than
   /// `registry.json` for a book `registry.json` lacks is a removal that already
-  /// reached `registry.json`. `newer` is true when any file won over it.
+  /// reached `registry.json`. `newer` is true when any file won over it;
+  /// `positionWinners` names the books whose position file won.
   ///
   /// - Parameter includeRecords: false for a launch with the flag off, which
   ///   takes only positions from the per-book files.
@@ -245,11 +265,12 @@ final class PerBookRegistryFiles: @unchecked Sendable {
     contents: Contents,
     registrySequence: Int,
     includeRecords: Bool
-  ) -> (records: [TPPBookRegistryData], newer: Bool) {
+  ) -> (records: [TPPBookRegistryData], newer: Bool, positionWinners: Set<String>) {
     var byIdentifier: [String: TPPBookRegistryData] = [:]
     var locationSequence: [String: Int] = [:]
     var order: [String] = []
     var newer = false
+    var positionWinners = Set<String>()
     for record in primary {
       guard let identifier = identifier(of: record) else { continue }
       if byIdentifier[identifier] == nil { order.append(identifier) }
@@ -267,9 +288,10 @@ final class PerBookRegistryFiles: @unchecked Sendable {
     for (identifier, entry) in contents.positions {
       guard byIdentifier[identifier] != nil, entry.sequence > locationSequence[identifier] ?? .max else { continue }
       byIdentifier[identifier]?[locationKey] = entry.location
+      positionWinners.insert(identifier)
       newer = true
     }
-    return (order.compactMap { byIdentifier[$0] }, newer)
+    return (order.compactMap { byIdentifier[$0] }, newer, positionWinners)
   }
 
   /// Positions saved after `registry.json` was last written, applied to its
@@ -286,30 +308,55 @@ final class PerBookRegistryFiles: @unchecked Sendable {
 
   // MARK: - Writing
 
-  /// Brings the record files in line with `records`, the whole in-memory shelf
-  /// as snapshotted at `sequence`:
-  /// one file per changed book, holding its whole record and position, then
-  /// removes the files of books no longer on it. One file per book keeps each
-  /// book's change atomic.
+  /// Writes the record file of each book in `records`, the whole in-memory
+  /// shelf as snapshotted at `sequence`, whose content changed. One file holds
+  /// a book's whole record and position, which keeps each book's change atomic.
+  /// Books no longer on the shelf keep their files until `removeFiles(notIn:)`.
   func write(shelf records: [TPPBookRegistryData], sequence: Int) throws {
     try ensureFolder(booksDirectory)
-    var present = Set<String>()
     for record in records {
       guard let identifier = Self.identifier(of: record) else { continue }
-      present.insert(identifier)
       var object = Self.recordObject(identifier, record)
       let content = try Self.encode(object)
       guard recordContent[identifier] != content else { continue }
       object[Self.sequenceKey] = sequence
       try writeFile(Self.encode(object), to: recordURL(identifier, in: booksDirectory), step: .bookRecord)
       recordContent[identifier] = content
+      booksWithFiles.insert(identifier)
+      // The record now holds the book's newest position; its position file is older.
+      positionContent[identifier] = nil
     }
-    for identifier in Set(recordContent.keys).union(positionContent.keys).subtracting(present) {
+  }
+
+  /// Removes the files of books not in `records`. Runs only after
+  /// `registry.json` without those books and its trust record are written:
+  /// until then a removed book's files may hold its newest state, which a crash
+  /// must leave in place.
+  func removeFiles(notIn records: [TPPBookRegistryData]) throws {
+    let present = Set(records.compactMap(Self.identifier(of:)))
+    for identifier in booksWithFiles.subtracting(present).sorted() {
       try removeFile(recordURL(identifier, in: booksDirectory))
       recordContent[identifier] = nil
       try removeFile(positionURL(identifier, in: booksDirectory))
       positionContent[identifier] = nil
+      booksWithFiles.remove(identifier)
     }
+  }
+
+  /// True when a shelf save at `now` should refresh the last-good backup: at
+  /// the first shelf save of this load, when the backup file is missing, or
+  /// once `backupInterval` has passed since this load last wrote it.
+  func backupIsDue(now: Date) -> Bool {
+    guard let lastBackup,
+          FileManager.default.fileExists(atPath: RegistryFileRecovery.backupURL(for: registryURL).path)
+    else { return true }
+    return now.timeIntervalSince(lastBackup) >= Self.backupInterval
+  }
+
+  /// Records a backup written at `date`. Not called for a failed write, so the
+  /// next shelf save tries again.
+  func backupWritten(at date: Date) {
+    lastBackup = date
   }
 
   /// Writes one book's position file if it changed. `location` is the
@@ -322,6 +369,7 @@ final class PerBookRegistryFiles: @unchecked Sendable {
     object[Self.sequenceKey] = sequence
     try writeFile(Self.encode(object), to: positionURL(identifier, in: booksDirectory), step: .bookPosition)
     positionContent[identifier] = content
+    booksWithFiles.insert(identifier)
   }
 
   /// True when any record file exists, so an empty save would remove books.
@@ -412,6 +460,7 @@ final class PerBookRegistryFiles: @unchecked Sendable {
       try FileManager.default.moveItem(at: stagingDirectory, to: booksDirectory)
       recordContent = [:]
       positionContent = [:]
+      booksWithFiles = Set(staged.records.keys)
       for (identifier, entry) in staged.records {
         recordContent[identifier] = try? Self.encode(Self.recordObject(identifier, entry.record))
       }
