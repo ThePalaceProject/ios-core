@@ -98,10 +98,7 @@ actor OPDS2FeedCache: OPDSFeedCaching {
     private let configuration: Configuration
     nonisolated private let diskCache: GeneralCache<String, Data>?
 
-    static let shared = OPDS2FeedCache(dataByteCounter: sharedDataBytes)
-    /// Bytes of the shared cache's feed data. The memory event line reads this,
-    /// so it never creates the cache or its disk directory.
-    static let sharedDataBytes = CacheByteCounter()
+    static let shared = OPDS2FeedCache(dataByteCounter: AppCacheCounters.opdsFeedData)
 
     /// Bytes of feed data held in memory now (PP-5509).
     nonisolated var dataMemoryBytes: Int { diskCache?.memoryBytes ?? 0 }

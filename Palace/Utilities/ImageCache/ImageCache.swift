@@ -79,10 +79,6 @@ private final class ImageDecodeOperation: BlockOperation, @unchecked Sendable {}
 /// remove this workaround once the toolchain is fixed.)
 public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
     public static let shared = ImageCache()
-    /// Bytes of the shared cache's decoded images and compressed data. The
-    /// memory event line reads these, so it never creates the shared cache.
-    static let sharedDecodedImageBytes = CacheByteCounter()
-    static let sharedCompressedDataBytes = CacheByteCounter()
 
     private let dataCache: GeneralCache<String, Data>
     private let memoryImages: CountedCache<String, UIImage>
@@ -129,8 +125,8 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
     private convenience init() {
         self.init(
             deviceMemoryMB: ProcessInfo.processInfo.physicalMemory / (1024 * 1024),
-            decodedImageBytes: Self.sharedDecodedImageBytes,
-            compressedDataBytes: Self.sharedCompressedDataBytes
+            decodedImageBytes: AppCacheCounters.decodedImages,
+            compressedDataBytes: AppCacheCounters.imageData
         )
     }
 

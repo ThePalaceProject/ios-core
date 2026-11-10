@@ -94,6 +94,10 @@ public final class BookCoverStore: @unchecked Sendable {
         }
     }
 
+    /// `imageByteCount` of the default store that TPPBook uses.
+    // PUBLIC_INTENT: read by the app's memory event line.
+    public static var defaultStoreImageByteCount: Int { shared.imageByteCount }
+
     var entryCount: Int {
         lock.withLock { entries.count }
     }

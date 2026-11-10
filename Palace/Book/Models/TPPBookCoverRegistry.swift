@@ -77,10 +77,7 @@ actor TPPBookCoverRegistry {
     /// `nonisolated let` (no `(unsafe)`) because `ImageCacheType` is `Sendable`.
     nonisolated let imageCache: ImageCacheType
 
-    static let shared = TPPBookCoverRegistry(imageCache: ImageCache.shared, sourceDataCounter: sharedSourceDataBytes)
-    /// Bytes of the shared registry's source data. The memory event line reads
-    /// this, so it never creates the registry.
-    static let sharedSourceDataBytes = CacheByteCounter()
+    static let shared = TPPBookCoverRegistry(imageCache: ImageCache.shared, sourceDataCounter: AppCacheCounters.coverSourceData)
 
     /// URL-keyed cache of raw image bytes, so one source decoded at several sizes
     /// (cell, detail, player) costs one network round-trip.

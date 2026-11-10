@@ -12,6 +12,17 @@
 import Foundation
 import PalaceBookModel
 
+/// Byte counters of the process-wide caches. Each cache's shared instance
+/// reports into one of these, so the memory event line reads sizes without
+/// creating a cache.
+enum AppCacheCounters {
+    static let decodedImages = CacheByteCounter()
+    static let imageData = CacheByteCounter()
+    static let coverSourceData = CacheByteCounter()
+    static let opdsFeedData = CacheByteCounter()
+    static let lcpDecrypt = CacheByteCounter()
+}
+
 enum AppCacheSizes {
     struct Sources {
         var networkResponses: @Sendable () -> Int
@@ -27,17 +38,17 @@ enum AppCacheSizes {
         static func production(networkResponses: @escaping @Sendable () -> Int) -> Sources {
             var sources = Sources(
                 networkResponses: networkResponses,
-                decodedImages: { ImageCache.sharedDecodedImageBytes.bytes },
-                imageData: { ImageCache.sharedCompressedDataBytes.bytes },
-                coverSourceData: { TPPBookCoverRegistry.sharedSourceDataBytes.bytes },
+                decodedImages: { AppCacheCounters.decodedImages.bytes },
+                imageData: { AppCacheCounters.imageData.bytes },
+                coverSourceData: { AppCacheCounters.coverSourceData.bytes },
                 // The store holds no disk or network state, so creating it here is cheap.
-                bookCovers: { BookCoverStore.shared.imageByteCount },
-                opdsFeedData: { OPDS2FeedCache.sharedDataBytes.bytes },
+                bookCovers: { BookCoverStore.defaultStoreImageByteCount },
+                opdsFeedData: { AppCacheCounters.opdsFeedData.bytes },
                 pdfPreviews: { TPPPDFPreviewGridController.livePreviewBytes.bytes },
                 pdfThumbnails: { PDFKitThumbnailProvider.liveThumbnailBytes.bytes }
             )
             #if LCP
-            sources.lcpDecrypt = { LCPDecryptCache.sharedBytes.bytes }
+            sources.lcpDecrypt = { AppCacheCounters.lcpDecrypt.bytes }
             #endif
             return sources
         }
