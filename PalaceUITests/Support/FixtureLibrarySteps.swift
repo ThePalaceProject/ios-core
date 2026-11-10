@@ -24,25 +24,35 @@ extension JourneyTestCase {
     func signInWithLibraryCard() {
         step("Sign in with a library card") {
             openTab(AccessibilityID.TabBar.settingsTab)
-            waitFor(app.descendants(matching: .any)[AccessibilityID.Settings.manageLibrariesButton],
-                    "Settings has no Libraries row").tap()
-            waitFor(app.descendants(matching: .any)["\(AccessibilityID.Libraries.row).\(FixtureLibrary.libraryID)"],
+            tapWhenHittable(app.descendants(matching: .any)[AccessibilityID.Settings.manageLibrariesButton],
+                            "Settings has no Libraries row")
+            // The selected row's checkmark image carries the row's identifier
+            // too, so the identifier can match two elements.
+            waitFor(app.descendants(matching: .any)
+                        .matching(identifier: "\(AccessibilityID.Libraries.row).\(FixtureLibrary.libraryID)").firstMatch,
                     "the fixture library is not in the Libraries list")
-            app.staticTexts[FixtureLibrary.libraryName].firstMatch.tap()
+            tapWhenHittable(app.staticTexts[FixtureLibrary.libraryName].firstMatch, "the fixture library row takes no taps")
 
             let barcode = waitFor(app.textFields[AccessibilityID.SignIn.barcodeField], "no barcode field")
-            barcode.tap()
+            tapWhenHittable(barcode, "the barcode field takes no taps")
             barcode.typeText(FixtureLibrary.barcode)
-            // A dropped keystroke would otherwise reach the server as a different card.
+            // iOS 26 publishes a field's accessibility value a moment after
+            // typeText returns, so an immediate read can show only the first
+            // character. Wait for it to settle, then compare exactly: a dropped
+            // keystroke would otherwise reach the server as a different card.
+            settle(barcode, until: NSPredicate(format: "value == %@", FixtureLibrary.barcode))
             XCTAssertEqual(barcode.value as? String, FixtureLibrary.barcode,
                            "the typed barcode did not land exactly")
             let pin = app.secureTextFields[AccessibilityID.SignIn.pinField]
-            waitFor(pin, "no PIN field").tap()
+            tapWhenHittable(waitFor(pin, "no PIN field"), "the PIN field takes no taps")
             pin.typeText(FixtureLibrary.pin)
             // A secure field exposes only its masking characters, so compare the length.
+            settle(pin, until: NSPredicate { field, _ in
+                ((field as? XCUIElement)?.value as? String)?.count == FixtureLibrary.pin.count
+            })
             XCTAssertEqual((pin.value as? String)?.count, FixtureLibrary.pin.count,
                            "the typed PIN did not land with every character")
-            app.buttons[AccessibilityID.SignIn.signInButton].tap()
+            tapWhenHittable(app.buttons[AccessibilityID.SignIn.signInButton], "the Sign in button takes no taps")
         }
 
         step("Settings shows the patron as signed in") {
@@ -62,7 +72,7 @@ extension JourneyTestCase {
             // The row's centre holds its Get button; the title opens the detail page.
             let row = waitFor(app.buttons[AccessibilityID.BookList.cell(FixtureLibrary.bookID)],
                               "the catalog does not list the book")
-            row.staticTexts[FixtureLibrary.bookTitle].tap()
+            tapWhenHittable(row.staticTexts[FixtureLibrary.bookTitle], "the catalog row's title takes no taps")
             waitFor(app.staticTexts[AccessibilityID.BookDetail.title], "the book detail page did not open")
             XCTAssertEqual(app.staticTexts[AccessibilityID.BookDetail.title].label, FixtureLibrary.bookTitle)
             // The catalog row underneath has its own Get button; tap the one on screen.

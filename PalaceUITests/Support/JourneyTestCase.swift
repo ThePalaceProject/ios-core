@@ -120,24 +120,73 @@ class JourneyTestCase: XCTestCase {
     }
 
     /// The one element of `query` that is on screen, for identifiers a view
-    /// further down the navigation stack also uses.
+    /// further down the navigation stack also uses. Waits for it, because a
+    /// pushed view or a covering system sheet can hold it off screen for a while.
     func hittable(_ query: XCUIElementQuery,
                   _ message: String,
+                  timeout: TimeInterval = defaultTimeout,
                   file: StaticString = #filePath,
                   line: UInt = #line) -> XCUIElement {
-        let onScreen = query.allElementsBoundByIndex.filter(\.isHittable)
+        let deadline = Date().addingTimeInterval(timeout)
+        var onScreen = query.allElementsBoundByIndex.filter(\.isHittable)
+        while onScreen.count != 1, Date() < deadline {
+            dismissSavePasswordSheetIfPresent()
+            pause()
+            onScreen = query.allElementsBoundByIndex.filter(\.isHittable)
+        }
         XCTAssertEqual(onScreen.count, 1, message, file: file, line: line)
         return onScreen.first ?? query.firstMatch
+    }
+
+    /// Taps `element` once it exists and takes taps, failing with `message`
+    /// after `timeout`. A tap on an element that is still animating in, or
+    /// that a system sheet covers, is dropped or fails as "not hittable".
+    func tapWhenHittable(_ element: XCUIElement,
+                         _ message: String,
+                         timeout: TimeInterval = defaultTimeout,
+                         file: StaticString = #filePath,
+                         line: UInt = #line) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !(element.exists && element.isHittable) {
+            guard Date() < deadline else {
+                XCTFail("\(message) (not hittable after \(Int(timeout))s)", file: file, line: line)
+                return
+            }
+            dismissSavePasswordSheetIfPresent()
+            pause()
+        }
+        element.tap()
+    }
+
+    /// Waits up to `timeout` for `predicate` on `object` without failing, for
+    /// a value the app has set but accessibility reports a moment later. The
+    /// caller asserts the exact value afterwards.
+    func settle(_ object: Any, until predicate: NSPredicate, timeout: TimeInterval = 5) {
+        _ = XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: object)], timeout: timeout)
+    }
+
+    private func pause() {
+        _ = XCTWaiter().wait(for: [XCTestExpectation(description: "poll")], timeout: 0.5)
     }
 
     /// On a simulator that has never answered it, iOS 26 offers to save the
     /// password once the sign-in form goes away, in a sheet that covers the
     /// middle of the screen. Call it right after leaving the form. Earlier iOS
-    /// versions do not show the sheet, so they skip the wait.
+    /// versions do not show the sheet, so they skip the wait. On a loaded
+    /// machine the sheet can arrive after this wait, so `tapWhenHittable` and
+    /// `hittable` also dismiss it whenever it covers their element.
     func dismissSavePasswordPromptIfShown(timeout: TimeInterval = 5) {
         guard #available(iOS 26, *) else { return }
-        let sheet = app.sheets["Save Password?"]
-        guard sheet.waitForExistence(timeout: timeout) else { return }
+        guard savePasswordSheet.waitForExistence(timeout: timeout) else { return }
+        dismissSavePasswordSheetIfPresent()
+    }
+
+    private var savePasswordSheet: XCUIElement { app.sheets["Save Password?"] }
+
+    private func dismissSavePasswordSheetIfPresent() {
+        guard #available(iOS 26, *) else { return }
+        let sheet = savePasswordSheet
+        guard sheet.exists else { return }
         let notNow = sheet.buttons["Not Now"]
         // A tap during the sheet's presentation animation is dropped, so wait
         // for the button to take taps and try again while the sheet stays.
@@ -153,8 +202,6 @@ class JourneyTestCase: XCTestCase {
     // MARK: - Navigation
 
     func openTab(_ label: String) {
-        let tab = app.tabBars.buttons[label]
-        waitFor(tab, "the \(label) tab is not on screen")
-        tab.tap()
+        tapWhenHittable(app.tabBars.buttons[label], "the \(label) tab is not on screen")
     }
 }

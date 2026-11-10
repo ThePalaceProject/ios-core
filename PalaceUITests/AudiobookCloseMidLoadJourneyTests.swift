@@ -121,7 +121,8 @@ final class AudiobookCloseMidLoadJourneyTests: JourneyTestCase {
             let row = waitFor(app.buttons[AccessibilityID.BookList.cell(FixtureAudiobook.bookID)],
                               "the catalog does not list the audiobook")
             // An audiobook row reads its title as "Still Water. Audiobook."
-            row.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", FixtureAudiobook.title)).firstMatch.tap()
+            tapWhenHittable(row.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", FixtureAudiobook.title)).firstMatch,
+                            "the catalog row's title takes no taps")
             waitFor(app.staticTexts[AccessibilityID.BookDetail.title], "the book detail page did not open")
             XCTAssertTrue(app.staticTexts[AccessibilityID.BookDetail.title].label.hasPrefix(FixtureAudiobook.title),
                           "the detail page shows '\(app.staticTexts[AccessibilityID.BookDetail.title].label)'")
