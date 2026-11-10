@@ -15,6 +15,7 @@ on:
       - 'Palace.xcodeproj/**'
       - 'ios-audiobooktoolkit'
       - 'scripts/setup-repo-nodrm.sh'
+      - 'scripts/fetch-nodrm-submodules.sh'
       - 'scripts/build-3rd-party-dependencies.sh'
       - 'scripts/build-carthage.sh'
       - 'scripts/fetch-audioengine.sh'
@@ -45,15 +46,18 @@ jobs:
       - name: Verify Xcode Version
         run: xcodebuild -version
 
-      # `submodules: true` + the CI token, like every other workflow that
-      # builds this project: PalaceAudiobookToolkit is a submodule and the
-      # noDRM target links it, so a bare checkout has nothing to build.
+      # No secrets in this job: pull requests from forks get none. The checkout
+      # takes no submodules (the private DRM ones are registered too) and keeps
+      # no token, so nothing later can reach a private repository.
       - name: Checkout main repo
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          submodules: true
-          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+          submodules: false
+          persist-credentials: false
 
+      # Fetches the public submodules (PalaceAudiobookToolkit among them)
+      # anonymously, through scripts/fetch-nodrm-submodules.sh, and fails
+      # naming any it cannot reach.
       - name: Set up repo for nonDRM build
         run: exec ./scripts/setup-repo-nodrm.sh
         env:
