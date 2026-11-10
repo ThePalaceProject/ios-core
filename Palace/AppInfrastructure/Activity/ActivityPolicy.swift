@@ -103,6 +103,16 @@ final class ActivityPolicy {
         signposter.emitEvent("ambientSync", "ranOnVisible")
     }
 
+    /// `true` on each transition to visible, `false` on each transition away.
+    /// The value at subscription is skipped: it is a state, not a transition.
+    var visibilityChanges: AnyPublisher<Bool, Never> {
+        subject
+            .map(ActivityRules.isVisible)
+            .removeDuplicates()
+            .dropFirst()
+            .eraseToAnyPublisher()
+    }
+
     /// Ticks at the category's current interval. Re-arms when the interval
     /// changes and emits nothing while it is nil.
     func ticks(for category: ActivityCategory) -> AnyPublisher<Date, Never> {

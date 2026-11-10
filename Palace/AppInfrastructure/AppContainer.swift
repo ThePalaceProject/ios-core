@@ -148,7 +148,8 @@ struct AppContainer: @unchecked Sendable {
             downloadCenter: downloadCenter,
             accountsManager: accountsManager,
             samplePreviewManager: samplePreviewManager,
-            readerService: readerService
+            readerService: readerService,
+            activityPolicy: activityPolicy
         )
         storage.bookCellModelCache = cache
         return cache
@@ -328,6 +329,23 @@ struct AppContainer: @unchecked Sendable {
         return policy
     }
 
+    /// The one play-time uploader (PP-5508). Every audiobook's time tracker
+    /// saves into it, so one queue, one store file and one schedule serve
+    /// every book, and entries left by a closed book still get sent.
+    @MainActor
+    var playtimeUploader: AudiobookDataManager {
+        if let cached = AppContainer._playtimeUploader { return cached }
+        let accountsManager = self.accountsManager
+        let uploader = AudiobookDataManager(
+            networkService: networkExecutor,
+            currentAccountIdProvider: { accountsManager.currentAccountId },
+            currentLibraryChanges: accountsManager.currentLibraryChangePublisher,
+            uploadTriggers: PlaytimeUploadSchedule.triggers(from: activityPolicy)
+        )
+        AppContainer._playtimeUploader = uploader
+        return uploader
+    }
+
     // MARK: - Catalog Repository / API
     //
     // One `DefaultCatalogAPI` + `CatalogRepository` per container, so the
@@ -376,6 +394,7 @@ struct AppContainer: @unchecked Sendable {
     @MainActor private static var _appRatingService: AppRatingService?
     @MainActor private static var _ratingPromptPresenter: RatingPromptPresenter?
     @MainActor private static var _activityPolicy: ActivityPolicy?
+    @MainActor private static var _playtimeUploader: AudiobookDataManager?
 
     init(
         bookRegistry: TPPBookRegistryProvider,
@@ -695,6 +714,7 @@ struct AppContainer: @unchecked Sendable {
             _playbackBootstrapper = nil
             _appRatingService = nil
             _ratingPromptPresenter = nil
+            _playtimeUploader = nil
         }
         // The side-loaded registry is a file-backed cache that would bleed
         // manifest state across test classes; the manager holds a reference to

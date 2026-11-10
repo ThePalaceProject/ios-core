@@ -69,7 +69,6 @@ final class BookCellModelCache: ObservableObject {
     private let samplePreviewManager: SamplePreviewManager
     private let readerService: ReaderService
     private var cancellables = Set<AnyCancellable>()
-    private var cleanupTask: Task<Void, Never>?
 
     // MARK: - Initialization
 
@@ -81,7 +80,8 @@ final class BookCellModelCache: ObservableObject {
             downloadCenter: appContainer.downloadCenter,
             accountsManager: appContainer.accountsManager,
             samplePreviewManager: appContainer.samplePreviewManager,
-            readerService: appContainer.readerService
+            readerService: appContainer.readerService,
+            activityPolicy: appContainer.activityPolicy
         )
     }
 
@@ -92,7 +92,8 @@ final class BookCellModelCache: ObservableObject {
         downloadCenter: MyBooksDownloadCenter,
         accountsManager: AccountsManager,
         samplePreviewManager: SamplePreviewManager,
-        readerService: ReaderService
+        readerService: ReaderService,
+        activityPolicy: ActivityPolicy? = nil
     ) {
         self.configuration = configuration
         self.imageCache = imageCache
@@ -108,11 +109,7 @@ final class BookCellModelCache: ObservableObject {
 
         setupMemoryWarningObserver()
         setupAccountChangeObserver()
-        startPeriodicCleanup()
-    }
-
-    deinit {
-        cleanupTask?.cancel()
+        if let activityPolicy { scheduleCleanup(on: activityPolicy) }
     }
 
     private func setupMemoryWarningObserver() {
@@ -286,15 +283,17 @@ final class BookCellModelCache: ObservableObject {
             .store(in: &cancellables)
     }
 
-    private func startPeriodicCleanup() {
-        cleanupTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 60_000_000_000) // 1 minute
-                await MainActor.run {
-                    self?.evictStale()
-                }
-            }
-        }
+    /// Evicts stale entries on housekeeping ticks, which stop while the app is
+    /// not visible (PP-5508), and once on each return to visible so entries
+    /// that aged in the background go at once. A memory warning clears all.
+    private func scheduleCleanup(on policy: ActivityPolicy) {
+        policy.ticks(for: .housekeeping)
+            .sink { [weak self] _ in self?.evictStale() }
+            .store(in: &cancellables)
+        policy.visibilityChanges
+            .filter { $0 }
+            .sink { [weak self] _ in self?.evictStale() }
+            .store(in: &cancellables)
     }
 }
 

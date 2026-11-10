@@ -64,10 +64,11 @@ struct ActivityState: Equatable, Sendable {
 enum ActivityRules {
     static let uiTickInterval: TimeInterval = 0.2
     static let housekeepingInterval: TimeInterval = 60
-    static let telemetryUploadInterval: TimeInterval = 60
+    /// The same in every state: going to the background sends the queue at
+    /// once (`PlaytimeUploadSchedule`), so a visible app gains nothing from a
+    /// shorter interval.
+    static let telemetryUploadInterval: TimeInterval = 15 * 60
     static let previewCountdownInterval: TimeInterval = 1
-    /// While not visible the process stays alive only while audio plays.
-    static let backgroundTelemetryUploadInterval: TimeInterval = 15 * 60
 
     /// How often `category` should run, or nil when it should not run.
     static func interval(for category: ActivityCategory, in state: ActivityState) -> TimeInterval? {
@@ -80,7 +81,7 @@ enum ActivityRules {
             guard isVisible(state) else { return nil }
             return isConstrained(state) ? housekeepingInterval * 2 : housekeepingInterval
         case .telemetryUpload:
-            return isVisible(state) ? telemetryUploadInterval : backgroundTelemetryUploadInterval
+            return telemetryUploadInterval
         case .previewCountdown:
             // Drawn only by the main scene. Never slowed: a slower countdown skips seconds.
             return isMainSceneVisible(state) ? previewCountdownInterval : nil

@@ -101,28 +101,36 @@ struct AudiobookDataManagerStore: Codable {
     }
 }
 
+/// The app's one play-time uploader (`AppContainer.playtimeUploader`, PP-5508).
+/// Sends on `uploadTriggers` and on reconnect. An entry leaves the queue only
+/// when the server answers for it; while its send is in flight no other
+/// trigger sends it again.
+///
 /// - Sendable invariant: `AudiobookDataManager` is captured by the `@Sendable`
 ///   closures it schedules onto `syncQueue` (barrier writes + the sync loop),
 ///   the `beginBackgroundTask` expiration handler, the current-library change
 ///   subscription, and the `networkService.POST` completion. It is safe to share
 ///   across those boundaries because:
-///   1. Every stored dependency (`syncTimeInterval`, `syncQueue`, `audiobookLogger`,
+///   1. Every stored dependency (`syncQueue`, `audiobookLogger`,
 ///      `networkService`, `currentAccountIdProvider`) is a `let` — immutable after
 ///      `init`.
-///   2. The only mutable persisted state (`store`) is read and written EXCLUSIVELY
+///   2. The mutable state (`store`, `inFlight`, `sendCount`) is read and written EXCLUSIVELY
 ///      through the serial `syncQueue` (`.async`/`.async(flags:.barrier)`/`.sync`),
-///      so there is no unsynchronized shared mutation. `subscriptions` is
-///      written only during `init`, before any escape.
+///      POST answers included, so there is no unsynchronized shared mutation.
+///      `subscriptions` is written only during `init`, before any escape.
 ///   Hence `@unchecked Sendable` rather than a compiler-checked conformance — the
 ///   `syncQueue` discipline is the invariant the compiler cannot see, and
 ///   `TPPNetworkExecutor` is not Sendable-audited.
 class AudiobookDataManager: @unchecked Sendable {
-    private let syncTimeInterval: TimeInterval
     private var subscriptions: Set<AnyCancellable> = []
     /// Serial dispatch queue that owns all writes to `store`. Internal so
     /// tests can `syncQueue.sync {}` to wait for pending barrier writes.
     let syncQueue = DispatchQueue(label: "com.audiobook.syncQueue")
     var store = AudiobookDataManagerStore()
+    /// Entries sent and not yet answered, by the send that carries them. Not
+    /// persisted: after a relaunch nothing is in flight.
+    private var inFlight: [String: Int] = [:]
+    private var sendCount = 0
     private let audiobookLogger = AudiobookFileLogger.shared
     private let networkService: TPPNetworkExecutor
     /// Cross-account scope guard for playtimes uploads (PR #1018 follow-up).
@@ -132,18 +140,15 @@ class AudiobookDataManager: @unchecked Sendable {
     /// and skips uploads whose library is not the active one; the entries
     /// stay in the queue and flush after the user switches back.
     private let currentAccountIdProvider: @Sendable () -> String?
-    init(syncTimeInterval: TimeInterval = 60,
-         networkService: TPPNetworkExecutor = AppContainer.production().networkExecutor,
+    init(networkService: TPPNetworkExecutor = AppContainer.production().networkExecutor,
          currentAccountIdProvider: @escaping @Sendable () -> String? = { AppContainer.production().accountsManager.currentAccountId },
-         currentLibraryChanges: AnyPublisher<CurrentLibraryChange, Never> = AppContainer.production().accountsManager.currentLibraryChangePublisher) {
-        self.syncTimeInterval = syncTimeInterval
+         currentLibraryChanges: AnyPublisher<CurrentLibraryChange, Never> = AppContainer.production().accountsManager.currentLibraryChangePublisher,
+         uploadTriggers: AnyPublisher<Void, Never> = Empty().eraseToAnyPublisher()) {
         self.networkService = networkService
         self.currentAccountIdProvider = currentAccountIdProvider
 
-        // Use .common RunLoop mode for reliable timer firing during UI interactions
-        Timer.publish(every: syncTimeInterval, on: .main, in: .common)
-            .autoconnect()
-            .sink { [weak self] _ in self?.syncValues() }
+        uploadTriggers
+            .sink { [weak self] in self?.syncValues() }
             .store(in: &subscriptions)
 
         AppContainer.production().reachability.connectivityPublisher
@@ -155,16 +160,21 @@ class AudiobookDataManager: @unchecked Sendable {
         subscribeToAccountChanges(currentLibraryChanges)
     }
 
-    /// Observes current-library changes for diagnostic logging only.
-    /// The actual cross-account scope decision lives in `syncValues()`'s
-    /// per-`libraryBook` guard, so on account change there is NOTHING to
-    /// mutate here — entries queued for the prior library MUST be preserved
-    /// so they flush when the user switches back. Destructive queue clear
-    /// on switch would lose playtimes for any book the user toggles between.
+    /// The cross-account scope decision lives in `syncValues()`'s
+    /// per-`libraryBook` guard, so a library change leaves the queue alone:
+    /// entries queued for the prior library MUST be preserved so they flush
+    /// when the user switches back. Destructive queue clear on switch would
+    /// lose playtimes for any book the user toggles between.
+    ///
+    /// A library switch cancels in-flight network tasks, so an answer may
+    /// never arrive; the switch releases every in-flight entry for the next
+    /// send. A late answer then releases nothing (see `inFlight`).
     private func subscribeToAccountChanges(_ changes: AnyPublisher<CurrentLibraryChange, Never>) {
         changes
             .sink { [weak self] _ in
-                self?.audiobookLogger.logEvent(
+                guard let self else { return }
+                self.syncQueue.async(flags: .barrier) { self.inFlight.removeAll() }
+                self.audiobookLogger.logEvent(
                     forBookId: "",
                     event: "Account changed — cross-account playtimes uploads will be deferred to next foreground sync"
                 )
@@ -200,7 +210,10 @@ class AudiobookDataManager: @unchecked Sendable {
                 return
             }
 
-            let queuedLibraryBooks: Set<LibraryBook> = Set(self.store.queue.map { LibraryBook(time: $0) })
+            // An entry in flight is answered by its own send; sending it again
+            // would count the same seconds twice.
+            let unsent = self.store.queue.filter { self.inFlight[$0.id] == nil }
+            let queuedLibraryBooks: Set<LibraryBook> = Set(unsent.map { LibraryBook(time: $0) })
 
             // Cross-account scope guard: a playtime for another library would
             // be sent with the wrong credentials, 401, and be attributed to the
@@ -237,6 +250,11 @@ class AudiobookDataManager: @unchecked Sendable {
             // race-free without capturing a mutable local `var` across the
             // concurrency boundary.
             let completion = SyncCompletionCounter()
+            let finishOne: @Sendable () -> Void = {
+                if completion.increment() >= pendingCount {
+                    backgroundTask.end()
+                }
+            }
 
             // If no postable entries (queue empty OR every entry is cross-
             // account), end background task immediately so iOS doesn't bill
@@ -249,7 +267,7 @@ class AudiobookDataManager: @unchecked Sendable {
             for libraryBook in postableLibraryBooks {
                 let requestData = RequestData(
                     libraryBook: libraryBook,
-                    timeEntries: self.store.queue.filter { libraryBook == LibraryBook(time: $0) }
+                    timeEntries: unsent.filter { libraryBook == LibraryBook(time: $0) }
                 )
 
                 self.audiobookLogger.logEvent(
@@ -269,85 +287,110 @@ class AudiobookDataManager: @unchecked Sendable {
                     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     request.applyCustomUserAgent()
 
+                    self.sendCount += 1
+                    let send = self.sendCount
+                    let sentIds = requestData.timeEntries.map(\.id)
+                    for id in sentIds { self.inFlight[id] = send }
+
                     self.networkService.POST(request, useTokenIfAvailable: true) { [weak self] result, response, error in
-                        defer {
-                            // Track request completion for background task management
-                            if completion.increment() >= pendingCount {
-                                backgroundTask.end()
-                            }
+                        guard let self else {
+                            finishOne()
+                            return
                         }
-
-                        guard let self = self else { return }
-
-                        if let response = response as? HTTPURLResponse {
-                            if response.statusCode == 404 {
-                                TPPErrorLogger.logError(nil, summary: "Audiobook tracker data no longer valid", metadata: [
-                                    "libraryId": libraryBook.libraryId,
-                                    "bookId": libraryBook.bookId,
-                                    "requestUrl": requestUrl,
-                                    "requestBody": String(data: requestBody, encoding: .utf8) ?? ""
-                                ])
-
-                                self.audiobookLogger.logEvent(forBookId: libraryBook.bookId, event: """
-                                    Removing time entries due to 404:
-                                    Book ID: \(libraryBook.bookId)
-                                    Library ID: \(libraryBook.libraryId)
-                                    """)
-
-                                self.store.queue.removeAll { $0.bookId == libraryBook.bookId && $0.libraryId == libraryBook.libraryId }
-                                self.store.urls.removeValue(forKey: libraryBook)
-                                self.saveStore()
-                                return
-                            } else if !response.isSuccess() {
-                                TPPErrorLogger.logError(error, summary: "Error uploading audiobook tracker data", metadata: [
-                                    "libraryId": libraryBook.libraryId,
-                                    "bookId": libraryBook.bookId,
-                                    "requestUrl": requestUrl,
-                                    "requestBody": String(data: requestBody, encoding: .utf8) ?? "",
-                                    "responseCode": response.statusCode,
-                                    "responseBody": String(data: (result ?? Data()), encoding: .utf8) ?? ""
-                                ])
-
-                                self.audiobookLogger.logEvent(forBookId: libraryBook.bookId, event: """
-                                    Failed to upload time entries:
-                                    Book ID: \(libraryBook.bookId)
-                                    Error: \(error?.localizedDescription ?? "Unknown error")
-                                    Response Code: \(response.statusCode)
-                                    """)
+                        // The answer is handled on `syncQueue`, like every other
+                        // read and write of the queue.
+                        self.syncQueue.async {
+                            defer { finishOne() }
+                            for id in sentIds where self.inFlight[id] == send {
+                                self.inFlight[id] = nil
                             }
-                        }
-
-                        if let data = result, let responseData = ResponseData(data: data) {
-                            for responseEntry in responseData.responses {
-                                if responseEntry.status >= 400 {
-                                    TPPErrorLogger.logError(error, summary: "Error entry in audiobook tracker response", metadata: [
-                                        "libraryId": libraryBook.libraryId,
-                                        "bookId": libraryBook.bookId,
-                                        "requestUrl": requestUrl,
-                                        "requestBody": String(data: requestBody, encoding: .utf8) ?? "",
-                                        "entryId": responseEntry.id,
-                                        "entryStatus": responseEntry.status,
-                                        "entryMessage": responseEntry.message
-                                    ])
-                                } else {
-                                    self.audiobookLogger.logEvent(forBookId: libraryBook.bookId, event: """
-                                        Successfully uploaded time entry: \(responseEntry.id)
-                                        """)
-                                }
-                            }
-
-                            self.removeSynchronizedEntries(ids: responseData.responses.map { $0.id })
-                            self.cleanUpUrls()
+                            self.handleUploadResponse(
+                                libraryBook: libraryBook,
+                                requestUrl: requestUrl,
+                                requestBody: requestBody,
+                                result: result,
+                                response: response,
+                                error: error
+                            )
                         }
                     }
                 } else {
                     // No request made for this book, count as complete
-                    if completion.increment() >= pendingCount {
-                        backgroundTask.end()
-                    }
+                    finishOne()
                 }
             }
         }
+    }
+
+    /// Must run on `syncQueue`. A 404 drops the book's entries; a parsed
+    /// answer drops the entries it names; anything else keeps them queued.
+    private func handleUploadResponse(
+        libraryBook: LibraryBook,
+        requestUrl: URL,
+        requestBody: Data,
+        result: Data?,
+        response: URLResponse?,
+        error: Error?
+    ) {
+        if let response = response as? HTTPURLResponse {
+            if response.statusCode == 404 {
+                TPPErrorLogger.logError(nil, summary: "Audiobook tracker data no longer valid", metadata: [
+                    "libraryId": libraryBook.libraryId,
+                    "bookId": libraryBook.bookId,
+                    "requestUrl": requestUrl,
+                    "requestBody": String(data: requestBody, encoding: .utf8) ?? ""
+                ])
+
+                audiobookLogger.logEvent(forBookId: libraryBook.bookId, event: """
+                    Removing time entries due to 404:
+                    Book ID: \(libraryBook.bookId)
+                    Library ID: \(libraryBook.libraryId)
+                    """)
+
+                store.queue.removeAll { $0.bookId == libraryBook.bookId && $0.libraryId == libraryBook.libraryId }
+                store.urls.removeValue(forKey: libraryBook)
+                saveStore()
+                return
+            } else if !response.isSuccess() {
+                TPPErrorLogger.logError(error, summary: "Error uploading audiobook tracker data", metadata: [
+                    "libraryId": libraryBook.libraryId,
+                    "bookId": libraryBook.bookId,
+                    "requestUrl": requestUrl,
+                    "requestBody": String(data: requestBody, encoding: .utf8) ?? "",
+                    "responseCode": response.statusCode,
+                    "responseBody": String(data: (result ?? Data()), encoding: .utf8) ?? ""
+                ])
+
+                audiobookLogger.logEvent(forBookId: libraryBook.bookId, event: """
+                    Failed to upload time entries:
+                    Book ID: \(libraryBook.bookId)
+                    Error: \(error?.localizedDescription ?? "Unknown error")
+                    Response Code: \(response.statusCode)
+                    """)
+            }
+        }
+
+        guard let data = result, let responseData = ResponseData(data: data) else { return }
+        for responseEntry in responseData.responses {
+            if responseEntry.status >= 400 {
+                TPPErrorLogger.logError(error, summary: "Error entry in audiobook tracker response", metadata: [
+                    "libraryId": libraryBook.libraryId,
+                    "bookId": libraryBook.bookId,
+                    "requestUrl": requestUrl,
+                    "requestBody": String(data: requestBody, encoding: .utf8) ?? "",
+                    "entryId": responseEntry.id,
+                    "entryStatus": responseEntry.status,
+                    "entryMessage": responseEntry.message
+                ])
+            } else {
+                audiobookLogger.logEvent(forBookId: libraryBook.bookId, event: """
+                    Successfully uploaded time entry: \(responseEntry.id)
+                    """)
+            }
+        }
+
+        removeSynchronizedEntries(ids: responseData.responses.map { $0.id })
+        cleanUpUrls()
     }
 
     private func loadStore() {
