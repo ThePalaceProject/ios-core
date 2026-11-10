@@ -133,11 +133,11 @@ def run(repo: Path, *args: str, xcode: str | None = None, env: dict | None = Non
     return subprocess.run(cmd, capture_output=True, text=True, env={**base, **(env or {})}, timeout=60)
 
 
-def write_report(repo: Path, result: str = "passed", **extra) -> Path:
+def write_report(repo: Path, result: str = "passed", env: dict | None = None) -> Path:
     report = repo.parent / "report.json"
     report.write_text(json.dumps({"checks": []}))
     r = run(repo, "write", "--check", "unit-tests", "--result", result, "--udid", UDID,
-            "--into", str(report), **extra)
+            "--into", str(report), env=env)
     assert r.returncode == 0, r.stdout + r.stderr
     return report
 
@@ -404,3 +404,99 @@ def test_verify_pr_writes_every_report_through_one_function():
     assert source.count('cat > "$REPORT_FILE"') == 1, "a second report writer would skip the manifest"
     calls = [line.strip() for line in source.splitlines() if re.match(r"\s*write_report\b(?!\(\))", line)]
     assert calls == ["write_report docs-only", "write_report"], calls
+
+
+# --------------------------------------------------------------------------
+# Pull-request CI tests a merge commit; the PR head is recorded beside it
+# --------------------------------------------------------------------------
+
+PR_HEAD = "6" * 40
+PR_BASE = "7" * 40
+
+
+def _event(tmp_path: Path, payload) -> dict:
+    path = tmp_path / "event.json"
+    path.write_text(payload if isinstance(payload, str) else json.dumps(payload))
+    return {"GITHUB_ACTIONS": "true", "GITHUB_EVENT_PATH": str(path)}
+
+
+def _pr_event(head=PR_HEAD, base=PR_BASE):
+    return {"pull_request": {"number": 1, "title": "token=abc", "head": {"sha": head, "ref": "x"},
+                             "base": {"sha": base}}}
+
+
+def test_a_pull_request_run_records_the_head_and_base_beside_the_tested_tree(tree):
+    r = run(tree, "write", "--check", "c", "--result", "passed", env=_event(tree.parent, _pr_event()))
+    assert r.returncode == 0, r.stderr
+    app = json.loads(r.stdout)["app"]
+    assert app == {"sha": git(tree, "rev-parse", "HEAD"), "dirty": False,
+                   "pr_head_sha": PR_HEAD, "pr_base_sha": PR_BASE}
+    assert "token=abc" not in r.stdout, "only the two SHAs are taken from the event"
+
+
+@pytest.mark.parametrize("payload", [
+    {"ref": "refs/heads/develop", "after": "8" * 40},          # a push event
+    "not json {",                                              # garbled
+    {"pull_request": {"head": {"sha": "not-a-sha"}, "base": {"sha": 7}}},
+    {"pull_request": "unexpected"},
+])
+def test_an_event_without_usable_pr_shas_records_none(tree, payload):
+    r = run(tree, "write", "--check", "c", "--result", "passed", env=_event(tree.parent, payload))
+    assert r.returncode == 0, r.stderr
+    app = json.loads(r.stdout)["app"]
+    assert "pr_head_sha" not in app and "pr_base_sha" not in app
+
+
+def test_a_missing_event_file_records_no_pr_shas(tree):
+    env = {"GITHUB_ACTIONS": "true", "GITHUB_EVENT_PATH": str(tree.parent / "absent.json")}
+    r = run(tree, "write", "--check", "c", "--result", "passed", env=env)
+    assert r.returncode == 0, r.stderr
+    assert "pr_head_sha" not in json.loads(r.stdout)["app"]
+
+
+def test_the_event_is_read_only_in_ci(tree):
+    env = _event(tree.parent, _pr_event())
+    env.pop("GITHUB_ACTIONS")
+    r = run(tree, "write", "--check", "c", "--result", "passed", env=env)
+    assert "pr_head_sha" not in json.loads(r.stdout)["app"]
+
+
+def _ci_report_tested_on_a_merge(tree) -> tuple[Path, str]:
+    """A report as PR CI writes it: app.sha is a merge commit, the PR head is the current HEAD."""
+    head = git(tree, "rev-parse", "HEAD")
+    report = write_report(tree, env=_event(tree.parent, _pr_event(head=head)))
+    data = json.loads(report.read_text())
+    data["manifest"]["app"]["sha"] = "9" * 40
+    report.write_text(json.dumps(data))
+    return report, head
+
+
+def test_check_stale_is_current_when_head_is_the_pr_head_and_says_so(tree):
+    report, head = _ci_report_tested_on_a_merge(tree)
+    r = run(tree, "check-stale", str(report))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert f"matches this tree at {head[:12]} (app.pr_head_sha)" in r.stdout
+
+
+def test_check_stale_names_app_sha_when_that_matched(tree):
+    report = write_report(tree)
+    r = run(tree, "check-stale", str(report))
+    assert r.returncode == 0 and "(app.sha)" in r.stdout
+
+
+def test_a_pr_head_match_still_needs_the_inputs_to_match(tree):
+    # The merge commit can carry an input develop moved after the PR branched.
+    report, _ = _ci_report_tested_on_a_merge(tree)
+    data = json.loads(report.read_text())
+    data["manifest"]["inputs"]["audioengine"]["sha256"] = "cd" * 32
+    report.write_text(json.dumps(data))
+    r = run(tree, "check-stale", str(report))
+    assert r.returncode == 1 and "inputs.audioengine.sha256" in r.stdout
+    assert "app.sha" not in r.stdout, "the head matched; only the input differs"
+
+
+def test_a_pr_head_match_still_needs_a_clean_tree(tree):
+    report, _ = _ci_report_tested_on_a_merge(tree)
+    (tree / "app.txt").write_text("edited\n")
+    r = run(tree, "check-stale", str(report))
+    assert r.returncode == 1 and "app.dirty" in r.stdout
