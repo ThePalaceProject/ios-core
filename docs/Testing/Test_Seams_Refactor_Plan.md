@@ -778,15 +778,11 @@ tighten the public test affordance for these surfaces.
 
 ### 10.1 `TPPSignInBusinessLogic.handleRedirectURL` — notification observer ordering — RESOLVED (commit gap/signin-seams)
 
-**Resolution:** Added an injectable `notificationCenter` property on
-`TPPSignInBusinessLogic` (default `.default`) plus an `@objc
-setNotificationCenterForTests(_:)` helper. `oauthLogIn()` and
-`handleRedirectURL` now register / remove the observer against
-`self.notificationCenter`, allowing tests to drive a hermetic
-`NotificationCenter()` for full add → fire → remove verification without
-polluting the process-global default center. See new test
-`test_oauthRedirectObserver_registersAndRemovesItself_viaInjectedCenter`
-in `TPPSignInBusinessLogicOAuthTests`.
+**Resolution:** The redirect no longer travels as a notification (PP-5473).
+`TPPSignInBusinessLogic.oauthLogIn()` subscribes to the replaceable
+`signInRedirects` source and opens the page through the replaceable
+`openInBrowser`, so tests drive the whole flow with a `SignInRedirectRelay`.
+See `SignInRedirectRoutingTests`.
 
 ### 10.2 `TPPSignInBusinessLogic.getBearerToken` — `TPPNetworkExecutor` is a concrete dependency — RESOLVED (commit gap/signin-seams)
 

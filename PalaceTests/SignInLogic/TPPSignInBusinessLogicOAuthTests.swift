@@ -121,46 +121,7 @@ final class TPPSignInBusinessLogicOAuthTests: XCTestCase {
 
     private func postOAuthRedirect(_ url: URL,
                                    completion: ((Error?, String?, String?) -> Void)? = nil) {
-        let notification = Notification(name: .TPPAppDelegateDidReceiveCleverRedirectURL,
-                                        object: url, userInfo: nil)
-        businessLogic.handleRedirectURL(notification, completion: completion)
-    }
-
-    // MARK: - Observer-registration seam (§10.1)
-
-    /// Seam-backed test: post the redirect notification onto a hermetic
-    /// `NotificationCenter` (injected via `setNotificationCenterForTests`)
-    /// and verify the observer fires *and* deregisters itself. Without the
-    /// seam this couldn't be done without polluting the global default
-    /// center across the entire test process.
-    func test_oauthRedirectObserver_registersAndRemovesItself_viaInjectedCenter() {
-        let center = NotificationCenter()
-        businessLogic.setNotificationCenterForTests(center)
-        // Manually add the observer the way oauthLogIn() does — we can't call
-        // oauthLogIn() in a unit-test context (it opens Safari). Instead we
-        // re-create that single side-effect against the injected center.
-        center.addObserver(businessLogic!,
-                           selector: #selector(TPPSignInBusinessLogic.handleRedirectURL(_:)),
-                           name: .TPPAppDelegateDidReceiveCleverRedirectURL,
-                           object: nil)
-
-        let url = cleverRedirectURL(accessToken: "obs-token",
-                                    patron: ["name": "Carol"])
-        center.post(name: .TPPAppDelegateDidReceiveCleverRedirectURL, object: url)
-
-        XCTAssertEqual(businessLogic.authToken, "obs-token",
-                       "Observer must fire when notification is posted to the injected center")
-
-        // The observer must have removed itself — a second post must NOT
-        // re-enter handleRedirectURL. We assert this by clearing state and
-        // posting a malformed payload: if the observer is still attached,
-        // the parse-fail path would reset isValidatingCredentials.
-        businessLogic.dispatch(.userAccountUpdated) // clear in-flight state
-        let stuckURL = URL(string:
-            "https://example.com/univeral-link-redirect#access_token=should-not-fire")!
-        center.post(name: .TPPAppDelegateDidReceiveCleverRedirectURL, object: stuckURL)
-        XCTAssertNil(businessLogic.authToken,
-                     "Second notification must NOT be observed — handleRedirectURL must remove the observer on first fire")
+        businessLogic.handleRedirectURL(url, completion: completion)
     }
 
     // MARK: - handleRedirectURL success / failure paths
@@ -287,21 +248,6 @@ final class TPPSignInBusinessLogicOAuthTests: XCTestCase {
 
         XCTAssertEqual(businessLogic.authToken, token,
                        "Token containing '=' must be preserved verbatim — segments after the first '=' must be rejoined, not dropped")
-    }
-
-    func test_handleRedirectURL_nonURLObject_reportsErrorWithoutSideEffects() {
-        // Notifications must carry a URL — anything else is a programmer error
-        // and must abort defensively. Pins `notification.object as? URL`.
-        let bogus = Notification(name: .TPPAppDelegateDidReceiveCleverRedirectURL,
-                                 object: "not-a-url" as NSString,
-                                 userInfo: nil)
-        var completionCalls = 0
-        businessLogic.handleRedirectURL(bogus) { _, _, _ in completionCalls += 1 }
-
-        XCTAssertEqual(completionCalls, 1, "Defensive completion must fire exactly once")
-        XCTAssertNil(businessLogic.authToken,
-                     "Non-URL notification object must not write any auth state")
-        XCTAssertFalse(businessLogic.isValidatingCredentials)
     }
 
     // MARK: - makeRequest authorization header

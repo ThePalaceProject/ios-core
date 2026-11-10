@@ -43,6 +43,8 @@ struct AppContainer: @unchecked Sendable {
     let readerService: ReaderService
     let navigationCoordinatorHub: NavigationCoordinatorHub
     let tabRouterHub: AppTabRouterHub
+    /// Universal-link redirects that end a browser sign-in.
+    let signInRedirects = SignInRedirectRelay()
     let drmAuthorizerProvider: () -> TPPDRMAuthorizing?
 
     /// Single auth-refresh dispatcher. Every network consumer that sees a

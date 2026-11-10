@@ -412,7 +412,7 @@ def test_live_allowlist_pins_the_critical_paths(tmp_path):
         "Palace/Book/UI/BookDetail/BookDetailViewModel.swift": 836,
         "Palace/Utilities/Localization/Strings.swift": 834,
         "Palace/Accounts/Library/AccountsManager.swift": 349,
-        "Palace/SignInLogic/TPPSignInBusinessLogic.swift": 602,
+        "Palace/SignInLogic/TPPSignInBusinessLogic.swift": 601,
         "Palace/MyBooks/BorrowOperation.swift": 471,
         "Palace/Packages/PalaceTriageBot/Sources/TriageBotCore/Reducer/"
         "ConversationReducer.swift": 847,

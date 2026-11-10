@@ -145,7 +145,8 @@ class AccountDetailViewModel: NSObject, ObservableObject {
             downloadCenter: appContainer.downloadCenter,
             settings: appContainer.settings,
             userAccountPublisher: appContainer.userAccountPublisher,
-            drmAuthorizerProvider: appContainer.drmAuthorizerProvider
+            drmAuthorizerProvider: appContainer.drmAuthorizerProvider,
+            signInRedirects: appContainer.signInRedirects.redirects
         )
     }
 
@@ -157,7 +158,8 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         settings: TPPSettings,
         userAccountPublisher: UserAccountPublisher,
         drmAuthorizerProvider: @escaping () -> TPPDRMAuthorizing?,
-        credentialSnapshotProvider: ((String) -> TPPUserAccount.CredentialSnapshot)? = nil
+        credentialSnapshotProvider: ((String) -> TPPUserAccount.CredentialSnapshot)? = nil,
+        signInRedirects: AnyPublisher<URL, Never> = Empty().eraseToAnyPublisher()
     ) {
         self.libraryAccountID = libraryAccountID
         self.accountsManager = accountsManager
@@ -204,6 +206,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
             uiDelegate: self,
             drmAuthorizer: drmAuthorizer
         )
+        businessLogic.signInRedirects = { signInRedirects }
 
         if let account = selectedAccount {
             frontEndValidator = TPPUserAccountFrontEndValidation(
