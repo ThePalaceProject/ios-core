@@ -68,6 +68,9 @@ extension Notification.Name {
     private let notificationCenter: NotificationCenter
     /// Set once chapter loads read from the stored package (PP-5532).
     private var readsStoredArchive = false
+    /// Track decryptions asked of a streaming session, held until the package
+    /// is stored (then decrypted from it) or the session ends (then failed).
+    private var heldDecrypts: [(source: URL, destination: URL, completion: SendableDecryptCompletion)] = []
     private let publicationCacheQueue = DispatchQueue(label: "org.thepalaceproject.lcpaudiobooks.publicationcache")
 
     /// Where each track's bytes begin in the archive, learned for free while
@@ -161,7 +164,6 @@ extension Notification.Name {
             contentProtections: [contentProtection]
         )
         super.init()
-        observeStoredArchive()
     }
 
     deinit {
@@ -177,6 +179,9 @@ extension Notification.Name {
             }
             return
         }
+        // Only a player session moves to the stored package; the shelf and
+        // detail views' prefetch instances call `startPrefetch` instead.
+        observeStoredArchive()
         DispatchQueue.global(qos: .userInitiated).async {
             self.loadContentDictionary { json, error in
                 // `NSDictionary` / `NSError` are not Sendable-audited, so
@@ -194,21 +199,6 @@ extension Notification.Name {
 
     private func isReleasedSnapshot() -> Bool {
         publicationCacheQueue.sync { isReleased }
-    }
-
-    /// Carries status 403 because that is the toolkit's only signal not to
-    /// retry a track for the rest of the session
-    /// (`AudiobookNetworkService.isRefusedLink`). Any other error is retried,
-    /// and each retry would repeat the whole-track read.
-    private static func streamingDecryptRefusal() -> NSError {
-        NSError(
-            domain: "Palace.LCPAudiobooks",
-            code: 403,
-            userInfo: [
-                NSLocalizedDescriptionKey: "Tracks are not decrypted while the audiobook streams",
-                "httpStatusCode": 403
-            ]
-        )
     }
 
     private static func releasedError() -> NSError {
@@ -278,7 +268,10 @@ extension Notification.Name {
                 }
 
                 let activityBefore = archiveReadClient.upstreamActivity
-                let result = await publicationOpener.open(asset: asset, allowUserInteraction: true, credentials: credentials, sender: nil)
+                let openCredentials = credentials
+                let result = await Self.openSerialized(packageAt: urlToOpen) { [publicationOpener] in
+                    await publicationOpener.open(asset: asset, allowUserInteraction: true, credentials: openCredentials, sender: nil)
+                }
                 let openedAt = Date()
                 let openDuration = openedAt.timeIntervalSince(openStartedAt)
                 let readCost = archiveReadClient.upstreamActivity.delta(since: activityBefore)
@@ -310,10 +303,9 @@ extension Notification.Name {
                 case .success(let publication):
 
                     if Task.isCancelled { return }
-                    self.publicationCacheQueue.async {
-                        self.cachedPublication = publication
+                    if self.storeOpenedPublication(publication) {
+                        self.startResolvingTrackLengths(for: publication)
                     }
-                    self.startResolvingTrackLengths(for: publication)
 
                     if let jsonManifestString = publication.jsonManifest, let jsonData = jsonManifestString.data(using: .utf8),
                        let jsonObject = try? JSONSerialization.jsonObject(with: jsonData, options: []) as? NSDictionary {
@@ -1176,11 +1168,17 @@ extension LCPAudiobooks {
         }
         // Decrypting a track reads the whole track. Through a streamed
         // publication that is the whole track again from the content server,
-        // in byte ranges, on top of the package download (PP-5532). The track
-        // is decrypted from the package once it is stored instead.
-        if storedArchiveURL != nil, !readsFromStoredArchive {
-            completion(Self.streamingDecryptRefusal())
-            return
+        // in byte ranges, on top of the package download (PP-5532). The
+        // request waits for the package instead; failing it would make the
+        // toolkit retry it or report the track as failed.
+        if storedArchiveURL != nil {
+            let box = SendableDecryptCompletion(completion)
+            let held = publicationCacheQueue.sync { () -> Bool in
+                guard !readsStoredArchive else { return false }
+                heldDecrypts.append((url, resultUrl, box))
+                return true
+            }
+            if held { return }
         }
         if let publication = getPublication() {
             Self.decryptWithPublication(publication, url: url, to: resultUrl, completion: completion)
@@ -1239,6 +1237,13 @@ extension LCPAudiobooks {
             cachedPublication = nil
         }
         stopObservingStoredArchive()
+        let held = publicationCacheQueue.sync { () -> [SendableDecryptCompletion] in
+            defer { heldDecrypts = [] }
+            return heldDecrypts.map(\.completion)
+        }
+        for completion in held {
+            DispatchQueue.main.async { completion.fire(Self.releasedError()) }
+        }
     }
 }
 
@@ -1281,16 +1286,25 @@ extension LCPAudiobooks {
             Log.error(#file, "LCP audiobook: the stored package could not be opened; chapters keep streaming")
             return false
         }
-        let adopted = publicationCacheQueue.sync { () -> Bool in
-            guard !isReleased, !readsStoredArchive else { return false }
+        let held = publicationCacheQueue.sync { () -> [(source: URL, destination: URL, completion: SendableDecryptCompletion)]? in
+            guard !isReleased, !readsStoredArchive else { return nil }
             cachedPublication = publication
             readsStoredArchive = true
-            return true
+            // Its remaining reads go to the content server; the package
+            // answers the same question locally when a track loads.
+            trackLengthTask?.cancel()
+            trackLengthTask = nil
+            defer { heldDecrypts = [] }
+            return heldDecrypts
         }
-        if adopted {
-            Log.info(#file, "LCP audiobook: the package is stored; new chapters read it instead of streaming")
+        guard let held else { return false }
+        Log.info(#file, "LCP audiobook: the package is stored; new chapters read it instead of streaming")
+        for request in held {
+            Self.decryptWithPublication(publication, url: request.source, to: request.destination) { error in
+                request.completion.fire(error)
+            }
         }
-        return adopted
+        return true
     }
 
     private func openStoredArchive(_ url: URL) async -> Publication? {
@@ -1302,7 +1316,10 @@ extension LCPAudiobooks {
         case .success(let asset):
             // No user interaction: this runs in the background during playback,
             // and a prompt here would interrupt a chapter that is playing fine.
-            switch await publicationOpener.open(asset: asset, allowUserInteraction: false, credentials: nil, sender: nil) {
+            let result = await Self.openSerialized(packageAt: fileURL) { [publicationOpener] in
+                await publicationOpener.open(asset: asset, allowUserInteraction: false, credentials: nil, sender: nil)
+            }
+            switch result {
             case .success(let publication):
                 return publication
             case .failure(let error):
@@ -1316,8 +1333,10 @@ extension LCPAudiobooks {
     }
 
     /// Only a session that streams has a package to move to.
-    fileprivate func observeStoredArchive() {
+    func observeStoredArchive() {
         guard storedArchiveURL != nil else { return }
+        let alreadyObserving = publicationCacheQueue.sync { storedArchiveObserver != nil || isReleased }
+        guard !alreadyObserving else { return }
         let token = notificationCenter.addObserver(
             forName: .lcpAudiobookArchiveStored, object: nil, queue: nil
         ) { [weak self] note in
@@ -1325,6 +1344,30 @@ extension LCPAudiobooks {
             Task { await self.adoptStoredArchive(at: url) }
         }
         publicationCacheQueue.sync { storedArchiveObserver = token }
+    }
+
+    /// Keeps the first streamed open from replacing a package adopted while it
+    /// was still running, which would send later chapters back to the server.
+    /// Returns whether the publication was kept.
+    func storeOpenedPublication(_ publication: Publication) -> Bool {
+        publicationCacheQueue.sync {
+            guard !isReleased, !readsStoredArchive else { return false }
+            cachedPublication = publication
+            return true
+        }
+    }
+
+    /// Opens of one package run one at a time: Readium deadlocks when the same
+    /// `.lcpa` is opened twice at once, and an adoption can overlap the next
+    /// session's open of the package it just stored.
+    static func openSerialized<T>(
+        packageAt url: AbsoluteURL,
+        _ open: @escaping @Sendable () async -> T
+    ) async -> T {
+        guard let fileURL = url as? FileURL, fileURL.url.pathExtension.lowercased() == "lcpa" else {
+            return await open()
+        }
+        return await LocalPackageOpenGate.shared.run(key: fileURL.url.standardizedFileURL.path, open)
     }
 
     fileprivate func stopObservingStoredArchive() {
@@ -1514,6 +1557,37 @@ private final class DemandedTracks: @unchecked Sendable {
     func resolved(_ href: String) {
         lock.withLock { hrefs.removeAll { $0 == href } }
     }
+}
+
+/// Runs one package open at a time per file, in arrival order.
+final class LocalPackageOpenGate: @unchecked Sendable {
+    static let shared = LocalPackageOpenGate()
+    private let lock = NSLock()
+    private var tails: [String: Task<Void, Never>] = [:]
+
+    func run<T>(key: String, _ body: @escaping @Sendable () async -> T) async -> T {
+        let box = UncheckedResultBox<T>()
+        let task = lock.withLock { () -> Task<Void, Never> in
+            let previous = tails[key]
+            let task = Task {
+                await previous?.value
+                box.value = await body()
+            }
+            tails[key] = task
+            return task
+        }
+        await task.value
+        lock.withLock {
+            if tails[key] == task { tails[key] = nil }
+        }
+        return box.value!
+    }
+}
+
+/// Carries a non-Sendable open result out of the gate's task; written once
+/// before the task ends and read only after it has.
+private final class UncheckedResultBox<T>: @unchecked Sendable {
+    var value: T?
 }
 
 #endif

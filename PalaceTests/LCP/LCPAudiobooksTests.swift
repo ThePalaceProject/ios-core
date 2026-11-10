@@ -593,6 +593,7 @@ final class LCPAudiobooksTests: XCTestCase {
         let stored = PublicationBox(Self.storedPublication())
         let (audiobook, licenseURL) = try makeStreamingAudiobook(opener: { _ in stored.publication }, center: center)
         let packageURL = licenseURL.deletingPathExtension().appendingPathExtension("lcpa")
+        audiobook.observeStoredArchive()
 
         center.post(name: .lcpAudiobookArchiveStored, object: packageURL)
 
@@ -616,6 +617,7 @@ final class LCPAudiobooksTests: XCTestCase {
             return Self.storedPublication()
         }, center: center)
         let packageURL = licenseURL.deletingPathExtension().appendingPathExtension("lcpa")
+        audiobook.observeStoredArchive()
         audiobook.releaseResources()
 
         center.post(name: .lcpAudiobookArchiveStored, object: packageURL)
@@ -625,40 +627,95 @@ final class LCPAudiobooksTests: XCTestCase {
     }
 
     /// A streaming session must not decrypt whole tracks: each one would be
-    /// read from the content server by byte ranges (PP-5532).
-    func testDecrypt_whileStreaming_refusesWithoutReadingAnything() async throws {
+    /// read from the content server by byte ranges (PP-5532). The request waits.
+    func testDecrypt_whileStreaming_waitsInsteadOfReading() async throws {
         let (audiobook, _) = try makeStreamingAudiobook(opener: { _ in Self.storedPublication() })
-        let destination = FileManager.default.temporaryDirectory
-            .appendingPathComponent("track-\(UUID().uuidString).mp3")
+        let answered = expectation(description: "a held decrypt must not complete")
+        answered.isInverted = true
 
-        let error = await decryptError(audiobook, track: "track1.mp3", to: destination)
-
-        let nsError = try XCTUnwrap(error as NSError?, "a streaming session must refuse to decrypt")
-        XCTAssertEqual(nsError.userInfo["httpStatusCode"] as? Int, 403,
-                       "the toolkit retries any other error, which repeats the whole-track read")
-        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
-    }
-
-    /// Once the package is stored and adopted, decryption reads it.
-    func testDecrypt_afterTheStoredPackageIsAdopted_isNotRefused() async throws {
-        let (audiobook, licenseURL) = try makeStreamingAudiobook(opener: { _ in Self.storedPublication() })
-        await audiobook.adoptStoredArchive(at: licenseURL.deletingPathExtension().appendingPathExtension("lcpa"))
-        let destination = FileManager.default.temporaryDirectory
-            .appendingPathComponent("track-\(UUID().uuidString).mp3")
-
-        let error = await decryptError(audiobook, track: "missing-track.mp3", to: destination)
-
-        // The stub package has no such track, so this fails, but on the
-        // package's own lookup rather than the streaming refusal.
-        XCTAssertNotEqual((error as NSError?)?.userInfo["httpStatusCode"] as? Int, 403)
-    }
-
-    private func decryptError(_ audiobook: LCPAudiobooks, track: String, to destination: URL) async -> Error? {
-        await withCheckedContinuation { continuation in
-            audiobook.decrypt(url: URL(fileURLWithPath: "/" + track), to: destination) { error in
-                continuation.resume(returning: error)
-            }
+        audiobook.decrypt(url: URL(fileURLWithPath: "/track1.mp3"), to: Self.scratchFile()) { _ in
+            answered.fulfill()
         }
+
+        await fulfillment(of: [answered], timeout: 0.3)
+    }
+
+    /// Once the package is stored, a held decrypt is answered from it.
+    func testHeldDecrypt_isServedFromThePackageOnceAdopted() async throws {
+        let (audiobook, licenseURL) = try makeStreamingAudiobook(opener: { _ in Self.storedPublication() })
+        let errorBox = ErrorBox()
+        let answered = expectation(description: "the held decrypt completes after adoption")
+        audiobook.decrypt(url: URL(fileURLWithPath: "/missing-track.mp3"), to: Self.scratchFile()) { error in
+            errorBox.error = error
+            answered.fulfill()
+        }
+
+        await audiobook.adoptStoredArchive(at: licenseURL.deletingPathExtension().appendingPathExtension("lcpa"))
+
+        await fulfillment(of: [answered], timeout: 2)
+        // The stub package has no such track, so the package's own lookup answers.
+        XCTAssertEqual((errorBox.error as NSError?)?.domain, "AudiobookResourceError")
+        XCTAssertEqual((errorBox.error as NSError?)?.code, 404)
+    }
+
+    /// A session that ends before the package arrives fails what it held.
+    func testHeldDecrypt_failsWhenTheSessionIsReleased() async throws {
+        let (audiobook, _) = try makeStreamingAudiobook(opener: { _ in Self.storedPublication() })
+        let errorBox = ErrorBox()
+        let answered = expectation(description: "the held decrypt is failed on release")
+        audiobook.decrypt(url: URL(fileURLWithPath: "/track1.mp3"), to: Self.scratchFile()) { error in
+            errorBox.error = error
+            answered.fulfill()
+        }
+
+        audiobook.releaseResources()
+
+        await fulfillment(of: [answered], timeout: 2)
+        XCTAssertEqual((errorBox.error as NSError?)?.domain, "Palace.LCPAudiobooks")
+    }
+
+    /// The first streamed open finishing after adoption must not replace the
+    /// package, or later chapters go back to the server.
+    func testStreamedOpenFinishingAfterAdoption_keepsThePackage() async throws {
+        let stored = PublicationBox(Self.storedPublication())
+        let (audiobook, licenseURL) = try makeStreamingAudiobook(opener: { _ in stored.publication })
+        await audiobook.adoptStoredArchive(at: licenseURL.deletingPathExtension().appendingPathExtension("lcpa"))
+
+        let kept = audiobook.storeOpenedPublication(Self.storedPublication())
+
+        XCTAssertFalse(kept)
+        XCTAssertTrue(audiobook.getPublication() === stored.publication)
+    }
+
+    /// Before any adoption, the streamed open is what the session plays.
+    func testStreamedOpen_beforeAdoption_isKept() throws {
+        let (audiobook, _) = try makeStreamingAudiobook(opener: { _ in Self.storedPublication() })
+        let streamed = Self.storedPublication()
+
+        XCTAssertTrue(audiobook.storeOpenedPublication(streamed))
+        XCTAssertTrue(audiobook.getPublication() === streamed)
+    }
+
+    /// Two opens of one package never overlap.
+    func testPackageOpens_ofTheSameFile_runOneAtATime() async throws {
+        let url = try XCTUnwrap(FileURL(url: FileManager.default.temporaryDirectory
+            .appendingPathComponent("gate-\(UUID().uuidString).lcpa")))
+        let tracker = OverlapTracker()
+
+        async let first: Void = LCPAudiobooks.openSerialized(packageAt: url) {
+            await tracker.enter(); try? await Task.sleep(nanoseconds: 100_000_000); await tracker.leave()
+        }
+        async let second: Void = LCPAudiobooks.openSerialized(packageAt: url) {
+            await tracker.enter(); try? await Task.sleep(nanoseconds: 100_000_000); await tracker.leave()
+        }
+        _ = await (first, second)
+
+        let maxConcurrent = await tracker.maxConcurrent
+        XCTAssertEqual(maxConcurrent, 1)
+    }
+
+    nonisolated private static func scratchFile() -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("track-\(UUID().uuidString).mp3")
     }
 
     nonisolated private static func storedPublication() -> Publication {
@@ -1720,4 +1777,15 @@ private final class PublicationBox: @unchecked Sendable {
 /// Lets a `@Sendable` opener reach the instance it belongs to.
 private final class AudiobookHolder: @unchecked Sendable {
     weak var audiobook: LCPAudiobooks?
+}
+
+private final class ErrorBox: @unchecked Sendable {
+    var error: Error?
+}
+
+private actor OverlapTracker {
+    private var current = 0
+    private(set) var maxConcurrent = 0
+    func enter() { current += 1; maxConcurrent = max(maxConcurrent, current) }
+    func leave() { current -= 1 }
 }
