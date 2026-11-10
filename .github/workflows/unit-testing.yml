@@ -22,8 +22,10 @@ concurrency:
 env:
   # How many matrix jobs run the tests. Chosen from measured cost and wall
   # clock; see the PR that introduced sharding for the N=2/3/4 comparison.
+  # 3 since the move to macos-26 / Xcode 26.6 (PP-5523): there the two
+  # shards' parallel passes took 1371s and 1967s against a 1800s budget.
   # The plan, the matrix and the gate all read this one number.
-  UNIT_TEST_SHARDS: 2
+  UNIT_TEST_SHARDS: 3
 
 jobs:
 
