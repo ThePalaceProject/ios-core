@@ -16,15 +16,24 @@ import XCTest
 final class NowPlayingCoordinatorTests: XCTestCase {
 
     private var coordinator: NowPlayingCoordinator!
+    private var infoCenter: SpyNowPlayingInfoCenter!
 
     override func setUp() {
         super.setUp()
-        coordinator = NowPlayingCoordinator()
+        // The shared system center round-trips through the media service, and
+        // on iOS 26.5 an artwork write there can block the test (PP-5523).
+        infoCenter = SpyNowPlayingInfoCenter()
+        coordinator = NowPlayingCoordinator(
+            applicationStateProvider: { .active },
+            dryStreamLogger: { _, _ in },
+            infoCenter: infoCenter
+        )
     }
 
     override func tearDown() {
         coordinator.clearNowPlaying()
         coordinator = nil
+        infoCenter = nil
         super.tearDown()
     }
 
@@ -42,7 +51,7 @@ final class NowPlayingCoordinatorTests: XCTestCase {
             playbackRate: .normalTime
         )
 
-        let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
+        let info = infoCenter.nowPlayingInfo
         XCTAssertEqual(info?[MPMediaItemPropertyTitle] as? String, "Chapter 1")
         XCTAssertEqual(info?[MPMediaItemPropertyArtist] as? String, "Test Book")
         XCTAssertEqual(info?[MPMediaItemPropertyAlbumTitle] as? String, "Test Author")
@@ -60,7 +69,7 @@ final class NowPlayingCoordinatorTests: XCTestCase {
             playbackRate: .normalTime
         )
 
-        let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
+        let info = infoCenter.nowPlayingInfo
         let elapsed = info?[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? Double ?? -1
         let duration = info?[MPMediaItemPropertyPlaybackDuration] as? Double ?? -1
 
@@ -80,7 +89,7 @@ final class NowPlayingCoordinatorTests: XCTestCase {
             playbackRate: .normalTime
         )
 
-        let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
+        let info = infoCenter.nowPlayingInfo
         let elapsed = info?[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? Double ?? -1
 
         XCTAssertLessThanOrEqual(elapsed, 300.0,
@@ -99,7 +108,7 @@ final class NowPlayingCoordinatorTests: XCTestCase {
             playbackRate: .normalTime
         )
 
-        let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
+        let info = infoCenter.nowPlayingInfo
         let elapsed = info?[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? Double ?? -1
 
         XCTAssertGreaterThanOrEqual(elapsed, 0.0,
@@ -118,7 +127,7 @@ final class NowPlayingCoordinatorTests: XCTestCase {
             playbackRate: .normalTime
         )
 
-        let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
+        let info = infoCenter.nowPlayingInfo
         let duration = info?[MPMediaItemPropertyPlaybackDuration] as? Double ?? -1
 
         XCTAssertGreaterThanOrEqual(duration, 1.0,
@@ -137,7 +146,7 @@ final class NowPlayingCoordinatorTests: XCTestCase {
             playbackRate: .oneAndAHalfTime
         )
 
-        let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
+        let info = infoCenter.nowPlayingInfo
         let rate = info?[MPNowPlayingInfoPropertyPlaybackRate] as? Double ?? -1
 
         XCTAssertGreaterThan(rate, 0.0,
@@ -156,7 +165,7 @@ final class NowPlayingCoordinatorTests: XCTestCase {
             playbackRate: .normalTime
         )
 
-        let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
+        let info = infoCenter.nowPlayingInfo
         let rate = info?[MPNowPlayingInfoPropertyPlaybackRate] as? Double ?? -1
 
         XCTAssertEqual(rate, 0.0, accuracy: 0.01,
@@ -175,7 +184,7 @@ final class NowPlayingCoordinatorTests: XCTestCase {
             playbackRate: .normalTime
         )
 
-        let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
+        let info = infoCenter.nowPlayingInfo
         let mediaType = info?[MPMediaItemPropertyMediaType] as? UInt
 
         XCTAssertEqual(mediaType, MPMediaType.audioBook.rawValue,
@@ -194,7 +203,7 @@ final class NowPlayingCoordinatorTests: XCTestCase {
 
         coordinator.setPlaybackState(playing: true)
 
-        let playbackState = MPNowPlayingInfoCenter.default().playbackState
+        let playbackState = infoCenter.playbackState
         XCTAssertEqual(playbackState, .playing)
     }
 
@@ -207,7 +216,7 @@ final class NowPlayingCoordinatorTests: XCTestCase {
 
         coordinator.setPlaybackState(playing: false)
 
-        let playbackState = MPNowPlayingInfoCenter.default().playbackState
+        let playbackState = infoCenter.playbackState
         XCTAssertEqual(playbackState, .paused)
     }
 
@@ -220,7 +229,7 @@ final class NowPlayingCoordinatorTests: XCTestCase {
 
         coordinator.setPlaybackState(playing: true)
 
-        let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
+        let info = infoCenter.nowPlayingInfo
         let rate = info?[MPNowPlayingInfoPropertyPlaybackRate] as? Double ?? 0
 
         XCTAssertGreaterThan(rate, 0.0, "Rate should be positive when playing")
@@ -235,7 +244,7 @@ final class NowPlayingCoordinatorTests: XCTestCase {
 
         coordinator.setPlaybackState(playing: false)
 
-        let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
+        let info = infoCenter.nowPlayingInfo
         let rate = info?[MPNowPlayingInfoPropertyPlaybackRate] as? Double ?? -1
 
         XCTAssertEqual(rate, 0.0, accuracy: 0.01, "Rate should be 0 when paused")
@@ -252,7 +261,7 @@ final class NowPlayingCoordinatorTests: XCTestCase {
 
         coordinator.updatePlaybackRate(.doubleTime)
 
-        let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
+        let info = infoCenter.nowPlayingInfo
         let defaultRate = info?[MPNowPlayingInfoPropertyDefaultPlaybackRate] as? Double ?? -1
         let rateValue = Double(PlaybackRate.convert(rate: .doubleTime))
 
@@ -272,7 +281,7 @@ final class NowPlayingCoordinatorTests: XCTestCase {
         let testImage = UIImage(systemName: "book")!
         coordinator.updateArtwork(testImage)
 
-        let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
+        let info = infoCenter.nowPlayingInfo
         XCTAssertNotNil(info?[MPMediaItemPropertyArtwork],
                          "Artwork should be set in Now Playing info")
     }
@@ -289,7 +298,7 @@ final class NowPlayingCoordinatorTests: XCTestCase {
             elapsed: 0, duration: 100, isPlaying: false, playbackRate: .normalTime
         )
 
-        let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
+        let info = infoCenter.nowPlayingInfo
         XCTAssertNil(info?[MPMediaItemPropertyArtwork],
                       "Artwork should be nil after clearing")
     }
@@ -305,7 +314,7 @@ final class NowPlayingCoordinatorTests: XCTestCase {
 
         coordinator.clearNowPlaying()
 
-        let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
+        let info = infoCenter.nowPlayingInfo
         XCTAssertNil(info, "Now Playing info should be nil after clearing")
     }
 
@@ -318,7 +327,7 @@ final class NowPlayingCoordinatorTests: XCTestCase {
 
         coordinator.clearNowPlaying()
 
-        let state = MPNowPlayingInfoCenter.default().playbackState
+        let state = infoCenter.playbackState
         XCTAssertEqual(state, .stopped)
     }
 
@@ -338,7 +347,7 @@ final class NowPlayingCoordinatorTests: XCTestCase {
             )
         }
 
-        let title = MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyTitle] as? String
+        let title = infoCenter.nowPlayingInfo?[MPMediaItemPropertyTitle] as? String
         XCTAssertEqual(title, "Chapter 9", "each title change is written at once, so the latest is shown")
     }
 
@@ -357,7 +366,7 @@ final class NowPlayingCoordinatorTests: XCTestCase {
             playbackRate: .normalTime
         )
 
-        let info = MPNowPlayingInfoCenter.default().nowPlayingInfo
+        let info = infoCenter.nowPlayingInfo
         XCTAssertNotNil(info?[MPMediaItemPropertyArtwork],
                          "Artwork should be preserved across updateNowPlaying calls")
     }
