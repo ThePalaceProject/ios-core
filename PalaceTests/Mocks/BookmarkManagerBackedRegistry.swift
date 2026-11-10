@@ -17,7 +17,7 @@ final class BookmarkManagerBackedRegistry: TPPBookRegistryMock, @unchecked Senda
     private let manager: BookmarkManager
 
     override init() {
-        manager = BookmarkManager(store: store, save: { _ in }, savePosition: { _ in }, saveSync: { _ in })
+        manager = BookmarkManager(store: store, save: { _ in }, savePosition: { _, _ in }, saveSync: { _ in })
         super.init()
     }
 

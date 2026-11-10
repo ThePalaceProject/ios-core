@@ -40,7 +40,7 @@ final class BookmarkManagerTests: XCTestCase {
                 self?.saveCallCount += 1
                 self?.lastSavedAccount = account
             },
-            savePosition: { [weak self] account in
+            savePosition: { [weak self] account, _ in
                 self?.savePositionCallCount += 1
                 self?.lastSavedAccount = account
             },
