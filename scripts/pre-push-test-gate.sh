@@ -424,11 +424,12 @@ run_with_timeout() {
 
 # Sum the "Executed N tests" line that follows each "Test Suite '<name>'
 # passed|failed at" line; prints "<name> <N>" per suite. Repeated suites
-# (test iterations, retries) add up.
+# (test iterations, retries) add up. The suite line can follow test output
+# that printed no trailing newline, so it is matched anywhere in the line.
 executed_counts() {
   awk -v q="'" '
-    index($0, "Test Suite " q) == 1 && $0 ~ (q " (passed|failed) at ") {
-      s = substr($0, length("Test Suite " q) + 1)
+    (p = index($0, "Test Suite " q)) > 0 && substr($0, p) ~ (q " (passed|failed) at ") {
+      s = substr($0, p + length("Test Suite " q))
       sub(q " (passed|failed) at .*", "", s)
       pending = s
       next

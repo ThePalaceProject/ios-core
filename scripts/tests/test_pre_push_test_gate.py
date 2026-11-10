@@ -319,6 +319,17 @@ def test_normal_run_passes_and_reports_the_executed_count(tmp_path):
     assert "-quiet" not in _selected_args(tmp_path)
 
 
+def test_a_suite_line_after_unterminated_test_output_still_counts(tmp_path):
+    """A test that prints without a newline puts the next suite line after its
+    text; that class ran and must not read as 0 executed."""
+    repo = _gate_repo(tmp_path, test_classes=("WidgetTests", "WidgetExtraTests"))
+
+    result = _run_gate(repo, tmp_path, "suite-line-after-unterminated-output.log")
+
+    assert result.returncode == 0, result.stderr
+    assert "PASS — 2 class(es) green, 5 test(s) executed." in result.stderr
+
+
 # --- Classes that inherit XCTestCase through a project base class -------------
 
 BASES = {
