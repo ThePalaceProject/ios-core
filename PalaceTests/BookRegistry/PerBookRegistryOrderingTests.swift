@@ -194,6 +194,62 @@ final class PerBookRegistryOrderingTests: PerBookRegistryTestCase {
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: booksDirectory.path).filter { $0.hasPrefix(stem) }, [])
     }
 
+    /// A book removed in the launch that moved the shelf to per-book files
+    /// has its files removed by that removal.
+    func testRemove_InTheMigratingLaunch_RemovesTheBooksFiles() async throws {
+        settings.flag = false
+        let seed = await launch()
+        for id in ["a", "b", "c"] { seed.addBook(book(id), state: .holding) }
+        await settle(seed)
+        settings.flag = true
+        let migrating = await launch()
+        XCTAssertNotNil(perBookRecords()["b"], "premise: the migration wrote b's record file")
+
+        migrating.removeBook(forIdentifier: "b")
+        await settle(migrating)
+
+        XCTAssertEqual(filesOf("b"), [])
+    }
+
+    /// A synchronous save removes the files a removal left behind.
+    func testSyncSave_RemovesTheFilesOfARemovedBook() async throws {
+        try await seedMigratedShelf()
+        let crashing = await launch(LaunchLog(crashAtFirst: .bookRemoval))
+        crashing.removeBook(forIdentifier: "b")
+        await settle(crashing)
+        XCTAssertNotEqual(filesOf("b"), [], "premise: b's files are still on disk")
+        let next = await launch()
+        next.setLocation(location("a-2"), forIdentifier: "a")
+        await settle(next)
+
+        next.flushPendingPositions()
+        await settle(next)
+
+        XCTAssertEqual(filesOf("b"), [])
+    }
+
+    /// A removal step that fails once stops using the per-book files for the
+    /// launch: the shelf stays without the book, later positions go to
+    /// registry.json, and the next launch moves that shelf to per-book files again.
+    func testRemovalFailsOnce_LaterSavesUseTheSingleFile() async throws {
+        try await seedMigratedShelf()
+        let log = LaunchLog(failOnce: .bookRemoval)
+        let registry = await launch(log)
+        registry.removeBook(forIdentifier: "b")
+        await settle(registry)
+        let positionWritesBefore = log.steps.filter { $0 == .bookPosition }.count
+
+        registry.setLocation(location("a-2"), forIdentifier: "a")
+        await settle(registry)
+
+        XCTAssertEqual(log.steps.filter { $0 == .bookPosition }.count, positionWritesBefore, "no position file written")
+        XCTAssertEqual(try singleFileLocation(of: "a"), "a-2")
+        let next = shelf(await launch())
+        XCTAssertNil(next["b"])
+        XCTAssertEqual(next["a"]?.location, "a-2")
+        XCTAssertEqual(filesOf("b"), [], "the next launch's move replaces the files left behind")
+    }
+
     // MARK: - Scheduled backup
 
     /// With per-book files in use, shelf saves inside the backup interval write
@@ -290,6 +346,24 @@ final class PerBookRegistryOrderingTests: PerBookRegistryTestCase {
         XCTAssertEqual(try backupIdentifiers(), ["a", "b", "c", "x"])
     }
 
+    /// After a per-book write error stops the per-book files for the launch,
+    /// every shelf save writes the backup, as with the flag off.
+    func testDeactivatedSession_EveryShelfSaveWritesTheBackup() async throws {
+        try await seedMigratedShelf()
+        let log = LaunchLog(failOnce: .bookRecord)
+        let registry = await launch(log)
+        registry.addBook(book("x"), state: .holding)
+        await settle(registry)
+
+        registry.addBook(book("y"), state: .holding)
+        await settle(registry)
+        registry.addBook(book("z"), state: .holding)
+        await settle(registry)
+
+        XCTAssertEqual(backups(log), 3)
+        XCTAssertEqual(try backupIdentifiers(), ["a", "b", "c", "x", "y", "z"])
+    }
+
     /// With the flag off every shelf save still writes the backup.
     func testFlagOff_EveryShelfSaveWritesTheBackup() async throws {
         settings.flag = false
@@ -319,6 +393,13 @@ final class PerBookRegistryOrderingTests: PerBookRegistryTestCase {
     }
 
     // MARK: - Helpers
+
+    /// The names of a book's files in the books folder.
+    private func filesOf(_ identifier: String) -> [String] {
+        let stem = PerBookRegistryFiles.fileStem(for: identifier)
+        return ((try? FileManager.default.contentsOfDirectory(atPath: booksDirectory.path)) ?? [])
+            .filter { $0.hasPrefix(stem) }.sorted()
+    }
 
     private var backupURL: URL { registryDirectory.appendingPathComponent("registry.json.bak") }
 

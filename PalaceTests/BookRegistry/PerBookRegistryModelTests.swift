@@ -26,7 +26,7 @@ final class PerBookRegistryModelTests: PerBookRegistryTestCase {
     /// no book is lost and the shelf never loads empty. Operations run with the
     /// flag on. A flag-off launch between them reads registry.json without the
     /// record files, so it shows the shelf of the last completed registry.json
-    /// write; its positions may be newer, so it is compared without them.
+    /// write, with the positions saved to position files since.
     func testRandomOperationsWithCrashes_EachReloadMatchesTheModel() async throws {
         for seed in Self.seeds {
             try await run(seed: seed)
@@ -44,6 +44,8 @@ final class PerBookRegistryModelTests: PerBookRegistryTestCase {
         var trail: [String] = []
         let start = shelf(await launch())
         var expected: (before: Shelf, after: Shelf) = (start, start)
+        // What a flag-off launch shows: the last completed registry.json write
+        // and the positions saved to position files after it.
         var singleFileShelf = start
         var counter = 0
 
@@ -53,7 +55,7 @@ final class PerBookRegistryModelTests: PerBookRegistryTestCase {
                 let offLog = LaunchLog()
                 let off = shelf(await launch(offLog))
                 let context = "seed \(seed), flag-off launch before launch \(launchIndex) after [\(trail.joined(separator: "; "))]"
-                XCTAssertEqual(Self.withoutLocations(off), Self.withoutLocations(singleFileShelf), context)
+                XCTAssertEqual(off, singleFileShelf, context)
                 XCTAssertFalse(off.isEmpty, "\(context): the shelf loaded empty")
                 // Taking newer positions rewrites registry.json, and the next
                 // flag-on launch moves that shelf to the per-book files again.
@@ -91,8 +93,13 @@ final class PerBookRegistryModelTests: PerBookRegistryTestCase {
                                   "seed \(seed): \(name) changed the shelf and wrote nothing")
                     if log.didCrash { interrupted = (modelBefore, model) }
                     let steps = Array(log.steps.dropFirst(stepsBefore))
-                    let written = steps.filter { $0 == .primary }.count - (log.didCrash && steps.last == .primary ? 1 : 0)
-                    if written > 0 { singleFileShelf = model }
+                    if Self.completed(.primary, in: steps, crashed: log.didCrash) > 0 {
+                        singleFileShelf = model
+                    } else if Self.completed(.bookPosition, in: steps, crashed: log.didCrash) > 0 {
+                        for (id, entry) in model where singleFileShelf[id] != nil && entry.location != modelBefore[id]?.location {
+                            singleFileShelf[id] = singleFileShelf[id]?.with(location: entry.location)
+                        }
+                    }
                 }
             }
             expected = interrupted ?? (model, model)
@@ -102,8 +109,9 @@ final class PerBookRegistryModelTests: PerBookRegistryTestCase {
         assertLoad(final, expected, "seed \(seed), final launch after [\(trail.joined(separator: "; "))]")
     }
 
-    private static func withoutLocations(_ shelf: Shelf) -> Shelf {
-        shelf.mapValues { $0.with(location: nil) }
+    /// The `step` writes in `steps` that ran. A crashed operation's last step is the one that did not.
+    private static func completed(_ step: RegistryWriteStep, in steps: [RegistryWriteStep], crashed: Bool) -> Int {
+        steps.filter { $0 == step }.count - (crashed && steps.last == step ? 1 : 0)
     }
 
     private func assertLoad(_ loaded: Shelf, _ expected: (before: Shelf, after: Shelf), _ context: String,
