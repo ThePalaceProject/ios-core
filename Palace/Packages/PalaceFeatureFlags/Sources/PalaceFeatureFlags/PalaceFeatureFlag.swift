@@ -68,6 +68,11 @@ public enum PalaceFeatureFlag: String, Sendable {
     /// override (dev-menu toggle / QA) > Firebase remote > this default —
     /// see `isLCPAudiobookStreamingEnabled`.
     case lcpAudiobookStreamingEnabled = "lcp_audiobook_streaming_enabled"
+    /// Keeps each book's shelf record and reading position in files of their
+    /// own next to `registry.json`, so a position save writes one small file
+    /// (PP-5507). Default off; rollout is beta, then on by default. Read once
+    /// per library load, so a change applies from the next load.
+    case perBookRegistryStorageEnabled = "per_book_registry_storage_enabled"
 
     /// In-app fallback when Remote Config has no value. Kept in the package:
     /// it is part of the flag CONTRACT (tests pin it), not Firebase wiring.

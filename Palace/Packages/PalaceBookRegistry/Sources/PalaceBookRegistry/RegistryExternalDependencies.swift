@@ -90,6 +90,25 @@ public enum RegistryWriteStep: Sendable, Equatable {
     case backupReplace
     /// The `.atomic` write of the primary `registry.json`.
     case primary
+    /// The `.atomic` write of one book's record file in the per-book layout.
+    case bookRecord
+    /// The `.atomic` write of one book's position file in the per-book layout.
+    case bookPosition
+    /// Removing one book's files from the per-book layout.
+    case bookRemoval
+    /// The `.atomic` write of `books-state.json`, the per-book layout's
+    /// migration and trust record.
+    case perBookState
+    /// Writing one file into `books.migrating` while moving a shelf to the
+    /// per-book layout.
+    case migrationStaging
+    /// About to read `books.migrating` back and compare it with `registry.json`.
+    /// Nothing is written at this step.
+    case migrationVerify
+    /// Removing `books`, then moving the verified `books.migrating` in its place.
+    case migrationSwap
+    /// Removing a leftover or abandoned `books.migrating`.
+    case migrationCleanup
 }
 
 /// The external collaborators `BookRegistrySync` / `BookRegistryStore` resolve
@@ -129,6 +148,12 @@ public struct RegistryExternalDependencies: Sendable {
     /// the shelf and before it applies the result. Production leaves it as a
     /// no-op; tests write to the shelf here to change it after the comparison.
     let afterLoansFeedCompared: @Sendable () -> Void
+    /// Whether this launch keeps each book in its own files (PP-5507). Read once
+    /// per account load; production reads the Remote Config flag, default off.
+    let perBookStorageEnabled: @Sendable () -> Bool
+    /// The app version and build. A shelf gets three tries to move to the
+    /// per-book layout for each value.
+    let appVersion: @Sendable () -> String
 
     public init(
         downloadService: @escaping @Sendable () -> any RegistryDownloadServicing,
@@ -139,7 +164,9 @@ public struct RegistryExternalDependencies: Sendable {
         beforeRegistryWrite: @escaping @Sendable (_ step: RegistryWriteStep, _ url: URL) throws -> Void = { _, _ in },
         positionClock: @escaping @Sendable () -> Date = { Date() },
         afterSaveSnapshot: @escaping @Sendable (_ accountID: String) -> Void = { _ in },
-        afterLoansFeedCompared: @escaping @Sendable () -> Void = {}
+        afterLoansFeedCompared: @escaping @Sendable () -> Void = {},
+        perBookStorageEnabled: @escaping @Sendable () -> Bool = { false },
+        appVersion: @escaping @Sendable () -> String = RegistryExternalDependencies.bundleVersion
     ) {
         self.downloadService = downloadService
         self.loansFeedFetcher = loansFeedFetcher
@@ -150,5 +177,16 @@ public struct RegistryExternalDependencies: Sendable {
         self.positionClock = positionClock
         self.afterSaveSnapshot = afterSaveSnapshot
         self.afterLoansFeedCompared = afterLoansFeedCompared
+        self.perBookStorageEnabled = perBookStorageEnabled
+        self.appVersion = appVersion
+    }
+
+    /// `CFBundleShortVersionString (CFBundleVersion)` of the main bundle.
+    // PUBLIC_INTENT: default argument of the public init, which the app target calls.
+    public static let bundleVersion: @Sendable () -> String = {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        return "\(short) (\(build))"
     }
 }
