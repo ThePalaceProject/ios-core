@@ -81,7 +81,7 @@ jobs:
   build:
     needs: changes
     if: needs.changes.outputs.run == 'true'
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 60
     outputs:
       shards: ${{ steps.plan.outputs.shards }}
@@ -90,7 +90,7 @@ jobs:
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
-          xcode-version: '26.3'
+          xcode-version: '26.6'
 
       # The version is the reference profile's (scripts/reference-toolchain.ini).
       # The shards select the version recorded here: products built by one
@@ -271,7 +271,7 @@ jobs:
   test:
     needs: [changes, build]
     if: needs.changes.outputs.run == 'true'
-    runs-on: macos-15
+    runs-on: macos-26
     name: test (shard ${{ matrix.shard }})
     # The shard budget inside ci-run-test-shard.sh interrupts xcodebuild at
     # 30 minutes so the result bundle is still written, and the shard step's own
@@ -753,7 +753,7 @@ jobs:
   report:
     needs: [changes, build, test]
     if: always() && needs.changes.outputs.run == 'true' && needs.build.result != 'skipped' && needs.build.result != 'cancelled'
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 30
     outputs:
       coverage_floors: ${{ steps.coverage_gate.outcome }}
@@ -768,7 +768,7 @@ jobs:
       - name: Set up Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
-          xcode-version: ${{ needs.build.outputs.xcode || '26.3' }}
+          xcode-version: ${{ needs.build.outputs.xcode || '26.6' }}
 
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

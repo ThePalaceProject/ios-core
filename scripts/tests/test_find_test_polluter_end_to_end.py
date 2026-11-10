@@ -348,7 +348,7 @@ def test_discovery_prefers_a_targeted_device_over_the_first_listed(tmp_path):
                    env=_discovery_env(stub, {"STUB_ARGV_LOG": str(argv_log)}))
 
     text = argv_log.read_text()
-    assert "id=BBBB-1111" in text, f"must pick iPhone 16 Pro; got {text}"
+    assert "id=CCCC-2222" in text, f"must pick iPhone 17 Pro, the reference device; got {text}"
     assert "id=AAAA-0000" not in text, "must not pick the first-listed iPhone 12"
 
 

@@ -330,7 +330,7 @@ resolve_simulator() {
     | grep "platform:iOS Simulator" | grep "iPhone" | grep -v "error:")
 
   local preferred found
-  for preferred in "iPhone 16 Pro" "iPhone 17 Pro" "iPhone 16" "iPhone 17"; do
+  for preferred in "iPhone 17 Pro" "iPhone 16 Pro" "iPhone 17" "iPhone 16"; do
     found=$(printf '%s\n' "$destinations" | grep -F "name:$preferred " | head -1 | sed 's/.*id:\([^,]*\).*/\1/')
     if [ -n "$found" ]; then
       printf '%s' "$found"

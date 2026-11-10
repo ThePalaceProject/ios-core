@@ -1,0 +1,30 @@
+name: Toolchain Availability
+
+# Checks that the runner image still provides the reference toolchain in
+# scripts/reference-toolchain.ini: the pinned Xcode build, its simulator SDK,
+# the simulator runtime and the device. GitHub updates its images weekly and
+# removes older Xcode versions and runtimes over time; this run names what
+# went missing before pull requests go red on it.
+#
+# It does not select an Xcode first: setup-xcode would fail on a missing
+# version with its own message and hide the rest of the check.
+on:
+  schedule:
+    - cron: '17 6 * * 1'   # Mondays 06:17 UTC
+  workflow_dispatch:
+permissions:
+  contents: read
+
+jobs:
+  check:
+    # The profile's runner_image (macos-26-arm64); the pytest pins the match.
+    runs-on: macos-26
+    timeout-minutes: 15
+    steps:
+      - name: Checkout (no submodules)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: false
+
+      - name: Check the reference toolchain is on this image
+        run: python3 scripts/reference_toolchain.py check-available --profile reference
