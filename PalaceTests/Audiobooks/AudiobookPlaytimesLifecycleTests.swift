@@ -45,7 +45,6 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
         let box = activeAccountIdBox!
         libraryChanges = PassthroughSubject()
         sut = AudiobookDataManager(
-            syncTimeInterval: 3600,
             networkService: spyExecutor,
             currentAccountIdProvider: { box.value },
             currentLibraryChanges: libraryChanges.eraseToAnyPublisher()
@@ -91,7 +90,8 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
 
         sut.syncValues()
         sut.syncQueue.sync {}          // barrier: the syncValues block dispatched the POST
-        spyExecutor.drainCompletions() // barrier: the POST completion ran removeSynchronizedEntries
+        spyExecutor.drainCompletions() // barrier: the POST completion queued its answer on syncQueue
+        sut.syncQueue.sync {}          // barrier: the answer removed the synchronized entries
 
         XCTAssertEqual(spyExecutor.calls.count, 1,
                        "Same-library entry must POST exactly once")
@@ -157,6 +157,7 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
         sut.syncValues()
         sut.syncQueue.sync {}
         spyExecutor.drainCompletions()
+        sut.syncQueue.sync {}
         XCTAssertEqual(spyExecutor.calls.count, 1, "First sync uploads cleanly")
         XCTAssertTrue(sut.store.queue.isEmpty, "First sync clears the queue")
 
@@ -193,14 +194,15 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
         //      dispatches the POST) to run to completion on the manager's
         //      serial queue.
         //   2. `drainCompletions()` — waits for the spy's success completion
-        //      (which calls `removeSynchronizedEntries`) to run on the spy's
-        //      serial completion queue.
+        //      to run on the spy's serial completion queue; it queues the
+        //      answer back onto `syncQueue`, which a second barrier joins.
         // After both, the flush is fully observed, no matter how starved the
         // cooperative/GCD pools are.
         activeAccountIdBox.value = libraryA
         sut.syncValues()
         sut.syncQueue.sync {}
         spyExecutor.drainCompletions()
+        sut.syncQueue.sync {}
 
         XCTAssertEqual(spyExecutor.calls.count, 2,
                        "Switch-back sync must flush the deferred entry — full write → reset → re-enter cycle through the production seam")
@@ -282,6 +284,7 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
         // `calls.count == 1` is exact, not a starvable poll.
         sut.syncQueue.sync {}
         spyExecutor.drainCompletions()
+        sut.syncQueue.sync {}
         XCTAssertEqual(spyExecutor.calls.count, 1,
                        "Subsequent same-account sync runs normally — proves prior all-skip path ended cleanly")
     }
@@ -332,6 +335,7 @@ final class AudiobookPlaytimesLifecycleTests: XCTestCase {
         sut.syncValues()
         sut.syncQueue.sync {}
         spyExecutor.drainCompletions()
+        sut.syncQueue.sync {}
         XCTAssertEqual(spyExecutor.calls.count, 2,
                        "Switch-back sync flushes the still-queued entry once normal responses resume")
         XCTAssertTrue(sut.store.queue.isEmpty,

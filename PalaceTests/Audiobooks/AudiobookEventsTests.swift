@@ -35,7 +35,7 @@ final class AudiobookDataManagerSaveTests: XCTestCase {
 
     /// SRS: AUDIO-004 -- Time entries are queued and persisted correctly
     func testSave_addsEntryToQueue() {
-        let dataManager = AudiobookDataManager(syncTimeInterval: 3600)
+        let dataManager = AudiobookDataManager()
         dataManager.store.queue.removeAll()
         dataManager.store.urls.removeAll()
 
@@ -62,7 +62,7 @@ final class AudiobookDataManagerSaveTests: XCTestCase {
 
     /// SRS: AUDIO-004 -- Time entries are queued and persisted correctly
     func testSave_storesURLMapping() {
-        let dataManager = AudiobookDataManager(syncTimeInterval: 3600)
+        let dataManager = AudiobookDataManager()
         dataManager.store.queue.removeAll()
         dataManager.store.urls.removeAll()
 
@@ -91,7 +91,7 @@ final class AudiobookDataManagerSaveTests: XCTestCase {
 
     /// SRS: AUDIO-004 -- Time entries are queued and persisted correctly
     func testSave_multipleEntries_allQueued() {
-        let dataManager = AudiobookDataManager(syncTimeInterval: 3600)
+        let dataManager = AudiobookDataManager()
         dataManager.store.queue.removeAll()
         dataManager.store.urls.removeAll()
 
@@ -123,7 +123,7 @@ final class AudiobookDataManagerSaveTests: XCTestCase {
 
     /// SRS: AUDIO-004 -- Time entries are queued and persisted correctly
     func testDataManagerConformance_savesViaProtocol() {
-        let dataManager = AudiobookDataManager(syncTimeInterval: 3600)
+        let dataManager = AudiobookDataManager()
         dataManager.store.queue.removeAll()
 
         let entry = AudiobookTimeEntry(

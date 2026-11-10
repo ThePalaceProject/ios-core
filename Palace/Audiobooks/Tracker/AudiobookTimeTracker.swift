@@ -74,16 +74,6 @@ class AudiobookTimeTracker: NSObject, AudiobookPlaybackTrackerDelegate, @uncheck
         audiobookLogger.logEvent(forBookId: bookId, event: "TimeTracker initialized for bookId: \(bookId)")
     }
 
-    @objc
-    convenience init(libraryId: String, bookId: String, timeTrackingUrl: URL) {
-        self.init(
-            libraryId: libraryId,
-            bookId: bookId,
-            timeTrackingUrl: timeTrackingUrl,
-            dataManager: AudiobookDataManager()
-        )
-    }
-
     /// Locale left at the default, as the per-instance formatter had it.
     private static let minuteFormatter: DateFormatter = {
         let formatter = DateFormatter()
