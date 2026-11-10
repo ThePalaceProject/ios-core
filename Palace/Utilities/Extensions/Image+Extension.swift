@@ -16,3 +16,11 @@ extension Image {
         }
     }
 }
+
+extension UIImage {
+    /// Bytes of the decoded bitmap, 0 when the image has no bitmap.
+    nonisolated var decodedByteCount: Int {
+        guard let cgImage else { return 0 }
+        return cgImage.bytesPerRow * cgImage.height
+    }
+}

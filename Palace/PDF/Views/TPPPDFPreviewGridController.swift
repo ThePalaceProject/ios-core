@@ -41,7 +41,7 @@ class TPPPDFPreviewGridController: UICollectionViewController {
 
     private var document: TPPPDFDocument?
     private let cellId = "cell"
-    private let previewCache = NSCache<NSNumber, UIImage>()
+    private let previewCache: CountedCache<Int, UIImage>
 
     private func configurePreviewCache() {
         previewCache.totalCostLimit = 20 * 1024 * 1024
@@ -54,11 +54,20 @@ class TPPPDFPreviewGridController: UICollectionViewController {
         fatalError("init(coder:) has not been implemented")
     }
 
+    /// Bytes of every grid's previews; a grid is made per screen.
+    nonisolated static let livePreviewBytes = CacheByteCounter()
+
     /// Initializes PDF preview grid.
     /// - Parameters:
     ///   - document: PDF document
     ///   - indices: When provided, the view shows previews for pages with these indices.
-    init(document: TPPPDFDocument, indices: [Int]?) {
+    ///   - byteCounter: Receives the bytes of the grid's previews.
+    init(
+        document: TPPPDFDocument,
+        indices: [Int]?,
+        byteCounter: CacheByteCounter = TPPPDFPreviewGridController.livePreviewBytes
+    ) {
+        previewCache = CountedCache(counter: byteCounter)
         super.init(collectionViewLayout: UICollectionViewFlowLayout())
         self.document = document
         self.indices = indices
@@ -116,13 +125,12 @@ class TPPPDFPreviewGridController: UICollectionViewController {
 
     override func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         let page = self.pageNumber(for: indexPath.item)
-        let key = NSNumber(value: page)
         guard let cell = collectionView.dequeueReusableCell(withReuseIdentifier: cellId, for: indexPath) as? TPPPDFPreviewGridCell else {
             return collectionView.dequeueReusableCell(withReuseIdentifier: cellId, for: indexPath)
         }
         cell.pageNumber = page
         cell.pageLabel.text = document?.label(page: page) ?? "\(page + 1)"
-        if let image = previewCache.object(forKey: key) {
+        if let image = previewCache.object(forKey: page) {
             cell.imageView.image = image
         } else {
             if let pageSize = document?.size(page: page) {
@@ -151,7 +159,7 @@ class TPPPDFPreviewGridController: UICollectionViewController {
                         guard let self else { return }
                         let cell = cellBox.cell
                         if let image = image {
-                            self.previewCache.setObject(image, forKey: key)
+                            self.previewCache.setObject(image, forKey: page, cost: 0, bytes: image.decodedByteCount)
                         }
                         if page == cell.pageNumber {
                             cell.imageView.image = image
