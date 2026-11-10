@@ -15,8 +15,8 @@ report no longer applies to the tree in front of you.
       the Xcode, SDK and arch, for reading a CI report on another machine.
 
 The manifest records: the app commit and whether the tree had changes, the
-pinned inputs (DRM connector record, AudioEngine version and archive SHA-256,
-toolkit submodule), Xcode, SDK, simulator, arch, configuration, the hosted
+pinned inputs (DRM connector and certificates records, AudioEngine and liblcp
+versions and archive SHA-256s, toolkit and overdrive submodules), Xcode, SDK, simulator, arch, configuration, the hosted
 runner image (CI only), and the check with its result. A new pinned input is
 one more entry in INPUT_READERS. Each value is read from the file that pins it,
 never from the environment, so no credential can reach the report.
@@ -47,7 +47,9 @@ RESULTS = ("passed", "failed", "skipped", "recovered", "unavailable")
 CHECK_STATUS = {"pass": "passed", "fail": "failed", "skip": "skipped",
                 "recovered": "recovered", "unavailable": "unavailable"}
 TOOLKIT = "ios-audiobooktoolkit"
+OVERDRIVE = "ios-audiobook-overdrive"
 AUDIOENGINE_SCRIPT = Path("scripts/fetch-audioengine.sh")
+LIBLCP_SCRIPT = Path("scripts/build-carthage.sh")
 # Toolchain fields that describe the host rather than the simulator, so they
 # can be compared without a UDID.
 HOST_TOOLCHAIN = ("xcode_version", "xcode_build", "sdk", "arch")
@@ -94,20 +96,44 @@ def read_connector(root: Path) -> dict:
     return out
 
 
+def read_certificates(root: Path) -> dict:
+    record = drm_connector.read_record(root, "certificates")
+    return {"repo": record["repo"], "sha": record["sha"], "paths": record["paths"]}
+
+
+def _script_pin(root: Path, script: Path, prefix: str) -> dict:
+    """{"version", "sha256"} from the <prefix>_VERSION and <prefix>_SHA256
+    assignments of the script that downloads and checks the archive."""
+    text = (root / script).read_text()
+    values = dict(re.findall(rf'^{prefix}_(VERSION|SHA256)="([^"]*)"', text, re.M))
+    if set(values) != {"VERSION", "SHA256"}:
+        raise ManifestError(f"{script} has no {prefix}_VERSION/{prefix}_SHA256")
+    return {"version": values["VERSION"], "sha256": values["SHA256"]}
+
+
 def read_audioengine(root: Path) -> dict:
-    text = (root / AUDIOENGINE_SCRIPT).read_text()
-    values = dict(re.findall(r'^(AUDIOENGINE_VERSION|AUDIOENGINE_SHA256)="([^"]*)"', text, re.M))
-    if set(values) != {"AUDIOENGINE_VERSION", "AUDIOENGINE_SHA256"}:
-        raise ManifestError(f"{AUDIOENGINE_SCRIPT} has no AUDIOENGINE_VERSION/AUDIOENGINE_SHA256")
-    return {"version": values["AUDIOENGINE_VERSION"], "sha256": values["AUDIOENGINE_SHA256"]}
+    return _script_pin(root, AUDIOENGINE_SCRIPT, "AUDIOENGINE")
+
+
+def read_liblcp(root: Path) -> dict:
+    return _script_pin(root, LIBLCP_SCRIPT, "LIBLCP")
+
+
+def _gitlink(root: Path, path: str) -> str:
+    tree = _git(root, "ls-tree", "HEAD", path) or ""
+    m = re.match(r"^160000 commit ([0-9a-f]{40})\t", tree)
+    if not m:
+        raise ManifestError(f"HEAD has no {path} submodule entry")
+    return m.group(1)
+
+
+def read_overdrive(root: Path) -> dict:
+    # Bootstrap checks its overdrive clone out at this commit.
+    return {"recorded_sha": _gitlink(root, OVERDRIVE)}
 
 
 def read_toolkit(root: Path) -> dict:
-    tree = _git(root, "ls-tree", "HEAD", TOOLKIT) or ""
-    m = re.match(r"^160000 commit ([0-9a-f]{40})\t", tree)
-    if not m:
-        raise ManifestError(f"HEAD has no {TOOLKIT} submodule entry")
-    out = {"recorded_sha": m.group(1)}
+    out = {"recorded_sha": _gitlink(root, TOOLKIT)}
     # What a local build compiled; a test run has been seen to move it.
     if (root / TOOLKIT / ".git").exists():
         checked_out = _git(root / TOOLKIT, "rev-parse", "HEAD")
@@ -118,8 +144,11 @@ def read_toolkit(root: Path) -> dict:
 
 INPUT_READERS = {
     "connector": read_connector,
+    "certificates": read_certificates,
     "audioengine": read_audioengine,
+    "liblcp": read_liblcp,
     "toolkit": read_toolkit,
+    "overdrive": read_overdrive,
 }
 
 
