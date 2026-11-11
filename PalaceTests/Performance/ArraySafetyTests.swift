@@ -42,7 +42,8 @@ final class BookCellModelCachePrefetchSafetyTests: XCTestCase {
             downloadCenter: appContainer.downloadCenter,
             accountsManager: appContainer.accountsManager,
             samplePreviewManager: appContainer.samplePreviewManager,
-            readerService: appContainer.readerService
+            readerService: appContainer.readerService,
+            bookOpenDependencies: .testDouble()
         )
     }
 

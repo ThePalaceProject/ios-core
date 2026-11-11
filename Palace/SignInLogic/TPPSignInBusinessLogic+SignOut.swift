@@ -100,7 +100,7 @@ extension TPPSignInBusinessLogic {
             if let box = objc_getAssociatedObject(self, Unmanaged.passUnretained(Self.networkCacheClearerKey).toOpaque()) as? CacheClearerBox {
                 return box.clear
             }
-            return { @MainActor @Sendable in AppContainer.production().networkExecutor.clearCache() }
+            return { @MainActor @Sendable [appNetwork] in appNetwork.clearCache() }
         }
         set { objc_setAssociatedObject(self, Unmanaged.passUnretained(Self.networkCacheClearerKey).toOpaque(), CacheClearerBox(newValue), .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
     }

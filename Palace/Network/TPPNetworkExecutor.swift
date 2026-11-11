@@ -495,6 +495,8 @@ struct RefreshOutcomeBox: @unchecked Sendable {
 // callers — see §10.2 of `docs/Testing/Test_Seams_Refactor_Plan.md`).
 extension TPPNetworkExecutor: TokenRefreshing { }
 
+extension TPPNetworkExecutor: SignInAppNetworking { }
+
 extension TPPNetworkExecutor: TPPRequestExecuting {
     @discardableResult
     func executeRequest(_ req: URLRequest, enableTokenRefresh: Bool, completion: @escaping (_: NYPLResult<Data>) -> Void) -> URLSessionDataTask? {

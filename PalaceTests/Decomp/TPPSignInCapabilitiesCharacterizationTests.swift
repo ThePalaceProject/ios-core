@@ -39,7 +39,7 @@ final class TPPSignInCapabilitiesCharacterizationTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: drmAuthorizer)
+            drmAuthorizer: drmAuthorizer, appNetwork: SignInAppNetworkSpy())
         businessLogic.userAccount.removeAll()   // F-008 defense: guaranteed-clean creds
     }
 
@@ -215,17 +215,8 @@ final class TPPSignInCapabilitiesCharacterizationTests: XCTestCase {
 
     // MARK: - refreshAuthIfNeeded: basic auto-reauth
 
-    // SEAM: the TOKEN-auth branch of refreshAuthIfNeeded is NOT exercised here
-    // because its expiry guard reads `AppContainer.production().accountsManager
-    // .currentUserAccount.authTokenHasExpired` and the refresh calls
-    // `getBearerToken(username:password:tokenURL:completion:)` whose default
-    // `networkExecutor` argument is `AppContainer.production().networkExecutor` —
-    // both reach the process-wide container. The SignInRequestService extraction
-    // must inject a `TokenRefreshing` collaborator (the §10.2 seam the OAuth
-    // token-flow tests already use) AND an auth-token-expiry checker so the token
-    // refresh path is deterministically testable without the container.
-    // (The fixture also has no `.token` auth method, so the logIn() `.token`
-    // routing branch is unreachable from this library mock regardless.)
+    // The TOKEN-auth branch of refreshAuthIfNeeded is covered by
+    // TPPSignInAppNetworkInjectionTests; this fixture has no `.token` auth method.
 
     // B11 — GAP: basic auth WITH saved credentials + usingExistingCredentials
     // returns false (no sign-in UI needed) and drives logIn() directly. The

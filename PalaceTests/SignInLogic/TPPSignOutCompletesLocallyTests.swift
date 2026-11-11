@@ -45,7 +45,8 @@ final class TPPSignOutCompletesLocallyTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: drmAuthorizer
+            drmAuthorizer: drmAuthorizer,
+            appNetwork: SignInAppNetworkSpy()
         )
         businessLogic = logic
         userAccount = logic.userAccount
@@ -416,6 +417,21 @@ final class TPPSignOutCompletesLocallyTests: XCTestCase {
         let removed = await eventually { !self.userAccount.hasCredentials() }
         XCTAssertTrue(removed)
         XCTAssertEqual(clears.value, 1)
+    }
+
+    /// With no clearer override, sign-out clears the app-wide executor the
+    /// business logic was built with.
+    func testSignOut_ClearsTheInjectedAppNetworkCache() async throws {
+        let logic = try XCTUnwrap(businessLogic)
+        let appNetwork = try XCTUnwrap(logic.appNetwork as? SignInAppNetworkSpy)
+        signIn(logic)
+        networkExecutor.forceFailureStatusCode = 401
+
+        await logic.performLogOut()
+
+        let cleared = await eventually { appNetwork.clearCacheCount > 0 }
+        XCTAssertTrue(cleared)
+        XCTAssertEqual(appNetwork.clearCacheCount, 1)
     }
 
     func testSignOut_WhenBusinessLogicReleased_ClearsNetworkCache() async throws {

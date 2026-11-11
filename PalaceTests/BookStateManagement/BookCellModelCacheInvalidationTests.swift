@@ -33,7 +33,8 @@ final class BookCellModelCacheInvalidationTests: XCTestCase {
             downloadCenter: AppContainer.production().downloadCenter,
             accountsManager: accountsManager,
             samplePreviewManager: AppContainer.production().samplePreviewManager,
-            readerService: AppContainer.production().readerService
+            readerService: AppContainer.production().readerService,
+            bookOpenDependencies: .testDouble()
         )
         cancellables = Set<AnyCancellable>()
     }

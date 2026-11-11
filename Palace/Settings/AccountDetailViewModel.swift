@@ -146,7 +146,8 @@ class AccountDetailViewModel: NSObject, ObservableObject {
             settings: appContainer.settings,
             userAccountPublisher: appContainer.userAccountPublisher,
             drmAuthorizerProvider: appContainer.drmAuthorizerProvider,
-            signInRedirects: appContainer.signInRedirects.redirects
+            signInRedirects: appContainer.signInRedirects.redirects,
+            appNetwork: appContainer.networkExecutor
         )
     }
 
@@ -159,7 +160,8 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         userAccountPublisher: UserAccountPublisher,
         drmAuthorizerProvider: @escaping () -> TPPDRMAuthorizing?,
         credentialSnapshotProvider: ((String) -> TPPUserAccount.CredentialSnapshot)? = nil,
-        signInRedirects: AnyPublisher<URL, Never> = Empty().eraseToAnyPublisher()
+        signInRedirects: AnyPublisher<URL, Never> = Empty().eraseToAnyPublisher(),
+        appNetwork: SignInAppNetworking
     ) {
         self.libraryAccountID = libraryAccountID
         self.accountsManager = accountsManager
@@ -179,7 +181,8 @@ class AccountDetailViewModel: NSObject, ObservableObject {
             bookDownloadsCenter: downloadCenter,
             userAccountProvider: TPPUserAccount.self,
             uiDelegate: nil,
-            drmAuthorizer: nil
+            drmAuthorizer: nil,
+            appNetwork: appNetwork
         )
 
         let snapshot = self.credentialSnapshotProvider(libraryAccountID)
@@ -204,7 +207,8 @@ class AccountDetailViewModel: NSObject, ObservableObject {
             userAccountProvider: TPPUserAccount.self,
             networkExecutor: networkExecutor,
             uiDelegate: self,
-            drmAuthorizer: drmAuthorizer
+            drmAuthorizer: drmAuthorizer,
+            appNetwork: appNetwork
         )
         businessLogic.signInRedirects = { signInRedirects }
 

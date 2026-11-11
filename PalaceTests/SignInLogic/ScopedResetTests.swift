@@ -144,7 +144,8 @@ final class ScopedResetTests: XCTestCase {
             userAccountProvider: TPPUserAccountProviderMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: nil,
-            drmAuthorizer: drm
+            drmAuthorizer: drm,
+            appNetwork: SignInAppNetworkSpy()
         )
 
         let done = expectation(description: "scoped reset completes")
@@ -161,5 +162,35 @@ final class ScopedResetTests: XCTestCase {
                        "Scoped reset must NOT deauthorize Adobe DRM — that is device-wide and would break OTHER libraries. Only Full Reset deauthorizes.")
         XCTAssertTrue(defaults.bool(forKey: ephemeralKey),
                       "Scoped reset must arm the one-shot ephemeral-OIDC flag for the next sign-in")
+    }
+
+    /// Full reset clears the cache of the app-wide executor the business logic
+    /// was built with, so stale authenticated feeds are not served afterwards.
+    func testPerformForceReset_clearsTheInjectedAppNetworkCache() {
+        let provider = TPPLibraryAccountMock()
+        let spyUserAccount = TPPUserAccountMock()
+        // account("") → nil, so the FCM call is skipped.
+        provider.userAccountResolver = { (_: String) in spyUserAccount }
+        let appNetwork = SignInAppNetworkSpy()
+
+        let sut = TPPSignInBusinessLogic(
+            libraryAccountID: "",
+            libraryAccountsProvider: provider,
+            urlSettingsProvider: TPPURLSettingsProviderMock(),
+            bookRegistry: TPPBookRegistryMock(),
+            bookDownloadsCenter: TPPMyBooksDownloadsCenterMock(),
+            userAccountProvider: TPPUserAccountProviderMock.self,
+            networkExecutor: TPPRequestExecutorMock(),
+            uiDelegate: nil,
+            drmAuthorizer: nil,
+            appNetwork: appNetwork
+        )
+
+        let done = expectation(description: "force reset completes")
+        sut.performForceReset { done.fulfill() }
+        wait(for: [done], timeout: 10)
+
+        XCTAssertEqual(appNetwork.clearCacheCount, 1)
+        XCTAssertEqual(spyUserAccount.removeAllCallCount, 1, "precondition: the reset reached the credential wipe")
     }
 }

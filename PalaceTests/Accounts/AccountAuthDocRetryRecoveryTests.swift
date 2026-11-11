@@ -162,7 +162,8 @@ final class AccountAuthDocRetryRecoveryTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock(),
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
         XCTAssertNil(businessLogic.loadedAccountDetails, "precondition: the failed load left no readable details")
 

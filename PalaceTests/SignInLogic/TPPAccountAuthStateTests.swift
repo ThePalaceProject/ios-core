@@ -213,7 +213,8 @@ final class TPPAdobeActivationSkipTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: drmAuthorizer
+            drmAuthorizer: drmAuthorizer,
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 
@@ -458,7 +459,8 @@ final class TPPSAMLReauthFlowTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock(),
-            drmAuthorizer: drmAuthorizer
+            drmAuthorizer: drmAuthorizer,
+            appNetwork: SignInAppNetworkSpy()
         )
 
         let userAccount = businessLogic.userAccount as! TPPUserAccountMock
@@ -527,7 +529,8 @@ final class TPPSAMLReauthFlowTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock(),
-            drmAuthorizer: drmAuthorizer
+            drmAuthorizer: drmAuthorizer,
+            appNetwork: SignInAppNetworkSpy()
         )
 
         let userAccount = businessLogic.userAccount as! TPPUserAccountMock

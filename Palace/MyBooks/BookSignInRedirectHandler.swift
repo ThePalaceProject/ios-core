@@ -56,19 +56,29 @@ final class BookSignInRedirectHandler: @unchecked Sendable {
     private let reauthenticator: Reauthenticator
     private let userAccountProvider: () -> TPPUserAccount
     private let credentialRequestState: CredentialRequestState
+    private let universalLinksSettings: NYPLUniversalLinksSettings
+    private let presentWebSheet: @MainActor (SignInWebSheetViewModel) -> Void
 
+    /// - Parameters:
+    ///   - universalLinksSettings: supplies the redirect URL the IdP returns to.
+    ///   - presentWebSheet: shows the SAML web sheet; production passes
+    ///     `SignInWebSheetPresenter.presentOnTop(model:)`.
     init(
         bookRegistry: TPPBookRegistryProvider,
         stateManager: DownloadStateManager,
         reauthenticator: Reauthenticator,
         userAccountProvider: @escaping () -> TPPUserAccount,
-        credentialRequestState: CredentialRequestState
+        credentialRequestState: CredentialRequestState,
+        universalLinksSettings: NYPLUniversalLinksSettings,
+        presentWebSheet: @escaping @MainActor (SignInWebSheetViewModel) -> Void
     ) {
         self.bookRegistry = bookRegistry
         self.stateManager = stateManager
         self.reauthenticator = reauthenticator
         self.userAccountProvider = userAccountProvider
         self.credentialRequestState = credentialRequestState
+        self.universalLinksSettings = universalLinksSettings
+        self.presentWebSheet = presentWebSheet
     }
 
     // MARK: - SAML web-view presentation
@@ -112,7 +122,7 @@ final class BookSignInRedirectHandler: @unchecked Sendable {
             let model = SignInWebSheetViewModel(
                 cookies: cookies,
                 request: mutableRequest,
-                universalLinksURL: AppContainer.production().settings.universalLinksURL,
+                universalLinksURL: self.universalLinksSettings.universalLinksURL,
                 autoPresentIfNeeded: true,
                 loginCompletionHandler: loginCompletionHandler,
                 loginCancelHandler: { [weak self] in
@@ -129,7 +139,7 @@ final class BookSignInRedirectHandler: @unchecked Sendable {
                 }
             )
 
-            SignInWebSheetPresenter.presentOnTop(model: model)
+            self.presentWebSheet(model)
             Log.info(#file, "SAML web view initialized for '\(book.title)'")
         }
     }

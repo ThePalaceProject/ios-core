@@ -46,7 +46,8 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: drmAuthorizer
+            drmAuthorizer: drmAuthorizer,
+            appNetwork: SignInAppNetworkSpy()
         )
 
         // TPPSignInBusinessLogic reads `account.loadState` instead of raw
@@ -781,7 +782,8 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: drmAuthorizer
+            drmAuthorizer: drmAuthorizer,
+            appNetwork: SignInAppNetworkSpy()
         )
 
         // Call the REAL production method
@@ -1050,7 +1052,8 @@ final class TPPSignInOAuthFlowTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: uiDelegate,
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 
@@ -1090,7 +1093,8 @@ final class TPPSignInErrorHandlingTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 

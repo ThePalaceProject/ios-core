@@ -170,7 +170,7 @@ extension TPPSignInBusinessLogic {
         // N1: clear the executor's PRIVATE URLCache (feeds are served from it,
         // not from `URLCache.shared`). Clearing the shared cache here left the
         // stale/authenticated responses in the executor's own cache.
-        AppContainer.production().networkExecutor.clearCache()
+        appNetwork.clearCache()
         Log.info(#file, "[RESET_ACCOUNT] step 4 ok — networkExecutor cache cleared")
 
         // 5. Set the one-shot ephemeral-session flag for the next OIDC

@@ -60,7 +60,7 @@ final class BookCellModelStateTests: XCTestCase {
         let book = createTestBook()
         mockRegistry.addBook(book, state: .downloadSuccessful)
 
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, bookOpenDependencies: .testDouble())
 
         XCTAssertEqual(model.registryState, .downloadSuccessful)
         XCTAssertEqual(model.stableButtonState, .downloadSuccessful)
@@ -70,7 +70,7 @@ final class BookCellModelStateTests: XCTestCase {
         let book = createTestBook()
         mockRegistry.addBook(book, state: .downloadFailed)
 
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, bookOpenDependencies: .testDouble())
 
         XCTAssertEqual(model.registryState, .downloadFailed)
         XCTAssertEqual(model.stableButtonState, .downloadFailed)
@@ -80,7 +80,7 @@ final class BookCellModelStateTests: XCTestCase {
         let book = createTestBook()
         mockRegistry.addBook(book, state: .downloading)
 
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, bookOpenDependencies: .testDouble())
 
         XCTAssertEqual(model.registryState, .downloading)
         XCTAssertEqual(model.stableButtonState, .downloadInProgress)
@@ -90,7 +90,7 @@ final class BookCellModelStateTests: XCTestCase {
         let book = createTestBook()
         // Don't add to registry - should be unregistered
 
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, bookOpenDependencies: .testDouble())
 
         XCTAssertEqual(model.registryState, .unregistered)
     }
@@ -99,7 +99,7 @@ final class BookCellModelStateTests: XCTestCase {
         let book = createTestBook()
         mockRegistry.addBook(book, state: .holding)
 
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, bookOpenDependencies: .testDouble())
 
         XCTAssertEqual(model.registryState, .holding)
         XCTAssertEqual(model.stableButtonState, .holding)
@@ -109,7 +109,7 @@ final class BookCellModelStateTests: XCTestCase {
         let book = createTestBook()
         mockRegistry.addBook(book, state: .downloadNeeded)
 
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, bookOpenDependencies: .testDouble())
 
         XCTAssertEqual(model.registryState, .downloadNeeded)
         XCTAssertEqual(model.stableButtonState, .downloadNeeded)
@@ -121,7 +121,7 @@ final class BookCellModelStateTests: XCTestCase {
         let book = createTestBook()
         mockRegistry.addBook(book, state: .downloadSuccessful)
 
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, bookOpenDependencies: .testDouble())
 
         XCTAssertTrue(model.validateStateConsistency())
     }
@@ -130,7 +130,7 @@ final class BookCellModelStateTests: XCTestCase {
         let book = createTestBook()
         mockRegistry.addBook(book, state: .downloadSuccessful)
 
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, bookOpenDependencies: .testDouble())
 
         // Directly mutate registry without going through setState (simulates a bug)
         mockRegistry.registry[book.identifier]?.state = .downloadFailed
@@ -148,7 +148,7 @@ final class BookCellModelStateTests: XCTestCase {
         let book = createTestBook()
         mockRegistry.addBook(book, state: .downloading)
 
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, bookOpenDependencies: .testDouble())
 
         // Allow the throttle (50 ms) to settle
         drainMainQueue()
@@ -167,7 +167,7 @@ final class BookCellModelStateTests: XCTestCase {
         let book = createTestBook()
         mockRegistry.addBook(book, state: .downloadFailed)
 
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, bookOpenDependencies: .testDouble())
 
         drainMainQueue()
 
@@ -185,7 +185,7 @@ final class BookCellModelStateTests: XCTestCase {
         let book = createTestBook()
         mockRegistry.addBook(book, state: .downloadSuccessful)
 
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, bookOpenDependencies: .testDouble())
 
         drainMainQueue()
 
@@ -226,7 +226,7 @@ final class BookCellModelStateTests: XCTestCase {
         let book = createTestBook()
         mockRegistry.addBook(book, state: .downloadSuccessful)
 
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, bookOpenDependencies: .testDouble())
 
         // Give the image-fetch callback time to complete
         drainMainQueue()
@@ -239,7 +239,7 @@ final class BookCellModelStateTests: XCTestCase {
     func testIsLoading_EmitsViaStatePublisher_WhenChanged() {
         let book = createTestBook()
         mockRegistry.addBook(book, state: .downloadSuccessful)
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, bookOpenDependencies: .testDouble())
 
         var emissions: [Bool] = []
         let cancel = model.statePublisher.sink { emissions.append($0) }
@@ -263,7 +263,7 @@ final class BookCellModelStateTests: XCTestCase {
         mockRegistry.addBook(book, state: .downloadNeeded)
 
         let downloadCenter = appContainer.downloadCenter
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, bookOpenDependencies: .testDouble())
 
         downloadCenter.downloadErrorPublisher.send(
             DownloadErrorInfo(
@@ -289,7 +289,7 @@ final class BookCellModelStateTests: XCTestCase {
         mockRegistry.addBook(book, state: .downloadNeeded)
 
         let downloadCenter = appContainer.downloadCenter
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, bookOpenDependencies: .testDouble())
         model.showHalfSheet = true
 
         downloadCenter.downloadErrorPublisher.send(

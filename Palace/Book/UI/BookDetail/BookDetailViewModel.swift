@@ -132,10 +132,9 @@ final class BookDetailViewModel: ObservableObject {
     private let readerService: ReaderService
     private let metadataService: BookMetadataService
     private let relatedBooksService: RelatedBooksService
-    /// Optional injected audiobook session — nil in production (BookOpenRouter
-    /// resolves the DI-root session). A test injects a mock so the audiobook
-    /// open → half-sheet-dismiss wiring is drivable. fix/audiobook-first-open-hang.
-    private let injectedAudiobookSession: AudiobookSessionManaging?
+    /// The readers, audiobook session, navigation, sign-in sheet, rating
+    /// prompt and sign-in network this screen's flows use.
+    let dependencies: BookDetailDependencies
     /// Optional auth-gate override — nil in production (the read/listen path runs
     /// the real `ensureAuthAndExecute`, which loads the auth document and may
     /// present a sign-in modal against real singletons / UserDefaults / network).
@@ -186,7 +185,8 @@ final class BookDetailViewModel: ObservableObject {
             settings: appContainer.settings,
             opdsFeedService: appContainer.opdsFeedService,
             samplePreviewManager: appContainer.samplePreviewManager,
-            readerService: appContainer.readerService
+            readerService: appContainer.readerService,
+            dependencies: appContainer.bookDetailDependencies
         )
     }
 
@@ -202,8 +202,8 @@ final class BookDetailViewModel: ObservableObject {
         readerService: ReaderService,
         metadataHydrator: BookMetadataHydrator? = nil,
         relatedBooksFetcher: RelatedBooksFeedFetcher? = nil,
-        audiobookSession: AudiobookSessionManaging? = nil,
-        authGateOverride: ((@escaping () -> Void) -> Void)? = nil
+        authGateOverride: ((@escaping () -> Void) -> Void)? = nil,
+        dependencies: BookDetailDependencies
     ) {
         self.book = book
         self.registry = registry
@@ -213,9 +213,7 @@ final class BookDetailViewModel: ObservableObject {
         self.opdsFeedService = opdsFeedService
         self.samplePreviewManager = samplePreviewManager
         self.readerService = readerService
-        // Test seam: nil in production, where BookOpenRouter falls back to the
-        // AppContainer session.
-        self.injectedAudiobookSession = audiobookSession
+        self.dependencies = dependencies
         self.authGateOverride = authGateOverride
         self.downloadStarter = { [downloadCenter] book in downloadCenter.startDownload(for: book, withRequest: nil) }
         // Default fetchers capture the injected services instead of reading
@@ -725,7 +723,8 @@ final class BookDetailViewModel: ObservableObject {
             bookDownloadsCenter: downloadCenter,
             userAccountProvider: TPPUserAccount.self,
             uiDelegate: nil,
-            drmAuthorizer: nil
+            drmAuthorizer: nil,
+            appNetwork: dependencies.signInNetwork
         )
 
         businessLogic.ensureAuthenticationDocumentIsLoaded { [weak self] (_: Bool) in
@@ -737,7 +736,7 @@ final class BookDetailViewModel: ObservableObject {
                     Log.info(#file, "[SAML-REAUTH] ensureAuthAndExecute presenting modal: hasCredentials=\(account.hasCredentials()) authState=\(account.authState)")
                     let halfSheetWasShowing = self.showHalfSheet
                     self.showHalfSheet = false
-                    AppContainer.production().signInModalSheetPresenter
+                    self.dependencies.signInPresenter
                         .presentSignInModalForCurrentAccount { [weak self] in
                             guard let self else { return }
                             let post = self.accountsManager.currentUserAccount
@@ -884,7 +883,7 @@ final class BookDetailViewModel: ObservableObject {
     // MARK: - Audiobook Opening
 
     func openAudiobook(_ book: TPPBook, completion: (() -> Void)? = nil, onLoadingShellPresented: (@MainActor () -> Void)? = nil) {
-        BookOpenRouter.open(book, bookRegistry: registry, audiobookSession: injectedAudiobookSession, onFinish: completion, onLoadingShellPresented: onLoadingShellPresented)
+        BookOpenRouter.open(book, bookRegistry: registry, dependencies: dependencies.bookOpen, onFinish: completion, onLoadingShellPresented: onLoadingShellPresented)
     }
 
     // MARK: - Streaming HTML Reader (PP-4161)
@@ -906,7 +905,7 @@ final class BookDetailViewModel: ObservableObject {
     /// the open pipeline reach the shell the same way.
     @MainActor
     private func presentStreamingReader(_ book: TPPBook) {
-        BookOpenRouter.presentStreamingReader(book)
+        BookOpenRouter.presentStreamingReader(book, navigationHub: dependencies.bookOpen.navigationHub)
     }
 
     private func getLCPLicenseURL(for book: TPPBook) -> URL? {
@@ -1155,7 +1154,10 @@ extension BookDetailViewModel {
         }
     }
 
-    static func presentEndOfBookAlert(for book: TPPBook, downloadCenter: MyBooksDownloadCenter) {
+    static func presentEndOfBookAlert(for book: TPPBook,
+                                      downloadCenter: MyBooksDownloadCenter,
+                                      navigationHub: NavigationCoordinatorHub,
+                                      bookCompletion: BookCompletionNoting) {
         let paths = TPPOPDSAcquisitionPath.supportedAcquisitionPaths(
             forAllowedTypes: TPPOPDSAcquisitionPath.supportedTypes(),
             allowedRelations: TPPOPDSAcquisitionRelationSetBorrow | TPPOPDSAcquisitionRelationSetGeneric,
@@ -1163,21 +1165,36 @@ extension BookDetailViewModel {
         )
 
         if paths.count > 0 {
-            let alert = TPPReturnPromptHelper.audiobookPrompt { returnWasChosen in
-                if returnWasChosen {
-                    AppContainer.production().navigationCoordinatorHub.coordinator?.pop()
-                    downloadCenter.returnBook(withIdentifier: book.identifier)
-                }
-                Task { @MainActor in AppContainer.production().ratingPromptPresenter.noteBookCompleted() }
-            }
+            let alert = TPPReturnPromptHelper.audiobookPrompt(
+                completion: endOfBookChoiceHandler(for: book,
+                                                   downloadCenter: downloadCenter,
+                                                   navigationHub: navigationHub,
+                                                   bookCompletion: bookCompletion))
             TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
         } else {
-            Task { @MainActor in AppContainer.production().ratingPromptPresenter.noteBookCompleted() }
+            Task { @MainActor in bookCompletion.noteBookCompleted() }
+        }
+    }
+
+    /// What the end-of-book prompt does with the patron's answer.
+    static func endOfBookChoiceHandler(for book: TPPBook,
+                                       downloadCenter: MyBooksDownloadCenter,
+                                       navigationHub: NavigationCoordinatorHub,
+                                       bookCompletion: BookCompletionNoting) -> @MainActor @Sendable (Bool) -> Void {
+        { returnWasChosen in
+            if returnWasChosen {
+                navigationHub.coordinator?.pop()
+                downloadCenter.returnBook(withIdentifier: book.identifier)
+            }
+            Task { @MainActor in bookCompletion.noteBookCompleted() }
         }
     }
 
     private func presentEndOfBookAlert() {
-        BookDetailViewModel.presentEndOfBookAlert(for: book, downloadCenter: downloadCenter)
+        BookDetailViewModel.presentEndOfBookAlert(for: book,
+                                                  downloadCenter: downloadCenter,
+                                                  navigationHub: dependencies.bookOpen.navigationHub,
+                                                  bookCompletion: dependencies.bookCompletion)
     }
 }
 
