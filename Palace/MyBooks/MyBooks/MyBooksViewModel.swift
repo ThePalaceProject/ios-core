@@ -13,6 +13,7 @@ import PalaceLogging
 import PalaceBookModel
 import PalaceBookRegistry
 import PalaceUtilities
+import PalaceDownloads
 
 enum Group: Int {
     case groupSortBy

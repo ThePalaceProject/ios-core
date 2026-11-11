@@ -1,12 +1,12 @@
 //
 //  UserRetryTrackerTests.swift
-//  PalaceTests
+//  PalaceDownloadsTests
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
 import XCTest
-@testable import Palace
+@testable import PalaceDownloads
 
 @MainActor
 final class UserRetryTrackerTests: XCTestCase {

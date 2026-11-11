@@ -1,6 +1,6 @@
 //
 //  RedirectPolicy.swift
-//  Palace
+//  PalaceDownloads
 //
 //  The download session's willPerformHTTPRedirection decision, in order:
 //  cap the chain at `maxRedirectAttempts` per task, reject HTTPS → non-HTTPS
@@ -13,14 +13,17 @@ import Foundation
 
 /// - Sendable: a value type holding two `@Sendable async` closures and an
 ///   `Int`; the production closures capture only the `DownloadCoordinator` actor.
-struct RedirectPolicy: Sendable {
-    static let defaultMaxRedirectAttempts: Int = 10
+// PUBLIC_INTENT: MyBooksDownloadCenter (app target) applies this policy.
+public struct RedirectPolicy: Sendable {
+    // PUBLIC_INTENT: MyBooksDownloadCenter (app target) applies this policy.
+    public static let defaultMaxRedirectAttempts: Int = 10
 
     private let getRedirectAttempts: @Sendable (Int) async -> Int
     private let incrementRedirectAttempts: @Sendable (Int) async -> Void
     private let maxRedirectAttempts: Int
 
-    init(
+    // PUBLIC_INTENT: MyBooksDownloadCenter (app target) applies this policy.
+    public init(
         getRedirectAttempts: @escaping @Sendable (Int) async -> Int,
         incrementRedirectAttempts: @escaping @Sendable (Int) async -> Void,
         maxRedirectAttempts: Int = RedirectPolicy.defaultMaxRedirectAttempts
@@ -32,7 +35,8 @@ struct RedirectPolicy: Sendable {
 
     /// Returns the request to follow on redirect, or `nil` to deny it.
     /// Increments the per-task redirect counter on every accepted request.
-    func decide(
+    // PUBLIC_INTENT: MyBooksDownloadCenter (app target) applies this policy.
+    public func decide(
         taskIdentifier: Int,
         originalScheme: String?,
         newRequest: URLRequest
