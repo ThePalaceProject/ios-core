@@ -30,3 +30,4 @@ e892160da PP-5450 is on develop as 59c926524 (#1775)
 7cc7c20e9 PP-5415 test comment-only change; no behavior to ship
 #1843   build number 521 set on release/3.4.1 and reverted before 3.4.1 shipped
 #1846   reverts #1842 and #1843 so 3.4.1 ships as build 520; PP-5532 returns in 3.4.2
+#1849   version 3.4.2 build 521 for the hotfix; develop keeps its own version
