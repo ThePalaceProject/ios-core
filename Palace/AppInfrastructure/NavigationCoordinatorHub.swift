@@ -20,10 +20,9 @@ import Foundation
 /// open" alert), and a wrong-but-plausible answer is what made the failure silent.
 ///
 /// Invariant worth stating: `NavigationHostView` REGISTERS through the injected
-/// `\.appContainer`, while consumers (`ReaderService`, `BookCellModel`,
-/// `AudiobookSessionManager`, and `BookOpenRouter` through the container its
-/// callers were built from) RESOLVE through `AppContainer.production()`. Those
-/// agree only because the app injects
+/// `\.appContainer`, while every consumer (`ReaderService`, `BookOpenRouter`,
+/// `BookCellModel`, `BookDetailViewModel`, `AudiobookSessionManager`) RESOLVES
+/// through `AppContainer.production()`. Those agree only because the app injects
 /// `production()` at both scene entry points and `AppContainerKey.defaultValue`
 /// is `production()`. Placing a different container in `\.appContainer` in the
 /// app (as opposed to a test) would split writers from readers and reproduce
