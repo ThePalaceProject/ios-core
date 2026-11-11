@@ -10,6 +10,7 @@ import XCTest
 import PalaceCatalog
 import PalaceBookModel
 @testable import Palace
+import PalaceAccounts
 
 @MainActor
 final class AccountNetworkingSeamTests: PalaceWiringTestCase {

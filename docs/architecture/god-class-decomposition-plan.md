@@ -23,6 +23,11 @@ state + I/O + lock cluster out of the hub:
 
 Preceded by the `AccountNetworking` seam (#1360, inverting the last concrete `TPPNetworkExecutor` type edge).
 
+**Package step (PP-5546, started).** The first change moves `AccountRegistryCache`, `AccountRegistryStore`
+(now generic over `AccountRegistryEntry`, which the app's `Account` adopts), `CrawlState` and the
+`AccountNetworking` protocol into `Palace/Packages/PalaceAccounts`. The other collaborators stay in the
+app target for now.
+
 **3a-6 `CurrentAccountStore` — deliberately NOT extracted (STOP decision, 2026-07-31).** The
 `currentAccount` get/set switch pipeline (~61 executable LOC; almost no state of its own —
 `currentAccountId` is computed over `UserDefaults`, `isAccountSwitching` is one `Bool`) is the

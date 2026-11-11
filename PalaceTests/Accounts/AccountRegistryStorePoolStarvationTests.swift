@@ -12,6 +12,7 @@
 import XCTest
 
 @testable import Palace
+@testable import PalaceAccounts
 
 final class AccountRegistryStorePoolStarvationTests: XCTestCase {
 
@@ -36,7 +37,7 @@ final class AccountRegistryStorePoolStarvationTests: XCTestCase {
     /// would have swallowed the failure). The load-sensitive variant is kept
     /// below, opt-in.
     func testConcurrentReadsAndWrites_allComplete() async {
-        let store = AccountRegistryStore(currentHash: "hash")
+        let store = AccountRegistryStore<Account>(currentHash: "hash")
         // MUST exceed the cooperative pool's width, which is the core count —
         // that is the precondition for the deadlock, not an arbitrary "lots".
         // At 32 this test PASSED against the reintroduced defect (0.007s) and
@@ -100,7 +101,7 @@ final class AccountRegistryStorePoolStarvationTests: XCTestCase {
             // opted into. Verified both ways before changing the wording.
             "load-sensitive; run with TEST_RUNNER_PALACE_STRESS_POOL=1"
         )
-        let store = AccountRegistryStore(currentHash: "hash")
+        let store = AccountRegistryStore<Account>(currentHash: "hash")
         let readers = max(64, ProcessInfo.processInfo.activeProcessorCount * 4)
 
         let hammer = Task.detached(priority: .utility) {
@@ -139,7 +140,7 @@ final class AccountRegistryStorePoolStarvationTests: XCTestCase {
     /// The lock change must not weaken the index-coherence invariant: a reader
     /// must never observe updated `accountSets` with a stale `accountByUUID`.
     func testConcurrentMutation_keepsAccountIndexCoherent() async {
-        let store = AccountRegistryStore(currentHash: "hash")
+        let store = AccountRegistryStore<Account>(currentHash: "hash")
         await withTaskGroup(of: Void.self) { group in
             for i in 0..<64 {
                 group.addTask {

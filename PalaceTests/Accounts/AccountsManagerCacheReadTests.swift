@@ -18,6 +18,7 @@ import XCTest
 import PalacePreferences
 import PalaceCatalog
 @testable import Palace
+@testable import PalaceAccounts
 
 @MainActor
 final class AccountsManagerCacheReadTests: PalaceWiringTestCase {

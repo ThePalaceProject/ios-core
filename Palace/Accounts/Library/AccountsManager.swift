@@ -4,6 +4,7 @@ import PalacePreferences
 import PalaceLogging
 import PalaceCatalog
 import PalaceBookRegistry
+import PalaceAccounts
 
 let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
 
@@ -128,7 +129,7 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
     /// On-disk catalog cache (`DiskAccountRegistryCache` by default).
     private let registryCache: any AccountRegistryCaching
     /// Account-registry state and its thread-safe access. See `AccountRegistryStore`.
-    private let registryStore: AccountRegistryStore
+    private let registryStore: AccountRegistryStore<Account>
 
     /// Alias retained so `AccountsManager.authDocInflightTimeout` keeps resolving for
     /// the wiring-suite tests; the value + the fetch machinery live on `AuthDocumentLoader`.
@@ -226,7 +227,7 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
         crawlScheduler: CrawlTaskScheduler = .production,
         switchDependencies: AccountSwitchDependencies = .production,
         registryCache: any AccountRegistryCaching = DiskAccountRegistryCache(),
-        registryStore: AccountRegistryStore = AccountRegistryStore(),
+        registryStore: AccountRegistryStore<Account> = AccountRegistryStore<Account>(),
         processEnvironment: [String: String] = ProcessInfo.processInfo.environment
     ) {
         self.defaults = defaults
@@ -637,7 +638,7 @@ extension AccountsManager {
 
     /// Test-only: the registry store, so a test can seed and read its current
     /// hash on a manager built through `makeFreshAccountsManager()`.
-    var _registryStoreForTesting: AccountRegistryStore { registryStore }
+    var _registryStoreForTesting: AccountRegistryStore<Account> { registryStore }
 
     /// Test-only seam: populate an accountSets bucket without going through
     /// OPDS2 parsing, through `registryStore.mutate` so the index stays coherent.
