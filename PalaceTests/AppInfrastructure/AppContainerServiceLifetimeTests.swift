@@ -88,6 +88,8 @@ final class AppContainerServiceLifetimeTests: XCTestCase {
 
         await spied.downloadCenter.startDownloadAsync(for: book)
         await awaitConditionAsync { !presentedLibraries.isEmpty }
+        // The center holds the spy weakly; keep it alive until the prompt has fired.
+        withExtendedLifetime(spy) {}
 
         XCTAssertEqual(presentedLibraries, ["lifetime-library-b"],
                        "The sign-in sheet must come from the container that owns the download center")
