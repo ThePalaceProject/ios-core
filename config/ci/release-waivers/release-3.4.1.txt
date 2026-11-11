@@ -1,6 +1,5 @@
 # Release-only commits on release/3.4.1 that are deliberately not on develop.
 #1794   version 3.4.1 build 520 for the 3.4.1 release; develop keeps its own version
-#1843   build number 521 for the 3.4.1 release candidate; develop takes the next number
 # Inherited from release/3.4.0, which this branch was cut from:
 #1730   build number 516 for the first 3.4.0 release candidate; develop takes the next number
 f54fb0761 build number 517 for the 3.4.0 release candidate; develop takes the next number
