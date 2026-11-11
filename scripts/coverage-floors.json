@@ -14,6 +14,7 @@
     "TPPBookRegistry": 0.7918
   },
   "packages": {
+    "PalaceAccounts": 0.1831,
     "PalaceAuth": 0.8029,
     "PalaceBookModel": 0.8499,
     "PalaceBookRegistry": 0.9159,
@@ -29,6 +30,7 @@
     "PalaceUtilities": 0.3434
   },
   "host_packages": {
+    "PalaceAccounts": 0.1831,
     "PalaceAuth": 0.7729,
     "PalaceDownloads": 0.6216,
     "PalaceLogging": 0.2756,

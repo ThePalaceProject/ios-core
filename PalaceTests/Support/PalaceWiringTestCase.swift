@@ -10,6 +10,7 @@
 import XCTest
 import Combine
 @testable import Palace
+import PalaceAccounts
 
 /// Base class for wiring tests. Subclasses inherit a deterministic
 /// pre-test reset, a shared `cancellables` set, and automatic
@@ -286,7 +287,7 @@ class PalaceWiringTestCase: PalaceTestCase {
     @discardableResult
     nonisolated func makeFreshAccountsManager(
         defaults: UserDefaults,
-        registryStore: AccountRegistryStore,
+        registryStore: AccountRegistryStore<Account>,
         _ configure: (AccountsManager) -> Void = { _ in }
     ) -> AccountsManager {
         #if DEBUG

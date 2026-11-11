@@ -19,6 +19,7 @@ import PalaceBookRegistry
 import PalaceBookModel
 import UIKit
 import PalaceUtilities
+import PalaceAccounts
 
 /// Documented carrier for a non-Sendable `(Bool) -> Void` load-completion handler
 /// stored into the `loadingHandlersQueue` barrier in `addLoadingHandler` (and reused
@@ -48,7 +49,7 @@ final class AccountRegistryLoader: @unchecked Sendable {
     // MARK: - Injected collaborators (values)
 
     private let registryCache: any AccountRegistryCaching
-    private let registryStore: AccountRegistryStore
+    private let registryStore: AccountRegistryStore<Account>
     private let crawlScheduler: CrawlTaskScheduler
     private let settings: TPPSettings
     private let imageCache: ImageCacheType
@@ -128,7 +129,7 @@ final class AccountRegistryLoader: @unchecked Sendable {
 
     init(
         registryCache: any AccountRegistryCaching,
-        registryStore: AccountRegistryStore,
+        registryStore: AccountRegistryStore<Account>,
         crawlScheduler: CrawlTaskScheduler,
         settings: TPPSettings,
         imageCache: ImageCacheType,

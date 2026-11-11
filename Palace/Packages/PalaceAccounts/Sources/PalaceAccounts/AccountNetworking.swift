@@ -1,10 +1,9 @@
 //
 //  AccountNetworking.swift
-//  Palace
+//  PalaceAccounts
 //
 //  The slice of the network executor `AccountsManager` uses, as a protocol so
-//  Accounts does not name the app-target `TPPNetworkExecutor` (a precondition
-//  for moving Accounts into a `PalaceAccounts` package). Declared on the
+//  Accounts does not name the app-target `TPPNetworkExecutor`. Declared on the
 //  consuming side, implemented app-side in `TPPNetworkExecutor+AccountNetworking.swift`.
 //  `Sendable` is required: `GET` is awaited inside a `@Sendable` crawl Task.
 //
@@ -17,7 +16,8 @@ import Foundation
 /// `AccountsManager` makes on the account-switch cleanup path (`cancelNonEssentialTasks`),
 /// the cache-clear path (`clearCache`), and the catalog/auth-doc fetch path (`GET`).
 /// `TPPNetworkExecutor` conforms app-side; tests inject a plain recording double.
-protocol AccountNetworking: AnyObject, Sendable {
+// PUBLIC_INTENT: TPPNetworkExecutor conforms app-side; AccountsManager and AccountRegistryLoader take it.
+public protocol AccountNetworking: AnyObject, Sendable {
     /// Cancel in-flight, non-essential requests before an account switch so a
     /// request started under the prior library's credentials cannot land against
     /// the new one. Synchronous on purpose (mirrors the executor's contract).

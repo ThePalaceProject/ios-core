@@ -2,6 +2,7 @@ import Foundation
 import PalaceLogging
 import PalaceNetwork
 import PalaceCatalog
+import PalaceAccounts
 
 // MARK: - Progress
 
