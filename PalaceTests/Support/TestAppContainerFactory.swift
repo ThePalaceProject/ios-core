@@ -195,6 +195,10 @@ func makeTestAppContainer(
   )
   let imageCache: ImageCacheType = ImageCache.shared
   let imageLoader: ImageLoading = ImageLoader(imageCache: imageCache)
+  // One isolated store for the container and its download center, so a
+  // setting a test writes is not read by another container or left in the
+  // app's `.standard` defaults.
+  let settings = TPPSettings(defaults: defaults)
   let resolvedBookRegistry = bookRegistry ?? TPPBookRegistry(
     accountsManager: resolvedAccountsManager,
     imageLoader: imageLoader
@@ -237,6 +241,7 @@ func makeTestAppContainer(
     accessibilityAnnouncements: accessibilityAnnouncer,
     downloadAnnouncementService: downloadAnnouncementService,
     reachability: reachability,
+    settings: settings,
     authCoordinator: authCoordinator,
     // Sign-out through a test container must not reach the app-wide offline queue.
     offlineActionRemover: { _ in }
@@ -292,9 +297,7 @@ func makeTestAppContainer(
     ),
     reachability: reachability,
     accountsManager: resolvedAccountsManager,
-    // The container's own store, so a setting one test writes is not read by
-    // another container or left in the app's `.standard` defaults.
-    settings: TPPSettings(defaults: defaults),
+    settings: settings,
     featureFlags: RemoteFeatureFlags.shared,
     downloadCenter: downloadCenter,
     downloadAnnouncementService: downloadAnnouncementService,
@@ -335,14 +338,17 @@ private func makeTestSwitchDependencies(
     resetCoverCircuitBreaker: production.resetCoverCircuitBreaker,
     networkExecutorProvider: { executor },
     popToRootForAccountSwitch: {
-      guard let hub = hubRef.hub else { return }
-      AppContainer.popAllToRootForAccountSwitch(hub: hub)
+      if let hub = hubRef.hub {
+        AppContainer.popAllToRootForAccountSwitch(hub: hub)
+      }
+      // The same settle the production cleanup waits before the switch flag clears.
+      try? await Task.sleep(nanoseconds: 100_000_000)
     }
   )
 }
 
-/// Weak, `Sendable` handle on a hub for the `@Sendable` pop closure. Weak so
-/// the manager's switch dependencies do not keep the container's hub alive.
+/// `Sendable` handle on a hub for the `@Sendable` pop closure. Weak so the
+/// manager adds no reference of its own to the container's hub.
 /// `@unchecked Sendable`: `hub` is only dereferenced on the main actor.
 private final class TestHubReference: @unchecked Sendable {
   weak var hub: NavigationCoordinatorHub?

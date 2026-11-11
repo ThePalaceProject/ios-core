@@ -16,27 +16,36 @@ import PalaceBookModel
 @MainActor
 final class AppContainerServiceLifetimeTests: XCTestCase {
 
+    /// Account UUIDs a test drove through `AccountStateStore.shared`, cleared
+    /// after each test so their load states do not reach the next one.
+    private var touchedAccountUUIDs: [String] = []
+
+    override func tearDown() {
+        touchedAccountUUIDs.forEach { AccountStateStore.shared.reset(for: $0) }
+        touchedAccountUUIDs = []
+        super.tearDown()
+    }
+
     // MARK: - Account switch
 
-    /// A library switch on container A pops A's navigation stacks only. B's stacks
-    /// and the production app's stacks keep their content.
-    func testAccountSwitch_OnContainerA_PopsOnlyAsOwnNavigationStacks() async {
-        let containerA = makeTestAppContainer(bookRegistry: TPPBookRegistryMock())
-        let containerB = makeTestAppContainer(bookRegistry: TPPBookRegistryMock())
+    /// A library switch on container A pops A's navigation stacks and cancels
+    /// A's requests only. B's and the production app's stay as they were.
+    func testAccountSwitch_OnContainerA_CleansUpOnlyItsOwnServices() async {
+        let executorA = CancelCountingExecutor(cachingStrategy: .ephemeral)
+        let executorB = CancelCountingExecutor(cachingStrategy: .ephemeral)
+        let containerA = makeTestAppContainer(bookRegistry: TPPBookRegistryMock(), networkExecutor: executorA)
+        let containerB = makeTestAppContainer(bookRegistry: TPPBookRegistryMock(), networkExecutor: executorB)
 
         let stackA = Self.registerStack(in: containerA.navigationCoordinatorHub, bookID: "a-book")
         let stackB = Self.registerStack(in: containerB.navigationCoordinatorHub, bookID: "b-book")
-        let productionStack = Self.registerStack(in: AppContainer.production().navigationCoordinatorHub,
-                                                 bookID: "production-book")
+        let productionHub = AppContainer.production().navigationCoordinatorHub // MIGRATED-DEFERRED: the app's own hub is what the switch must leave alone.
+        let productionStack = Self.registerStack(in: productionHub, bookID: "production-book")
 
         let priorUUID = "urn:uuid:lifetime-prior-\(UUID().uuidString)"
         let nextUUID = "urn:uuid:lifetime-next-\(UUID().uuidString)"
+        touchedAccountUUIDs = [priorUUID, nextUUID]
         let cleanup = containerA.accountsManager._seedAccountForTesting(Self.makeAccount(uuid: priorUUID))
-        defer {
-            cleanup()
-            AccountStateStore.shared.reset(for: priorUUID)
-            AccountStateStore.shared.reset(for: nextUUID)
-        }
+        defer { cleanup() }
 
         containerA.accountsManager.currentAccount = Self.makeAccount(uuid: nextUUID)
 
@@ -49,6 +58,8 @@ final class AppContainerServiceLifetimeTests: XCTestCase {
         XCTAssertEqual(stackA.path.count, 0, "The switch must clear the stacks of the container that switched")
         XCTAssertEqual(stackB.path.count, 1, "Another container's stacks must keep their content")
         XCTAssertEqual(productionStack.path.count, 1, "The production app's stacks must keep their content")
+        XCTAssertEqual(executorA.cancelCount, 1, "The switch must cancel the requests of the container that switched")
+        XCTAssertEqual(executorB.cancelCount, 0, "Another container's requests must keep running")
     }
 
     // MARK: - Sign-in presentation
@@ -62,7 +73,6 @@ final class AppContainerServiceLifetimeTests: XCTestCase {
         let registry = TPPBookRegistryMock()
         registry.addBook(book, state: .downloadNeeded)
 
-        _ = makeTestAppContainer(bookRegistry: TPPBookRegistryMock())
         let containerB = makeTestAppContainer(bookRegistry: registry, userAccount: userAccount)
         var presentedLibraries: [String] = []
         let spy = SignInModalSheetPresenter(
@@ -115,5 +125,16 @@ final class AppContainerServiceLifetimeTests: XCTestCase {
                                                  title: "Lifetime \(uuid.suffix(6))")
         let publication = OPDS2Publication(links: [], metadata: metadata, images: nil)
         return Account(publication: publication, imageCache: MockImageCache())
+    }
+}
+
+/// Counts account-switch cancellations instead of cancelling.
+private final class CancelCountingExecutor: TPPNetworkExecutor, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _cancelCount = 0
+    var cancelCount: Int { lock.withLock { _cancelCount } }
+
+    override func cancelNonEssentialTasks() {
+        lock.withLock { _cancelCount += 1 }
     }
 }

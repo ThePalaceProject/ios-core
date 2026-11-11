@@ -27,7 +27,7 @@ final class TPPNetworkExecutorDIInitTests: XCTestCase {
         let executor = TPPNetworkExecutor(cachingStrategy: .ephemeral, accountsManager: nil)
 
         AppContainer._resetForTesting()
-        let rebuilt = AppContainer.production().accountsManager
+        let rebuilt = AppContainer.production().accountsManager // MIGRATED-DEFERRED: resolving the production container at use is the contract under test.
 
         XCTAssertTrue(executor.accountsManager as AnyObject === rebuilt,
                       "A manager captured during init would belong to the graph that existed then")
