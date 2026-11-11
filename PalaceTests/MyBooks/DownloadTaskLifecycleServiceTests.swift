@@ -170,6 +170,20 @@ final class DownloadTaskLifecycleServiceTests: XCTestCase {
                        "Real-error path returns BEFORE schedulePending — letting the alert tail run first")
     }
 
+    /// PP-5541: the alert names the network error instead of the generic line.
+    func testHandleTaskCompletionError_realError_passesErrorDetailToAlert() async {
+        let task = StubDownloadTask(taskIdentifier: 42)
+        await stateManager.taskIdentifierToBook.set(42, value: book)
+        let netError = NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut,
+                               userInfo: [NSLocalizedDescriptionKey: "The request timed out."])
+
+        let service = service!
+        await service.handleTaskCompletionError(task: task, error: netError)
+
+        XCTAssertEqual(spyDelegate.failDownloadMessages,
+                       ["\(Strings.MyDownloadCenter.downloadFailedUnknownReason)\nError: The request timed out. (NSURLErrorDomain -1001)"])
+    }
+
     func testHandleTaskCompletionError_cancelledError_doesNotAlert() async {
         let task = StubDownloadTask(taskIdentifier: 42)
         await stateManager.taskIdentifierToBook.set(42, value: book)
@@ -192,6 +206,7 @@ final class DownloadTaskLifecycleServiceTests: XCTestCase {
 private final class SpyDelegate: DownloadTaskLifecycleServiceDelegate {
     private(set) var logCalls: [(book: TPPBook, reason: String)] = []
     private(set) var failDownloadCalls: [TPPBook] = []
+    private(set) var failDownloadMessages: [String?] = []
     private(set) var scheduleStartsCount = 0
 
     func logBookDownloadFailure(_ book: TPPBook, reason: String, downloadTask: URLSessionTask, metadata: [String: Any]?) {
@@ -200,6 +215,7 @@ private final class SpyDelegate: DownloadTaskLifecycleServiceDelegate {
 
     func failDownloadWithAlert(for book: TPPBook, withMessage message: String?) {
         failDownloadCalls.append(book)
+        failDownloadMessages.append(message)
     }
 
     func schedulePendingStartsIfPossible() {
