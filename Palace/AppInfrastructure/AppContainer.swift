@@ -319,12 +319,13 @@ struct AppContainer: @unchecked Sendable {
 
     /// What a book open reaches. The session is a closure because
     /// `AudiobookSessionManager` builds this bundle while `audiobookSession`
-    /// is still constructing it.
+    /// is still constructing it. The closure holds a non-owning copy because
+    /// the owned `bookCellModelCache` keeps this bundle.
     @MainActor
     var bookOpenDependencies: BookOpenDependencies {
         BookOpenDependencies(
             readers: readerService,
-            audiobookSession: { [self] in self.audiobookSession },
+            audiobookSession: { [container = nonOwningCopy()] in container.audiobookSession },
             navigationHub: navigationCoordinatorHub
         )
     }

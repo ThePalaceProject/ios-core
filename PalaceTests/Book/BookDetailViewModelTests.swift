@@ -1559,16 +1559,10 @@ final class BookDetailViewModelTests: XCTestCase {
     /// book payload was stored so NavigationHostView can resolve it.
     func testBookDetailViewModel_handleAction_readStreaming_callsDidSelectReadStreaming() {
         let coordinator = NavigationCoordinator()
-        // PP-5022 — pin the hub's resolution deterministically rather than
-        // relying on production's tab router being unset: `pendingTab` is never
-        // cleared in a test process, so a fallback-dependent lookup is
-        // order-dependent. The router is held for the scope of the test; the
-        // hub holds it (and the coordinator) weakly.
-        let pinnedRouter = AppTabRouter()
-        pinnedRouter.selected = .catalog
-        AppContainer.production().tabRouterHub.router = pinnedRouter
-        AppContainer.production().navigationCoordinatorHub.register(coordinator, for: .catalog)
-        defer { withExtendedLifetime(pinnedRouter) {} }
+        // The view model is handed this hub; with no tab router it resolves to
+        // the last registered stack.
+        let navigationHub = NavigationCoordinatorHub(tabRouterHub: nil)
+        navigationHub.register(coordinator, for: .catalog)
 
         let book = makeStreamingHTMLBook(id: "handle-action-readStreaming")
         let mockRegistry = TPPBookRegistryMock()
@@ -1583,7 +1577,7 @@ final class BookDetailViewModelTests: XCTestCase {
             opdsFeedService: AppContainer.production().opdsFeedService,
             samplePreviewManager: AppContainer.production().samplePreviewManager,
             readerService: AppContainer.production().readerService,
-            dependencies: .testDouble()
+            dependencies: .testDouble(bookOpen: .testDouble(navigationHub: navigationHub))
         )
 
         XCTAssertEqual(coordinator.path.count, 0,

@@ -86,6 +86,6 @@ protocol TokenRefreshing: AnyObject {
 
 /// The app-wide executor as sign-in uses it: the bearer-token exchange, and
 /// the cache clear on sign-out and account reset.
-protocol SignInAppNetworking: TokenRefreshing {
+protocol SignInAppNetworking: TokenRefreshing, Sendable {
     func clearCache()
 }
