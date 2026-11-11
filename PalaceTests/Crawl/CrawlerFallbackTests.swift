@@ -1,6 +1,7 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceAccounts
 
 /// Tests the entire fallback chain for library registry crawling:
 ///

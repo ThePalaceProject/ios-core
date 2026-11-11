@@ -9,6 +9,7 @@ import XCTest
 import PalaceCatalog
 import PalaceBookModel
 @testable import Palace
+@testable import PalaceAccounts
 
 @MainActor
 final class AccountRegistryStoreSeamTests: PalaceWiringTestCase {
@@ -22,7 +23,7 @@ final class AccountRegistryStoreSeamTests: PalaceWiringTestCase {
     /// → a sampler lands in the window with updated sets + stale index → `_coherentSnapshot`
     /// returns false.
     func testMutate_indexStaysCoherentUnderConcurrentChurn() {
-        let store = AccountRegistryStore(currentHash: "h")
+        let store = AccountRegistryStore<Account>(currentHash: "h")
         // Pre-build accounts on the MAIN thread. `Account.init` touches UIKit
         // (`UIImage(named:)`) + the image cache; creating them inside the concurrent
         // barrier while the test blocks the main thread risks a main-affine hang. The
@@ -51,7 +52,7 @@ final class AccountRegistryStoreSeamTests: PalaceWiringTestCase {
     /// Regression caught: read `accountByUUID` outside `performRead` (unsynchronized) → torn
     /// read / phantom / crash under churn.
     func testAccount_concurrentMutate_neverReturnsPhantom() {
-        let store = AccountRegistryStore(currentHash: "h")
+        let store = AccountRegistryStore<Account>(currentHash: "h")
         let uuids = (0..<8).map { "uuid-\($0)" }
         let pool = uuids.map { Self.makeAccount($0) } // pre-create on main (see churn test)
         let mismatch = CoherenceBox(), lock = NSLock()
@@ -77,7 +78,7 @@ final class AccountRegistryStoreSeamTests: PalaceWiringTestCase {
     /// Regression caught: let slim writes touch `accountSets`/`accountByUUID` → the ~2-account
     /// slim set reports the picker as loaded.
     func testSlim_backsFallbackButDoesNotFlipCurrentBucketIsLoaded() {
-        let store = AccountRegistryStore(currentHash: "h")
+        let store = AccountRegistryStore<Account>(currentHash: "h")
 
         store.storeSlim([Self.makeAccount("slim-1")])
         XCTAssertNotNil(store.account("slim-1"), "slim account resolves as the pre-materialization fallback")
@@ -105,7 +106,7 @@ final class AccountRegistryStoreSeamTests: PalaceWiringTestCase {
     /// structural (single critical section) + code-reviewed, not asserted here; this
     /// test pins the current-hash CORRECTNESS the atomic method must have.
     func testCurrentHashReads_reflectTheCurrentHashsBucket() {
-        let store = AccountRegistryStore(currentHash: "A")
+        let store = AccountRegistryStore<Account>(currentHash: "A")
         store.mutate { $0["A"] = [Self.makeAccount("a-1")]; $0["B"] = [] } // A loaded, B empty
 
         store.setCurrentHash("A")
@@ -125,7 +126,7 @@ final class AccountRegistryStoreSeamTests: PalaceWiringTestCase {
     /// buckets are seeded distinctly, so a torn read would surface a foreign/mixed uuid
     /// set. Catches an unsynchronized bucket read (outside `performRead`).
     func testCurrentHashReads_neverTearUnderConcurrentSwitch() {
-        let store = AccountRegistryStore(currentHash: "A")
+        let store = AccountRegistryStore<Account>(currentHash: "A")
         let a = Self.makeAccount("a-1"), b = Self.makeAccount("b-1") // pre-create on main
         store.mutate { $0["A"] = [a]; $0["B"] = [b] }
         _ = store.currentBucketIsLoaded() // barrier fence — buckets populated before churn
@@ -154,7 +155,7 @@ final class AccountRegistryStoreSeamTests: PalaceWiringTestCase {
     /// Regression caught: a facade that reads hub-local state instead of the store → the
     /// store-injected data is invisible.
     func testManagerFacades_delegateToInjectedStore() {
-        let store = AccountRegistryStore()
+        let store = AccountRegistryStore<Account>()
         let manager = makeFreshAccountsManager(defaults: Self.testUserDefaults(), registryStore: store)
 
         // Drive state through the store AFTER construction (init seeds its own hash).

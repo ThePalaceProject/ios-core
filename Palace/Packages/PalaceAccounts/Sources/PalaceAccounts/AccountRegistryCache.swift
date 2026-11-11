@@ -1,6 +1,6 @@
 //
 //  AccountRegistryCache.swift
-//  Palace
+//  PalaceAccounts
 //
 //  On-disk catalog cache: stale-while-revalidate metadata and the FileManager
 //  read/write/staleness/clear operations used by the registry loader and launch
@@ -112,10 +112,10 @@ struct CatalogCacheMetadata: Codable {
 // MARK: - Registry cache seam
 
 /// The disk-cache surface `AccountsManager` consumes on the launch-preload,
-/// `loadCatalogs` stale-while-revalidate, and `clearCache` paths. Declared beside
-/// the hub (moves into `PalaceAccounts` at the package move); `DiskAccountRegistryCache`
+/// `loadCatalogs` stale-while-revalidate, and `clearCache` paths. `DiskAccountRegistryCache`
 /// is the production implementation, tests inject a recording double.
-protocol AccountRegistryCaching: Sendable {
+// PUBLIC_INTENT: AccountsManager and AccountRegistryLoader (app target) take the cache through this protocol.
+public protocol AccountRegistryCaching: Sendable {
     /// Persist catalog bytes for `hash` and stamp fresh metadata. `isBundled`
     /// distinguishes build-time-snapshot writes from authoritative network writes
     /// so staleness logic keeps refresh alive on bundled-origin caches.
@@ -145,15 +145,21 @@ extension AccountRegistryCaching {
     /// protocol requirement can't carry a default argument, and the concrete
     /// impl's default is invisible through the `any AccountRegistryCaching`
     /// existential — this restores the call-site ergonomics the hub relied on.
-    func writeCatalogData(_ data: Data, hash: String) {
+    // PUBLIC_INTENT: convenience the app-side callers use through the protocol.
+    public func writeCatalogData(_ data: Data, hash: String) {
         writeCatalogData(data, hash: hash, isBundled: false)
     }
 }
 
 /// `FileManager`-backed production `AccountRegistryCaching`. Stateless ⇒ `Sendable`.
-struct DiskAccountRegistryCache: AccountRegistryCaching {
+// PUBLIC_INTENT: AccountsManager (app target) builds the production cache.
+public struct DiskAccountRegistryCache: AccountRegistryCaching {
 
-    func writeCatalogData(_ data: Data, hash: String, isBundled: Bool) {
+    // PUBLIC_INTENT: AccountsManager (app target) builds the production cache.
+    public init() {}
+
+    // PUBLIC_INTENT: witness for the public AccountRegistryCaching protocol.
+    public func writeCatalogData(_ data: Data, hash: String, isBundled: Bool) {
         // Save catalog data
         guard let url = accountsCatalogUrl(hash: hash) else { return }
         try? data.write(to: url)
@@ -168,7 +174,8 @@ struct DiskAccountRegistryCache: AccountRegistryCaching {
         }
     }
 
-    func readCatalogData(hash: String) -> Data? {
+    // PUBLIC_INTENT: witness for the public AccountRegistryCaching protocol.
+    public func readCatalogData(hash: String) -> Data? {
         guard let url = accountsCatalogUrl(hash: hash) else { return nil }
         return try? Data(contentsOf: url)
     }
@@ -181,7 +188,8 @@ struct DiskAccountRegistryCache: AccountRegistryCaching {
     /// launch at the caller (`preloadAccountsFromDiskCacheSync` and the
     /// `loadCatalogs` stale-while-revalidate branch), which pair this gate with
     /// one `readCatalogData` and thread those bytes into the decode.
-    func hasFreshCatalogData(hash: String) -> Bool {
+    // PUBLIC_INTENT: witness for the public AccountRegistryCaching protocol.
+    public func hasFreshCatalogData(hash: String) -> Bool {
         guard let url = accountsCatalogUrl(hash: hash),
               FileManager.default.fileExists(atPath: url.path) else { return false }
         guard let metadata = readCacheMetadata(hash: hash) else {
@@ -191,7 +199,8 @@ struct DiskAccountRegistryCache: AccountRegistryCaching {
         return !metadata.isExpired
     }
 
-    func isCatalogStale(hash: String) -> Bool {
+    // PUBLIC_INTENT: witness for the public AccountRegistryCaching protocol.
+    public func isCatalogStale(hash: String) -> Bool {
         let metadata = readCacheMetadata(hash: hash)
         let serverMaxAge = readCrawlState(hash: hash)?.serverMaxAge
         return CatalogCacheMetadata.isCacheStale(metadata: metadata, serverMaxAge: serverMaxAge)
@@ -201,7 +210,8 @@ struct DiskAccountRegistryCache: AccountRegistryCaching {
     /// accounts). The `accounts_catalog_slim_` name shares the
     /// `accounts_catalog_` prefix, so `clearFileCaches()` and the wiring-suite
     /// disk-cache purge already sweep it with no extra bookkeeping. CP-D1.
-    func slimSnapshotURL(hash: String) -> URL? {
+    // PUBLIC_INTENT: witness for the public AccountRegistryCaching protocol.
+    public func slimSnapshotURL(hash: String) -> URL? {
         guard let appSupport = try? FileManager.default.url(
                 for: .applicationSupportDirectory,
                 in: .userDomainMask,
@@ -211,7 +221,8 @@ struct DiskAccountRegistryCache: AccountRegistryCaching {
         return appSupport.appendingPathComponent("accounts_catalog_slim_\(hash).json")
     }
 
-    func clearFileCaches() {
+    // PUBLIC_INTENT: witness for the public AccountRegistryCaching protocol.
+    public func clearFileCaches() {
         // file caches — delete all files matching known prefixes written to the
         // Application Support root. (`authentication_document_` was removed: no
         // code path writes a file with that prefix — auth docs live in `Account`
