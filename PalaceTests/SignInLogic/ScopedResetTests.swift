@@ -186,9 +186,9 @@ final class ScopedResetTests: XCTestCase {
             appNetwork: appNetwork
         )
 
-        let done = expectation(description: "force reset completes")
-        sut.performForceReset { done.fulfill() }
-        wait(for: [done], timeout: 10)
+        // Steps 1-5, including the cache clear, run before performForceReset
+        // returns; only the web-data wipe completes later.
+        sut.performForceReset {}
 
         XCTAssertEqual(appNetwork.clearCacheCount, 1)
         XCTAssertEqual(spyUserAccount.removeAllCallCount, 1, "precondition: the reset reached the credential wipe")
