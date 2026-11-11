@@ -13,6 +13,7 @@
 import Foundation
 import PalaceAuth
 import PalaceBookRegistry
+import PalaceDownloads
 
 extension MyBooksDownloadCenter {
 

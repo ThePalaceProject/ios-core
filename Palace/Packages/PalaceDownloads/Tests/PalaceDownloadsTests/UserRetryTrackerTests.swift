@@ -6,7 +6,7 @@
 //
 
 import XCTest
-@testable import Palace
+@testable import PalaceDownloads
 
 @MainActor
 final class UserRetryTrackerTests: XCTestCase {

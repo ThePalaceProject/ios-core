@@ -12,6 +12,7 @@ import XCTest
 import PalaceCatalog
 import PalaceBookModel
 @testable import Palace
+import PalaceDownloads
 
 @MainActor
 final class BorrowFailurePublishesErrorTests: XCTestCase {

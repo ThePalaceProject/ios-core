@@ -1,6 +1,6 @@
 //
 //  LoanEvictionPolicy.swift
-//  Palace
+//  PalaceDownloads
 //
 //  Invariant: never delete a downloaded file while offline based on a
 //  cached `until` alone.
@@ -14,10 +14,10 @@
 //
 
 import Foundation
-import PalaceBookModel
 
 /// The eviction decision for a single downloaded loan.
-enum EvictionDecision: Equatable {
+// PUBLIC_INTENT: MyBooksViewModel (app target) calls this policy.
+public enum EvictionDecision: Equatable, Sendable {
     /// Keep the file and the registry record. The book stays openable.
     case keep
     /// Delete local content and unregister — the loan is provably over.
@@ -29,12 +29,14 @@ enum EvictionDecision: Equatable {
 }
 
 /// Pure eviction-decision function.
-enum LoanEvictionPolicy {
+// PUBLIC_INTENT: MyBooksViewModel (app target) calls this policy.
+public enum LoanEvictionPolicy {
 
     /// Default grace window applied after a loan's `until` before an
     /// online device is willing to evict without an explicit loans-feed
     /// round trip. Covers modest clock skew between client and server.
-    static let defaultGrace: TimeInterval = 5 * 60 // 5 minutes
+    // PUBLIC_INTENT: MyBooksViewModel (app target) calls this policy.
+    public static let defaultGrace: TimeInterval = 5 * 60 // 5 minutes
 
     /// Decide whether a downloaded loan may be evicted.
     ///
@@ -53,7 +55,8 @@ enum LoanEvictionPolicy {
     ///   - expired + offline        -> `.keep`   (never delete offline on cached `until`)
     ///   - expired + online, within grace -> `.confirmWithServer`
     ///   - expired + online, past grace   -> `.evict`
-    static func decide(
+    // PUBLIC_INTENT: MyBooksViewModel (app target) calls this policy.
+    public static func decide(
         expiration: Date?,
         now: Date,
         isOnline: Bool,
