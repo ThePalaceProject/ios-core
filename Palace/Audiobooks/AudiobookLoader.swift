@@ -407,17 +407,11 @@ final class AudiobookLoader {
         let metadata = AudiobookMetadata(title: book.title, authors: [book.authors ?? ""])
         // One container read: `production()` takes its unfair lock per call.
         let container = AppContainer.production()
-        var timeTracker: AudiobookTimeTracker?
-        if
-            let libraryId = container.accountsManager.currentAccount?.uuid,
-            let url = book.timeTrackingURL {
-            timeTracker = AudiobookTimeTracker(
-                libraryId: libraryId,
-                bookId: book.identifier,
-                timeTrackingUrl: url,
-                dataManager: container.playtimeUploader
-            )
-        }
+        let timeTracker = Self.makeTimeTracker(
+            libraryId: container.accountsManager.currentAccount?.uuid,
+            book: book,
+            uploader: container.playtimeUploader
+        )
 
         let networkService = DefaultAudiobookNetworkService(
             tracks: audiobook.tableOfContents.allTracks,
@@ -464,6 +458,23 @@ final class AudiobookLoader {
             playbackModel: playbackModel,
             positionTrace: positionTrace
         ))
+    }
+
+    /// The book's play-time tracker, sending its entries through `uploader`,
+    /// the app's one shared uploader (PP-5508). Nil without a library or a
+    /// time-tracking link.
+    static func makeTimeTracker(
+        libraryId: String?,
+        book: TPPBook,
+        uploader: DataManager
+    ) -> AudiobookTimeTracker? {
+        guard let libraryId, let url = book.timeTrackingURL else { return nil }
+        return AudiobookTimeTracker(
+            libraryId: libraryId,
+            bookId: book.identifier,
+            timeTrackingUrl: url,
+            dataManager: uploader
+        )
     }
 
     /// Builds the PP-4963 recorder and joins it to the session graph. Separate
