@@ -588,7 +588,6 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         }
     }
 
-
     /// Uses the problem document's `title` and `message` fields to
     ///  communicate a user friendly error info to the `uiDelegate`.
     /// Also logs the `error`.
