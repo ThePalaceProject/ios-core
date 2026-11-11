@@ -56,17 +56,30 @@ final class AudiobookLoaderTimeTrackerTests: XCTestCase {
         XCTAssertEqual(entries.first?.timeTrackingUrl, trackingURL)
     }
 
-    /// Without a signed-in library there is nobody to report the time to.
-    func testMakeTimeTracker_NoLibrary_ReturnsNil() {
-        XCTAssertNil(AudiobookLoader.makeTimeTracker(
-            libraryId: nil, book: book(timeTrackingURL: trackingURL), uploader: MockDataManager()
-        ))
+    /// Without a signed-in library there is nobody to report the time to, and
+    /// the uploader is not read: its first read starts the shared upload sync.
+    func testMakeTimeTracker_NoLibrary_ReturnsNilWithoutReadingTheUploader() {
+        var uploaderReads = 0
+        func uploader() -> DataManager { uploaderReads += 1; return MockDataManager() }
+
+        let tracker = AudiobookLoader.makeTimeTracker(
+            libraryId: nil, book: book(timeTrackingURL: trackingURL), uploader: uploader()
+        )
+
+        XCTAssertNil(tracker)
+        XCTAssertEqual(uploaderReads, 0)
     }
 
-    /// A book the server does not track gets no tracker.
-    func testMakeTimeTracker_NoTimeTrackingLink_ReturnsNil() {
-        XCTAssertNil(AudiobookLoader.makeTimeTracker(
-            libraryId: "lib-1", book: book(timeTrackingURL: nil), uploader: MockDataManager()
-        ))
+    /// A book the server does not track gets no tracker, and the uploader is not read.
+    func testMakeTimeTracker_NoTimeTrackingLink_ReturnsNilWithoutReadingTheUploader() {
+        var uploaderReads = 0
+        func uploader() -> DataManager { uploaderReads += 1; return MockDataManager() }
+
+        let tracker = AudiobookLoader.makeTimeTracker(
+            libraryId: "lib-1", book: book(timeTrackingURL: nil), uploader: uploader()
+        )
+
+        XCTAssertNil(tracker)
+        XCTAssertEqual(uploaderReads, 0)
     }
 }

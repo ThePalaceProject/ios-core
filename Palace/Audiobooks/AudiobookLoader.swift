@@ -462,18 +462,19 @@ final class AudiobookLoader {
 
     /// The book's play-time tracker, sending its entries through `uploader`,
     /// the app's one shared uploader (PP-5508). Nil without a library or a
-    /// time-tracking link.
+    /// time-tracking link. `uploader` is read only when a tracker is built:
+    /// the first read creates the shared uploader and starts its sync.
     static func makeTimeTracker(
         libraryId: String?,
         book: TPPBook,
-        uploader: DataManager
+        uploader: @autoclosure () -> DataManager
     ) -> AudiobookTimeTracker? {
         guard let libraryId, let url = book.timeTrackingURL else { return nil }
         return AudiobookTimeTracker(
             libraryId: libraryId,
             bookId: book.identifier,
             timeTrackingUrl: url,
-            dataManager: uploader
+            dataManager: uploader()
         )
     }
 
