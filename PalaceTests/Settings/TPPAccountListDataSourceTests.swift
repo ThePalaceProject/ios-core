@@ -182,6 +182,26 @@ class TPPAccountListDataSourceTests: XCTestCase {
 
     dataSource.loadData()
 
+    XCTAssertEqual(searchBar.text, "")
+    XCTAssertEqual(allNames(from: dataSource), ["Austin Public Library", "eRead Kids - Springfield"])
+  }
+
+  /// PP-5542: the search bar's clear button sends empty text; a reload after it shows every library.
+  func testLoadData_AfterSearchCleared_ShowsAllAccounts() {
+    let accounts = [
+      makeAccount(name: "eRead Kids - Springfield"),
+      makeAccount(name: "Austin Public Library"),
+    ]
+    let dataSource = TPPAccountListDataSource(
+      accountsProvider: { accounts },
+      nationalAccountUUIDs: []
+    )
+    let searchBar = UISearchBar()
+    dataSource.searchBar(searchBar, textDidChange: "eread")
+    dataSource.searchBar(searchBar, textDidChange: "")
+
+    dataSource.loadData()
+
     XCTAssertEqual(allNames(from: dataSource), ["Austin Public Library", "eRead Kids - Springfield"])
   }
 }
