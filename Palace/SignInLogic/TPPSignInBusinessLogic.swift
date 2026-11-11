@@ -549,8 +549,8 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         }
     }
 
-    /// Exchanges credentials for a bearer token through `tokenRefresher`.
-    /// The sign-in paths call the overload below, which passes `appNetwork`.
+    /// Exchanges credentials for a bearer token through `tokenRefresher`;
+    /// the sign-in paths pass `appNetwork`.
     func getBearerToken(username: String,
                         password: String,
                         tokenURL: URL,
@@ -588,13 +588,6 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         }
     }
 
-    func getBearerToken(username: String, password: String, tokenURL: URL, completion: (() -> Void)? = nil) {
-        getBearerToken(username: username,
-                       password: password,
-                       tokenURL: tokenURL,
-                       tokenRefresher: appNetwork,
-                       completion: completion)
-    }
 
     /// Uses the problem document's `title` and `message` fields to
     ///  communicate a user friendly error info to the `uiDelegate`.
@@ -744,7 +737,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
                 return
             }
 
-            getBearerToken(username: username, password: password, tokenURL: tokenURL)
+            getBearerToken(username: username, password: password, tokenURL: tokenURL, tokenRefresher: appNetwork)
         case .basic, .coppa, .anonymous, .none:
             await validateCredentials()
         }
@@ -991,7 +984,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         }
 
         if authDef.isToken, let barcode = userAccount.barcode, let pin = userAccount.pin, let tokenURL = userAccount.authDefinition?.tokenURL {
-            getBearerToken(username: barcode, password: pin, tokenURL: tokenURL, completion: completion)
+            getBearerToken(username: barcode, password: pin, tokenURL: tokenURL, tokenRefresher: appNetwork, completion: completion)
         } else if authDef.isBasic {
             if usingExistingCredentials && userAccount.hasBarcodeAndPIN() {
                 if uiDelegate == nil {

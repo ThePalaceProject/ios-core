@@ -649,9 +649,7 @@ private final class RedirectCompletionBox: @unchecked Sendable {
             stateManager: stateManager,
             reauthenticator: reauthenticator,
             userAccountProvider: resolveAccountForBorrow,
-            credentialRequestState: self.credentialRequestState,
-            universalLinksSettings: settings,
-            presentWebSheet: { SignInWebSheetPresenter.presentOnTop(model: $0) }
+            credentialRequestState: self.credentialRequestState, universalLinksSettings: settings
         )
         // BookContentResetService runs the bulk-reset flows; shares the
         // same registry / state / file-manager / progress reporter /

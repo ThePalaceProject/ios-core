@@ -61,8 +61,8 @@ final class BookSignInRedirectHandler: @unchecked Sendable {
 
     /// - Parameters:
     ///   - universalLinksSettings: supplies the redirect URL the IdP returns to.
-    ///   - presentWebSheet: shows the SAML web sheet; production passes
-    ///     `SignInWebSheetPresenter.presentOnTop(model:)`.
+    ///   - presentWebSheet: shows the SAML web sheet. Tests replace it to
+    ///     read the sheet's configuration without presenting it.
     init(
         bookRegistry: TPPBookRegistryProvider,
         stateManager: DownloadStateManager,
@@ -70,7 +70,7 @@ final class BookSignInRedirectHandler: @unchecked Sendable {
         userAccountProvider: @escaping () -> TPPUserAccount,
         credentialRequestState: CredentialRequestState,
         universalLinksSettings: NYPLUniversalLinksSettings,
-        presentWebSheet: @escaping @MainActor (SignInWebSheetViewModel) -> Void
+        presentWebSheet: @escaping @MainActor (SignInWebSheetViewModel) -> Void = { SignInWebSheetPresenter.presentOnTop(model: $0) }
     ) {
         self.bookRegistry = bookRegistry
         self.stateManager = stateManager
