@@ -131,9 +131,10 @@ final class BookDetailViewModel: ObservableObject {
     private let readerService: ReaderService
     private let metadataService: BookMetadataService
     private let relatedBooksService: RelatedBooksService
-    /// Opens the series and related-lane destinations. Nil only in tests that
-    /// do not navigate; the container-built view model always has one.
-    private let navigator: BookDetailNavigating?
+    /// Opens the series and related-lane destinations (actions in
+    /// BookDetailNavigating.swift). Nil only in tests that do not navigate; the
+    /// container-built view model always has one.
+    let navigator: BookDetailNavigating?
     /// Optional injected audiobook session — nil in production (BookOpenRouter
     /// resolves the DI-root session). A test injects a mock so the audiobook
     /// open → half-sheet-dismiss wiring is drivable. fix/audiobook-first-open-hang.
@@ -610,17 +611,6 @@ final class BookDetailViewModel: ObservableObject {
             self.relatedBooksByLane = lanesMap
             self.isLoadingRelatedBooks = false
         }
-    }
-
-    func showMoreBooksForLane(laneTitle: String) {
-        guard let url = relatedBooksByLane[laneTitle]?.subsectionURL else { return }
-        navigator?.open(.relatedLane(url))
-    }
-
-    /// Opens the series lane when the series row is a link (see `seriesRowDisplay`).
-    func showSeriesLane() {
-        guard case let .link(_, url) = Self.seriesRowDisplay(name: book.seriesName, url: book.seriesURL) else { return }
-        navigator?.open(.seriesLane(url))
     }
 
     // MARK: - Button Actions

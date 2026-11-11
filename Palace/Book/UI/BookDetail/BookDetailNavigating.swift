@@ -35,3 +35,16 @@ struct CoordinatorBookDetailNavigator: BookDetailNavigating {
         }
     }
 }
+
+extension BookDetailViewModel {
+    func showMoreBooksForLane(laneTitle: String) {
+        guard let url = relatedBooksByLane[laneTitle]?.subsectionURL else { return }
+        navigator?.open(.relatedLane(url))
+    }
+
+    /// Opens the series lane when the series row is a link (see `seriesRowDisplay`).
+    func showSeriesLane() {
+        guard case let .link(_, url) = Self.seriesRowDisplay(name: book.seriesName, url: book.seriesURL) else { return }
+        navigator?.open(.seriesLane(url))
+    }
+}
