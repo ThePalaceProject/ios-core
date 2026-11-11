@@ -77,7 +77,8 @@ def _run(*args: str, tmp_path: Path, simctl: dict | None = None, env: dict | Non
 
 def test_profiles_pin_exact_builds_not_major_versions():
     profiles = rt.load_profiles(_CONFIG)
-    assert set(profiles) == {"reference", "release"}
+    # One profile: the test lanes and the release builds share it (PP-5523).
+    assert set(profiles) == {"reference"}
     for name, p in profiles.items():
         assert re.fullmatch(r"\d+\.\d+(\.\d+)?", p["xcode_version"]), name
         assert re.fullmatch(r"\d+[A-Z]\d+[a-z]?", p["xcode_build"]), name
@@ -217,11 +218,25 @@ def _report(tmp_path, *extra, xcode="Xcode 26.3\nBuild version 17C529\n", sdk="2
 
 
 def test_report_strict_passes_and_records_every_field(tmp_path):
-    out = _report(tmp_path, "--strict")
+    env = {"PATH": "/usr/bin:/bin", "ImageOS": "macos26", "ImageVersion": "20261103.629"}
+    out = _report(tmp_path, "--strict", env=env)
     assert out.returncode == 0, out.stdout
     line = next(l for l in out.stdout.splitlines() if l.startswith("TOOLCHAIN "))
     assert line == ("TOOLCHAIN xcode_version=26.3 xcode_build=17C529 sdk=iphonesimulator26.2 "
-                    "runtime=iOS_18.5 device=iPhone_16_Pro arch=arm64 configuration=Debug")
+                    "runtime=iOS_18.5 device=iPhone_16_Pro arch=arm64 configuration=Debug "
+                    "image=macos26_20261103.629")
+
+
+def test_report_off_ci_names_the_image_local(tmp_path):
+    out = _report(tmp_path, env={"PATH": "/usr/bin:/bin"})
+    assert "image=local" in out.stdout
+
+
+def test_a_different_runner_image_alone_does_not_fail_strict(tmp_path):
+    # The image is recorded, not compared: an image update with the same
+    # Xcode and simulator is not a toolchain change.
+    env = {"PATH": "/usr/bin:/bin", "ImageOS": "macos26", "ImageVersion": "20991231.1"}
+    assert _report(tmp_path, "--strict", env=env).returncode == 0
 
 
 @pytest.mark.parametrize("kwargs,field", [
@@ -265,7 +280,7 @@ def test_report_appends_to_the_step_summary(tmp_path):
 
 # Which profile each macOS runner label runs. A lane that changes runner must
 # change profile with it.
-_PROFILE_FOR_RUNNER = {"macos-15": "reference", "macos-26": "release"}
+_PROFILE_FOR_RUNNER = {"macos-26": "reference"}
 
 
 def _setup_xcode_steps():
@@ -322,7 +337,7 @@ _WIRING = {
     ".github/workflows/unit-testing.yml": ("reference", True),
     ".github/workflows/ui-journeys.yml": ("reference", True),
     ".github/workflows/audiobook-toolkit-tests.yml": ("reference", True),
-    ".github/workflows/tsan.yml": ("release", True),
+    ".github/workflows/tsan.yml": ("reference", True),
     "scripts/ci-run-test-shard.sh": ("reference", True),
     "scripts/verify-pr.sh": ("reference", False),
     "scripts/xcode-test-optimized.sh": ("reference", False),
@@ -359,3 +374,95 @@ def test_a_profile_only_change_runs_the_unit_tests():
     spec.loader.exec_module(relevance)
     run, _ = relevance.classify(["scripts/reference-toolchain.ini"], relevance.relevant_scripts(_REPO))
     assert run is True
+
+
+# --- check-available ----------------------------------------------------------
+
+_MACOS26 = {
+    "runtimes": [_rt("iOS 26.2", _R262, "26.2"),
+                 _rt("iOS 26.5", "com.apple.CoreSimulator.SimRuntime.iOS-26-5", "26.5")],
+    "devices": {"com.apple.CoreSimulator.SimRuntime.iOS-26-5": [
+        _dev("iPhone 17 Pro", "55555555-0000-0000-0000-000000000000")]},
+}
+
+
+def _available(tmp_path, *, build="17F113", sdk="26.5", simctl=_MACOS26, xcode="26.6", install=True):
+    cfg = tmp_path / "t.ini"
+    cfg.write_text("[reference]\nrunner_image = macos-26-arm64\nxcode_version = 26.6\n"
+                   "xcode_build = 17F113\nsdk = iphonesimulator26.5\nruntime = iOS 26.5\n"
+                   "device = iPhone 17 Pro\narch = arm64\nconfiguration = Debug\n")
+    apps = tmp_path / "Applications"
+    if install:
+        contents = apps / f"Xcode_{xcode}.app" / "Contents"
+        contents.mkdir(parents=True)
+        import plistlib
+        (contents / "version.plist").write_bytes(plistlib.dumps({"ProductBuildVersion": build}))
+    else:
+        apps.mkdir()
+    return _run("--config", str(cfg), "check-available", "--applications", str(apps),
+                "--sdk-version", sdk, tmp_path=tmp_path, simctl=simctl)
+
+
+def test_check_available_passes_when_everything_is_present(tmp_path):
+    out = _available(tmp_path)
+    assert out.returncode == 0, out.stdout
+    assert "all present" in out.stdout
+    assert "::error" not in out.stdout
+
+
+def test_check_available_names_a_missing_xcode(tmp_path):
+    out = _available(tmp_path, xcode="26.7")
+    assert out.returncode == 1
+    assert "::error title=Reference toolchain missing from the runner image::Xcode 26.6 is not installed" in out.stdout
+
+
+def test_check_available_names_a_different_xcode_build(tmp_path):
+    out = _available(tmp_path, build="17F200")
+    assert out.returncode == 1
+    assert "Xcode_26.6.app is build 17F200, the profile names 17F113." in out.stdout
+
+
+def test_check_available_names_a_missing_sdk(tmp_path):
+    out = _available(tmp_path, sdk="26.4")
+    assert out.returncode == 1
+    assert "provides iphonesimulator26.4, the profile names iphonesimulator26.5." in out.stdout
+
+
+def test_check_available_names_a_missing_runtime(tmp_path):
+    simctl = {"runtimes": [_rt("iOS 26.2", _R262, "26.2")], "devices": {}}
+    out = _available(tmp_path, simctl=simctl)
+    assert out.returncode == 1
+    assert "Simulator runtime iOS 26.5 is not installed; installed: iOS 26.2." in out.stdout
+
+
+def test_check_available_names_a_missing_device(tmp_path):
+    simctl = json.loads(json.dumps(_MACOS26))
+    simctl["devices"]["com.apple.CoreSimulator.SimRuntime.iOS-26-5"] = [_dev("iPhone Air", "6666")]
+    out = _available(tmp_path, simctl=simctl)
+    assert out.returncode == 1
+    assert "No available iPhone 17 Pro simulator on iOS 26.5." in out.stdout
+
+
+def test_check_available_reports_every_missing_item_not_just_the_first(tmp_path):
+    simctl = {"runtimes": [], "devices": {}}
+    out = _available(tmp_path, build="17F200", sdk="26.4", simctl=simctl)
+    assert out.stdout.count("::error") == 3
+
+
+_AVAILABILITY = _WORKFLOWS / "toolchain-availability.yml"
+
+
+def test_availability_workflow_runs_weekly_and_on_demand_on_the_profile_runner():
+    doc = yaml.safe_load(_AVAILABILITY.read_text())
+    triggers = doc.get("on") or doc.get(True)  # PyYAML reads a bare `on:` key as True
+    assert "workflow_dispatch" in triggers
+    assert [s["cron"] for s in triggers["schedule"]], "no weekly schedule"
+    jobs = list(doc["jobs"].values())
+    assert len(jobs) == 1
+    job = jobs[0]
+    profile = rt.load_profile("reference")
+    assert profile["runner_image"].startswith(job["runs-on"] + "-")
+    runs = " ".join(str(s.get("run", "")) for s in job["steps"])
+    assert "reference_toolchain.py check-available --profile reference" in runs
+    # It checks the image as shipped; selecting an Xcode first would hide a missing one.
+    assert not any(str(s.get("uses", "")).startswith("maxim-lobanov/setup-xcode") for s in job["steps"])

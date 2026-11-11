@@ -18,7 +18,13 @@ docs/Testing/reference-toolchain.md.
       job uses, compared with the profile, and append them to
       $GITHUB_STEP_SUMMARY when set. --strict exits 1 on any difference.
       The --simctl-json, --xcode-version-text, --sdk-version and --arch flags
-      replace the live readings (used by the tests).
+      replace the live readings (used by the tests). The runner image
+      ($ImageOS $ImageVersion on GitHub Actions) is printed, not compared.
+  check-available --profile P [--applications DIR]
+      Check that this host provides the profile's Xcode build, SDK, runtime
+      and device, without selecting that Xcode first. Exit 1, naming each
+      missing item, when it does not. The weekly toolchain-availability
+      workflow runs it on the profile's runner image.
 
 The simulator lock helper filters by lock only, and the local runners' old
 selection matched a device name on any runtime; neither reads a pinned runtime
@@ -33,6 +39,7 @@ import configparser
 import json
 import os
 import platform
+import plistlib
 import re
 import subprocess
 import sys
@@ -73,14 +80,15 @@ def load_profile(name: str, path: Path = DEFAULT_CONFIG) -> dict[str, str]:
     return profiles[name]
 
 
-def read_simctl(path: str | None) -> dict:
+def read_simctl(path: str | None, developer_dir: str | None = None) -> dict:
     if path:
         return json.loads(Path(path).read_text())
+    env = {**os.environ, "DEVELOPER_DIR": developer_dir} if developer_dir else None
     # No simctl (a Linux host, a broken Xcode) reads as an empty listing, which
     # the callers report as "not installed".
     try:
         out = subprocess.run(["xcrun", "simctl", "list", "-j"],
-                             capture_output=True, text=True, check=True).stdout
+                             capture_output=True, text=True, check=True, env=env).stdout
         return json.loads(out)
     except (OSError, subprocess.CalledProcessError, ValueError):
         return {"runtimes": [], "devices": {}}
@@ -192,16 +200,25 @@ def observe(args: argparse.Namespace, profile: dict[str, str]) -> dict[str, str]
     }
 
 
+def runner_image() -> str:
+    """The GitHub Actions image name and version, or "local" off CI."""
+    parts = [os.environ.get("ImageOS", ""), os.environ.get("ImageVersion", "")]
+    return " ".join(p for p in parts if p) or "local"
+
+
 def cmd_report(args: argparse.Namespace) -> int:
     profile = load_profile(args.profile, Path(args.config))
     seen = observe(args, profile)
     diffs = [k for k in REPORTED if seen[k] != profile[k]]
+    image = runner_image()
     print(f"Toolchain for this job (profile '{args.profile}' in scripts/reference-toolchain.ini):")
     for k in REPORTED:
         mark = "ok" if k not in diffs else f"DIFFERS, expected {profile[k]}"
         print(f"  {k:<14} {seen[k]:<24} {mark}")
     print(f"  {'simulator':<14} {args.udid}")
-    print("TOOLCHAIN " + " ".join(f"{k}={seen[k].replace(' ', '_')}" for k in REPORTED))
+    print(f"  {'image':<14} {image}")
+    print("TOOLCHAIN " + " ".join(f"{k}={seen[k].replace(' ', '_')}" for k in REPORTED)
+          + f" image={image.replace(' ', '_')}")
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a") as fh:
@@ -209,7 +226,7 @@ def cmd_report(args: argparse.Namespace) -> int:
                      "| Item | Used | Expected |\n|---|---|---|\n")
             for k in REPORTED:
                 fh.write(f"| {k} | {seen[k]} | {profile[k]} |\n")
-            fh.write("\n")
+            fh.write(f"| image | {image} | {profile['runner_image']} |\n\n")
     level = "error" if args.strict else "warning"
     for k in diffs:
         print(f"::{level} title=Toolchain differs from the {args.profile} profile::"
@@ -218,6 +235,48 @@ def cmd_report(args: argparse.Namespace) -> int:
         print(f"note: off-reference run. The installed toolchain is not the {args.profile} "
               "setup, so results may differ from CI.", file=sys.stderr)
     return 1 if diffs and args.strict else 0
+
+
+def check_available(profile: dict[str, str], applications: Path, simctl: dict,
+                    sdk_version: str | None) -> list[str]:
+    """What the host lacks of the profile, one message per missing item."""
+    app = applications / f"Xcode_{profile['xcode_version']}.app"
+    plist = app / "Contents" / "version.plist"
+    if not plist.is_file():
+        return [f"Xcode {profile['xcode_version']} is not installed ({app} is missing)."]
+    problems = []
+    build = plistlib.loads(plist.read_bytes()).get("ProductBuildVersion", "unknown")
+    if build != profile["xcode_build"]:
+        problems.append(f"{app.name} is build {build}, the profile names {profile['xcode_build']}.")
+    if sdk_version is None:
+        sdk_version = _live(["env", f"DEVELOPER_DIR={app}/Contents/Developer",
+                             "xcrun", "--sdk", "iphonesimulator", "--show-sdk-version"]).strip()
+    sdk = f"iphonesimulator{sdk_version}" if sdk_version else "no simulator SDK"
+    if sdk != profile["sdk"]:
+        problems.append(f"{app.name} provides {sdk}, the profile names {profile['sdk']}.")
+    names = [r["name"] for r in _runtimes(simctl)]
+    if profile["runtime"] not in names:
+        problems.append(f"Simulator runtime {profile['runtime']} is not installed; "
+                        f"installed: {', '.join(names) or 'none'}.")
+    elif not select_devices(simctl, profile["runtime"], profile["device"]):
+        problems.append(f"No available {profile['device']} simulator on {profile['runtime']}.")
+    return problems
+
+
+def cmd_check_available(args: argparse.Namespace) -> int:
+    profile = load_profile(args.profile, Path(args.config))
+    app = Path(args.applications) / f"Xcode_{profile['xcode_version']}.app"
+    simctl = read_simctl(args.simctl_json, developer_dir=str(app / "Contents" / "Developer"))
+    problems = check_available(profile, Path(args.applications), simctl, args.sdk_version)
+    print(f"Profile '{args.profile}' on image {runner_image()} (profile names {profile['runner_image']}):")
+    for p in problems:
+        print(f"::error title=Reference toolchain missing from the runner image::{p}")
+    if problems:
+        print("Update scripts/reference-toolchain.ini; see docs/Testing/reference-toolchain.md.")
+        return 1
+    print(f"  Xcode {profile['xcode_version']} ({profile['xcode_build']}), {profile['sdk']}, "
+          f"{profile['device']} on {profile['runtime']}: all present.")
+    return 0
 
 
 def cmd_select_sim(args: argparse.Namespace) -> int:
@@ -268,6 +327,12 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--sdk-version")
     r.add_argument("--arch")
 
+    c = sub.add_parser("check-available")
+    c.add_argument("--profile", default="reference")
+    c.add_argument("--applications", default="/Applications")
+    c.add_argument("--simctl-json")
+    c.add_argument("--sdk-version")
+
     args = ap.parse_args(argv)
     try:
         if args.cmd == "get":
@@ -275,6 +340,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.cmd == "select-sim":
             return cmd_select_sim(args)
+        if args.cmd == "check-available":
+            return cmd_check_available(args)
         return cmd_report(args)
     except ConfigError as exc:
         print(f"reference_toolchain: {exc}", file=sys.stderr)
