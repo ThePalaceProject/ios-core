@@ -570,7 +570,7 @@ extension CatalogViewModel {
         facetGroups: facetGroups.isEmpty ? [] : facetGroups, entryPoints: entryPoints
       )
     case .acquisitionUngrouped:
-      let ungroupedBooks = (feedObjc.entries as? [TPPOPDSEntry])?.compactMap { makeBook(from: $0, bookRegistry: bookRegistry) } ?? []
+      let ungroupedBooks = (feedObjc.entries as? [TPPOPDSEntry])?.compactMap { TPPBook.catalogBook(from: $0, registryMetadata: bookRegistry.updatedBookMetadata) } ?? []
       let (facetGroups, entryPoints) = extractFacets(from: feedObjc)
       return MappedCatalog(
         title: title, entries: entries, lanes: [], ungroupedBooks: ungroupedBooks,
@@ -720,7 +720,7 @@ extension CatalogViewModel {
     var orderedTitles: [String] = []
     if let entries = feed.entries as? [TPPOPDSEntry] {
       for entry in entries {
-        if let group = entry.groupAttributes, let book = makeBook(from: entry, bookRegistry: bookRegistry) {
+        if let group = entry.groupAttributes, let book = TPPBook.catalogBook(from: entry, registryMetadata: bookRegistry.updatedBookMetadata) {
           let title = group.title ?? ""
           if titleToBooks[title] == nil { orderedTitles.append(title) }
           titleToBooks[title, default: []].append(book)
@@ -763,13 +763,5 @@ extension CatalogViewModel {
   private func prefetchThumbnails(for books: [TPPBook]) {
     let set = Set(books)
     bookRegistry.thumbnailImages(forBooks: set) { _ in }
-  }
-
-  static func makeBook(from entry: TPPOPDSEntry, bookRegistry: TPPBookRegistryProvider) -> TPPBook? {
-    guard var book = TPPBook(entry: entry) else { return nil }
-    if let updated = bookRegistry.updatedBookMetadata(book) { book = updated }
-    if book.defaultBookContentType == .unsupported { return nil }
-    if book.defaultAcquisition == nil { return nil }
-    return book
   }
 }
