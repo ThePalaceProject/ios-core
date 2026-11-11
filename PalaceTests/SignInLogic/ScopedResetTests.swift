@@ -166,7 +166,7 @@ final class ScopedResetTests: XCTestCase {
 
     /// Full reset clears the cache of the app-wide executor the business logic
     /// was built with, so stale authenticated feeds are not served afterwards.
-    func testPerformForceReset_clearsTheInjectedAppNetworkCache() {
+    func testPerformForceReset_clearsTheInjectedAppNetworkCache() async {
         let provider = TPPLibraryAccountMock()
         let spyUserAccount = TPPUserAccountMock()
         // account("") → nil, so the FCM call is skipped.
@@ -186,9 +186,9 @@ final class ScopedResetTests: XCTestCase {
             appNetwork: appNetwork
         )
 
-        // Steps 1-5, including the cache clear, run before performForceReset
-        // returns; only the web-data wipe completes later.
-        sut.performForceReset {}
+        // Joined on the reset's own completion so its web-data wipe cannot
+        // outlive this test; WebKit always calls it.
+        await withCheckedContinuation { done in sut.performForceReset { done.resume() } }
 
         XCTAssertEqual(appNetwork.clearCacheCount, 1)
         XCTAssertEqual(spyUserAccount.removeAllCallCount, 1, "precondition: the reset reached the credential wipe")
