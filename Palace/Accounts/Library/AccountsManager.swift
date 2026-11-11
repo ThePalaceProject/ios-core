@@ -400,8 +400,10 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
         }
     }
 
-    /// Cleans up active audiobook playback, in-flight network requests, and other
-    /// content before switching accounts to prevent cross-account credential leaks.
+    /// Cancels in-flight network requests, clears borrow re-auth state and pops
+    /// every navigation stack before an account switch, so no request or screen
+    /// carries the prior library's credentials. Audiobook playback is left
+    /// running on purpose: it continues across a library switch, as CarPlay expects.
     private func cleanupActiveContentBeforeAccountSwitch(from previousId: String?, to newId: String?) {
         networkExecutor.cancelNonEssentialTasks()
         borrowReauthResetter.clearAllBorrowReauthState()

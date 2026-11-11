@@ -113,11 +113,24 @@ struct AppContainer: @unchecked Sendable {
     /// The copy keeps every collaborator and the other override, so chained
     /// `with...` calls preserve both. It owns new storage: its other owned
     /// services are built against the copy, and `self`'s are left untouched.
+    /// The copy shares `self`'s download center, so that center's sign-in
+    /// prompts move to `presenter` as well.
     @MainActor
     func withSignInModalSheetPresenter(_ presenter: SignInModalSheetPresenter) -> AppContainer {
         var copy = withNewOwnedServices()
         copy._signInModalSheetPresenterOverride = presenter
+        copy.routeDownloadCenterSignIn()
         return copy
+    }
+
+    /// Binds `downloadCenter`'s sign-in prompts to this container's presenter,
+    /// resolved when a prompt is shown, so a center never presents another
+    /// container's sheet. Called by every builder once the container exists.
+    func routeDownloadCenterSignIn() {
+        let owner = nonOwningCopy()
+        downloadCenter.presentSignInForCurrentAccount = { completion in
+            owner.signInModalSheetPresenter.presentSignInModalForCurrentAccount(completion: completion)
+        }
     }
 
     /// Returns a copy of this container whose `audiobookSessionPresenter` is
@@ -628,7 +641,7 @@ struct AppContainer: @unchecked Sendable {
         let tabRouterHub = AppTabRouterHub()
         let navigationCoordinatorHub = NavigationCoordinatorHub(tabRouterHub: tabRouterHub)
 
-        return AppContainer(
+        let container = AppContainer(
             bookRegistry: bookRegistry,
             networkExecutor: executor,
             // Bind the drain-time credential provider HERE, where
@@ -668,6 +681,8 @@ struct AppContainer: @unchecked Sendable {
             authCoordinator: authCoordinator,
             downloadNetworkLossMonitor: downloadNetworkLossMonitor
         )
+        container.routeDownloadCenterSignIn()
+        return container
     }
 
     #if DEBUG

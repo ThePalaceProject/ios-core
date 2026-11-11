@@ -149,6 +149,17 @@ private final class RedirectCompletionBox: @unchecked Sendable {
     private let overdriveDownloadHandler: OverdriveDownloadHandler
     #endif
     private let credentialPromptCoordinator: CredentialPromptCoordinator
+    /// Presents the sign-in sheet for the current account. The container that
+    /// builds this center binds it to its own presenter
+    /// (`AppContainer.routeDownloadCenterSignIn()`); the default reads the
+    /// production container only when called, never during init.
+    var presentSignInForCurrentAccount: @MainActor (_ completion: (() -> Void)?) -> Void {
+        get { signInRoute.present }
+        set { signInRoute.present = newValue }
+    }
+    /// Holds the closure above, so the sign-in paths built in `init` call
+    /// whatever is bound when they run, not what was bound at construction.
+    private let signInRoute = DownloadCenterSignInRoute()
     /// Owns the pre-dispatch parsing of URL session download
     /// completions: rights resolution + cache write-back, problem-doc
     /// detection, OPDS entry / OPDS2 publication routing, and the
@@ -676,13 +687,13 @@ private final class RedirectCompletionBox: @unchecked Sendable {
         // start-download when the user has no stored credentials.
         // Closures over SignInModalPresenter + AdobeCertificate so
         // tests can substitute fakes without UIKit/DRM at hand.
+        let signInRoute = self.signInRoute
         self.credentialPromptCoordinator = CredentialPromptCoordinator(
             stateManager: stateManager,
             userAccountProvider: resolveAccountForBorrow,
             credentialRequestState: self.credentialRequestState,
             presentSignInModal: { completion in
-                AppContainer.production().signInModalSheetPresenter
-                    .presentSignInModalForCurrentAccount(completion: completion)
+                signInRoute.present(completion)
             },
             isAdobeDRMExpired: {
                 #if FEATURE_DRM_CONNECTOR
@@ -869,8 +880,7 @@ private final class RedirectCompletionBox: @unchecked Sendable {
             reporter.downloadErrorPublisher.send(errorInfo)
         }
         let presentSignInModalClosure: @MainActor (@escaping () -> Void) -> Void = { completion in
-            AppContainer.production().signInModalSheetPresenter
-                .presentSignInModalForCurrentAccount(completion: completion)
+            signInRoute.present(completion)
         }
         let attemptOIDCReauthClosure: () async -> Bool = {
             await BorrowOperation.attemptOIDCSilentReauth(userAccount: resolveAccountForBorrowOp())
@@ -2148,5 +2158,20 @@ extension MyBooksDownloadCenter {
         case let .cleanup(bookID):
             stateManager.removePersistedRecord(for: bookID)
         }
+    }
+}
+
+/// The download center's sign-in presentation, replaceable after init.
+/// `@unchecked Sendable`: `present` is only read and written under `lock`.
+private final class DownloadCenterSignInRoute: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _present: @MainActor (_ completion: (() -> Void)?) -> Void = { completion in
+        AppContainer.production().signInModalSheetPresenter
+            .presentSignInModalForCurrentAccount(completion: completion)
+    }
+
+    var present: @MainActor (_ completion: (() -> Void)?) -> Void {
+        get { lock.withLock { _present } }
+        set { lock.withLock { _present = newValue } }
     }
 }

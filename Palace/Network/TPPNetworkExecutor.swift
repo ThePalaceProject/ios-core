@@ -324,10 +324,13 @@ struct RefreshOutcomeBox: @unchecked Sendable {
         responder.bind(to: self)
     }
 
-    /// DI-friendly initializer for testing
+    /// DI-friendly initializer for testing. A `nil` `accountsManager` resolves
+    /// the container's manager on first use: `AppContainer` builds the shared
+    /// executor while it holds its build lock, so a container read in this
+    /// init would re-enter that lock and abort the launch (PP-4980).
     init(credentialsProvider: NYPLBasicAuthCredentialsProvider? = nil,
          cachingStrategy: NYPLCachingStrategy,
-         accountsManager: TPPLibraryAccountsProvider = AppContainer.production().accountsManager,
+         accountsManager: TPPLibraryAccountsProvider? = nil,
          delegateQueue: OperationQueue? = nil) {
         self.responder = TPPNetworkResponder(credentialsProvider: credentialsProvider,
                                              useFallbackCaching: cachingStrategy == .fallback)

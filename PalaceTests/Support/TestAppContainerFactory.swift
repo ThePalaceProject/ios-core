@@ -148,6 +148,9 @@ enum TestContainerDefaults {
 ///     declare the file in the `UserDefaultsIsolationLintTests` whitelist.
 ///     Ignored when `accountsManager` is supplied, since that manager carries
 ///     its own store.
+///   - userAccount: Optional patron account for the download center, the
+///     center's own test override. When `nil` the center resolves the current
+///     account through `accountsManager`, as production does.
 ///
 /// - Returns: A fully wired `AppContainer` distinct from
 ///   `AppContainer.production()`. Does NOT mutate `_cached`.
@@ -163,7 +166,8 @@ func makeTestAppContainer(
   accountsManager: AccountsManager? = nil,
   bookRegistry: TPPBookRegistryProvider? = nil,
   networkExecutor: TPPNetworkExecutor? = nil,
-  defaults: UserDefaults = TestContainerDefaults.make()
+  defaults: UserDefaults = TestContainerDefaults.make(),
+  userAccount: TPPUserAccount? = nil
 ) -> AppContainer {
   // Pin the opt-out flag BEFORE constructing AccountsManager so its init
   // skips the background `loadCatalogs` Task. This mirrors the bootstrap
@@ -181,7 +185,14 @@ func makeTestAppContainer(
   // first. Same here.
   let executor = networkExecutor ?? TPPNetworkExecutor(cachingStrategy: .fallback)
   let reachability = Reachability()
-  let resolvedAccountsManager = accountsManager ?? AccountsManager(defaults: defaults)
+  // The hubs are built before the manager so its account-switch cleanup can pop
+  // THIS container's stacks; `.production` would pop the app's.
+  let tabRouterHub = AppTabRouterHub()
+  let navigationCoordinatorHub = NavigationCoordinatorHub(tabRouterHub: tabRouterHub)
+  let resolvedAccountsManager = accountsManager ?? AccountsManager(
+    defaults: defaults,
+    switchDependencies: makeTestSwitchDependencies(executor: executor, hub: navigationCoordinatorHub)
+  )
   let imageCache: ImageCacheType = ImageCache.shared
   let imageLoader: ImageLoading = ImageLoader(imageCache: imageCache)
   let resolvedBookRegistry = bookRegistry ?? TPPBookRegistry(
@@ -219,6 +230,7 @@ func makeTestAppContainer(
   }
 
   let downloadCenter = MyBooksDownloadCenter(
+    userAccount: userAccount,
     bookRegistry: resolvedBookRegistry,
     accountsManager: resolvedAccountsManager,
     networkExecutor: executor,
@@ -258,15 +270,13 @@ func makeTestAppContainer(
     return dir
   }
 
-  // PP-5022 — the two hubs are one unit: the navigation hub resolves "which
-  // stack is on screen" by asking this router which tab is selected. A test
-  // container that pairs a router-less hub with a live router is exactly the
-  // pre-fix state (`hub.coordinator` degrades to last-registered), so any
-  // future test of visible-tab resolution written through this factory could
-  // only ever be green.
-  let tabRouterHub = AppTabRouterHub()
-
-  return AppContainer(
+  // PP-5022 — the two hubs (built above) are one unit: the navigation hub
+  // resolves "which stack is on screen" by asking this router which tab is
+  // selected. A test container that pairs a router-less hub with a live router
+  // is exactly the pre-fix state (`hub.coordinator` degrades to
+  // last-registered), so any future test of visible-tab resolution written
+  // through this factory could only ever be green.
+  let container = AppContainer(
     bookRegistry: resolvedBookRegistry,
     networkExecutor: executor,
     // Per-container temp store, never the app's real `simplified.db`. PP-4987
@@ -282,7 +292,9 @@ func makeTestAppContainer(
     ),
     reachability: reachability,
     accountsManager: resolvedAccountsManager,
-    settings: TPPSettings(),
+    // The container's own store, so a setting one test writes is not read by
+    // another container or left in the app's `.standard` defaults.
+    settings: TPPSettings(defaults: defaults),
     featureFlags: RemoteFeatureFlags.shared,
     downloadCenter: downloadCenter,
     downloadAnnouncementService: downloadAnnouncementService,
@@ -292,10 +304,47 @@ func makeTestAppContainer(
     userAccountPublisher: userAccountPublisher,
     opdsFeedService: OPDSFeedService(),
     readerService: ReaderService(imageCache: { imageCache }),
-    navigationCoordinatorHub: NavigationCoordinatorHub(tabRouterHub: tabRouterHub),
+    navigationCoordinatorHub: navigationCoordinatorHub,
     tabRouterHub: tabRouterHub,
     drmAuthorizerProvider: { nil },
     authCoordinator: authCoordinator,
     downloadNetworkLossMonitor: downloadNetworkLossMonitor
   )
+  container.routeDownloadCenterSignIn()
+  return container
+}
+
+/// Account-switch cleanup bound to one test container's executor and
+/// navigation hub, so a switch in one container cancels and pops nothing in
+/// another or in the app.
+///
+/// The image cache, cover circuit breaker and `AccountStateStore.shared` stay
+/// the process-wide ones: the factory shares `ImageCache.shared` and the cover
+/// registry, and `Account.loadState` reads `AccountStateStore.shared`, so a
+/// private store would hide the switch's eviction marker from the account's
+/// own awaiters.
+private func makeTestSwitchDependencies(
+  executor: TPPNetworkExecutor,
+  hub: NavigationCoordinatorHub
+) -> AccountSwitchDependencies {
+  let production = AccountSwitchDependencies.production
+  let hubRef = TestHubReference(hub)
+  return AccountSwitchDependencies(
+    imageCache: production.imageCache,
+    accountStateStore: production.accountStateStore,
+    resetCoverCircuitBreaker: production.resetCoverCircuitBreaker,
+    networkExecutorProvider: { executor },
+    popToRootForAccountSwitch: {
+      guard let hub = hubRef.hub else { return }
+      AppContainer.popAllToRootForAccountSwitch(hub: hub)
+    }
+  )
+}
+
+/// Weak, `Sendable` handle on a hub for the `@Sendable` pop closure. Weak so
+/// the manager's switch dependencies do not keep the container's hub alive.
+/// `@unchecked Sendable`: `hub` is only dereferenced on the main actor.
+private final class TestHubReference: @unchecked Sendable {
+  weak var hub: NavigationCoordinatorHub?
+  init(_ hub: NavigationCoordinatorHub) { self.hub = hub }
 }
