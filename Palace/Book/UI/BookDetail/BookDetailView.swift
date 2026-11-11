@@ -465,8 +465,10 @@ struct BookDetailView: View {
                                     .font(.headline)
                                     .accessibilityAddTraits(.isHeader)
                                 Spacer()
-                                if let url = lane.subsectionURL {
-                                    NavigationLink(destination: CatalogLaneMoreView(url: url, appContainer: appContainer)) {
+                                if lane.subsectionURL != nil {
+                                    Button {
+                                        viewModel.showMoreBooksForLane(laneTitle: laneTitle)
+                                    } label: {
                                         Text(DisplayStrings.more.capitalized)
                                             .foregroundStyle(.primary)
                                     }
@@ -616,8 +618,8 @@ struct BookDetailView: View {
     /// PP-4463 / PP-4775: SERIES information row. Three states, decided purely by
     /// `BookDetailViewModel.seriesRowDisplay`:
     ///   - `.link` — series name + a series-search URL (other books in the
-    ///     catalog): the name is a `NavigationLink` to `CatalogLaneMoreView`
-    ///     keyed on `book.seriesURL`, an alternate path to the same series lane.
+    ///     catalog): tapping the name opens the series lane for
+    ///     `book.seriesURL` through `BookDetailViewModel.showSeriesLane()`.
     ///   - `.plainText` — series name known but NO series URL (no other books in
     ///     the catalog, PP-4775): the name is shown as static, non-tappable text
     ///     with no `.isLink` trait, so VoiceOver reads it as plain text (AC #4).
@@ -628,12 +630,14 @@ struct BookDetailView: View {
         case .hidden:
             EmptyView()
 
-        case let .link(seriesName, seriesURL):
+        case let .link(seriesName, _):
             HStack(alignment: .top, spacing: 10) {
                 infoLabel(label: DisplayStrings.series.uppercased())
                     .frame(minWidth: 100, alignment: .leading)
                     .fixedSize(horizontal: true, vertical: false)
-                NavigationLink(destination: CatalogLaneMoreView(url: seriesURL, appContainer: appContainer)) {
+                Button {
+                    viewModel.showSeriesLane()
+                } label: {
                     Text(seriesName)
                         .font(.subheadline)
                         .underline()
@@ -654,7 +658,7 @@ struct BookDetailView: View {
                 infoLabel(label: DisplayStrings.series.uppercased())
                     .frame(minWidth: 100, alignment: .leading)
                     .fixedSize(horizontal: true, vertical: false)
-                // No NavigationLink, no underline, and no `.isLink` trait below —
+                // No button, no underline, and no `.isLink` trait below —
                 // when the catalog has no other books in the series the name is
                 // informational only (PP-4775 AC #1 / #4).
                 Text(seriesName)
