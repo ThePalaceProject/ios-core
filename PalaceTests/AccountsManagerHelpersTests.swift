@@ -8,6 +8,7 @@
 
 import XCTest
 @testable import Palace
+@testable import PalaceAccounts
 
 @MainActor
 final class AccountsManagerHelpersTests: XCTestCase {

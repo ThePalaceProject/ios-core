@@ -17,6 +17,7 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceAccounts
 
 // `PalaceWiringTestCase` per `TearDownRequiredLintTests`: everything under
 // PalaceTests/ takes the base so the tearDown cancel + main-hop flush fire, unless
@@ -113,8 +114,8 @@ final class RegistryCompletenessTests: PalaceWiringTestCase {
 
     // MARK: - INV-2 (AccountRegistryStore.replaceBucket)
 
-    private func store(seeded uuids: [String], hash: String = "h") -> AccountRegistryStore {
-        let store = AccountRegistryStore(currentHash: hash)
+    private func store(seeded uuids: [String], hash: String = "h") -> AccountRegistryStore<Account> {
+        let store = AccountRegistryStore<Account>(currentHash: hash)
         if !uuids.isEmpty {
             XCTAssertTrue(store.replaceBucket(hash: hash, accounts: uuids.map(account), isCompleteFeed: true))
         }
@@ -219,7 +220,7 @@ final class RegistryCompletenessTests: PalaceWiringTestCase {
     }
 
     func testINV2_readsOnlyItsOwnBucket_notTheFlattenedIndex() {
-        let store = AccountRegistryStore(currentHash: "h1")
+        let store = AccountRegistryStore<Account>(currentHash: "h1")
         XCTAssertTrue(store.replaceBucket(hash: "h1", accounts: ["a", "b"].map(account), isCompleteFeed: true))
         XCTAssertTrue(store.replaceBucket(hash: "h2", accounts: [account("z")], isCompleteFeed: false),
                       "h2 is empty; h1's libraries must not be read as h2's resident set (the flattened uuid index spans every bucket)")
