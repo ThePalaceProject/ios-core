@@ -200,7 +200,7 @@ final class OverdriveDownloadHandler: @unchecked Sendable {
                 bookKey: book.loggableDictionary(),
                 bookRegistryStateKey: state.stringValue()
             ])
-            alertPresenter.failDownloadWithAlert(for: book, withMessage: nil)
+            alertPresenter.failDownloadWithAlert(for: book, withMessage: DownloadFailureDetail.message(for: error))
             return
         }
 
