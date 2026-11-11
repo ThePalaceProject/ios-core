@@ -26,12 +26,14 @@ protocol BookDetailNavigating {
 struct CoordinatorBookDetailNavigator: BookDetailNavigating {
     let hub: NavigationCoordinatorHub
 
+    /// The detail screen's lane links have always opened the lane screen with
+    /// no navigation title; this is not display text to translate.
+    private static let blankLaneTitle = ""
+
     func open(_ destination: BookDetailDestination) {
         switch destination {
         case .seriesLane(let url), .relatedLane(let url):
-            // Empty title, as the detail screen's lane links have always passed;
-            // the lane screen's navigation title is left blank.
-            hub.coordinator?.push(.catalogLaneMore(title: "", url: url))
+            hub.coordinator?.push(.catalogLaneMore(title: Self.blankLaneTitle, url: url))
         }
     }
 }
