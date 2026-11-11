@@ -1,6 +1,6 @@
 //
 //  RedirectPolicyTests.swift
-//  PalaceTests
+//  PalaceDownloadsTests
 //
 //  Covers the willPerformHTTPRedirection decision lifted out of MBDC:
 //    - cap at maxRedirectAttempts (deny once reached)

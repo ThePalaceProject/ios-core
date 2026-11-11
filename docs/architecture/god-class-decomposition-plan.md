@@ -198,6 +198,18 @@ PalaceAccounts         → PalaceAuth, PalaceCatalog, PalaceNetwork,
 PalaceReadingPosition  → (as today)
 PalaceDownloads        → PalaceBookModel, PalaceBookRegistry, PalaceNetwork,
                          PalaceAuth (AuthCoordinator surface), PalaceLogging
+                         [as first shipped (PP-5547): no dependencies. It holds
+                         the Foundation-only cores (ReturnReducer,
+                         RedirectPolicy, UserRetryTracker, LoanEvictionPolicy,
+                         the DownloadAccountContext protocols), and CI runs
+                         its tests with macOS `swift test`. PalaceBookModel
+                         imports UIKit and declares no macOS platform, so
+                         adding it as a dependency ends the macOS test run;
+                         the package tests then need an iOS Simulator run.
+                         Cores that need `TPPBookState` (DownloadStartReducer,
+                         DownloadReconciliation) stay in the app target until
+                         that trade is made. See
+                         Palace/Packages/PalaceDownloads/Package.swift.]
 PalaceAudiobookSession → PalaceBookModel, PalaceReadingPosition,
                          PalacePreferences, PalaceLogging (+ toolkit, see caveat)
 App target             → all of the above

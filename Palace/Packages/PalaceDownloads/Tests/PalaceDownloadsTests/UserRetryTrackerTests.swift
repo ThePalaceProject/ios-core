@@ -1,6 +1,6 @@
 //
 //  UserRetryTrackerTests.swift
-//  PalaceTests
+//  PalaceDownloadsTests
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
