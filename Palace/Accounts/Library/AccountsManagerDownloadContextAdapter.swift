@@ -10,6 +10,7 @@
 //
 
 import Foundation
+import PalaceDownloads
 
 final class AccountsManagerDownloadContextAdapter: DownloadAccountScopeProviding,
                                                    DownloadCredentialsProviding,

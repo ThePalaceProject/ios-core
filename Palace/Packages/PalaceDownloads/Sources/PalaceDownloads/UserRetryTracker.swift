@@ -1,6 +1,6 @@
 //
 //  UserRetryTracker.swift
-//  Palace
+//  PalaceDownloads
 //
 //  Copyright © 2025 The Palace Project. All rights reserved.
 //
@@ -19,8 +19,10 @@ import Foundation
 /// `cleanupStaleEntries` each take `lock.lock()`/`defer unlock`). The
 /// remaining stored members (`maxRetries`, `resetInterval`) are immutable
 /// `let`s. `final`, so the lock invariant can't be defeated by a subclass.
-final class UserRetryTracker: @unchecked Sendable {
-    static let shared = UserRetryTracker()
+// PUBLIC_INTENT: the app retry alerts (borrow, download, return, reader) use this tracker.
+public final class UserRetryTracker: @unchecked Sendable {
+    // PUBLIC_INTENT: the app retry alerts (borrow, download, return, reader) use this tracker.
+    public static let shared = UserRetryTracker()
 
     private struct RetryInfo {
         var count: Int
@@ -37,10 +39,12 @@ final class UserRetryTracker: @unchecked Sendable {
     private let resetInterval: TimeInterval = 300
 
     /// Production code shares `shared`; tests build an isolated instance.
-    init() {}
+    // PUBLIC_INTENT: the app retry alerts (borrow, download, return, reader) use this tracker.
+    public init() {}
 
     /// Returns true if retry is allowed (under the limit), false if limit exceeded.
-    func canRetry(operationId: String) -> Bool {
+    // PUBLIC_INTENT: the app retry alerts (borrow, download, return, reader) use this tracker.
+    public func canRetry(operationId: String) -> Bool {
         lock.lock()
         defer { lock.unlock() }
         cleanupStaleEntries()
@@ -50,7 +54,8 @@ final class UserRetryTracker: @unchecked Sendable {
 
     /// Records a retry attempt. Returns the number of remaining retries.
     @discardableResult
-    func recordRetry(operationId: String) -> Int {
+    // PUBLIC_INTENT: the app retry alerts (borrow, download, return, reader) use this tracker.
+    public func recordRetry(operationId: String) -> Int {
         lock.lock()
         defer { lock.unlock() }
         cleanupStaleEntries()
@@ -61,7 +66,8 @@ final class UserRetryTracker: @unchecked Sendable {
     }
 
     /// Clears retry count for an operation (call on success).
-    func clearRetries(operationId: String) {
+    // PUBLIC_INTENT: the app retry alerts (borrow, download, return, reader) use this tracker.
+    public func clearRetries(operationId: String) {
         lock.lock()
         defer { lock.unlock() }
         retries.removeValue(forKey: operationId)

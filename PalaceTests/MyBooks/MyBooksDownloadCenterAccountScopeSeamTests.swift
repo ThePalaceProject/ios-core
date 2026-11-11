@@ -17,6 +17,7 @@
 import XCTest
 @testable import Palace
 import PalaceBookModel
+import PalaceDownloads
 
 /// Spy `DownloadAccountScopeProviding` — returns a controllable account id +
 /// auth-surface hosts and records how many times each is read. `@unchecked

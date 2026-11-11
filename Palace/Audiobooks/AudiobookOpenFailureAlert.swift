@@ -12,6 +12,7 @@ import UIKit
 import PalaceBookModel
 import PalaceBookRegistry
 import PalaceLogging
+import PalaceDownloads
 
 /// Reports an audiobook open failure and offers the patron a bounded Retry.
 ///

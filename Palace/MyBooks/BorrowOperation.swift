@@ -19,6 +19,7 @@ import PalaceLogging
 import PalaceCatalog
 import PalaceBookModel
 import PalaceBookRegistry
+import PalaceDownloads
 
 // MARK: - Delegate
 
