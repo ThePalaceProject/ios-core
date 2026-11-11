@@ -77,6 +77,9 @@ final class BookRegistryStore: @unchecked Sendable {
   /// by the announced-mutation path here and by `BookRegistrySync`'s load and
   /// shelf saves; never by a bare `registrySubject.send`.
   let registryDidChangeSubject = PassthroughSubject<Void, Never>()
+  /// Backs `TPPBookRegistry.bookProcessingPublisher`. Sent on the main queue
+  /// by `setProcessing`.
+  let processingChangeSubject = PassthroughSubject<BookProcessingChange, Never>()
 
   /// Fired when `updateBook` reconciles a record whose availability changed
   /// (drives the app's push-notification comparison). Injected app-side because
@@ -471,11 +474,9 @@ final class BookRegistryStore: @unchecked Sendable {
       } else {
         self.processingIdentifiers.remove(identifier)
       }
+      let change = BookProcessingChange(bookIdentifier: identifier, isProcessing: processing)
       DispatchQueue.main.async {
-        NotificationCenter.default.post(name: .registryBookProcessingDidChange, object: nil, userInfo: [
-          RegistryProcessingNotificationKeys.bookID: identifier,
-          RegistryProcessingNotificationKeys.value: processing
-        ])
+        self.processingChangeSubject.send(change)
       }
     }
   }

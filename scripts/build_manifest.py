@@ -21,8 +21,8 @@ runner image (CI only), and the check with its result. A new pinned input is
 one more entry in INPUT_READERS. Each value is read from the file that pins it,
 never from the environment, so no credential can reach the report.
 
-prior-art-checked: reference_toolchain.py records the toolchain to the log only,
-and drm_connector.py reads the connector record; this reuses both.
+It reuses reference_toolchain.py for the toolchain and drm_connector.py for
+the connector record.
 """
 
 from __future__ import annotations
@@ -80,7 +80,30 @@ def read_app(root: Path) -> dict:
         diff = subprocess.run(["git", "-C", str(root), "diff", "HEAD", "--binary", "--ignore-submodules=all"],
                               capture_output=True, check=False).stdout
         app["diff_sha256"] = hashlib.sha256(diff).hexdigest()
+    app.update(read_pr_shas())
     return app
+
+
+def read_pr_shas() -> dict:
+    """{"pr_head_sha", "pr_base_sha"} of the pull request a CI run belongs to.
+
+    A pull_request run checks out the merge of head and base, so app.sha is a
+    commit nobody has checked out; the head is what a reader compares with.
+    Only the two SHAs are taken from the event, and only when they are SHAs.
+    """
+    path = os.environ.get("GITHUB_EVENT_PATH")
+    if os.environ.get("GITHUB_ACTIONS") != "true" or not path:
+        return {}
+    try:
+        pr = json.loads(Path(path).read_text()).get("pull_request")
+    except (OSError, ValueError, AttributeError):
+        return {}
+    out = {}
+    for side in ("head", "base"):
+        sha = pr.get(side, {}).get("sha") if isinstance(pr, dict) and isinstance(pr.get(side), dict) else None
+        if isinstance(sha, str) and drm_connector.SHA_RE.match(sha):
+            out[f"pr_{side}_sha"] = sha
+    return out
 
 
 def read_connector(root: Path) -> dict:
@@ -250,10 +273,24 @@ def _flat(node, prefix: str = "") -> dict:
     return out
 
 
+def matched_commit(recorded: dict, current: dict) -> str | None:
+    """Which recorded commit the current HEAD is: app.sha (the tree tested),
+    or app.pr_head_sha for a pull-request run, which tested a merge commit."""
+    rec_app, head = recorded.get("app", {}), current["app"]["sha"]
+    for key in ("sha", "pr_head_sha"):
+        if rec_app.get(key) == head:
+            return f"app.{key}"
+    return None
+
+
 def differences(recorded: dict, current: dict, tree_only: bool) -> list[str]:
     diffs = []
     rec_app, cur_app = recorded.get("app", {}), current["app"]
-    for key in ("sha", "dirty", "diff_sha256"):
+    if not matched_commit(recorded, current):
+        diffs.append(f"app.sha: report {rec_app.get('sha')}, now {cur_app['sha']}")
+        if rec_app.get("pr_head_sha"):
+            diffs.append(f"app.pr_head_sha: report {rec_app['pr_head_sha']}, now {cur_app['sha']}")
+    for key in ("dirty", "diff_sha256"):
         if rec_app.get(key) != cur_app.get(key):
             diffs.append(f"app.{key}: report {rec_app.get(key)}, now {cur_app.get(key)}")
     rec_inputs = recorded.get("inputs", {})
@@ -296,7 +333,8 @@ def cmd_check_stale(args: argparse.Namespace) -> int:
         for d in diffs:
             print(f"  {d}")
         return EXIT_STALE
-    print(f"CURRENT: {args.report} ({label}) matches this tree at {current['app']['sha'][:12]}")
+    print(f"CURRENT: {args.report} ({label}) matches this tree at {current['app']['sha'][:12]} "
+          f"({matched_commit(recorded, current)})")
     return EXIT_CURRENT
 
 

@@ -26,10 +26,10 @@ docs/Testing/reference-toolchain.md.
       missing item, when it does not. The weekly toolchain-availability
       workflow runs it on the profile's runner image.
 
-prior-art-checked: the simulator lock helper filters by lock only, and the
-local runners' old selection matched a device name on any runtime; neither
-reads a pinned runtime or records the Xcode build. (Script names are left out
-of this text on purpose: ci-unit-test-relevance.py follows them.)
+The simulator lock helper filters by lock only, and the local runners' old
+selection matched a device name on any runtime; neither reads a pinned runtime
+or records the Xcode build. (Script names are left out of this text on purpose:
+ci-unit-test-relevance.py follows them.)
 """
 
 from __future__ import annotations

@@ -157,8 +157,6 @@ final class DownloadAlertPresenter: @unchecked Sendable {
                                   retryAction: retryAction)
             )
         }
-
-        progressReporter.broadcastUpdate()
     }
 
     // MARK: - alertForProblemDocument

@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Print the `run:` bodies of GitHub-workflow steps that can actually fail a build.
 
-prior-art-checked: no existing script in scripts/ parses workflow steps; the
-repo's other workflow-aware checks grep the YAML text, which is precisely the
-approach this replaces. `harness capabilities` has nothing for workflow parsing.
+The repo's other workflow-aware checks grep the YAML text; this replaces that
+approach.
 
 WHY NOT PyYAML
     The first version imported yaml. `/usr/bin/python3` on macOS has no PyYAML,

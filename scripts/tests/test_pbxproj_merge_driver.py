@@ -1,10 +1,5 @@
 """Tests for the pbxproj merge driver.
 
-prior-art-checked: the suggested matches were a fleet roster, glyph capture,
-memory writes and a harness defect-escape test, none of which merge a
-pbxproj. In scripts/tests/ three files mention pbxproj (relevance, committed
-signing, strings) and none tests a merge driver.
-
 The driver exists to union membership conflicts and to refuse everything
 else, so both halves need pinning. A driver that resolved too much would
 reintroduce the duplicate-key defect `.gitattributes` records; one that

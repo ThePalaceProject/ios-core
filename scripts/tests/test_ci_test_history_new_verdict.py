@@ -3,12 +3,6 @@
 test_ci_test_history_new_verdict.py — the NEW verdict must not accuse a diff of
 a failure the runner caused.
 
-prior-art-checked: a repo-local pytest in the established `scripts/tests/test_*.py`
-family, testing `scripts/ci-test-history.py`, which has no other test. The
-harness tools surfaced at capture time (memory files, glyphs push, SoD checks)
-solve unrelated problems and none of them can assert a verdict this script
-prints to a developer.
-
 WHY THIS EXISTS. `ci-test-history.py` is the instrument used to decide whether a
 red board is the branch's fault or someone else's — the CI contract in CLAUDE.md
 routes every flake-vs-regression call through it. Its NEW verdict does not

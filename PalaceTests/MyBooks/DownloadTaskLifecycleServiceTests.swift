@@ -100,7 +100,7 @@ final class DownloadTaskLifecycleServiceTests: XCTestCase {
                        "registerStartedTask must mark the book as .downloading")
     }
 
-    func testRegisterStartedTask_announcesDownloadStartedAndNotifiesCenter() async {
+    func testRegisterStartedTask_announcesDownloadStartedAndFillsFreeSlots() async {
         let task = StubDownloadTask(taskIdentifier: 1)
 
         // Swift 6: capture the (now `@unchecked Sendable`) service locally so
@@ -110,8 +110,6 @@ final class DownloadTaskLifecycleServiceTests: XCTestCase {
         await service.registerStartedTask(task, book: book, maxConcurrentDownloads: 4)
 
         XCTAssertEqual(spyAnnouncer.startedAnnouncements.map { $0.title }, [book.title])
-        XCTAssertEqual(spyDelegate.notifyCenterChangedCount, 1,
-                       "registerStartedTask must broadcast .TPPMyBooksDownloadCenterDidChange via the delegate")
         XCTAssertEqual(spyDelegate.scheduleStartsCount, 1,
                        "registerStartedTask must invoke schedulePendingStartsIfPossible to fill any free slots")
     }
@@ -194,7 +192,6 @@ final class DownloadTaskLifecycleServiceTests: XCTestCase {
 private final class SpyDelegate: DownloadTaskLifecycleServiceDelegate {
     private(set) var logCalls: [(book: TPPBook, reason: String)] = []
     private(set) var failDownloadCalls: [TPPBook] = []
-    private(set) var notifyCenterChangedCount = 0
     private(set) var scheduleStartsCount = 0
 
     func logBookDownloadFailure(_ book: TPPBook, reason: String, downloadTask: URLSessionTask, metadata: [String: Any]?) {
@@ -203,10 +200,6 @@ private final class SpyDelegate: DownloadTaskLifecycleServiceDelegate {
 
     func failDownloadWithAlert(for book: TPPBook, withMessage message: String?) {
         failDownloadCalls.append(book)
-    }
-
-    func notifyDownloadCenterDidChange() {
-        notifyCenterChangedCount += 1
     }
 
     func schedulePendingStartsIfPossible() {

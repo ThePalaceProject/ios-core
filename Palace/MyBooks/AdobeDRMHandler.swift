@@ -22,7 +22,6 @@ protocol AdobeDRMHandlerDelegate: AnyObject {
     func fileUrl(for identifier: String) -> URL?
     func failDownloadWithAlert(for book: TPPBook, withMessage message: String?)
     func markDownloadSuccessful(for book: TPPBook)
-    func broadcastUpdate()
     /// Forwards Adobe's progress callback back through MyBooksDownloadCenter so
     /// it can update its async download-info state and publish to subscribers.
     func handleAdobeDownloadProgress(_ progress: Double, for tag: String)
@@ -169,8 +168,6 @@ final class AdobeDRMHandler: NSObject {
         }
 
         delegate.markDownloadSuccessful(for: book)
-
-        delegate.broadcastUpdate()
     }
 
     func handleProgress(_ progress: Double, for tag: String) {
@@ -179,7 +176,6 @@ final class AdobeDRMHandler: NSObject {
 
     func handleCancellation(tag: String) {
         delegate?.bookRegistry.setState(.downloadNeeded, for: tag)
-        delegate?.broadcastUpdate()
     }
 
     func handleNoAuthorization() {

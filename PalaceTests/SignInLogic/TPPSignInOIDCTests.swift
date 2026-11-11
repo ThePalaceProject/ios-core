@@ -1351,11 +1351,7 @@ final class OAuthSAMLRedirectRegressionTests: XCTestCase {
         let encoded = patronJSON.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
         let redirectURL = URL(string: "https://example.com/univeral-link-redirect#access_token=oauth-tok&patron_info=\(encoded)")!
 
-        let notification = Notification(
-            name: .TPPAppDelegateDidReceiveCleverRedirectURL,
-            object: redirectURL
-        )
-        businessLogic.handleRedirectURL(notification)
+        businessLogic.handleRedirectURL(redirectURL)
 
         XCTAssertEqual(businessLogic.authToken, "oauth-tok",
                        "OAuth redirect through handleRedirectURL must still work")
@@ -1374,11 +1370,7 @@ final class OAuthSAMLRedirectRegressionTests: XCTestCase {
         let encoded = patronJSON.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
         let redirectURL = URL(string: "https://example.com/univeral-link-redirect?access_token=saml-tok&patron_info=\(encoded)")!
 
-        let notification = Notification(
-            name: .TPPAppDelegateDidReceiveCleverRedirectURL,
-            object: redirectURL
-        )
-        businessLogic.handleRedirectURL(notification)
+        businessLogic.handleRedirectURL(redirectURL)
 
         XCTAssertEqual(businessLogic.authToken, "saml-tok",
                        "SAML redirect through handleRedirectURL must still work")
@@ -1397,11 +1389,7 @@ final class OAuthSAMLRedirectRegressionTests: XCTestCase {
         let encoded = errorJSON.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
         let redirectURL = URL(string: "https://example.com/univeral-link-redirect#error=\(encoded)")!
 
-        let notification = Notification(
-            name: .TPPAppDelegateDidReceiveCleverRedirectURL,
-            object: redirectURL
-        )
-        businessLogic.handleRedirectURL(notification)
+        businessLogic.handleRedirectURL(redirectURL)
 
         XCTAssertNil(businessLogic.authToken, "OAuth error redirect should not set token")
     }
@@ -1410,11 +1398,7 @@ final class OAuthSAMLRedirectRegressionTests: XCTestCase {
         businessLogic.selectedAuthentication = libraryMock.oauthAuthentication
 
         let url = URL(string: "palace-oidc-callback://org.thepalaceproject.oidc/callback?access_token=tok&patron_info={}")!
-        let notification = Notification(
-            name: .TPPAppDelegateDidReceiveCleverRedirectURL,
-            object: url
-        )
-        businessLogic.handleRedirectURL(notification)
+        businessLogic.handleRedirectURL(url)
 
         XCTAssertNil(businessLogic.authToken,
                      "handleRedirectURL must reject URLs that don't match universalLinksURL prefix")

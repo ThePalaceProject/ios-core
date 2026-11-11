@@ -742,7 +742,6 @@
   "MyBooksViewModelUIBindingTests": 0.027,
   "MyBooksViewModelUnchangedSyncTests": 6.515,
   "NSErrorAdditionsTests": 0.014,
-  "NSNotificationTPPTests": 0.017,
   "NavigationCoordinatorHubTests": 0.089,
   "NavigationCoordinatorPDFRouteTests": 0.197,
   "NavigationCoordinatorTests": 0.227,

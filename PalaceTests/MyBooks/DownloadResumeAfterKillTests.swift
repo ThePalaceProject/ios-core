@@ -272,8 +272,6 @@ private final class LateCancelStubTask: URLSessionDownloadTask, @unchecked Senda
 }
 
 private final class LateCancelSpy: DownloadCancellationHandlerDelegate {
-    private(set) var broadcastCount = 0
     private(set) var scheduleCount = 0
-    func broadcastUpdate() { broadcastCount += 1 }
     func schedulePendingStartsIfPossible() { scheduleCount += 1 }
 }

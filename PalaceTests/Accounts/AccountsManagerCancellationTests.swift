@@ -12,6 +12,7 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalacePreferences
 
 @MainActor
 class AccountsManagerCancellationTests: PalaceWiringTestCase {
@@ -490,8 +491,8 @@ class AccountsManagerCancellationTests: PalaceWiringTestCase {
 
     /// Every test-boundary rebuild leaves the previous graph's `AccountsManager`
     /// alive (measured: 50 of 50 survive 50 `AppContainer._resetForTesting()`
-    /// calls), and each one stayed subscribed to `.TPPUseBetaDidChange`. One
-    /// post then fans out to one global-queue `updateAccountSet` per surviving
+    /// calls), and each one stayed subscribed to the beta-libraries switch. One
+    /// change then fans out to one global-queue `updateAccountSet` per surviving
     /// manager, each blocking in its loader's `loadingHandlersQueue.sync`. CI run
     /// 36079232269 wedged there with 62 workers and the main thread blocked
     /// (`TPPSettingsTests.testUseBetaLibraries_postsNotification`, 120 s).
@@ -511,7 +512,10 @@ class AccountsManagerCancellationTests: PalaceWiringTestCase {
         let live = makeFreshAccountsManager()
         live._registryStoreForTesting.setCurrentHash(sentinel)
 
-        NotificationCenter.default.post(name: .TPPUseBetaDidChange, object: nil)
+        let suiteName = "pp5473-beta-toggle-\(UUID().uuidString)"
+        let toggleDefaults = UserDefaults(suiteName: suiteName)!
+        defer { toggleDefaults.removePersistentDomain(forName: suiteName) }
+        TPPSettings(defaults: toggleDefaults).useBetaLibraries = true
 
         // Positive control: the live manager reacts (updateAccountSet rewrites
         // the store's current hash from the sentinel to the real one).
@@ -526,7 +530,7 @@ class AccountsManagerCancellationTests: PalaceWiringTestCase {
         // one the same chance to land.
         RunLoop.main.run(until: Date().addingTimeInterval(0.5))
         XCTAssertEqual(retired._registryStoreForTesting.currentHash, sentinel,
-                       "A manager retired at the test boundary must not react to .TPPUseBetaDidChange — surviving managers each dispatch a blocking updateAccountSet and exhaust the dispatch worker pool")
+                       "A manager retired at the test boundary must not react to the beta-libraries switch — surviving managers each dispatch a blocking updateAccountSet and exhaust the dispatch worker pool")
     }
 }
 

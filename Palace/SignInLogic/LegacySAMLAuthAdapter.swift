@@ -72,12 +72,7 @@ final class LegacySAMLAuthContext: NSObject, SAMLAuthContext {
         // OAuth/SAML redirect handler that already knows how to parse
         // the token/patron payload off a universal-link URL.
         businessLogic.cookies = cookies
-        let redirectNotification = Notification(
-            name: .TPPAppDelegateDidReceiveCleverRedirectURL,
-            object: url,
-            userInfo: nil
-        )
-        businessLogic.handleRedirectURL(redirectNotification) { error, errorTitle, errorMessage in
+        businessLogic.handleRedirectURL(url) { error, errorTitle, errorMessage in
             completion(error, errorTitle, errorMessage)
         }
     }

@@ -1,7 +1,5 @@
 """ci-xctestrun-package-coverage.py: every local package target gets a coverage
 entry that names its real binary as dynamic; other entries are left alone.
-
-prior-art-checked: tests for the new rewrite step in the coverage pipeline.
 """
 
 from __future__ import annotations

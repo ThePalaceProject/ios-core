@@ -13,7 +13,6 @@
 # and `curl` replaced by PATH stubs that record their calls. No network, no
 # Xcode. The assertions are on what the scripts DO — a moved line, a dropped
 # `set -e`, or a `--no-private` guard grown back around the fetch each fail one.
-# prior-art-checked: nothing in the harness exercises these public build scripts.
 set -uo pipefail
 
 DIR="$(cd "$(dirname "$0")" && pwd)"

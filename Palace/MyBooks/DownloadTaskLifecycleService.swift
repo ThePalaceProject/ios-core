@@ -22,7 +22,6 @@ import PalaceBookRegistry
 protocol DownloadTaskLifecycleServiceDelegate: AnyObject {
     func logBookDownloadFailure(_ book: TPPBook, reason: String, downloadTask: URLSessionTask, metadata: [String: Any]?)
     func failDownloadWithAlert(for book: TPPBook, withMessage message: String?)
-    func notifyDownloadCenterDidChange()
     func schedulePendingStartsIfPossible()
 }
 
@@ -90,7 +89,6 @@ final class DownloadTaskLifecycleService: @unchecked Sendable {
 
         downloadAnnouncementService.announceDownloadStarted(for: book)
 
-        delegate?.notifyDownloadCenterDidChange()
         delegate?.schedulePendingStartsIfPossible()
     }
 

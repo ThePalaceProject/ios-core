@@ -152,7 +152,6 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
         clearAudiobookTimeTrackerStore()
         mockNetworkExecutor = MockNetworkExecutorForSync()
         dataManager = AudiobookDataManager(
-            syncTimeInterval: 3600,
             networkService: mockNetworkExecutor,
             currentAccountIdProvider: { [weak self] in self?.dataManager?.store.queue.first?.libraryId }
         )
@@ -341,7 +340,6 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
         // Permissive cross-account provider — these error-handling tests
         // don't exercise the cross-account scope guard.
         dataManager = AudiobookDataManager(
-            syncTimeInterval: 3600,
             networkService: mockNetworkExecutor,
             currentAccountIdProvider: { [weak self] in self?.dataManager?.store.queue.first?.libraryId }
         )
@@ -380,9 +378,8 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
     private func drainSync() {
         dataManager.syncQueue.sync {}
         mockNetworkExecutor.drainCompletions()
-        // The POST completion mutates `store.queue` from the completion queue;
-        // a second `syncQueue.sync {}` is a no-op for correctness but keeps the
-        // barrier symmetric if a future completion re-dispatches onto syncQueue.
+        // The POST completion handles its answer on `syncQueue`; this second
+        // barrier waits for that handling to finish.
         dataManager.syncQueue.sync {}
     }
 
@@ -522,7 +519,7 @@ final class AudiobookDataManagerStoreRecoveryTests: XCTestCase {
         let corruptedData = Data("{ invalid json content".utf8)
         try? corruptedData.write(to: testStoreFile)
 
-        let dataManager = AudiobookDataManager(syncTimeInterval: 3600)
+        let dataManager = AudiobookDataManager()
         dataManager.store.queue.removeAll()
         dataManager.store.urls.removeAll()
 
@@ -533,7 +530,7 @@ final class AudiobookDataManagerStoreRecoveryTests: XCTestCase {
     func testLoadStore_withEmptyFile_doesNotCrash() {
         try? Data().write(to: testStoreFile)
 
-        let dataManager = AudiobookDataManager(syncTimeInterval: 3600)
+        let dataManager = AudiobookDataManager()
         dataManager.store.queue.removeAll()
         dataManager.store.urls.removeAll()
 
@@ -543,7 +540,7 @@ final class AudiobookDataManagerStoreRecoveryTests: XCTestCase {
 
     func testSaveAndLoadStore_preservesData() {
         let uniqueId = "entry-persist-\(UUID().uuidString)"
-        let dataManager = AudiobookDataManager(syncTimeInterval: 3600)
+        let dataManager = AudiobookDataManager()
         dataManager.store.queue.removeAll { $0.id.hasPrefix("entry-persist") }
 
         let entry = AudiobookTimeEntry(
@@ -564,7 +561,7 @@ final class AudiobookDataManagerStoreRecoveryTests: XCTestCase {
         // Create new manager that loads from disk. loadStore() runs
         // synchronously in init, so the persisted entry is present on return —
         // no poll needed.
-        let newDataManager = AudiobookDataManager(syncTimeInterval: 3600)
+        let newDataManager = AudiobookDataManager()
 
         let persistedEntry = newDataManager.store.queue.first { $0.id == uniqueId }
         XCTAssertNotNil(persistedEntry, "Should find persisted entry with id: \(uniqueId)")
@@ -619,7 +616,6 @@ final class AudiobookDataManagerEmptyQueueTests: XCTestCase {
         // Permissive cross-account provider — empty-queue tests assert no
         // POST fires regardless of the scope guard's verdict.
         dataManager = AudiobookDataManager(
-            syncTimeInterval: 3600,
             networkService: mockNetworkExecutor,
             currentAccountIdProvider: { [weak self] in self?.dataManager?.store.queue.first?.libraryId }
         )

@@ -1,9 +1,6 @@
 """Tests for scripts/check-file-size-ceiling.sh.
 
-prior-art-checked: this is a direct replacement for the deleted
-test_check_godclass_loc_freeze.py, following the existing scripts/tests/
-pytest convention. `harness capabilities` offers nothing for testing a repo
-shell gate — its near matches are glyph tagging and SoD enforcement.
+This replaces the deleted test_check_godclass_loc_freeze.py.
 
 Replaces the six-file LOC freeze's tests. That gate watched six NAMED files;
 this one watches every app-target Swift file against a ceiling.
@@ -410,12 +407,12 @@ def test_live_allowlist_pins_the_critical_paths(tmp_path):
 
     expected = {
         "Palace/Audiobooks/AudiobookSessionManager.swift": 1123,
-        "Palace/MyBooks/MyBooksDownloadCenter.swift": 1160,
+        "Palace/MyBooks/MyBooksDownloadCenter.swift": 1148,
         "Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift": 898,
-        "Palace/Book/UI/BookDetail/BookDetailViewModel.swift": 836,
+        "Palace/Book/UI/BookDetail/BookDetailViewModel.swift": 832,
         "Palace/Utilities/Localization/Strings.swift": 834,
         "Palace/Accounts/Library/AccountsManager.swift": 349,
-        "Palace/SignInLogic/TPPSignInBusinessLogic.swift": 602,
+        "Palace/SignInLogic/TPPSignInBusinessLogic.swift": 601,
         "Palace/MyBooks/BorrowOperation.swift": 471,
         "Palace/Packages/PalaceTriageBot/Sources/TriageBotCore/Reducer/"
         "ConversationReducer.swift": 847,

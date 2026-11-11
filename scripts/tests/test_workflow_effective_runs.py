@@ -1,8 +1,7 @@
 """Tests for scripts/workflow_effective_runs.py.
 
-prior-art-checked: follows the scripts/tests/ pytest convention. This module was
-extracted from check-package-tests-wired.sh when a reviewer showed a grep over
-workflow text could be satisfied by a step that cannot fail the build.
+This module was extracted from check-package-tests-wired.sh when a grep over
+workflow text turned out to be satisfiable by a step that cannot fail the build.
 
 The module answers one question — "which `run:` bodies can actually fail this
 build" — and the two defaults point deliberately opposite ways. Both directions

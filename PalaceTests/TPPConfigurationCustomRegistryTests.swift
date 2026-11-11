@@ -122,7 +122,7 @@ final class TPPConfigurationCustomRegistryTests: XCTestCase {
 
   /// Sets the "Enable Hidden Libraries" flag by writing the backing key on the
   /// test's ISOLATED defaults suite, rather than via `settings.useBetaLibraries`'s
-  /// setter. The setter posts `.TPPUseBetaDidChange`, which a live shared
+  /// setter. The setter publishes a beta-libraries change, which a live shared
   /// `AccountsManager` observes and turns into a background `loadCatalogs` that
   /// reads `.standard` and outlives the test (cross-test pollution). The getter
   /// reads this key, so behavior under test is identical while the global

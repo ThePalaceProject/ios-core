@@ -8,9 +8,8 @@ not touch that run, so it uses its own scheme. Pinned here, parsed as YAML:
   3. its verdict is xcodebuild's exit status, not the status of a pipe;
   4. the app's log is captured, and uploading results cannot fail the job.
 
-prior-art-checked: this pins a public GitHub workflow, like
-test_nodrm_workflow_wiring.py; no harness capability inspects repository
-workflows, and tooling-checks runs this on a clean runner without the harness.
+Like test_nodrm_workflow_wiring.py, this runs in tooling-checks on a clean
+runner, so it depends only on the repository.
 """
 
 from __future__ import annotations

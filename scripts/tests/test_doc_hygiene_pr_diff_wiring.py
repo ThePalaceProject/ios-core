@@ -8,8 +8,7 @@ repository shaped like a GitHub pull_request checkout (HEAD is a merge of the PR
 into its base), asserting it fails on a denied file and passes on a clean one,
 including on a re-run after the base has moved past the merge commit.
 
-prior-art-checked: follows test_nodrm_workflow_wiring.py and reuses
-scripts/workflow_effective_runs.py; nothing else pins this workflow step.
+Follows test_nodrm_workflow_wiring.py and reuses scripts/workflow_effective_runs.py.
 """
 
 from __future__ import annotations

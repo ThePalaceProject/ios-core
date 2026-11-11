@@ -148,6 +148,7 @@ private final class RecordingRegistry: NSObject, TPPBookRegistryProvider, @unche
     var registryState: TPPBookRegistry.RegistryState { inner.registryState }
     var syncEventPublisher: AnyPublisher<RegistrySyncEvent, Never> { inner.syncEventPublisher }
     var registryDidChangePublisher: AnyPublisher<Void, Never> { inner.registryDidChangePublisher }
+    var bookProcessingPublisher: AnyPublisher<BookProcessingChange, Never> { inner.bookProcessingPublisher }
     func reportSyncFailure(errorDocument: [AnyHashable: Any]?) { inner.reportSyncFailure(errorDocument: errorDocument) }
     func reportSyncEnded() { inner.reportSyncEnded() }
     func notifyRegistryChanged() { inner.notifyRegistryChanged() }

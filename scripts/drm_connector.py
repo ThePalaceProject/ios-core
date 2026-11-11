@@ -21,8 +21,6 @@ docs/architecture/adobe-drm-connector-linking.md.
 `check` exit status: 0 every checkout matches its record, 1 one does not (or is
 missing), 2 there is no connector tree (a noDRM setup), 3 no usable verdict. It
 prints commits and paths only, never file contents.
-
-prior-art-checked: no existing script under scripts/ reads the connector record.
 """
 
 from __future__ import annotations

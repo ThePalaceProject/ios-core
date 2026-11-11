@@ -22,8 +22,8 @@ Findings, all whole-tree:
 The pbxproj is parsed structurally (no plutil, so it runs on Linux CI). Object
 IDs are not assumed to be 24-hex; some in this project are hand-written.
 
-prior-art-checked: check-package-tests-wired.sh covers SwiftPM test targets;
-nothing in scripts/ compared the project's Sources phases with the tree.
+check-package-tests-wired.sh covers SwiftPM test targets; this compares the
+project's Sources phases with the tree.
 
 Usage:
     check-swift-sources-compiled.py [--root DIR] [--pbxproj PATH]

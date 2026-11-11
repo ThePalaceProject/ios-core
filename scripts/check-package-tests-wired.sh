@@ -3,10 +3,8 @@
 # check-package-tests-wired.sh — every SPM package that HAS tests must have
 # those tests actually executed by something.
 #
-# prior-art-checked: `harness capabilities` has no SPM/test-wiring capability
-# (its only near match audits the harness's OWN hooks and symlinks). SPM package
-# boundaries constrain IMPORTS (what a package may depend on); nothing checks
-# whether a package's tests EXECUTE. That is a different axis.
+# SPM package boundaries constrain IMPORTS (what a package may depend on);
+# nothing else checks whether a package's tests EXECUTE. That is a different axis.
 #
 # WHY THIS EXISTS
 #

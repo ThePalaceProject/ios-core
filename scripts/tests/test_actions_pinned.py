@@ -2,8 +2,6 @@
 its full release version (vX.Y.Z) as a trailing comment, so a moved tag cannot
 change what CI runs. Dependabot bumps the SHA and the comment together
 (.github/dependabot.yml).
-
-prior-art-checked: the harness has no check of this repository's workflow pins.
 """
 
 from __future__ import annotations

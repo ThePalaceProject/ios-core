@@ -214,8 +214,10 @@ enum BorrowReducer {
             // `BorrowOperation`, `BorrowAdobeActivationStep` and
             // `BookReturnService` all raise it — and each clears it on every
             // terminal path, so it is down at every `showBorrowError` site and
-            // up only mid-request. Leave the sheet as it is while it is up; a
-            // failure arrives separately on `downloadErrorPublisher`.
+            // up only mid-request. `LibraryService` also lowers it when an open
+            // fails, which ends this guard early if a sample of the same book
+            // fails to open mid-borrow. Leave the sheet as it is while it is
+            // up; a failure arrives separately on `downloadErrorPublisher`.
             guard !registryProcessing else { return .none }
             state.downloadProgress = 0.0
             // Deliberately NOT gated on `localBookStateOverride`, unlike the

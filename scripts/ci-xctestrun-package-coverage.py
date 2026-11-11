@@ -20,8 +20,6 @@ app binary, xccov reports no package files, and the coverage report reads
 INCOMPLETE naming each package.
 
 Exit: 0 rewritten, 1 no coverage metadata or no package sources, 2 unreadable input.
-
-prior-art-checked: the coverage pipeline has no step that edits the xctestrun.
 """
 import argparse
 import glob

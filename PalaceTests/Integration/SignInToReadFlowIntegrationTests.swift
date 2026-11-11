@@ -14,14 +14,9 @@ import PalaceBookRegistry
 
 /// Thread-safe sink for reader-open book identifiers.
 ///
-/// The reader-open observer is registered via
-/// `NotificationCenter.addObserver(forName:object:queue:using:)`, whose block
-/// is `@Sendable`. Capturing the (non-Sendable, XCTestCase-rooted) `self` in
-/// that block — or mutating a `@MainActor` stored property from it — is a
-/// Swift 6 concurrency violation. Capturing this `@unchecked Sendable`
-/// recorder instead keeps the append synchronous (no actor hop, so ordering
-/// and timing are unchanged) while satisfying the checker. Isolation-only; the
-/// observable recording behavior is identical.
+/// The registry sends processing changes on the main queue, and the test reads
+/// the recorder from its own context; the lock keeps the two safe without an
+/// actor hop.
 private final class ReaderOpenRecorder: @unchecked Sendable {
     private let lock = NSLock()
     private var ids: [String] = []
@@ -73,11 +68,11 @@ class SignInToReadFlowIntegrationTests: PalaceWiringTestCase {
     // NOTE: `cancellables` is inherited from PalaceWiringTestCase and drained
     // automatically on tearDown. Don't shadow it locally.
 
-    /// Reader-open events fired by the flow under test (collected via
-    /// notification observation rather than a stubbed reader controller —
+    /// Reader-open events fired by the flow under test (collected from the
+    /// registry's processing changes rather than a stubbed reader controller —
     /// keeps the test from touching UIKit).
     private let readerOpenedBookIds = ReaderOpenRecorder()
-    private var readerOpenedObserver: NSObjectProtocol?
+    private var readerOpenedSubscription: AnyCancellable?
 
     override func setUp() {
         super.setUp()
@@ -117,24 +112,13 @@ class SignInToReadFlowIntegrationTests: PalaceWiringTestCase {
         )
 
         readerOpenedBookIds.reset()
-        readerOpenedObserver = NotificationCenter.default.addObserver(
-            forName: .TPPBookProcessingDidChange,
-            object: nil,
-            queue: .main
-        ) { [recorder = readerOpenedBookIds] notification in
-            guard let info = notification.userInfo,
-                  let id = info[TPPNotificationKeys.bookProcessingBookIDKey] as? String,
-                  let processing = info[TPPNotificationKeys.bookProcessingValueKey] as? Bool,
-                  processing == false else { return }
-            recorder.append(id)
-        }
+        readerOpenedSubscription = bookRegistry.bookProcessingPublisher
+            .filter { !$0.isProcessing }
+            .sink { [recorder = readerOpenedBookIds] change in recorder.append(change.bookIdentifier) }
     }
 
     override func tearDown() {
-        if let observer = readerOpenedObserver {
-            NotificationCenter.default.removeObserver(observer)
-            readerOpenedObserver = nil
-        }
+        readerOpenedSubscription = nil
         HTTPStubURLProtocol.reset()
         businessLogic.userAccount.removeAll()
         businessLogic = nil
@@ -247,8 +231,8 @@ class SignInToReadFlowIntegrationTests: PalaceWiringTestCase {
         // own deep test); we drive the registry side-effect directly so the
         // observable state of the integration is exactly: "the book exists
         // in the registry after a borrow, transitions to .downloadSuccessful
-        // when the download completes, and the reader-open notification
-        // surfaces the same identifier."
+        // when the download completes, and the reader-open processing change
+        // carries the same identifier."
         let book = makeBook(identifier: "happy-path-1", title: "Happy Path Book")
         bookRegistry.addBook(book, state: .downloadNeeded)
 
@@ -264,8 +248,8 @@ class SignInToReadFlowIntegrationTests: PalaceWiringTestCase {
         XCTAssertEqual(bookRegistry.state(for: book.identifier), .downloadSuccessful,
                        "Real registry must transition through downloading -> downloadSuccessful")
 
-        // Leg 4: fire the reader-open notification the way TPPRootTabBarController
-        // does at present time. The observer wired in setUp() captures it.
+        // Leg 4: clear the book's processing flag the way an open does. The
+        // subscription made in setUp() records it.
         bookRegistry.setProcessing(true, for: book.identifier)
         bookRegistry.setProcessing(false, for: book.identifier)
         await waitUntil("reader-open observed") { [weak self] in
@@ -273,7 +257,7 @@ class SignInToReadFlowIntegrationTests: PalaceWiringTestCase {
         }
 
         XCTAssertTrue(readerOpenedBookIds.contains(book.identifier),
-                      "Reader-open notification must surface the book identifier")
+                      "The reader-open processing change must carry the book identifier")
     }
 
     // MARK: - SRS: REQ-INTG-FLOW-003 — Sign-in fail -> nothing else proceeds

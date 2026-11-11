@@ -50,20 +50,13 @@ extension TPPSignInBusinessLogic {
             return
         }
 
-        notificationCenter
-            .addObserver(self,
-                         selector: #selector(handleRedirectURL(_:)),
-                         name: .TPPAppDelegateDidReceiveCleverRedirectURL,
-                         object: nil)
+        // Subscribe before the browser opens, and take only the first
+        // redirect: a later link must not sign in again.
+        redirectSubscription = signInRedirects()
+            .first()
+            .sink { [weak self] url in self?.handleRedirectURL(url) }
 
-        // `UIApplication.shared` and `open(_:)` are `@MainActor`-isolated; the
-        // `asyncIfNeeded` hop already guarantees main-thread execution, so
-        // assert the isolation for the `complete`-mode checker.
-        TPPMainThreadRun.asyncIfNeeded {
-            MainActor.assumeIsolated {
-                UIApplication.shared.open(finalURL)
-            }
-        }
+        openInBrowser(finalURL)
     }
 
     // ----------------------------------------------------------------------------
@@ -98,45 +91,16 @@ extension TPPSignInBusinessLogic {
 
     // ----------------------------------------------------------------------------
 
-    // As per Apple Developer Documentation, selector for NSNotification must have
-    // one and only one argument (an instance of NSNotification).
-    // See https://developer.apple.com/documentation/foundation/nsnotificationcenter/1415360-addobserver
-    // for more information.
-    @objc func handleRedirectURL(_ notification: Notification) {
-        self.handleRedirectURL(notification, completion: nil)
+    func handleRedirectURL(_ url: URL) {
+        handleRedirectURL(url, completion: nil)
     }
 
     // this is used by both Clever and SAML authentication
-    @objc func handleRedirectURL(_ notification: Notification, completion: ((_ error: Error?, _ errorTitle: String?, _ errorMessage: String?) -> Void)?) {
+    func handleRedirectURL(_ url: URL, completion: ((_ error: Error?, _ errorTitle: String?, _ errorMessage: String?) -> Void)?) {
         Log.info(#file, "🔐 [REDIRECT] handleRedirectURL() called")
         Log.info(#file, "🔐 [REDIRECT] Library account ID: \(libraryAccountID)")
         Log.info(#file, "🔐 [REDIRECT] Auth method: \(selectedAuthentication?.methodDescription ?? "N/A")")
         Log.info(#file, "🔐 [REDIRECT] Is SAML: \(selectedAuthentication?.isSaml == true)")
-
-        notificationCenter
-            .removeObserver(self, name: .TPPAppDelegateDidReceiveCleverRedirectURL, object: nil)
-
-        guard let url = notification.object as? URL else {
-            Log.error(#file, "🔐 [REDIRECT] ❌ ERROR: No URL in notification object")
-            TPPErrorLogger.logError(withCode: .noURL,
-                                    summary: "Sign-in redirection error",
-                                    metadata: [
-                                        "authMethod": selectedAuthentication?.methodDescription ?? "N/A",
-                                        "context": uiDelegate?.context ?? "N/A"])
-            // HelpSpot 17870 — TPPSAMLHelper's `if let error, let errorTitle,
-            // let errorMessage` guard requires all three; passing `nil` here
-            // swallowed the alert path. Mirror the OIDC pattern at
-            // TPPSignInBusinessLogic+OIDC.swift:283-288.
-            let error = NSError(
-                domain: "OAuth.SignIn",
-                code: 0,
-                userInfo: [NSLocalizedDescriptionKey: "Sign-in redirection error: missing URL"]
-            )
-            completion?(error,
-                        Strings.Error.loginErrorTitle,
-                        Strings.Error.loginErrorDescription)
-            return
-        }
 
         let urlStr = url.absoluteString
         Log.info(#file, "🔐 [REDIRECT] Received URL: \(Self.loggableRedirectURL(url))")

@@ -123,7 +123,7 @@ MyBooks does **not** link Firebase directly — emission goes through:
 |---|---|---|
 | Borrow lifecycle logs | `Palace/MyBooks/BorrowOperation.swift` (lines 343, 347, 360, 366, 370, 416, 424, 697) | `errorActivityTracker.log(..., category: .borrow / .network)` — actor-isolated, in-memory ring buffer; surfaced in diagnostic dumps. |
 | Open-book analytics | `Palace/Book/UI/BookDetail/BookDetailViewModel.swift:833` | `TPPCirculationAnalytics.postEvent("open_book", withBook: book)` — only direct circulation-analytics call on the borrow path. |
-| Download completion notifications | `Palace/MyBooks/DownloadTaskLifecycleService.swift` | `notifyDownloadCenterDidChange` via delegate; MBDC remains `object: self` for `NSNotification` listeners (registry, BookCellModel, BookDetailViewModel). |
+| Download state for screens | `TPPBookRegistry`, `DownloadProgressReporter` | Screens follow `bookRegistry` state and the reporter's `downloadProgressPublisher`; the download center posts no notification (PP-5473). |
 | Alert publication | `DownloadAlertPresenter` / `BorrowErrorPresenter` / `LCPFulfillmentHandler` | `progressReporter.downloadErrorPublisher` Combine pipeline. Tests subscribe to capture `[DownloadErrorInfo]`. |
 | Auth-error classification | (post-PR #1018) `PalaceAuth.AuthErrorClassifier` via `AuthDecisionRecorder` wrapper | Coordinator emissions: `classifierOutcome`, `refreshStart`, `refreshEnd`. See `auth/verification-checklist.md` §5. |
 

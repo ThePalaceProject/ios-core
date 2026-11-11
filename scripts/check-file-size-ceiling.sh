@@ -3,10 +3,9 @@
 # check-file-size-ceiling.sh — no app-target Swift file may exceed a CODE-line
 # ceiling unless it is explicitly allowlisted at a recorded size.
 #
-# prior-art-checked: this REPLACES scripts/check-godclass-loc-freeze.sh rather
-# than paralleling it. That gate watches six named files. `harness capabilities`
-# has no file-size capability. The counting function below is lifted verbatim
-# from the freeze script so both gates agree on what a "code line" is.
+# This replaces scripts/check-godclass-loc-freeze.sh, which watched six named
+# files. The counting function below is lifted verbatim from the freeze script
+# so both gates agree on what a "code line" is.
 #
 # WHY A GENERIC CEILING AND NOT A NAMED LIST
 #
@@ -95,12 +94,12 @@ read -r -d '' ALLOWLIST <<'EOF'
 # DownloadNetworkLossMonitor.swift; 1172 -> 1161 when the borrow-failed alert
 # moved to BorrowErrorAlert.swift; 1161 -> 1160 when the auth-retry handler's
 # composition moved to MyBooksDownloadCenter+AuthRetry.swift.
-1160 Palace/MyBooks/MyBooksDownloadCenter.swift
+1148 Palace/MyBooks/MyBooksDownloadCenter.swift
 898 Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift
 # 867 -> 861 when the download-error admission rules moved to
 # BookDetailErrorAdmission.swift; 861 -> 840 when PP-5402 moved openBook and
 # the Listen-before-fetch handling to BookDetailViewModel+StreamableLoanListen.swift.
-836  Palace/Book/UI/BookDetail/BookDetailViewModel.swift
+832  Palace/Book/UI/BookDetail/BookDetailViewModel.swift
 834  Palace/Utilities/Localization/Strings.swift
 # AccountsManager is 363 under this metric: it was pinned at 367 after #1520
 # landed `_ = registryLoader` in init, then lowered when #1624 moved the DEBUG
@@ -116,7 +115,7 @@ read -r -d '' ALLOWLIST <<'EOF'
 # 870 in total, on two CLAUDE.md critical paths (sign-in, borrow). The allowlist
 # only ratchets down, so pinning them costs nothing and closes the regression.
 349  Palace/Accounts/Library/AccountsManager.swift
-602  Palace/SignInLogic/TPPSignInBusinessLogic.swift
+601  Palace/SignInLogic/TPPSignInBusinessLogic.swift
 471  Palace/MyBooks/BorrowOperation.swift
 # Package source is in scope (see THE RULE). This one was already over the
 # ceiling inside the old blind spot; pinned here at its measured size so the

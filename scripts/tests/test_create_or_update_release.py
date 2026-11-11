@@ -10,10 +10,6 @@ already-released version to `gh release create`, which fails with
 Each test drives the real scripts with a fake `gh` first on PATH that records
 the subcommands it was asked to run, so the assertions are about which API call
 the script chose, not about its internals.
-
-prior-art-checked: a pytest beside the other detector tests in this directory,
-collected by the same `pytest scripts/tests/` run in tooling-checks.yml. Nothing
-in the local tooling runs shared-repo CI script tests.
 """
 
 import os

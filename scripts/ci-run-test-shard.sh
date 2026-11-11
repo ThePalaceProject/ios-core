@@ -38,8 +38,8 @@
 #     before it is skipped, so the shard reaches its report (see phase_fits).
 #   * The simulator template is booted before xcodebuild clones it.
 #
-# prior-art-checked: xcode-test-optimized.sh builds and tests in one
-# `xcodebuild test`; it cannot run against prebuilt products or a class subset.
+# Why not xcode-test-optimized.sh: it builds and tests in one `xcodebuild test`
+# and cannot run against prebuilt products or a class subset.
 
 set -euo pipefail
 

@@ -411,7 +411,12 @@ final class AudiobookLoader {
         if
             let libraryId = container.accountsManager.currentAccount?.uuid,
             let url = book.timeTrackingURL {
-            timeTracker = AudiobookTimeTracker(libraryId: libraryId, bookId: book.identifier, timeTrackingUrl: url)
+            timeTracker = AudiobookTimeTracker(
+                libraryId: libraryId,
+                bookId: book.identifier,
+                timeTrackingUrl: url,
+                dataManager: container.playtimeUploader
+            )
         }
 
         let networkService = DefaultAudiobookNetworkService(

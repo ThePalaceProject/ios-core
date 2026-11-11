@@ -21,9 +21,8 @@ Three properties:
      would look like a failing build — which is at least not a false pass, but
      is a gate nobody would keep.
 
-prior-art-checked: this pins a public GitHub workflow; no harness capability
-inspects repository workflows, and the harness cannot be a dependency of a
-test the tooling-checks workflow runs on a clean ubuntu runner.
+tooling-checks runs this on a clean ubuntu runner, so it depends only on the
+repository.
 """
 
 from __future__ import annotations

@@ -13,8 +13,7 @@ as the named test's own defect and invites a fix in the wrong place.
 So the scan labels a kill as `killed`, keeps counting it as a failure, and
 reports it under its own heading.
 
-prior-art-checked: extends the existing scan in scripts/ci-test-history.py and
-its pytest suite; no harness capability parses xcodebuild result lines.
+Extends the existing scan in scripts/ci-test-history.py and its pytest suite.
 """
 from __future__ import annotations
 

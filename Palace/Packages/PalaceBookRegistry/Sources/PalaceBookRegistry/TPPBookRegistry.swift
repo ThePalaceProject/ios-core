@@ -25,6 +25,9 @@ public protocol TPPBookRegistryProvider: Sendable {
     /// event as an answered sync, and a new library's first sync must still show
     /// its placeholder (PP-5468).
     var registryDidChangePublisher: AnyPublisher<Void, Never> { get }
+    /// Each change of a book's processing flag from `setProcessing`, on the
+    /// main queue.
+    var bookProcessingPublisher: AnyPublisher<BookProcessingChange, Never> { get }
     /// Publishes `.failed` for a sync that ran outside `sync()`, such as the
     /// post-return sync, so Holds can show its sync-error banner.
     func reportSyncFailure(errorDocument: [AnyHashable: Any]?)
@@ -429,6 +432,11 @@ public class TPPBookRegistry: @unchecked Sendable {
         store.registryDidChangeSubject
             .receive(on: DispatchQueue.main)
             .eraseToAnyPublisher()
+    }
+
+    // PUBLIC_INTENT: witness for the public TPPBookRegistryProvider requirement; the app target subscribes to it.
+    public var bookProcessingPublisher: AnyPublisher<BookProcessingChange, Never> {
+        store.processingChangeSubject.eraseToAnyPublisher()
     }
 
     // PUBLIC_INTENT: witness for a public TPPBookRegistryProvider requirement; called from app-target services across the package boundary.

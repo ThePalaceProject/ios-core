@@ -1,7 +1,5 @@
 """Tests for scripts/ci-unit-test-relevance.py — whether a PR must run the unit tests.
 
-prior-art-checked: follows the scripts/tests/ pytest convention for a new script.
-
 A wrong "run" costs one CI run; a wrong "skip" lands an untested change behind a
 green check. So the skip side is pinned by its one motivating case (PR #1556:
 a different workflow plus tooling files, which ran the full ~50-minute suite)

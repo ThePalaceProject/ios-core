@@ -67,7 +67,6 @@ final class AdobeDRMHandlerTests: XCTestCase {
         )
 
         XCTAssertEqual(spy.markedSuccessful, [book.identifier], "Successful fulfilment must mark the book downloadSuccessful.")
-        XCTAssertEqual(spy.broadcastCount, 1, "Successful fulfilment must broadcast exactly one update.")
         XCTAssertEqual(spy.failed, [], "Happy path must not invoke failDownloadWithAlert.")
         XCTAssertEqual(registry.fulfillmentId(forIdentifier: book.identifier), "fulfill-42", "Returnable book must persist its Adobe fulfilment ID.")
 
@@ -121,7 +120,6 @@ final class AdobeDRMHandlerTests: XCTestCase {
 
         XCTAssertEqual(spy.failed, [book.identifier], "didFinishDownload=false must invoke failDownloadWithAlert.")
         XCTAssertEqual(spy.markedSuccessful, [], "Failure path must not mark the book successful.")
-        XCTAssertEqual(spy.broadcastCount, 0, "Failure path must not broadcast a successful update.")
         XCTAssertNil(registry.fulfillmentId(forIdentifier: book.identifier), "Failure path must not persist a fulfilment ID.")
     }
 
@@ -139,10 +137,9 @@ final class AdobeDRMHandlerTests: XCTestCase {
         )
 
         // With nil dest URL, the handler returns early at the first fileUrl
-        // check — no fail-with-alert, no markSuccessful, no broadcast.
+        // check — no fail-with-alert, no markSuccessful.
         XCTAssertEqual(spy.markedSuccessful, [])
         XCTAssertEqual(spy.failed, [])
-        XCTAssertEqual(spy.broadcastCount, 0)
     }
 
     func testHandleFulfillment_missingAdeptToURL_failsWithAlert() {
@@ -192,7 +189,6 @@ final class AdobeDRMHandlerTests: XCTestCase {
 
         XCTAssertEqual(spy.markedSuccessful, [], "Unknown book must not be marked successful.")
         XCTAssertEqual(spy.failed, [], "Unknown book must not trigger an alert — there's no book to alert about.")
-        XCTAssertEqual(spy.broadcastCount, 0)
     }
 
     func testHandleFulfillment_undecodableRightsData_returnsEarlyWithoutSideEffects() {
@@ -326,11 +322,10 @@ final class AdobeDRMHandlerTests: XCTestCase {
 
     // MARK: - Cancellation
 
-    func testHandleCancellation_setsRegistryStateAndBroadcasts() {
+    func testHandleCancellation_resetsRegistryToDownloadNeeded() {
         handler.handleCancellation(tag: book.identifier)
 
         XCTAssertEqual(registry.registry[book.identifier]?.state, .downloadNeeded, "Cancellation must set the registry state back to .downloadNeeded so the user can retry.")
-        XCTAssertEqual(spy.broadcastCount, 1, "Cancellation must broadcast so listeners refresh.")
     }
 
     // MARK: - No Authorization
@@ -341,7 +336,6 @@ final class AdobeDRMHandlerTests: XCTestCase {
 
         XCTAssertEqual(spy.markedSuccessful, [])
         XCTAssertEqual(spy.failed, [])
-        XCTAssertEqual(spy.broadcastCount, 0)
         XCTAssertEqual(registry.registry[book.identifier]?.state, .downloading, "No-authorization (post-PP-3649) is purely diagnostic — must not change registry or surface UI.")
     }
 
@@ -375,7 +369,6 @@ private final class SpyDRMDelegate: AdobeDRMHandlerDelegate {
 
     private(set) var markedSuccessful: [String] = []
     private(set) var failed: [String] = []
-    private(set) var broadcastCount: Int = 0
     private(set) var progressUpdates: [(Double, String)] = []
 
     init(bookRegistry: TPPBookRegistryProvider, destURL: URL?) {
@@ -397,9 +390,6 @@ private final class SpyDRMDelegate: AdobeDRMHandlerDelegate {
         bookRegistry.setState(.downloadSuccessful, for: book.identifier)
     }
 
-    func broadcastUpdate() {
-        broadcastCount += 1
-    }
 
     func handleAdobeDownloadProgress(_ progress: Double, for tag: String) {
         progressUpdates.append((progress, tag))
