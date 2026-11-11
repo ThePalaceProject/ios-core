@@ -749,6 +749,9 @@ class LocalBookContentService {
                 parentDir.excludeFromBackup()
                 try fileManager.moveItem(at: localUrl, to: destURL)
                 Log.info(#file, "📥 [LCP RE-DOWNLOAD] ✅ .lcpa stored for '\(book.title)' — local playback now available")
+                // A player opened before this landed is still streaming; this
+                // moves its later chapters to the package (PP-5532).
+                NotificationCenter.default.post(name: .lcpAudiobookArchiveStored, object: destURL)
 
                 // The streaming read path kept this archive's byte ranges in a
                 // sparse file so Readium's window fills were not refetched.

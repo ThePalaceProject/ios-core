@@ -139,6 +139,51 @@ final class LCPTrackFileWriterTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: destination), input)
     }
 
+    // MARK: - Cancellation (PP-5532)
+
+    /// A cancelled write stops before reading the track, so a closed session
+    /// does not keep reading it from the content server.
+    func testWrite_Cancelled_StopsWithoutReadingAndLeavesNoFile() async throws {
+        let resource = FakeTrackResource(data: bytes(Int(chunkSize) * 50))
+        let destination = self.destination
+        let chunkSize = self.chunkSize
+
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            try await LCPTrackFileWriter.write(resource, to: destination, chunkSize: chunkSize)
+        }
+        let result = await task.result
+
+        XCTAssertThrowsError(try result.get()) { XCTAssertTrue($0 is CancellationError) }
+        XCTAssertTrue(resource.requestedRanges.isEmpty, "no chunk may be read after cancellation")
+        XCTAssertEqual(try directoryContents(), [], "neither the track nor a partial file may remain")
+    }
+
+    /// Releasing a session stops a track it is decrypting.
+    func testReleaseResources_StopsATrackDecryptionInProgress() async throws {
+        let chunks = 64
+        let resource = FakeTrackResource(data: bytes(Int(LCPTrackFileWriter.defaultChunkSize) * chunks))
+        let publication = Publication(
+            manifest: Manifest(metadata: Metadata(title: "Track")),
+            container: SingleResourceContainer(resource: resource, at: AnyURL(path: "track.mp3")!)
+        )
+        let package = directory.appendingPathComponent("book.lcpa")
+        let audiobook = try XCTUnwrap(LCPAudiobooks(for: package, licenseUrl: nil, sessions: LCPPublicationSessionRegistry()))
+        XCTAssertTrue(audiobook.storeOpenedPublication(publication))
+        let destination = self.destination
+
+        let error: Error? = await withCheckedContinuation { continuation in
+            audiobook.decrypt(url: URL(string: "track.mp3")!, to: destination) { error in
+                continuation.resume(returning: error)
+            }
+            audiobook.releaseResources()
+        }
+
+        XCTAssertNotNil(error, "a released session's track must not finish")
+        XCTAssertLessThan(resource.requestedRanges.count, chunks, "the read must stop before the end of the track")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+    }
+
     // MARK: - Errors
 
     /// A read error mid-track is rethrown unchanged and leaves neither a destination nor a partial file.

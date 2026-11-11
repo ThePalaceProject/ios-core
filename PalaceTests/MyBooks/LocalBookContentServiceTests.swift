@@ -1412,6 +1412,55 @@ final class LocalBookContentServiceTests: XCTestCase {
         )
     }
 
+    /// A player opened before the package landed is still streaming, and only
+    /// this announcement moves its later chapters to the package (PP-5532).
+    func testRedownload_onSuccess_announcesTheStoredPackageByItsDestination() throws {
+        #if LCP
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller)
+        let destURL = try XCTUnwrap(bookFileManager.fileUrl(for: book.identifier, account: nil))
+        let announced = recordStoredPackageAnnouncements(for: destURL)
+
+        service.redownloadLCPContentFile(for: book)
+        let landed = try writeFile(at: tempDir.appendingPathComponent("landed-\(UUID().uuidString).lcpa"))
+        fulfiller.finishWithSuccess(localURL: landed)
+
+        XCTAssertEqual(announced.value, 1)
+        #endif
+    }
+
+    /// A package that never reached its destination must not be announced: an
+    /// open session would try to read a file that is not there.
+    func testRedownload_whenTheMoveFails_doesNotAnnounceAStoredPackage() throws {
+        #if LCP
+        let book = try seedLicenseOnlyLCPAudiobook()
+        let fulfiller = SpyLCPContentFulfiller()
+        let service = makeService(fulfiller: fulfiller)
+        let destURL = try XCTUnwrap(bookFileManager.fileUrl(for: book.identifier, account: nil))
+        let announced = recordStoredPackageAnnouncements(for: destURL)
+
+        service.redownloadLCPContentFile(for: book)
+        fulfiller.finishWithSuccess(localURL: tempDir.appendingPathComponent("does-not-exist.lcpa"))
+
+        XCTAssertEqual(announced.value, 0)
+        #endif
+    }
+
+    /// Counts stored-package announcements for one destination. The service
+    /// posts on the thread that finishes the download, so the count is final
+    /// when `finishWithSuccess` returns.
+    private func recordStoredPackageAnnouncements(for destURL: URL) -> AnnouncementCount {
+        let count = AnnouncementCount()
+        let token = NotificationCenter.default.addObserver(
+            forName: .lcpAudiobookArchiveStored, object: nil, queue: nil
+        ) { note in
+            if (note.object as? URL)?.standardizedFileURL == destURL.standardizedFileURL { count.increment() }
+        }
+        addTeardownBlock { NotificationCenter.default.removeObserver(token) }
+        return count
+    }
+
     /// Must not overwrite a terminal state a concurrent path already set.
     func testRedownload_onSuccess_doesNotOverwriteATerminalState() throws {
         let book = try seedLicenseOnlyLCPAudiobook()
@@ -1790,4 +1839,11 @@ private final class SpyBookFileManager: BookFileManager {
         if book.identifier == failResolutionForIdentifier { return nil }
         return fakeURLFor(book)
     }
+}
+
+private final class AnnouncementCount: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    var value: Int { lock.withLock { count } }
+    func increment() { lock.withLock { count += 1 } }
 }
