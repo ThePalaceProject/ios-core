@@ -204,4 +204,27 @@ class TPPAccountListDataSourceTests: XCTestCase {
 
     XCTAssertEqual(allNames(from: dataSource), ["Austin Public Library", "eRead Kids - Springfield"])
   }
+
+  /// PP-5542: a reload applies the search to the national section too, so only
+  /// matching national libraries stay at the top of the list.
+  func testLoadData_AfterSearchTyped_FiltersNationalAccounts() {
+    let accounts = [
+      makeAccount(name: "Palace Bookshelf", uuid: "urn:uuid:national-1"),
+      makeAccount(name: "Open eBooks", uuid: "urn:uuid:national-2"),
+      makeAccount(name: "Palace Public Library"),
+      makeAccount(name: "Austin Public Library"),
+    ]
+    let dataSource = TPPAccountListDataSource(
+      accountsProvider: { accounts },
+      nationalAccountUUIDs: ["urn:uuid:national-1", "urn:uuid:national-2"]
+    )
+    dataSource.searchBar(UISearchBar(), textDidChange: "palace")
+
+    dataSource.loadData()
+
+    XCTAssertEqual(dataSource.accounts(in: 0), 1)
+    XCTAssertEqual(dataSource.account(at: IndexPath(row: 0, section: 0)).name, "Palace Bookshelf")
+    XCTAssertEqual(dataSource.accounts(in: 1), 1)
+    XCTAssertEqual(dataSource.account(at: IndexPath(row: 0, section: 1)).name, "Palace Public Library")
+  }
 }
