@@ -124,13 +124,11 @@ final class DownloadAlertPresenter: @unchecked Sendable {
             self.delegate?.schedulePendingStartsIfPossible()
         }
 
-        // Most callers (DownloadTaskLifecycleService, AdobeDRMHandler,
-        // OverdriveDownloadHandler, RightsManagementDispatcher) pass
-        // `nil` when the underlying NSError has no user-actionable
-        // localizedDescription. Previously this coalesced to the
-        // developer placeholder "No error message" which shipped to
-        // users in 3.1.0 (Cinema-beyond-the-human repro). Treat empty
-        // strings the same — both are caller-side "I don't know why".
+        // Callers that hold the error pass `DownloadFailureDetail.message(for:)`
+        // (PP-5541); callers with no underlying error pass `nil`. An empty
+        // string is treated the same as `nil`: both mean the caller does not
+        // know why, and the alert falls back to the generic line rather than
+        // a developer placeholder (shipped as "No error message" in 3.1.0).
         let trimmedMessage = message?.trimmingCharacters(in: .whitespacesAndNewlines)
         let errorMessage: String
         if let trimmedMessage, !trimmedMessage.isEmpty {
