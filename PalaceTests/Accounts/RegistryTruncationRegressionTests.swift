@@ -14,6 +14,7 @@ import PalaceCatalog
 import PalacePreferences
 @testable import Palace
 import PalaceUtilities
+import PalaceAccounts
 
 // `PalaceWiringTestCase`: this suite mints `AccountRegistryLoader`s that spawn owned
 // crawl Tasks, so the base's tearDown cancel is what stops them outliving the test.
@@ -99,7 +100,7 @@ final class RegistryTruncationRegressionTests: PalaceWiringTestCase {
     }
 
     private func makeLoader(
-        store: AccountRegistryStore,
+        store: AccountRegistryStore<Account>,
         cache: InMemoryRegistryCache,
         bundledURL: URL?,
         fetcher: CrawlerNetworkFetching
@@ -145,7 +146,7 @@ final class RegistryTruncationRegressionTests: PalaceWiringTestCase {
         let page1 = try feedData(uuids: ["freshly-modified"], declaring: 1457, withNextPage: true)
         try assertFixtureDecodes(page1, expected: 1)
 
-        let store = AccountRegistryStore()
+        let store = AccountRegistryStore<Account>()
         let cache = InMemoryRegistryCache()
         let fetcher = ScriptedFetcher(firstPage: page1)   // every later page throws
         let loader = makeLoader(store: store, cache: cache, bundledURL: bundledURL, fetcher: fetcher)
@@ -243,7 +244,7 @@ final class RegistryTruncationRegressionTests: PalaceWiringTestCase {
         let page2 = try feedData(uuids: ["fresh-2"], declaring: 900)
         let emptyPage = try feedData(uuids: [], declaring: 900)
 
-        let store = AccountRegistryStore()
+        let store = AccountRegistryStore<Account>()
         let cache = InMemoryRegistryCache()
         let loader = makeLoader(store: store, cache: cache, bundledURL: bundledURL,
                                 fetcher: SequencedFetcher(pages: [page1, page2], emptyPage: emptyPage))
@@ -288,7 +289,7 @@ final class RegistryTruncationRegressionTests: PalaceWiringTestCase {
     /// exercises the default path a caller gets by forgetting.
     func testDerivedCompleteness_aCallerThatPassesNothing_cannotDelete() async throws {
         let hash = registryHashForCurrentConfiguration()
-        let store = AccountRegistryStore(currentHash: hash)
+        let store = AccountRegistryStore<Account>(currentHash: hash)
         let resident = ["a", "b", "c"].map {
             Account(publication: OPDS2Publication(links: [], metadata: .init(id: $0, title: $0), images: nil),
                     imageCache: ImageCache.shared)
@@ -325,7 +326,7 @@ final class RegistryTruncationRegressionTests: PalaceWiringTestCase {
     // MARK: - S-3: a refusal must refuse COMPLETELY
 
     func testRefusedWrite_leavesNoOrphanStateAndPostsNoAccountChange() async throws {
-        let store = AccountRegistryStore(currentHash: "h")
+        let store = AccountRegistryStore<Account>(currentHash: "h")
         // `Account._setState` writes `AccountStateStore.shared` (Account+State.swift:204);
         // the injected store is only READ by the loader. Asserting on a fresh injected
         // store therefore could not fail — it is `.notLoaded` no matter what production

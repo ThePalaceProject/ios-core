@@ -12,7 +12,7 @@ description: Per-area verification reference; refresh before changing this area
 
 # Accounts area — verification checklist
 
-**Owner area:** `Palace/Accounts/` — `Account.swift`, `Account+State.swift`, `Account+profileDocument.swift`, `Account+TPPLibraryAccountReadable.swift`, `AccountsManager.swift`, `AccountStateStore.swift`, `BundledRegistrySnapshot.swift`, `CatalogPreloader.swift`, `CrawlableFeedAnalysis.swift`, `CrawlState.swift`, `LibraryCatalogMerger.swift`, `LibraryRegistryCrawler.swift`, the User subtree (`TPPUserAccount.swift`, `TPPCredentials.swift`, `TPPAccountAuthState.swift`, `UserAccountAuthState.swift`, `UserAccountPublisher.swift` + extension, `UserProfileDocument.swift` + `+Links.swift`, `NYPLADEPT+TPPDRMAuthorizing.swift`), and `AgeCheck/` (`TPPAgeCheck.swift`, `TPPAgeCheckViewController.swift`).
+**Owner area:** `Palace/Accounts/` — `Account.swift`, `Account+State.swift`, `Account+profileDocument.swift`, `Account+TPPLibraryAccountReadable.swift`, `AccountsManager.swift`, `AccountStateStore.swift`, `BundledRegistrySnapshot.swift`, `CatalogPreloader.swift`, `CrawlableFeedAnalysis.swift`, `LibraryCatalogMerger.swift`, `LibraryRegistryCrawler.swift`, the User subtree (`TPPUserAccount.swift`, `TPPCredentials.swift`, `TPPAccountAuthState.swift`, `UserAccountAuthState.swift`, `UserAccountPublisher.swift` + extension, `UserProfileDocument.swift` + `+Links.swift`, `NYPLADEPT+TPPDRMAuthorizing.swift`), and `AgeCheck/` (`TPPAgeCheck.swift`, `TPPAgeCheckViewController.swift`).
 
 **Purpose:** the first deliverable of any non-trivial change in this area is *update this file*. Verify what's still true, add what's changed, mark what's UNKNOWN. Accounts is the spine — `AccountsManager` is the single source of truth for which library is current; `TPPUserAccount` is per-library credential storage; the state machine (`Account.LoadState`) is the readiness gate every cross-area consumer (Audiobooks, MyBooks, Reader2 bookmark sync, CarPlay, OPDS feed service) waits on before it can issue an authenticated request. A regression here is silent until a user's audiobook hangs, a sign-in modal pops on a signed-in user, or credentials from Library A leak into a Library B request.
 
@@ -72,7 +72,8 @@ description: Per-area verification reference; refresh before changing this area
 
 | Module | Owner | Public surface (what changes here is a contract break) |
 |--------|-------|---------------------------------------------------------|
-| `Palace/Accounts/Library/` | Main target | `Account`, `AccountDetails`, `AccountsManager` (`TPPLibraryAccountsProvider` + `TPPUserAccountResolving` conformance), `Account.LoadState`, `AccountLoadError`, `AccountStateStore.shared`, `awaitReady()`, `LibraryRegistryCrawler`, `CatalogPreloader`, `LibraryCatalogMerger`, `BundledRegistrySnapshot`, `CrawlState` / `CrawlableFeedAnalysis`, `AccountSwitchDependencies` (S3), `AccountNetworking` (3a executor seam) |
+| `Palace/Accounts/Library/` | Main target | `Account`, `AccountDetails`, `AccountsManager` (`TPPLibraryAccountsProvider` + `TPPUserAccountResolving` conformance), `Account.LoadState`, `AccountLoadError`, `AccountStateStore.shared`, `awaitReady()`, `LibraryRegistryCrawler`, `CatalogPreloader`, `LibraryCatalogMerger`, `BundledRegistrySnapshot`, `CrawlableFeedAnalysis`, `AccountSwitchDependencies` (S3) |
+| `Palace/Packages/PalaceAccounts/` | `PalaceAccounts` package (PP-5546) | `AccountRegistryCache` (`AccountRegistryCaching`, `DiskAccountRegistryCache`), `AccountRegistryStore<Entry>` + `AccountRegistryEntry`, `CrawlState`, `AccountNetworking` (3a executor seam) |
 | `Palace/Accounts/User/` | Main target | `TPPUserAccount` (per-library instance + `sharedAccount()` legacy delegates), `TPPUserAccountProvider`, `TPPCredentials`, `TPPAccountAuthState`, `UserAccountAuthHelper`, `UserAccountPublisher`, `CredentialSnapshot`, `UserProfileDocument` |
 | `Palace/Accounts/AgeCheck/` | Main target | `TPPAgeCheck` (`TPPAgeCheckVerifying` conformance), `TPPAgeCheckViewController` |
 | `AppContainer` cross-cutting | `Palace/AppInfrastructure/AppContainer.swift` | Owns the single live `AccountsManager` instance. New consumers MUST read `appContainer.accountsManager` — do NOT call `AccountsManager()` directly outside tests. |
@@ -152,7 +153,7 @@ description: Per-area verification reference; refresh before changing this area
 - `PalaceTests/Accounts/AccountSwitchCleanupTests.swift` — `cleanupActiveContentBeforeAccountSwitch` invariants.
 - `PalaceTests/Accounts/AccountDetailsTests.swift` + `AccountDetailsURLTests.swift` + `AccountProfileDocumentTests.swift` — auth-doc parsing.
 - `PalaceTests/Accounts/AccountModelTests.swift` — Account model basics.
-- `PalaceTests/Accounts/CatalogCacheMetadataTests.swift` — cache-freshness predicates.
+- `Palace/Packages/PalaceAccounts/Tests/PalaceAccountsTests/CatalogCacheMetadataTests.swift` — cache-freshness predicates.
 - `PalaceTests/Accounts/UserAccountPublisherTests.swift` — Combine bridge.
 - `PalaceTests/Accounts/TPPPerAccountIsolationTests.swift` — per-account `TPPUserAccount` cache stability, credential isolation, concurrent access (8 tests).
 - `PalaceTests/Accounts/TPPCredentialIsolationE2ETests.swift` — end-to-end multi-library scenarios (sign-in A → switch B → sign-in B → verify A intact; 500-iteration rapid-switching contamination check; F-034 6-year-old TOCTOU race).
