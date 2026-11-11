@@ -109,6 +109,28 @@ final class BookRegistrySync: @unchecked Sendable {
   private let resetGenerationLock = NSLock()
   private var resetGenerations: [String: UInt64] = [:]
 
+  /// A save queues its disk write after its snapshot read, so a later save can
+  /// reach the disk queue first. Each snapshot takes a ticket in its store read;
+  /// the disk queue drops a snapshot older than the last one it wrote for that
+  /// account, so `registry.json` never goes back to an older shelf (PP-5507).
+  private let snapshotTicketLock = NSLock()
+  private var lastSnapshotTicket: UInt64 = 0
+  /// Read and written only on `diskWriteQueue`.
+  private var writtenSnapshotTickets: [String: UInt64] = [:]
+
+  private func takeSnapshotTicket() -> UInt64 {
+    snapshotTicketLock.lock(); defer { snapshotTicketLock.unlock() }
+    lastSnapshotTicket &+= 1
+    return lastSnapshotTicket
+  }
+
+  /// On `diskWriteQueue`: true when a newer snapshot of `account` is on disk.
+  private func isOlderThanWritten(_ ticket: UInt64, for account: String) -> Bool {
+    guard let written = writtenSnapshotTickets[account], ticket < written else { return false }
+    Log.info(#file, "Skipping a registry save whose snapshot is older than the file on disk")
+    return true
+  }
+
   private func resetGeneration(for account: String) -> UInt64 {
     resetGenerationLock.lock(); defer { resetGenerationLock.unlock() }
     return resetGenerations[account, default: 0]
@@ -848,7 +870,7 @@ final class BookRegistrySync: @unchecked Sendable {
     guard let registryUrl = registryUrl(for: account) else { return }
 
     let generation = resetGeneration(for: account)
-    let (perBookSave, snapshot) = sequenceAndSnapshot(for: account)
+    let (perBookSave, ticket, snapshot) = sequenceAndSnapshot(for: account)
     let isEmpty = snapshot.isEmpty
     let needsRebuild = needsRebuildFromServer
     // Box the JSON payload so the `@Sendable` `diskWriteQueue.async` closure
@@ -864,6 +886,15 @@ final class BookRegistrySync: @unchecked Sendable {
 
     diskWriteQueue.async { [self] in
       if isStale(generation, for: account) { return }
+      if isOlderThanWritten(ticket, for: account) {
+        // The newer file holds this save's change; report it as written.
+        if scope == .shelf {
+          DispatchQueue.main.async { [store] in
+            store.registryDidChangeSubject.send(())
+          }
+        }
+        return
+      }
       if onlyIfSingleFileBehind, !perBookSession.isSingleFileBehind(account) { return }
       let perBook = perBookSession.stillActive(perBookSave, for: account)
       // INV-1: during the post-corrupt-load rebuild window, only an authoritative
@@ -912,6 +943,7 @@ final class BookRegistrySync: @unchecked Sendable {
         }
         try dependencies.beforeRegistryWrite(.primary, registryUrl)
         try registryData.write(to: registryUrl, options: .atomic)
+        writtenSnapshotTickets[account] = ticket
         needsPrimaryRewrite = false
         perBookSession.singleFileWritten(account: account, registryData: registryData,
                                          save: perBookWritten, appVersion: dependencies.appVersion())
@@ -947,7 +979,7 @@ final class BookRegistrySync: @unchecked Sendable {
     // race). The in-memory snapshot is independent of disk-flush ordering, so
     // reading it here is behavior-equivalent for persistence.
     let generation = resetGeneration(for: account)
-    let (perBookSave, snapshot) = sequenceAndSnapshot(for: account)
+    let (perBookSave, ticket, snapshot) = sequenceAndSnapshot(for: account)
     let isEmpty = snapshot.isEmpty
     let needsRebuild = needsRebuildFromServer
     let registryObject: [String: Any] = [
@@ -963,6 +995,7 @@ final class BookRegistrySync: @unchecked Sendable {
     // `diskWriteQueue.sync` would deadlock against itself.
     let write = {
       if self.isStale(generation, for: account) { return }
+      if self.isOlderThanWritten(ticket, for: account) { return }
       if onlyIfSingleFileBehind, !self.perBookSession.isSingleFileBehind(account) { return }
       let perBook = self.perBookSession.stillActive(perBookSave, for: account)
       // INV-1: saveSync is teardown persistence (bookmarks/location), never a
@@ -996,6 +1029,7 @@ final class BookRegistrySync: @unchecked Sendable {
         }
         try self.dependencies.beforeRegistryWrite(.primary, registryUrl)
         try registryData.write(to: registryUrl, options: .atomic)
+        self.writtenSnapshotTickets[account] = ticket
         self.needsPrimaryRewrite = false
         self.perBookSession.singleFileWritten(account: account, registryData: registryData,
                                               save: perBookWritten, appVersion: self.dependencies.appVersion())
@@ -1040,15 +1074,15 @@ final class BookRegistrySync: @unchecked Sendable {
     }
   }
 
-  /// A save's per-book sequence and the shelf snapshot it writes, taken in one
-  /// store read so no change falls between them: a save with a higher sequence
-  /// always saw a later shelf. The sequence is nil when `account` uses only
-  /// `registry.json`.
-  private func sequenceAndSnapshot(for account: String) -> (PerBookRegistrySession.Save?, [[String: Any]]) {
+  /// A save's per-book sequence, its snapshot ticket and the shelf snapshot it
+  /// writes, taken in one store read so no change falls between them: a save
+  /// with a higher sequence or ticket saw the same shelf or a later one. The
+  /// sequence is nil when `account` uses only `registry.json`.
+  private func sequenceAndSnapshot(for account: String) -> (PerBookRegistrySession.Save?, UInt64, [[String: Any]]) {
     store.performSync {
       let perBookSave = perBookSession.beginSave(for: account)
       if perBookSave != nil { dependencies.afterSaveSequence(account) }
-      return (perBookSave, store.registrySnapshot())
+      return (perBookSave, takeSnapshotTicket(), store.registrySnapshot())
     }
   }
 
