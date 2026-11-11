@@ -7,13 +7,14 @@
 //
 
 import Foundation
+import PalaceAccounts
 
 #if DEBUG
 extension AccountsManager {
     /// Forwards to `AccountRegistryStore.buildAccountIndex`; kept for
     /// `AccountsManagerAccountIndexTests`.
     static func buildAccountIndex(_ sets: [String: [Account]]) -> [String: Account] {
-        AccountRegistryStore.buildAccountIndex(sets)
+        AccountRegistryStore<Account>.buildAccountIndex(sets)
     }
 
     /// Forwards to `AccountRegistryLoader`; kept for `AccountsManagerLaunchSnapshotTests`.

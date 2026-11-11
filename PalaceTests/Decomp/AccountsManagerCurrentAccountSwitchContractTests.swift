@@ -19,6 +19,7 @@ import Combine
 import PalaceCatalog
 import PalaceBookModel
 @testable import Palace
+import PalaceAccounts
 
 @MainActor
 final class AccountsManagerCurrentAccountSwitchContractTests: PalaceWiringTestCase {

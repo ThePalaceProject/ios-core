@@ -16,6 +16,7 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+@testable import PalaceAccounts
 
 @MainActor
 final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {

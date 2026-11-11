@@ -13,6 +13,7 @@
 
 import Foundation
 import PalaceBookModel
+import PalaceAccounts
 
 /// Frozen bundle of the account-switch cleanup collaborators, injected into
 /// `AccountsManager` at construction. `Sendable` so the cleanup Task can capture it

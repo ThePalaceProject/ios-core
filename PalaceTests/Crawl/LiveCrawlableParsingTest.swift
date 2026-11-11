@@ -1,6 +1,7 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceAccounts
 
 /// Integration test that fetches the live crawlable endpoint and verifies parsing.
 /// Requires network access — skipped by default (set RUN_NETWORK_TESTS=1 to enable).
