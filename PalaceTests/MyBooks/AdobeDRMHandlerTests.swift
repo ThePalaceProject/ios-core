@@ -108,6 +108,111 @@ final class AdobeDRMHandlerTests: XCTestCase {
 
     // MARK: - Failure Branches
 
+    /// PP-5541: the alert names Adobe's own error instead of "check your connection".
+    func testHandleFulfillment_didFinishDownloadFalse_passesAdobeErrorToAlert() {
+        let adeptError = NSError(domain: "org.nypl.labs.ADEPTErrorDomain", code: 5,
+                                 userInfo: ["originalCode": "E_ADEPT_REQUEST_EXPIRED"])
+
+        handler.handleFulfillmentResult(
+            didFinishDownload: false,
+            to: sourceFileURL,
+            fulfillmentID: "fulfill-1",
+            isReturnable: true,
+            rightsData: Data("<r/>".utf8),
+            tag: book.identifier,
+            adeptError: adeptError
+        )
+
+        XCTAssertEqual(spy.failedMessages,
+                       ["Error: E_ADEPT_REQUEST_EXPIRED (org.nypl.labs.ADEPTErrorDomain 5)"])
+    }
+
+    /// PP-5541: a failed copy into the book's location shows the file error.
+    func testHandleFulfillment_copyFailure_passesCopyErrorToAlert() throws {
+        try FileManager.default.removeItem(at: sourceFileURL)
+
+        handler.handleFulfillmentResult(
+            didFinishDownload: true,
+            to: sourceFileURL,
+            fulfillmentID: "fulfill-2",
+            isReturnable: true,
+            rightsData: Data("<r/>".utf8),
+            tag: book.identifier,
+            adeptError: nil
+        )
+
+        let message = try XCTUnwrap(spy.failedMessages.first ?? nil)
+        XCTAssertTrue(message.hasPrefix("Error: "), message)
+        XCTAssertTrue(message.hasSuffix("(\(NSCocoaErrorDomain) \(NSFileReadNoSuchFileError))"), message)
+    }
+
+    /// PP-5541: no downloaded file, but Adobe reported why; the alert names it.
+    func testHandleFulfillment_missingDownloadedFileWithAdobeError_passesAdobeErrorToAlert() {
+        let adeptError = NSError(domain: "org.nypl.labs.ADEPTErrorDomain", code: 5,
+                                 userInfo: ["originalCode": "E_ADEPT_IO"])
+
+        handler.handleFulfillmentResult(
+            didFinishDownload: true,
+            to: nil,
+            fulfillmentID: "fulfill-4",
+            isReturnable: true,
+            rightsData: Data("<r/>".utf8),
+            tag: book.identifier,
+            adeptError: adeptError
+        )
+
+        XCTAssertEqual(spy.failedMessages, ["Error: E_ADEPT_IO (org.nypl.labs.ADEPTErrorDomain 5)"])
+    }
+
+    /// When Adobe reported an error and the copy also failed, Adobe's error is the cause shown.
+    func testHandleFulfillment_copyFailureWithAdobeError_prefersAdobeError() throws {
+        try FileManager.default.removeItem(at: sourceFileURL)
+        let adeptError = NSError(domain: "org.nypl.labs.ADEPTErrorDomain", code: 5,
+                                 userInfo: ["originalCode": "E_ADEPT_IO"])
+
+        handler.handleFulfillmentResult(
+            didFinishDownload: true,
+            to: sourceFileURL,
+            fulfillmentID: "fulfill-5",
+            isReturnable: true,
+            rightsData: Data("<r/>".utf8),
+            tag: book.identifier,
+            adeptError: adeptError
+        )
+
+        XCTAssertEqual(spy.failedMessages, ["Error: E_ADEPT_IO (org.nypl.labs.ADEPTErrorDomain 5)"])
+    }
+
+    /// Adobe did not finish and gave no error: nothing to name, so the generic line stays.
+    func testHandleFulfillment_didFinishDownloadFalseWithoutError_passesNilMessage() {
+        handler.handleFulfillmentResult(
+            didFinishDownload: false,
+            to: sourceFileURL,
+            fulfillmentID: "fulfill-6",
+            isReturnable: true,
+            rightsData: Data("<r/>".utf8),
+            tag: book.identifier,
+            adeptError: nil
+        )
+
+        XCTAssertEqual(spy.failedMessages, [nil])
+    }
+
+    /// No downloaded file and no Adobe error: nothing to name, so the generic line stays.
+    func testHandleFulfillment_missingDownloadedFileWithoutError_passesNilMessage() {
+        handler.handleFulfillmentResult(
+            didFinishDownload: true,
+            to: nil,
+            fulfillmentID: "fulfill-3",
+            isReturnable: true,
+            rightsData: Data("<r/>".utf8),
+            tag: book.identifier,
+            adeptError: nil
+        )
+
+        XCTAssertEqual(spy.failedMessages, [nil])
+    }
+
     func testHandleFulfillment_didFinishDownloadFalse_failsAndDoesNotMarkSuccessful() {
         handler.handleFulfillmentResult(
             didFinishDownload: false,
@@ -375,6 +480,7 @@ private final class SpyDRMDelegate: AdobeDRMHandlerDelegate {
 
     private(set) var markedSuccessful: [String] = []
     private(set) var failed: [String] = []
+    private(set) var failedMessages: [String?] = []
     private(set) var broadcastCount: Int = 0
     private(set) var progressUpdates: [(Double, String)] = []
 
@@ -387,6 +493,7 @@ private final class SpyDRMDelegate: AdobeDRMHandlerDelegate {
 
     func failDownloadWithAlert(for book: TPPBook, withMessage message: String?) {
         failed.append(book.identifier)
+        failedMessages.append(message)
     }
 
     /// Mirrors `MyBooksDownloadCenter.markDownloadSuccessful`, which writes the

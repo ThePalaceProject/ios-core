@@ -108,7 +108,7 @@ final class DownloadTaskLifecycleService: @unchecked Sendable {
 
         if let error = error as NSError?, error.code != NSURLErrorCancelled {
             delegate?.logBookDownloadFailure(book, reason: "networking error", downloadTask: task, metadata: ["urlSessionError": error])
-            delegate?.failDownloadWithAlert(for: book, withMessage: nil)
+            delegate?.failDownloadWithAlert(for: book, withMessage: DownloadFailureDetail.message(for: error))
             return
         }
 

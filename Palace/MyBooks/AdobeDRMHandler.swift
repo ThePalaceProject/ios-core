@@ -102,6 +102,7 @@ final class AdobeDRMHandler: NSObject {
         }
 
         var didSucceedCopying = false
+        var copyError: Error?
 
         if didFinishDownload {
             guard let fileURL = delegate.fileUrl(for: book.identifier) else { return }
@@ -122,7 +123,7 @@ final class AdobeDRMHandler: NSObject {
                     "AdobeRights": rights,
                     "AdobeTag": tag
                 ])
-                delegate.failDownloadWithAlert(for: book, withMessage: nil)
+                delegate.failDownloadWithAlert(for: book, withMessage: DownloadFailureDetail.message(for: adeptError))
                 return
             }
 
@@ -130,6 +131,7 @@ final class AdobeDRMHandler: NSObject {
                 try fileManager.copyItem(at: adeptToURL, to: destURL)
                 didSucceedCopying = true
             } catch {
+                copyError = error
                 TPPErrorLogger.logError(withCode: .adobeDRMFulfillmentFail, summary: "Adobe DRM error: failure copying file", metadata: [
                     "adeptError": adeptError ?? "N/A",
                     "copyError": error,
@@ -153,7 +155,7 @@ final class AdobeDRMHandler: NSObject {
         }
 
         if !didFinishDownload || !didSucceedCopying {
-            delegate.failDownloadWithAlert(for: book, withMessage: nil)
+            delegate.failDownloadWithAlert(for: book, withMessage: DownloadFailureDetail.message(for: adeptError ?? copyError))
             return
         }
 

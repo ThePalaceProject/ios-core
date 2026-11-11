@@ -261,6 +261,23 @@ final class OverdriveDownloadHandlerTests: XCTestCase {
                        "Error path uses failDownloadWithAlert which publishes a .download-kind error")
     }
 
+    /// PP-5541: the published alert names the fulfillment error, not the generic line.
+    func testHandleOverdriveResponse_completionWithError_alertNamesTheError() async throws {
+        let book = makeOverdriveBook()
+        userAccount.setAuthToken("tok", barcode: nil, pin: nil, expirationDate: nil)
+
+        handler.processOverdriveDownload(for: book, withState: .downloadNeeded)
+        let completion = try XCTUnwrap(fulfillCalls.first?.completion)
+
+        completion(nil, NSError(domain: "test", code: 7,
+                                userInfo: [NSLocalizedDescriptionKey: "no network"]))
+
+        await waitForPublishedError()
+
+        let err = try XCTUnwrap(capturedErrors.first)
+        XCTAssertTrue(err.message.hasSuffix("\nError: no network (test 7)"), err.message)
+    }
+
     func testHandleOverdriveResponse_missingLocationHeader_failsDownload() async throws {
         let book = makeOverdriveBook()
         userAccount.setAuthToken("tok", barcode: nil, pin: nil, expirationDate: nil)
