@@ -22,9 +22,10 @@ final class AppContainerPlaytimeUploaderTests: XCTestCase {
     override func setUp() async throws {
         try await super.setUp()
         clearStoreFile()
-        // The uploader is cached process-wide; start from an empty slot so it
-        // is built against this test's executor.
-        AppContainer._resetForTesting()
+        // The container built here owns its own process services, so its
+        // uploader is built against this test's executor. Do not rebuild the
+        // app's container here: that drains every live AccountsManager, which
+        // takes longer the more tests ran before this one.
         spy = SpyAudiobookNetworkExecutor()
         let defaults = TestContainerDefaults.make()
         defaults.set(libraryId, forKey: currentAccountIdentifierKey)
@@ -36,7 +37,6 @@ final class AppContainerPlaytimeUploaderTests: XCTestCase {
         container?.activityPolicy.setScene(originalScene)
         container = nil
         spy = nil
-        AppContainer._resetForTesting()
         clearStoreFile()
         try await super.tearDown()
     }
