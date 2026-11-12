@@ -1,0 +1,54 @@
+[
+  {
+    "args" : {
+
+    },
+    "method" : "announceBorrowStarted"
+  },
+  {
+    "args" : {
+      "bookId" : "BORROW-FAIL",
+      "processing" : "true"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+      "attempt" : "1",
+      "breakerArmed" : "false"
+    },
+    "method" : "fetchBook"
+  },
+  {
+    "args" : {
+      "bookId" : "BORROW-FAIL",
+      "processing" : "false"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+      "breakerArmed" : "true"
+    },
+    "method" : "presentSignInModal"
+  },
+  {
+    "args" : {
+      "error" : "network(Palace.NetworkError.unknown)"
+    },
+    "method" : "borrowThrew"
+  },
+  {
+    "args" : {
+      "pending" : "1"
+    },
+    "method" : "test.dismissSignInModal"
+  },
+  {
+    "args" : {
+      "authState" : "loggedOut",
+      "breakerArmed" : "false"
+    },
+    "method" : "end"
+  }
+]

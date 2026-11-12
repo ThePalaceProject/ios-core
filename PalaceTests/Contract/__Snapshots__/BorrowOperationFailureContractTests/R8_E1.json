@@ -1,0 +1,113 @@
+[
+  {
+    "args" : {
+
+    },
+    "method" : "announceBorrowStarted"
+  },
+  {
+    "args" : {
+      "bookId" : "BORROW-FAIL",
+      "processing" : "true"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+      "attempt" : "1",
+      "breakerArmed" : "false"
+    },
+    "method" : "fetchBook"
+  },
+  {
+    "args" : {
+      "bookId" : "BORROW-FAIL",
+      "processing" : "false"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "account.markCredentialsStale"
+  },
+  {
+    "args" : {
+      "breakerArmed" : "true"
+    },
+    "method" : "presentSignInModal"
+  },
+  {
+    "args" : {
+      "error" : "network(Palace.NetworkError.unknown)"
+    },
+    "method" : "borrowThrew"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "announceBorrowStarted"
+  },
+  {
+    "args" : {
+      "bookId" : "BORROW-FAIL",
+      "processing" : "true"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+      "attempt" : "2",
+      "breakerArmed" : "true"
+    },
+    "method" : "fetchBook"
+  },
+  {
+    "args" : {
+      "bookId" : "BORROW-FAIL",
+      "processing" : "false"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "announceBorrowFailed"
+  },
+  {
+    "args" : {
+      "bookId" : "BORROW-FAIL",
+      "breakerArmed" : "true",
+      "hasRetryAction" : "true",
+      "message" : "Borrowing Title-BORROW-FAIL could not be completed.\n\nPlease try again. If the problem persists, contact support.",
+      "originalError" : "test\/401",
+      "problemDocType" : "http:\/\/librarysimplified.org\/terms\/problem\/credentials-invalid",
+      "title" : "Borrow Failed"
+    },
+    "method" : "presentBorrowErrorAlert"
+  },
+  {
+    "args" : {
+      "bookId" : "BORROW-FAIL",
+      "hasRetryAction" : "true",
+      "presentsAlert" : "false"
+    },
+    "method" : "publishBorrowError"
+  },
+  {
+    "args" : {
+      "error" : "network(Palace.NetworkError.unknown)"
+    },
+    "method" : "borrowThrew"
+  },
+  {
+    "args" : {
+      "authState" : "credentialsStale",
+      "breakerArmed" : "true"
+    },
+    "method" : "end"
+  }
+]
