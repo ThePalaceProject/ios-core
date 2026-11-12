@@ -232,7 +232,8 @@ final class OIDCMakeRequestTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: uiDelegate,
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 
@@ -301,7 +302,8 @@ final class OIDCLoginRoutingTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: uiDelegate,
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 
@@ -365,7 +367,8 @@ final class OIDCUpdateUserAccountTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock(),
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 
@@ -516,7 +519,8 @@ final class OIDCCallbackHandlingTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 
@@ -635,7 +639,8 @@ final class OIDCSelectedAuthenticationTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock(),
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 
@@ -725,7 +730,8 @@ final class OIDCRegressionTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock(),
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
         defer { businessLogic.userAccount.removeAll() }
 
@@ -747,7 +753,8 @@ final class OIDCRegressionTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock(),
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
         defer { businessLogic.userAccount.removeAll() }
 
@@ -769,7 +776,8 @@ final class OIDCRegressionTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock(),
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
         defer { businessLogic.userAccount.removeAll() }
 
@@ -800,7 +808,8 @@ final class OIDCRegressionTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock(),
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
         defer { businessLogic.userAccount.removeAll() }
 
@@ -907,7 +916,8 @@ final class OIDCCallbackEdgeCaseTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 
@@ -1244,7 +1254,8 @@ final class OIDCRedirectURIConstructionTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock(),
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 
@@ -1330,7 +1341,8 @@ final class OAuthSAMLRedirectRegressionTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 
@@ -1436,7 +1448,8 @@ final class OIDCSignOutRegressionTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 
@@ -1635,7 +1648,8 @@ final class OIDCTokenRefreshRegressionTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock(),
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 
@@ -1815,7 +1829,8 @@ final class OIDCIsolationRegressionTests: XCTestCase {
                 userAccountProvider: TPPUserAccountMock.self,
                 networkExecutor: TPPRequestExecutorMock(),
                 uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock(),
-                drmAuthorizer: TPPDRMAuthorizingMock()
+                drmAuthorizer: TPPDRMAuthorizingMock(),
+                appNetwork: SignInAppNetworkSpy()
             )
         }
 
@@ -1846,7 +1861,8 @@ final class OIDCIsolationRegressionTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock(),
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
         defer { bl.userAccount.removeAll() }
 
@@ -1891,7 +1907,8 @@ final class OIDCReauthOnExpiredTokenTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 

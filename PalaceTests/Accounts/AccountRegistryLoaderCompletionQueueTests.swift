@@ -11,6 +11,7 @@ import PalaceCatalog
 import PalacePreferences
 @testable import Palace
 import PalaceUtilities
+import PalaceAccounts
 
 final class AccountRegistryLoaderCompletionQueueTests: PalaceWiringTestCase {
 
@@ -38,7 +39,7 @@ final class AccountRegistryLoaderCompletionQueueTests: PalaceWiringTestCase {
     /// The INV-2 refusal path ran the completion on the caller's background queue,
     /// while the success path delivers on main; a main-isolated caller then trapped.
     func testLoadAccountSets_WhenINV2RefusesWrite_CompletesOnMainQueue() async throws {
-        let store = AccountRegistryStore(currentHash: "h")
+        let store = AccountRegistryStore<Account>(currentHash: "h")
         XCTAssertTrue(store.replaceBucket(hash: "h", accounts: makeAccounts(["a", "b", "c"]), isCompleteFeed: true))
         let loader = makeLoader(store: store)
         let lossy = try feedData(uuids: ["intruder"], declaring: 1457)
@@ -53,7 +54,7 @@ final class AccountRegistryLoaderCompletionQueueTests: PalaceWiringTestCase {
     /// A load that applies its feed asks the current library's listeners to
     /// reload once, on main, after the main-feed URL is updated.
     func testLoadAccountSets_WhenWriteApplies_RequestsOneRefreshOnMain() async throws {
-        let store = AccountRegistryStore(currentHash: "h")
+        let store = AccountRegistryStore<Account>(currentHash: "h")
         let refreshes = MainThreadRecorder()
         let loader = makeLoader(store: store, announceCurrentLibraryRefresh: {
             refreshes.record(onMain: Thread.isMainThread)
@@ -68,7 +69,7 @@ final class AccountRegistryLoaderCompletionQueueTests: PalaceWiringTestCase {
 
     /// An unparseable feed completed `false` synchronously on the caller's queue.
     func testLoadAccountSets_WhenFeedDoesNotParse_CompletesFalseOnMainQueue() async throws {
-        let store = AccountRegistryStore(currentHash: "h")
+        let store = AccountRegistryStore<Account>(currentHash: "h")
         let loader = makeLoader(store: store)
 
         let result = await completeFromBackground(loader: loader, data: Data("not json".utf8), hash: "h", isCompleteFeed: nil)
@@ -79,7 +80,7 @@ final class AccountRegistryLoaderCompletionQueueTests: PalaceWiringTestCase {
 
     /// Control for the two tests above: the accepted write already completes on main.
     func testLoadAccountSets_WhenWriteApplied_CompletesOnMainQueue() async throws {
-        let store = AccountRegistryStore(currentHash: "h")
+        let store = AccountRegistryStore<Account>(currentHash: "h")
         let loader = makeLoader(store: store)
         let complete = try feedData(uuids: ["a", "b"], declaring: 2)
 
@@ -95,7 +96,7 @@ final class AccountRegistryLoaderCompletionQueueTests: PalaceWiringTestCase {
     /// With no cache and both the crawl and the direct GET failing, the loading
     /// handlers were called `false` from the background fetch Task.
     func testLoadCatalogs_WhenNetworkFailsWithNoCache_CompletesFalseOnMainQueue() async throws {
-        let loader = makeLoader(store: AccountRegistryStore())
+        let loader = makeLoader(store: AccountRegistryStore<Account>())
         let recorder = CompletionRecorder()
 
         loader.loadCatalogs { @Sendable success in
@@ -113,7 +114,7 @@ final class AccountRegistryLoaderCompletionQueueTests: PalaceWiringTestCase {
     /// Task, and the `@MainActor` `TPPAccountList` listener trapped.
     func testLoadCatalogs_WhenDirectGETBytesDoNotParse_CompletesAndAnnouncesOnMainQueue() async throws {
         let announcements = MainThreadRecorder()
-        let loader = makeLoader(store: AccountRegistryStore(),
+        let loader = makeLoader(store: AccountRegistryStore<Account>(),
                                 networking: ScriptedNetworking(body: Data("<html>".utf8)),
                                 announceCatalogLoaded: { announcements.record(onMain: Thread.isMainThread) })
         let recorder = CompletionRecorder()
@@ -136,7 +137,7 @@ final class AccountRegistryLoaderCompletionQueueTests: PalaceWiringTestCase {
     func testLoadCatalogs_WhenCachedAndRefreshedBytesDoNotParse_AnnouncesCatalogLoadedOnMainQueue() async throws {
         let garbage = Data("not json".utf8)
         let announcements = MainThreadRecorder()
-        let loader = makeLoader(store: AccountRegistryStore(),
+        let loader = makeLoader(store: AccountRegistryStore<Account>(),
                                 cache: FixedRegistryCache(data: garbage),
                                 networking: ScriptedNetworking(body: garbage),
                                 announceCatalogLoaded: { announcements.record(onMain: Thread.isMainThread) })
@@ -235,7 +236,7 @@ final class AccountRegistryLoaderCompletionQueueTests: PalaceWiringTestCase {
     }
 
     private func makeLoader(
-        store: AccountRegistryStore,
+        store: AccountRegistryStore<Account>,
         cache: any AccountRegistryCaching = FixedRegistryCache(data: nil),
         networking: any AccountNetworking = ScriptedNetworking(body: nil),
         announceCurrentLibraryRefresh: @escaping () -> Void = {},

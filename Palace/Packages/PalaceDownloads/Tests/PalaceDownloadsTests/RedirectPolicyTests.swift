@@ -1,6 +1,6 @@
 //
 //  RedirectPolicyTests.swift
-//  PalaceTests
+//  PalaceDownloadsTests
 //
 //  Covers the willPerformHTTPRedirection decision lifted out of MBDC:
 //    - cap at maxRedirectAttempts (deny once reached)
@@ -10,7 +10,7 @@
 //
 
 import XCTest
-@testable import Palace
+@testable import PalaceDownloads
 
 // Deliberately NOT @MainActor: the object under test is nonisolated and
 // non-Sendable — awaiting its async APIs on a @MainActor-held reference is a

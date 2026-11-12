@@ -37,7 +37,8 @@ final class SignInRedirectRoutingTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock(),
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
         businessLogic.selectedAuthentication = try Self.oauthMethod()
         relay = SignInRedirectRelay()

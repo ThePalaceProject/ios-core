@@ -78,9 +78,7 @@ class BookCellModel: ObservableObject {
     private let samplePreviewManager: SamplePreviewManager
     private let readerService: ReaderService
     private let reachability: Reachability
-    /// Nil in production, where `BookOpenRouter` uses the AppContainer session;
-    /// a test injects one to observe the audiobook open.
-    private let injectedAudiobookSession: AudiobookSessionManaging?
+    private let bookOpenDependencies: BookOpenDependencies
     private var isFetchingImage = false
     #if LCP
     private var didPrefetchLCPStreaming = false
@@ -171,7 +169,8 @@ class BookCellModel: ObservableObject {
             accountsManager: appContainer.accountsManager,
             samplePreviewManager: appContainer.samplePreviewManager,
             readerService: appContainer.readerService,
-            reachability: appContainer.reachability
+            reachability: appContainer.reachability,
+            bookOpenDependencies: appContainer.bookOpenDependencies
         )
     }
 
@@ -186,7 +185,7 @@ class BookCellModel: ObservableObject {
         samplePreviewManager: SamplePreviewManager,
         readerService: ReaderService,
         reachability: Reachability = AppContainer.production().reachability,
-        audiobookSession: AudiobookSessionManaging? = nil
+        bookOpenDependencies: BookOpenDependencies
     ) {
         self.book = book
         self.bookRegistry = bookRegistry
@@ -195,7 +194,7 @@ class BookCellModel: ObservableObject {
         self.samplePreviewManager = samplePreviewManager
         self.readerService = readerService
         self.reachability = reachability
-        self.injectedAudiobookSession = audiobookSession
+        self.bookOpenDependencies = bookOpenDependencies
         self.downloadStarter = { [downloadCenter] book in downloadCenter.startDownload(for: book, withRequest: nil) }
         self.isLoading = bookRegistry.processing(forIdentifier: book.identifier)
         self.currentBookIdentifier = book.identifier
@@ -797,7 +796,7 @@ extension BookCellModel {
     }
 
     private func openAudiobookFromCell() {
-        BookOpenRouter.open(book, bookRegistry: bookRegistry, audiobookSession: injectedAudiobookSession) { [weak self] in
+        BookOpenRouter.open(book, bookRegistry: bookRegistry, dependencies: bookOpenDependencies) { [weak self] in
             self?.isLoading = false
         }
     }

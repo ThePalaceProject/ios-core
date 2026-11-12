@@ -193,7 +193,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
     for entry in entries {
       guard let group = entry.groupAttributes else { continue }
       let groupTitle = group.title ?? ""
-      if let book = CatalogViewModel.makeBook(from: entry, bookRegistry: bookRegistry) {
+      if let book = TPPBook.catalogBook(from: entry, registryMetadata: bookRegistry.updatedBookMetadata) {
         if titleToBooks[groupTitle] == nil { orderedTitles.append(groupTitle) }
         titleToBooks[groupTitle, default: []].append(book)
         if titleToMoreURL[groupTitle] == nil { titleToMoreURL[groupTitle] = group.href }
@@ -212,7 +212,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
   }
   
   private func processUngroupedFeed(entries: [TPPOPDSEntry], feedObjc: TPPOPDSFeed) {
-    ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0, bookRegistry: self.bookRegistry) }
+    ungroupedBooks = entries.compactMap { TPPBook.catalogBook(from: $0, registryMetadata: self.bookRegistry.updatedBookMetadata) }
     
     // Store original catalog books for restoration after returns
     storeOriginalCatalogBooks(ungroupedBooks)
@@ -284,7 +284,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
           extractNextPageURL(from: feedObjc)
 
           if let entries = feedObjc.entries as? [TPPOPDSEntry] {
-            let newBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0, bookRegistry: self.bookRegistry) }
+            let newBooks = entries.compactMap { TPPBook.catalogBook(from: $0, registryMetadata: self.bookRegistry.updatedBookMetadata) }
             ungroupedBooks.append(contentsOf: newBooks)
           }
         }
@@ -432,7 +432,7 @@ class CatalogLaneMoreViewModel: ObservableObject {
           currentFacetGroups = CatalogViewModel.extractOPDS2Facets(from: opds2, currentURL: filterURL).0
         } else {
           if let entries = feed.opdsFeed.entries as? [TPPOPDSEntry] {
-            ungroupedBooks = entries.compactMap { CatalogViewModel.makeBook(from: $0, bookRegistry: self.bookRegistry) }
+            ungroupedBooks = entries.compactMap { TPPBook.catalogBook(from: $0, registryMetadata: self.bookRegistry.updatedBookMetadata) }
           }
           if feed.opdsFeed.type == TPPOPDSFeedType.acquisitionUngrouped {
             currentFacetGroups = CatalogViewModel.extractFacets(from: feed.opdsFeed).0

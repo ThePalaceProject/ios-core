@@ -63,7 +63,8 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
             metadataHydrator: { url in
                 fetchedURL = url
                 return fresh
-            }
+            },
+            dependencies: .testDouble()
         )
 
         await vm.hydrateMetadataIfNeeded()
@@ -99,7 +100,8 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
             metadataHydrator: { _ in
                 fetchCount += 1
                 return nil
-            }
+            },
+            dependencies: .testDouble()
         )
 
         await vm.hydrateMetadataIfNeeded()
@@ -130,7 +132,8 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
             metadataHydrator: { _ in
                 fetchCount += 1
                 return nil
-            }
+            },
+            dependencies: .testDouble()
         )
 
         await vm.hydrateMetadataIfNeeded()
@@ -183,7 +186,8 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
             opdsFeedService: appContainer.opdsFeedService,
             samplePreviewManager: appContainer.samplePreviewManager,
             readerService: appContainer.readerService,
-            metadataHydrator: { _ in fresh }
+            metadataHydrator: { _ in fresh },
+            dependencies: .testDouble()
         )
 
         await vm.hydrateMetadataIfNeeded()
@@ -287,7 +291,8 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
             opdsFeedService: appContainer.opdsFeedService,
             samplePreviewManager: appContainer.samplePreviewManager,
             readerService: appContainer.readerService,
-            metadataHydrator: { _ in fresh }
+            metadataHydrator: { _ in fresh },
+            dependencies: .testDouble()
         )
 
         await vm.hydrateMetadataIfNeeded()
@@ -322,7 +327,8 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
             opdsFeedService: appContainer.opdsFeedService,
             samplePreviewManager: appContainer.samplePreviewManager,
             readerService: appContainer.readerService,
-            metadataHydrator: { _ in fetchCount += 1; return nil }
+            metadataHydrator: { _ in fetchCount += 1; return nil },
+            dependencies: .testDouble()
         )
 
         await vm.hydrateMetadataIfNeeded()

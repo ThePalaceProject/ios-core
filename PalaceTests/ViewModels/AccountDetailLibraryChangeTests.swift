@@ -39,7 +39,8 @@ final class AccountDetailLibraryChangeTests: PalaceTestCase {
             settings: appContainer.settings,
             userAccountPublisher: appContainer.userAccountPublisher,
             drmAuthorizerProvider: { nil },
-            credentialSnapshotProvider: { _ in counter.record(); return signedOut }
+            credentialSnapshotProvider: { _ in counter.record(); return signedOut },
+            appNetwork: SignInAppNetworkSpy()
         )
         await settle(until: { !viewModel.isLoadingAuth })
         let readsBefore = counter.count

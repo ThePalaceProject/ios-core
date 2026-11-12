@@ -18,6 +18,7 @@ import PalaceCatalog
 import PalaceBookModel
 import PalaceBookRegistry
 import PalaceUtilities
+import PalaceDownloads
 
 #if FEATURE_OVERDRIVE
 import OverdriveProcessor
@@ -651,7 +652,7 @@ private final class RedirectCompletionBox: @unchecked Sendable {
             stateManager: stateManager,
             reauthenticator: reauthenticator,
             userAccountProvider: resolveAccountForBorrow,
-            credentialRequestState: self.credentialRequestState
+            credentialRequestState: self.credentialRequestState, universalLinksSettings: settings
         )
         // BookContentResetService runs the bulk-reset flows; shares the
         // same registry / state / file-manager / progress reporter /

@@ -78,7 +78,8 @@ final class TPPCrossLibrarySignOutTests: XCTestCase {
             userAccountProvider: TPPMultiLibraryAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: activeUIDelegate,
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
 
         targetBusinessLogic = TPPSignInBusinessLogic(
@@ -90,7 +91,8 @@ final class TPPCrossLibrarySignOutTests: XCTestCase {
             userAccountProvider: TPPMultiLibraryAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: targetUIDelegate,
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 

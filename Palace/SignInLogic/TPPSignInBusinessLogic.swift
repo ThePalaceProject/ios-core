@@ -112,7 +112,8 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
                      bookDownloadsCenter: TPPBookDownloadsDeleting,
                      userAccountProvider: TPPUserAccountProvider.Type,
                      uiDelegate: TPPSignInOutBusinessLogicUIDelegate?,
-                     drmAuthorizer: TPPDRMAuthorizing?) {
+                     drmAuthorizer: TPPDRMAuthorizing?,
+                     appNetwork: SignInAppNetworking) {
         self.init(libraryAccountID: libraryAccountID,
                   libraryAccountsProvider: libraryAccountsProvider,
                   urlSettingsProvider: urlSettingsProvider,
@@ -123,10 +124,15 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
                                                       cachingStrategy: .ephemeral,
                                                       delegateQueue: OperationQueue.main),
                   uiDelegate: uiDelegate,
-                  drmAuthorizer: drmAuthorizer)
+                  drmAuthorizer: drmAuthorizer,
+                  appNetwork: appNetwork)
     }
 
     /// Designated initializer.
+    ///
+    /// - Parameter appNetwork: the app-wide executor. Bearer-token exchanges
+    ///   and the sign-out and reset cache clears go through it rather than
+    ///   through `networkExecutor`, which is this flow's own ephemeral one.
     init(libraryAccountID: String,
          libraryAccountsProvider: TPPLibraryAccountsProvider,
          urlSettingsProvider: NYPLUniversalLinksSettings & NYPLFeedURLProvider,
@@ -135,8 +141,10 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
          userAccountProvider: TPPUserAccountProvider.Type,
          networkExecutor: TPPRequestExecuting,
          uiDelegate: TPPSignInOutBusinessLogicUIDelegate?,
-         drmAuthorizer: TPPDRMAuthorizing?) {
+         drmAuthorizer: TPPDRMAuthorizing?,
+         appNetwork: SignInAppNetworking) {
         self.uiDelegate = uiDelegate
+        self.appNetwork = appNetwork
         self.libraryAccountID = libraryAccountID
         self.libraryAccountsProvider = libraryAccountsProvider
         self.urlSettingsProvider = urlSettingsProvider
@@ -311,6 +319,9 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
 
     /// The object providing library account information.
     let libraryAccountsProvider: TPPLibraryAccountsProvider
+
+    /// See `init(...appNetwork:)`.
+    let appNetwork: SignInAppNetworking
 
     @objc var libraryAccount: Account? {
         return libraryAccountsProvider.account(libraryAccountID)
@@ -538,11 +549,8 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         }
     }
 
-    /// Seam-friendly overload (§10.2) that accepts the abstract
-    /// `TokenRefreshing` protocol so unit tests can substitute a pure
-    /// in-memory mock for the production concrete `TPPNetworkExecutor`.
-    /// The original concrete-typed overload below remains for ObjC / source
-    /// compatibility with all existing call sites.
+    /// Exchanges credentials for a bearer token through `tokenRefresher`;
+    /// the sign-in paths pass `appNetwork`.
     func getBearerToken(username: String,
                         password: String,
                         tokenURL: URL,
@@ -578,14 +586,6 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
                 }
             }
         }
-    }
-
-    func getBearerToken(username: String, password: String, tokenURL: URL, networkExecutor: TPPNetworkExecutor = AppContainer.production().networkExecutor, completion: (() -> Void)? = nil) {
-        getBearerToken(username: username,
-                       password: password,
-                       tokenURL: tokenURL,
-                       tokenRefresher: networkExecutor,
-                       completion: completion)
     }
 
     /// Uses the problem document's `title` and `message` fields to
@@ -736,7 +736,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
                 return
             }
 
-            getBearerToken(username: username, password: password, tokenURL: tokenURL)
+            getBearerToken(username: username, password: password, tokenURL: tokenURL, tokenRefresher: appNetwork)
         case .basic, .coppa, .anonymous, .none:
             await validateCredentials()
         }
@@ -957,7 +957,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
                                    completion: (() -> Void)?) -> Bool {
         guard
             let authDef = userAccount.authDefinition,
-            authDef.isBasic || authDef.isOauth || authDef.isSaml || authDef.isOidc || (authDef.isToken && AppContainer.production().accountsManager.currentUserAccount.authTokenHasExpired)
+            authDef.isBasic || authDef.isOauth || authDef.isSaml || authDef.isOidc || (authDef.isToken && libraryAccountsProvider.currentUserAccount.authTokenHasExpired)
         else {
             completion?()
             return false
@@ -983,7 +983,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         }
 
         if authDef.isToken, let barcode = userAccount.barcode, let pin = userAccount.pin, let tokenURL = userAccount.authDefinition?.tokenURL {
-            getBearerToken(username: barcode, password: pin, tokenURL: tokenURL, completion: completion)
+            getBearerToken(username: barcode, password: pin, tokenURL: tokenURL, tokenRefresher: appNetwork, completion: completion)
         } else if authDef.isBasic {
             if usingExistingCredentials && userAccount.hasBarcodeAndPIN() {
                 if uiDelegate == nil {

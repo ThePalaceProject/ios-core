@@ -11,6 +11,7 @@ import PalaceCatalog
 import PalaceBookModel
 import PalacePreferences
 @testable import Palace
+import PalaceAccounts
 
 @MainActor
 final class AccountRegistryLoaderSeamTests: XCTestCase {
@@ -70,7 +71,7 @@ final class AccountRegistryLoaderSeamTests: XCTestCase {
     private func makeLoader(scheduler: CrawlTaskScheduler) -> AccountRegistryLoader {
         AccountRegistryLoader(
             registryCache: StubRegistryCache(),
-            registryStore: AccountRegistryStore(),
+            registryStore: AccountRegistryStore<Account>(),
             crawlScheduler: scheduler,
             settings: TPPSettings(),
             imageCache: MockImageCache(),

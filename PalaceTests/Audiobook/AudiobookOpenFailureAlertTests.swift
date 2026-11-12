@@ -12,6 +12,7 @@ import PalaceCatalog
 @preconcurrency import PalaceAudiobookToolkit
 @testable import Palace
 import PalaceBookModel
+import PalaceDownloads
 
 @MainActor
 final class AudiobookOpenFailureAlertTests: XCTestCase {

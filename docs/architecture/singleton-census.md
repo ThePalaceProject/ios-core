@@ -52,7 +52,7 @@ exemption" checklist rule. **Fills** god-class-decomposition-plan.md §3c
 | 16 | `DeviceSpecificErrorMonitor` | `Utilities/DeviceSpecificErrorMonitor.swift` | 4 | app-target Utilities/ErrorHandling | **later** |
 | 17 | `AudiobookFileLogger` | `Logging/AudiobookFileLogger.swift` | 4 | **PalaceLogging** | **permanent-infra** (file logger; narrow `LogSink` seam, ties to cycle-6 `LogArchiveExporting`) |
 | 18 | `AdobeDRMService` | `Reader2/.../AdobeDRM/AdobeCertificate.swift` | 4 | app-target Infrastructure (Adobe RMSDK binary) | **platform-shim** (private DRM binary — permanent app-target; behind `TPPDRMAuthorizing` seam that already exists) |
-| 19 | `UserRetryTracker` | `MyBooks/UserRetryTracker.swift` | 3 | **PalaceDownloads** | **inject-via-container** (moves in Wave 3b with the download engine) |
+| 19 | `UserRetryTracker` | `Packages/PalaceDownloads/Sources/PalaceDownloads/UserRetryTracker.swift` | 3 | **PalaceDownloads** | **inject-via-container** (moves in Wave 3b with the download engine) |
 | 20 | `TPPAssociatedColors` | `Reader2/ReaderSettings/TPPAssociatedColors.swift` | 3 | app-target Reader2 (Presentation) | **later** |
 | 21 | `OfflineQueueService` | `Platform/OfflineQueueService.swift` | 3 | **PalaceNetwork** (offline request queue) | **inject-via-container** (moves with the network layer; seam on the container) |
 | 22 | `MockBackendService` | `Settings/Debug/MockBackend/MockBackendService.swift` | 3 | app-target Debug tooling | **later** (debug-only; written exemption — never ships in a release path) |

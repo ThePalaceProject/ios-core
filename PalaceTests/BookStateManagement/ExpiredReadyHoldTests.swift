@@ -112,7 +112,8 @@ final class ExpiredReadyHoldTests: XCTestCase {
         let container = makeTestAppContainer()
         return BookCellModel(book: book, imageCache: MockImageCache(), bookRegistry: registry,
                              downloadCenter: container.downloadCenter, accountsManager: container.accountsManager,
-                             samplePreviewManager: container.samplePreviewManager, readerService: container.readerService)
+                             samplePreviewManager: container.samplePreviewManager, readerService: container.readerService,
+                             bookOpenDependencies: .testDouble())
     }
 
     /// A My Books cell for a ready hold whose window has closed offers no Get button.

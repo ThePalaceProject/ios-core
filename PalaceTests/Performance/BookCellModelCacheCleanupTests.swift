@@ -32,7 +32,8 @@ final class BookCellModelCacheCleanupTests: XCTestCase {
             accountsManager: appContainer.accountsManager,
             samplePreviewManager: appContainer.samplePreviewManager,
             readerService: appContainer.readerService,
-            activityPolicy: policy
+            activityPolicy: policy,
+            bookOpenDependencies: .testDouble()
         )
     }
 
@@ -101,7 +102,8 @@ final class BookCellModelCacheCleanupTests: XCTestCase {
             downloadCenter: appContainer.downloadCenter,
             accountsManager: appContainer.accountsManager,
             samplePreviewManager: appContainer.samplePreviewManager,
-            readerService: appContainer.readerService
+            readerService: appContainer.readerService,
+            bookOpenDependencies: .testDouble()
         )
         _ = unscheduled.model(for: TPPBookMocker.mockBook(identifier: "c", title: "C", authors: "A"))
 

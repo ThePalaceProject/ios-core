@@ -11,5 +11,6 @@
 //
 
 import Foundation
+import PalaceAccounts
 
 extension TPPNetworkExecutor: AccountNetworking {}

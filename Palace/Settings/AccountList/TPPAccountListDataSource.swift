@@ -13,6 +13,9 @@ class TPPAccountListDataSource: NSObject {
   private var nationalAccounts: [Account]!
   private let accountsProvider: () -> [Account]
   private let nationalAccountUUIDs: [String]
+  /// The search bar's current text. Every reload applies it, so a refresh or a
+  /// finished catalog load does not show the full list under a filled search bar.
+  private var filterString = ""
   
   override convenience init() {
     self.init(
@@ -28,11 +31,19 @@ class TPPAccountListDataSource: NSObject {
     loadData()
   }
   
-  func loadData(_ filterString: String? = nil) {
+  /// Sets the search text and reloads the list with it.
+  func setFilter(_ filterString: String?) {
+    self.filterString = filterString ?? ""
+    loadData()
+  }
+
+  /// Reloads the accounts and applies the current search text.
+  func loadData() {
     accounts = accountsProvider()
     accounts.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     
-    if let filter = filterString, !filter.isEmpty {
+    let filter = filterString
+    if !filter.isEmpty {
       nationalAccounts = self.accounts.filter { nationalAccountUUIDs.contains($0.uuid) && $0.name.range(of: filter, options: .caseInsensitive) != nil }
       accounts = self.accounts.filter { !nationalAccountUUIDs.contains($0.uuid) && $0.name.range(of: filter, options: .caseInsensitive) != nil }
     } else {
@@ -69,17 +80,17 @@ extension TPPAccountListDataSource {
 
 extension TPPAccountListDataSource: UISearchBarDelegate {
   func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
-    loadData(searchText)
+    setFilter(searchText)
   }
   
   func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
-    loadData(searchBar.text)
+    setFilter(searchBar.text)
     searchBar.resignFirstResponder()
   }
   
   func searchBarCancelButtonClicked(_ searchBar: UISearchBar) {
     searchBar.text = ""
-    loadData()
+    setFilter(nil)
     searchBar.resignFirstResponder()
   }
 }

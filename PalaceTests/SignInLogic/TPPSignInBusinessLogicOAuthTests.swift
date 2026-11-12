@@ -88,7 +88,8 @@ final class TPPSignInBusinessLogicOAuthTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: drmAuthorizer
+            drmAuthorizer: drmAuthorizer,
+            appNetwork: SignInAppNetworkSpy()
         )
         businessLogic.selectedAuthentication = libraryAccountMock.oauthAuthentication
     }
@@ -295,7 +296,8 @@ final class TPPSignInBusinessLogicOAuthTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: drmAuthorizer
+            drmAuthorizer: drmAuthorizer,
+            appNetwork: SignInAppNetworkSpy()
         )
 
         XCTAssertNil(blogic.makeRequest(for: .signIn, context: "unknown"),
@@ -335,7 +337,8 @@ final class TPPSignInBusinessLogicTokenFlowTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 
@@ -460,7 +463,8 @@ final class TPPSignInBusinessLogicValidationCallbackOrderTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
     }

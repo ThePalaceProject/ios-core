@@ -11,6 +11,7 @@
 
 import XCTest
 @testable import Palace
+import PalaceDownloads
 
 final class ReturnReducerContractTests: XCTestCase {
 

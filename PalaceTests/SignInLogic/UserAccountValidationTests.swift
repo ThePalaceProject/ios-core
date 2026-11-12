@@ -249,7 +249,7 @@ final class UserAccountValidationTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock(),
-            drmAuthorizer: TPPDRMAuthorizingMock())
+            drmAuthorizer: TPPDRMAuthorizingMock(), appNetwork: SignInAppNetworkSpy())
         logic.selectedAuthentication = libraryMock.basicAuthentication
         return logic
     }

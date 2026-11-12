@@ -9,6 +9,7 @@
 
 import XCTest
 @testable import Palace
+import PalaceAccounts
 
 @MainActor
 final class AccountsManagerInitPreloadGateTests: PalaceWiringTestCase {

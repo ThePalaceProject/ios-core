@@ -11,6 +11,7 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceAccounts
 
 final class CrawlerCompletenessTests: XCTestCase {
 
