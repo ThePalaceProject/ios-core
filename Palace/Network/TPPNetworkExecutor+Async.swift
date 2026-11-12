@@ -20,31 +20,26 @@ import Foundation
 
 extension TPPNetworkExecutor {
 
-    /// Async version of GET that bridges to the completion-handler API.
-    /// Timeout is handled by the URLSession configuration, not by a manual timer.
+    /// Async GET of a URL. Timeout is handled by the URLSession configuration,
+    /// not by a manual timer.
     ///
-    /// `CancellableContinuationBox` makes the bridge cancellation-aware AND
-    /// resume-exactly-once (superseding the old `ContinuationGuard` here). Note
-    /// this overload's underlying call returns no `URLSessionDataTask`, so the
-    /// HTTP request is not torn down — but the awaiting Task is still unblocked,
-    /// which is what makes it drainable. A stray late completion is swallowed by
-    /// the box.
+    /// Cancelling the awaiting Task stops both the request and the delivery of
+    /// its answer, and the GET throws `CancellationError` (PP-5556). This goes
+    /// through `execute`, which owns the `URLSessionDataTask`, including the one
+    /// sent after a proactive token refresh. A request cancelled by something
+    /// else, such as an account switch, still throws its `NSURLErrorCancelled`.
     func GET(_ reqURL: URL, useTokenIfAvailable: Bool = true) async throws -> (Data, URLResponse?) {
-        let box = CancellableContinuationBox<(Data, URLResponse?)>()
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                box.install(continuation)
-                GET(reqURL, useTokenIfAvailable: useTokenIfAvailable) { result in
-                    switch result {
-                    case let .success(data, response):
-                        box.finish(.success((data, response)))
-                    case let .failure(error, _):
-                        box.finish(.failure(error))
-                    }
-                }
+        let result = await fetchResult(from: reqURL, useTokenIfAvailable: useTokenIfAvailable)
+        switch result {
+        case let .success(data, response):
+            return (data, response)
+        case let .failure(error, _):
+            // A cancelled caller is told it was cancelled, whatever error the
+            // request ended with.
+            if Task.isCancelled {
+                throw CancellationError()
             }
-        } onCancel: {
-            box.cancel()
+            throw error
         }
     }
 
