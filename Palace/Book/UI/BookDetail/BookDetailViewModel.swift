@@ -21,7 +21,7 @@ final class BookDetailViewModel: ObservableObject {
     /// Three-way decision for the Book Detail SERIES row, derived purely from a
     /// book's series metadata.
     /// - `.link`: series name + a series-search URL (other books in the catalog)
-    ///   → tappable NavigationLink (the PP-4463 behavior).
+    ///   → tappable link to the series lane (the PP-4463 behavior).
     /// - `.plainText`: series name known but NO series-search URL (no other books
     ///   in the catalog) → static, non-tappable text (PP-4775).
     /// - `.hidden`: no series name → no row.
@@ -86,7 +86,6 @@ final class BookDetailViewModel: ObservableObject {
     /// Used to preserve related books when view reappears after modal dismissal.
     private var relatedBooksBookIdentifier: String?
     @Published var isLoadingDescription = false
-    @Published var selectedBookURL: URL?
     @Published var isManagingHold: Bool = false
     @Published var showHalfSheet = false
     @Published private(set) var stableButtonState: BookButtonState = .unsupported
@@ -132,6 +131,10 @@ final class BookDetailViewModel: ObservableObject {
     private let readerService: ReaderService
     private let metadataService: BookMetadataService
     private let relatedBooksService: RelatedBooksService
+    /// Opens the series and related-lane destinations (actions in
+    /// BookDetailNavigating.swift). Nil only in tests that do not navigate; the
+    /// container-built view model always has one.
+    let navigator: BookDetailNavigating?
     /// Optional injected audiobook session — nil in production (BookOpenRouter
     /// resolves the DI-root session). A test injects a mock so the audiobook
     /// open → half-sheet-dismiss wiring is drivable. fix/audiobook-first-open-hang.
@@ -186,7 +189,8 @@ final class BookDetailViewModel: ObservableObject {
             settings: appContainer.settings,
             opdsFeedService: appContainer.opdsFeedService,
             samplePreviewManager: appContainer.samplePreviewManager,
-            readerService: appContainer.readerService
+            readerService: appContainer.readerService,
+            navigator: CoordinatorBookDetailNavigator(hub: appContainer.navigationCoordinatorHub)
         )
     }
 
@@ -203,7 +207,8 @@ final class BookDetailViewModel: ObservableObject {
         metadataHydrator: BookMetadataHydrator? = nil,
         relatedBooksFetcher: RelatedBooksFeedFetcher? = nil,
         audiobookSession: AudiobookSessionManaging? = nil,
-        authGateOverride: ((@escaping () -> Void) -> Void)? = nil
+        authGateOverride: ((@escaping () -> Void) -> Void)? = nil,
+        navigator: BookDetailNavigating? = nil
     ) {
         self.book = book
         self.registry = registry
@@ -217,6 +222,7 @@ final class BookDetailViewModel: ObservableObject {
         // AppContainer session.
         self.injectedAudiobookSession = audiobookSession
         self.authGateOverride = authGateOverride
+        self.navigator = navigator
         self.downloadStarter = { [downloadCenter] book in downloadCenter.startDownload(for: book, withRequest: nil) }
         // Default fetchers capture the injected services instead of reading
         // .shared singletons. Tests pass custom ones to short-circuit the
@@ -604,13 +610,6 @@ final class BookDetailViewModel: ObservableObject {
             }
             self.relatedBooksByLane = lanesMap
             self.isLoadingRelatedBooks = false
-        }
-    }
-
-    func showMoreBooksForLane(laneTitle: String) {
-        guard let lane = relatedBooksByLane[laneTitle] else { return }
-        if let subsectionURL = lane.subsectionURL {
-            self.selectedBookURL = subsectionURL
         }
     }
 
