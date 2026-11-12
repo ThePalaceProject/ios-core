@@ -276,6 +276,8 @@ public final class NowPlayingCoordinator {
         currentInfo = [:]
         currentArtwork = nil
         lastWrite = nil
+        // Nothing plays after a clear, so the dry-stream guard has nothing to check.
+        lastIsPlaying = false
         nowPlayingInfoCenter.nowPlayingInfo = nil
         nowPlayingInfoCenter.playbackState = .stopped
 

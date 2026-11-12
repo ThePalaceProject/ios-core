@@ -284,6 +284,68 @@ final class AccountsManagerCurrentAccountSwitchContractTests: PalaceWiringTestCa
                        "first selection must not enter the switching state")
     }
 
+    // MARK: - Contract 5: switch events bracket the cleanup
+
+    /// Per-library services reset on `.willSwitch`, so it must arrive before the
+    /// switch cancels requests and pops navigation, and `.selected` after.
+    func testSwitch_onMain_sendsWillSwitchBeforeCleanupAndSelectedAfter() async {
+        let (manager, accountB, log, token) = makeSwitchEventScenario()
+        defer { token.cancel() }
+
+        manager.currentAccount = accountB
+
+        await awaitConditionAsync { log.snapshot().contains { $0.method == "selected" } }
+        XCTAssertEqual(log.snapshot().map(\.method), Self.switchEventOrder)
+    }
+
+    /// An assignment made off the main thread keeps the same order: the switch
+    /// runs on main, where `.willSwitch` reaches its listeners.
+    func testSwitch_offMain_sendsWillSwitchBeforeCleanupAndSelectedAfter() async {
+        let (manager, accountB, log, token) = makeSwitchEventScenario()
+        defer { token.cancel() }
+
+        DispatchQueue.global().async { manager.currentAccount = accountB }
+
+        await awaitConditionAsync { log.snapshot().contains { $0.method == "selected" } }
+        XCTAssertEqual(log.snapshot().map(\.method), Self.switchEventOrder)
+    }
+
+    private static let switchEventOrder = [
+        "willSwitch", "cancelNonEssentialTasks", "clearAllBorrowReauthState",
+        "evictDecodedImages", "resetCoverCircuitBreaker", "selected",
+    ]
+
+    /// A manager on library A whose switch seams and switch events all record
+    /// into one log. The nav pop is left out: it runs after the switch.
+    private func makeSwitchEventScenario() -> (AccountsManager, Account, CallLog, AnyCancellable) {
+        let aUUID = "urn:uuid:decomp-s5-A-\(UUID().uuidString)"
+        let accountB = Self.makeAccount(uuid: "urn:uuid:decomp-s5-B-\(UUID().uuidString)")
+        let log = CallLog()
+        let spyExecutor = SpyAccountSwitchNetworkExecutor(log: log)
+        let deps = AccountSwitchDependencies(
+            imageCache: SpySwitchImageCache(log: log),
+            accountStateStore: AccountStateStore(),
+            resetCoverCircuitBreaker: { log.record("resetCoverCircuitBreaker") },
+            networkExecutorProvider: { spyExecutor },
+            popToRootForAccountSwitch: {}
+        )
+        let defaults = Self.testUserDefaults()
+        defaults.set(aUUID, forKey: currentAccountIdentifierKey)
+        let manager = makeFreshAccountsManager(
+            defaults: defaults,
+            borrowReauthResetter: SpySwitchBorrowReauthResetter(log: log),
+            switchDependencies: deps
+        )
+        let token = manager.accountSwitchPublisher.sink { change in
+            switch change {
+            case .willSwitch: log.record("willSwitch")
+            case .selected: log.record("selected")
+            case .refreshRequested: log.record("refreshRequested")
+            }
+        }
+        return (manager, accountB, log, token)
+    }
+
     // MARK: - Helpers
 
     /// Subscribe to `manager.currentLibraryChangePublisher` and record the
