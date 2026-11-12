@@ -229,7 +229,7 @@ public final class AudiobookSessionManager: ObservableObject {
     /// Resolves the playback bootstrapper that primes the audio session before
     /// an open and on foreground return. A provider, not a stored reference:
     /// the bootstrapper's own session provider resolves this session.
-    private let playbackBootstrapperProvider: @MainActor () -> PlaybackAudioSessionPriming
+    let playbackBootstrapperProvider: @MainActor () -> PlaybackAudioSessionPriming
 
     /// Resolves whether the in-app-playback-nav feature is enabled. Gates
     /// which presentation `presentSession` drives: off → the legacy
@@ -880,32 +880,6 @@ public final class AudiobookSessionManager: ObservableObject {
             : .paused(bookId: bookId)
         state = newState
         playbackStatePublisher.send(newState)
-    }
-
-    /// Background-freeze recovery. Called from
-    /// `AudiobookSessionPresenter.subscribeToAppLifecycle` on
-    /// `UIApplication.willEnterForegroundNotification` when there's an
-    /// active session.
-    ///
-    /// Strategy:
-    ///   1. Re-activate the audio session via PlaybackBootstrapper so a
-    ///      transient background-time deactivation doesn't leave AVPlayer
-    ///      starved.
-    ///   2. If the manager believes playback was in flight (state was
-    ///      `.playing` when we backgrounded), call `play()` to nudge the
-    ///      toolkit's player out of any stalled buffer-empty state. This
-    ///      is the operative recovery: AVPlayer re-fetches its buffer and
-    ///      `Player.isLoaded` re-flips to true, dismissing the toolkit's
-    ///      LoadingView before the 30s `LoadingErrorView` timer fires.
-    public func recoverPlaybackForForegroundEntry() {
-        guard let _ = manager else { return }
-        // Re-prime the audio session; `ensureInitialized` is idempotent.
-        playbackBootstrapperProvider().ensureInitialized()
-        if case .playing = state {
-            // Was playing pre-background; ask the toolkit to resume.
-            // `manager.play()` is idempotent.
-            play()
-        }
     }
 
     /// Skips to a specific chapter
