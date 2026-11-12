@@ -68,6 +68,7 @@ final class BookCellModelCache: ObservableObject {
     private let accountsManager: AccountsManager
     private let samplePreviewManager: SamplePreviewManager
     private let readerService: ReaderService
+    private let bookOpenDependencies: BookOpenDependencies
     private var cancellables = Set<AnyCancellable>()
 
     // MARK: - Initialization
@@ -81,7 +82,8 @@ final class BookCellModelCache: ObservableObject {
             accountsManager: appContainer.accountsManager,
             samplePreviewManager: appContainer.samplePreviewManager,
             readerService: appContainer.readerService,
-            activityPolicy: appContainer.activityPolicy
+            activityPolicy: appContainer.activityPolicy,
+            bookOpenDependencies: appContainer.bookOpenDependencies
         )
     }
 
@@ -93,7 +95,8 @@ final class BookCellModelCache: ObservableObject {
         accountsManager: AccountsManager,
         samplePreviewManager: SamplePreviewManager,
         readerService: ReaderService,
-        activityPolicy: ActivityPolicy? = nil
+        activityPolicy: ActivityPolicy? = nil,
+        bookOpenDependencies: BookOpenDependencies
     ) {
         self.configuration = configuration
         self.imageCache = imageCache
@@ -102,6 +105,7 @@ final class BookCellModelCache: ObservableObject {
         self.accountsManager = accountsManager
         self.samplePreviewManager = samplePreviewManager
         self.readerService = readerService
+        self.bookOpenDependencies = bookOpenDependencies
 
         if configuration.observeRegistryChanges {
             setupRegistryObserver()
@@ -186,7 +190,8 @@ final class BookCellModelCache: ObservableObject {
             downloadCenter: downloadCenter,
             accountsManager: accountsManager,
             samplePreviewManager: samplePreviewManager,
-            readerService: readerService
+            readerService: readerService,
+            bookOpenDependencies: bookOpenDependencies
         )
 
         // Evict if at capacity

@@ -32,7 +32,7 @@ class TPPSignInBusinessLogicTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: uiDelegate,
-            drmAuthorizer: drmAuthorizer)
+            drmAuthorizer: drmAuthorizer, appNetwork: SignInAppNetworkSpy())
 
         // Drive the state machine to
         // `.detailsLoaded` so the sub-sites that now read `loadedAccountDetails`

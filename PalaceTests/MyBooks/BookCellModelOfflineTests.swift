@@ -57,7 +57,8 @@ final class BookCellModelOfflineTests: XCTestCase {
             accountsManager: AppContainer.production().accountsManager,
             samplePreviewManager: AppContainer.production().samplePreviewManager,
             readerService: AppContainer.production().readerService,
-            reachability: mockReachability
+            reachability: mockReachability,
+            bookOpenDependencies: .testDouble()
         )
     }
 

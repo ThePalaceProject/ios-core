@@ -478,7 +478,7 @@ final class BookDetailViewModelTests: XCTestCase {
         let mockRegistry = TPPBookRegistryMock()
         mockRegistry.addBook(initialBook, location: nil, state: .downloadNeeded, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        let viewModel = BookDetailViewModel(book: initialBook, registry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, settings: TPPSettings(), opdsFeedService: appContainer.opdsFeedService, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let viewModel = BookDetailViewModel(book: initialBook, registry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, settings: TPPSettings(), opdsFeedService: appContainer.opdsFeedService, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, dependencies: .testDouble())
         XCTAssertEqual(viewModel.book.identifier, initialBook.identifier)
 
         let borrowedBook = createBookWithLoanExpiration(from: initialBook)
@@ -505,7 +505,7 @@ final class BookDetailViewModelTests: XCTestCase {
         let mockRegistry = TPPBookRegistryMock()
         mockRegistry.addBook(book, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        let viewModel = BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, settings: TPPSettings(), opdsFeedService: appContainer.opdsFeedService, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let viewModel = BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, settings: TPPSettings(), opdsFeedService: appContainer.opdsFeedService, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, dependencies: .testDouble())
 
         // Wait for bookState to reach .downloading via Combine's receive(on: RunLoop.main)
         let reachedDownloading = XCTestExpectation(description: "bookState reaches .downloading")
@@ -532,7 +532,7 @@ final class BookDetailViewModelTests: XCTestCase {
         // Add original book
         mockRegistry.addBook(originalBook, location: nil, state: .downloadNeeded, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        let viewModel = BookDetailViewModel(book: originalBook, registry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, settings: TPPSettings(), opdsFeedService: appContainer.opdsFeedService, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let viewModel = BookDetailViewModel(book: originalBook, registry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, settings: TPPSettings(), opdsFeedService: appContainer.opdsFeedService, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, dependencies: .testDouble())
         let originalTitle = viewModel.book.title
 
         let updatedBook = createBookWithUpdatedTitle(from: originalBook, newTitle: "Updated Title")
@@ -593,7 +593,7 @@ final class BookDetailViewModelTests: XCTestCase {
 
         mockRegistry.addBook(book, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        let viewModel = BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, settings: TPPSettings(), opdsFeedService: appContainer.opdsFeedService, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let viewModel = BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, settings: TPPSettings(), opdsFeedService: appContainer.opdsFeedService, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, dependencies: .testDouble())
 
         // Simulate pressing download button (adds to processing)
         viewModel.handleAction(for: .download)
@@ -804,7 +804,7 @@ final class BookDetailViewModelTests: XCTestCase {
         let mockRegistry = TPPBookRegistryMock()
         mockRegistry.addBook(book, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        let viewModel = BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, settings: TPPSettings(), opdsFeedService: appContainer.opdsFeedService, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let viewModel = BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, settings: TPPSettings(), opdsFeedService: appContainer.opdsFeedService, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, dependencies: .testDouble())
 
         // Simulate that related books have already been fetched
         let relatedBook1 = createTestBook()
@@ -837,7 +837,7 @@ final class BookDetailViewModelTests: XCTestCase {
         let mockRegistry = TPPBookRegistryMock()
         mockRegistry.addBook(book1, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        let viewModel = BookDetailViewModel(book: book1, registry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, settings: TPPSettings(), opdsFeedService: appContainer.opdsFeedService, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let viewModel = BookDetailViewModel(book: book1, registry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, settings: TPPSettings(), opdsFeedService: appContainer.opdsFeedService, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, dependencies: .testDouble())
 
         // Populate related books for book1
         let relatedBook = createTestBook()
@@ -860,7 +860,7 @@ final class BookDetailViewModelTests: XCTestCase {
         let mockRegistry = TPPBookRegistryMock()
         mockRegistry.addBook(book, location: nil, state: .unregistered, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
-        let viewModel = BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, settings: TPPSettings(), opdsFeedService: appContainer.opdsFeedService, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let viewModel = BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, settings: TPPSettings(), opdsFeedService: appContainer.opdsFeedService, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, dependencies: .testDouble())
 
         // Populate existing related books
         let relatedBook = createTestBook()
@@ -889,7 +889,7 @@ final class BookDetailViewModelTests: XCTestCase {
         mockRegistry.addBook(book, location: nil, state: .downloading, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
         let downloadCenter = appContainer.downloadCenter
-        let viewModel = BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: downloadCenter, accountsManager: appContainer.accountsManager, settings: TPPSettings(), opdsFeedService: appContainer.opdsFeedService, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let viewModel = BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: downloadCenter, accountsManager: appContainer.accountsManager, settings: TPPSettings(), opdsFeedService: appContainer.opdsFeedService, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, dependencies: .testDouble())
         let publisher = downloadCenter.downloadProgressPublisher
 
         // Collect all progress values the view model receives
@@ -933,7 +933,7 @@ final class BookDetailViewModelTests: XCTestCase {
         mockRegistry.addBook(book, location: nil, state: .downloading, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
 
         let downloadCenter = appContainer.downloadCenter
-        let viewModel = BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: downloadCenter, accountsManager: appContainer.accountsManager, settings: TPPSettings(), opdsFeedService: appContainer.opdsFeedService, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let viewModel = BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: downloadCenter, accountsManager: appContainer.accountsManager, settings: TPPSettings(), opdsFeedService: appContainer.opdsFeedService, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, dependencies: .testDouble())
         let publisher = downloadCenter.downloadProgressPublisher
 
         // mockRegistry.addBook emits bookStatePublisher via receive(on: RunLoop.main).
@@ -998,7 +998,7 @@ final class BookDetailViewModelTests: XCTestCase {
         let book = createTestBook()
         let registry = TPPBookRegistryMock()
         registry.addBook(book, location: nil, state: state, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
-        let vm = BookDetailViewModel(book: book, registry: registry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, settings: TPPSettings(), opdsFeedService: appContainer.opdsFeedService, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let vm = BookDetailViewModel(book: book, registry: registry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, settings: TPPSettings(), opdsFeedService: appContainer.opdsFeedService, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, dependencies: .testDouble())
         return (vm, registry, book)
     }
 
@@ -1389,7 +1389,8 @@ final class BookDetailViewModelTests: XCTestCase {
             settings: TPPSettings(),
             opdsFeedService: appContainer.opdsFeedService,
             samplePreviewManager: appContainer.samplePreviewManager,
-            readerService: appContainer.readerService
+            readerService: appContainer.readerService,
+            dependencies: .testDouble()
         )
 
         XCTAssertTrue(
@@ -1428,7 +1429,8 @@ final class BookDetailViewModelTests: XCTestCase {
             settings: TPPSettings(),
             opdsFeedService: appContainer.opdsFeedService,
             samplePreviewManager: appContainer.samplePreviewManager,
-            readerService: appContainer.readerService
+            readerService: appContainer.readerService,
+            dependencies: .testDouble()
         )
         XCTAssertTrue(vm.isBorrowProcessing, "Pre-condition: VM seeded true")
 
@@ -1525,16 +1527,10 @@ final class BookDetailViewModelTests: XCTestCase {
     /// book payload was stored so NavigationHostView can resolve it.
     func testBookDetailViewModel_handleAction_readStreaming_callsDidSelectReadStreaming() {
         let coordinator = NavigationCoordinator()
-        // PP-5022 — pin the hub's resolution deterministically rather than
-        // relying on production's tab router being unset: `pendingTab` is never
-        // cleared in a test process, so a fallback-dependent lookup is
-        // order-dependent. The router is held for the scope of the test; the
-        // hub holds it (and the coordinator) weakly.
-        let pinnedRouter = AppTabRouter()
-        pinnedRouter.selected = .catalog
-        AppContainer.production().tabRouterHub.router = pinnedRouter
-        AppContainer.production().navigationCoordinatorHub.register(coordinator, for: .catalog)
-        defer { withExtendedLifetime(pinnedRouter) {} }
+        // The view model is handed this hub; with no tab router it resolves to
+        // the last registered stack.
+        let navigationHub = NavigationCoordinatorHub(tabRouterHub: nil)
+        navigationHub.register(coordinator, for: .catalog)
 
         let book = makeStreamingHTMLBook(id: "handle-action-readStreaming")
         let mockRegistry = TPPBookRegistryMock()
@@ -1548,7 +1544,8 @@ final class BookDetailViewModelTests: XCTestCase {
             settings: TPPSettings(),
             opdsFeedService: AppContainer.production().opdsFeedService,
             samplePreviewManager: AppContainer.production().samplePreviewManager,
-            readerService: AppContainer.production().readerService
+            readerService: AppContainer.production().readerService,
+            dependencies: .testDouble(bookOpen: .testDouble(navigationHub: navigationHub))
         )
 
         XCTAssertEqual(coordinator.path.count, 0,

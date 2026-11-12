@@ -149,6 +149,7 @@ final class BookDetailNavigationTests: XCTestCase {
             opdsFeedService: appContainer.opdsFeedService,
             samplePreviewManager: appContainer.samplePreviewManager,
             readerService: appContainer.readerService,
+            dependencies: .testDouble(),
             navigator: navigator
         )
     }

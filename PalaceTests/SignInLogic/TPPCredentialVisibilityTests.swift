@@ -44,7 +44,8 @@ final class TPPCredentialPersistenceTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: drmAuthorizer
+            drmAuthorizer: drmAuthorizer,
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 
@@ -225,7 +226,8 @@ final class TPPDRMFailureCredentialPreservationTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: drmAuthorizer
+            drmAuthorizer: drmAuthorizer,
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 
@@ -499,7 +501,8 @@ final class TPPSignInAuthStateTransitionTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: uiDelegate,
-            drmAuthorizer: drmAuthorizer
+            drmAuthorizer: drmAuthorizer,
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 
@@ -600,7 +603,8 @@ final class TPPSignInProfileDocEdgeCaseTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: drmAuthorizer
+            drmAuthorizer: drmAuthorizer,
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 
@@ -805,7 +809,8 @@ final class TPPCapturedCredentialsTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: drmAuthorizer
+            drmAuthorizer: drmAuthorizer,
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 

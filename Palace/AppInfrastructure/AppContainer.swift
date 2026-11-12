@@ -151,7 +151,8 @@ struct AppContainer: @unchecked Sendable {
             accountsManager: accountsManager,
             samplePreviewManager: samplePreviewManager,
             readerService: readerService,
-            activityPolicy: activityPolicy
+            activityPolicy: activityPolicy,
+            bookOpenDependencies: bookOpenDependencies
         )
         storage.bookCellModelCache = cache
         return cache
@@ -314,6 +315,29 @@ struct AppContainer: @unchecked Sendable {
         )
         AppContainer._ratingPromptPresenter = presenter
         return presenter
+    }
+
+    /// What a book open reaches. The session is a closure because
+    /// `AudiobookSessionManager` builds this bundle while `audiobookSession`
+    /// is still constructing it. The closure holds a non-owning copy because
+    /// the owned `bookCellModelCache` keeps this bundle.
+    @MainActor
+    var bookOpenDependencies: BookOpenDependencies {
+        BookOpenDependencies(
+            readers: readerService,
+            audiobookSession: { [container = nonOwningCopy()] in container.audiobookSession },
+            navigationHub: navigationCoordinatorHub
+        )
+    }
+
+    @MainActor
+    var bookDetailDependencies: BookDetailDependencies {
+        BookDetailDependencies(
+            bookOpen: bookOpenDependencies,
+            signInPresenter: signInModalSheetPresenter,
+            bookCompletion: ratingPromptPresenter,
+            signInNetwork: networkExecutor
+        )
     }
 
     /// Process-wide visibility, thermal and power state (PP-5508). The scene

@@ -2,8 +2,7 @@
 //  BookSignInRedirectHandler's SAML/cookie auth-redirect state machine:
 //  handleProblem's .SAMLStarted circuit breaker, expired SAML cookies, and
 //  no-credentials reauth + retry, plus cancellation, book-found and cookie-storage
-//  sync. handleSAMLStartedState's web-view presentation has no observable unit
-//  surface and is left to integration testing.
+//  sync, and the web sheet handleSAMLStartedState hands to the injected presenter.
 //
 
 import XCTest
@@ -18,6 +17,8 @@ final class BookSignInRedirectHandlerTests: XCTestCase {
     private var stateManager: DownloadStateManager!
     private var reauthenticator: TPPReauthenticatorMock!
     private var userAccount: TPPUserAccountMock!
+    private var universalLinks: UniversalLinksStub!
+    private var presentedSheets: PresentedSheets!
     private var credentialState: CredentialRequestState!
     private var spyDelegate: SpyDelegate!
     private var handler: BookSignInRedirectHandler!
@@ -31,6 +32,8 @@ final class BookSignInRedirectHandlerTests: XCTestCase {
         userAccount = TPPUserAccountMock()
         credentialState = CredentialRequestState()
         spyDelegate = SpyDelegate()
+        universalLinks = UniversalLinksStub(URL(string: "https://links.example.test/callback")!)
+        presentedSheets = PresentedSheets()
 
         handler = BookSignInRedirectHandler(
             bookRegistry: registry,
@@ -42,7 +45,9 @@ final class BookSignInRedirectHandlerTests: XCTestCase {
             // `self` then traps with "Unexpectedly found nil", killing the
             // whole test host and taking the rest of the bundle with it.
             userAccountProvider: { [account = userAccount!] in account },
-            credentialRequestState: credentialState
+            credentialRequestState: credentialState,
+            universalLinksSettings: universalLinks,
+            presentWebSheet: { [presentedSheets = presentedSheets!] model in presentedSheets.models.append(model) }
         )
         handler.delegate = spyDelegate
 
@@ -58,6 +63,8 @@ final class BookSignInRedirectHandlerTests: XCTestCase {
         userAccount = nil
         credentialState = nil
         spyDelegate = nil
+        universalLinks = nil
+        presentedSheets = nil
         handler = nil
         book = nil
         try super.tearDownWithError()
@@ -112,6 +119,22 @@ final class BookSignInRedirectHandlerTests: XCTestCase {
         await Task { @MainActor in }.value
         await Task { @MainActor in }.value
         await Task { @MainActor in }.value
+    }
+
+    // MARK: - handleSAMLStartedState
+
+    /// The SAML sheet must carry the injected redirect URL, or the IdP's return
+    /// to the app is not recognised and the borrow never resumes.
+    func testHandleSAMLStartedState_presentsSheetWithInjectedUniversalLink() async {
+        let request = URLRequest(url: URL(string: "https://idp.example.test/start")!)
+
+        handler.handleSAMLStartedState(for: book, withRequest: request, cookies: [])
+        await flushMainActorTasks()
+
+        XCTAssertEqual(registry.state(for: book.identifier), .SAMLStarted)
+        XCTAssertEqual(presentedSheets.models.count, 1, "exactly one sheet is handed to the injected presenter")
+        XCTAssertEqual(presentedSheets.models.first?.universalLinksURL, universalLinks.universalLinksURL)
+        XCTAssertEqual(presentedSheets.models.first?.initialRequest.url, request.url)
     }
 
     // MARK: - handleLoginCancellation
@@ -293,4 +316,14 @@ private final class SpyDelegate: BookSignInRedirectHandlerDelegate {
     func startDownload(for book: TPPBook, withRequest request: URLRequest?) {
         startDownloadCalls.append((book, book.identifier))
     }
+}
+
+private final class UniversalLinksStub: NYPLUniversalLinksSettings {
+    let universalLinksURL: URL
+    init(_ url: URL) { universalLinksURL = url }
+}
+
+@MainActor
+private final class PresentedSheets {
+    var models: [SignInWebSheetViewModel] = []
 }

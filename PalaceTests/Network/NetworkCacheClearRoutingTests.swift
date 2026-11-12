@@ -102,12 +102,8 @@ final class NetworkCacheClearRoutingTests: XCTestCase {
     /// clear the network executor's cache and must NOT call
     /// `URLCache.shared.removeAllCachedResponses()`. A revert to the wrong cache
     /// (re-introducing the split-brain / privacy leak) fails this test.
-    ///
-    /// This is a source-structural test (like the MetaTests lints) because the
-    /// production sites hardwire `AppContainer.production().networkExecutor` —
-    /// there is no injection seam to spy without restructuring critical-path
-    /// sign-out control flow (forbidden) or exercising real
-    /// keychain / WKWebsiteDataStore singletons (banned by the TDD rules).
+    /// That the injected `appNetwork` is the one cleared is asserted by
+    /// `TPPSignOutCompletesLocallyTests` and `ScopedResetTests`.
     func testSignOutAndForceReset_routeCacheClearThroughExecutor_notURLCacheShared() throws {
         let repoRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()   // Network/
@@ -123,7 +119,7 @@ final class NetworkCacheClearRoutingTests: XCTestCase {
             let url = repoRoot.appendingPathComponent(site)
             let source = try String(contentsOf: url, encoding: .utf8)
 
-            XCTAssertTrue(source.contains("networkExecutor.clearCache()"),
+            XCTAssertTrue(source.contains("appNetwork.clearCache()"),
                           "\(site) must route the hygiene cache-clear through the executor")
             XCTAssertFalse(source.contains("URLCache.shared.removeAllCachedResponses()"),
                            "\(site) must NOT clear URLCache.shared — feeds live in the executor's private cache (N1 split-brain)")

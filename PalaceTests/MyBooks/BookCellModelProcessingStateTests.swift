@@ -61,7 +61,8 @@ final class BookCellModelProcessingStateTests: XCTestCase {
             accountsManager: container.accountsManager,
             samplePreviewManager: container.samplePreviewManager,
             readerService: container.readerService,
-            reachability: mockReachability
+            reachability: mockReachability,
+            bookOpenDependencies: .testDouble()
         )
     }
 

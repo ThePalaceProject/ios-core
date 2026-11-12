@@ -38,22 +38,26 @@ struct AudiobookOpenFailureAlert {
     }
 
     /// Production wiring. Retry reopens through `BookOpenRouter` with the
-    /// caller's registry, the same route a patron's Listen tap takes.
-    static func production(bookRegistry: TPPBookRegistryProvider) -> AudiobookOpenFailureAlert {
+    /// caller's registry and open dependencies, the same route a patron's
+    /// Listen tap takes.
+    static func production(bookRegistry: TPPBookRegistryProvider,
+                           openDependencies: BookOpenDependencies) -> AudiobookOpenFailureAlert {
         AudiobookOpenFailureAlert(
             errorLogger: DefaultErrorLogger(),
             retryTracker: .shared,
             present: { alert in
                 TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
             },
-            reopen: { book in BookOpenRouter.open(book, bookRegistry: bookRegistry) }
+            reopen: { book in BookOpenRouter.open(book, bookRegistry: bookRegistry, dependencies: openDependencies) }
         )
     }
 
     /// The session manager's production `showOpenFailureAlert` dependency.
-    static func presenter(bookRegistry: TPPBookRegistryProvider) -> @MainActor (TPPBook, [String: Any]) -> Void {
+    static func presenter(bookRegistry: TPPBookRegistryProvider,
+                          openDependencies: BookOpenDependencies) -> @MainActor (TPPBook, [String: Any]) -> Void {
         { book, failureMetadata in
-            production(bookRegistry: bookRegistry).show(book: book, failureMetadata: failureMetadata)
+            production(bookRegistry: bookRegistry, openDependencies: openDependencies)
+                .show(book: book, failureMetadata: failureMetadata)
         }
     }
 

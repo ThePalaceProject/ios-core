@@ -34,7 +34,8 @@ final class BookCellModelConnectivityTests: XCTestCase {
             accountsManager: container.accountsManager,
             samplePreviewManager: container.samplePreviewManager,
             readerService: container.readerService,
-            reachability: reachability
+            reachability: reachability,
+            bookOpenDependencies: .testDouble()
         )
         await drainMainQueueAsync()
         model.isLoading = true

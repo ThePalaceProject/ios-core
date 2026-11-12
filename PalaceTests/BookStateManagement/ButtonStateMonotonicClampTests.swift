@@ -189,14 +189,14 @@ final class ButtonStateMonotonicClampTests: XCTestCase {
     private func makeCell(state: TPPBookState) -> (BookCellModel, TPPBook) {
         let book = makeBook()
         mockRegistry.addBook(book, state: state)
-        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let model = BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, bookOpenDependencies: .testDouble())
         return (model, book)
     }
 
     private func makeDetail(state: TPPBookState) -> (BookDetailViewModel, TPPBook) {
         let book = makeBook()
         mockRegistry.addBook(book, state: state)
-        let vm = BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, settings: TPPSettings(), opdsFeedService: appContainer.opdsFeedService, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService)
+        let vm = BookDetailViewModel(book: book, registry: mockRegistry, downloadCenter: appContainer.downloadCenter, accountsManager: appContainer.accountsManager, settings: TPPSettings(), opdsFeedService: appContainer.opdsFeedService, samplePreviewManager: appContainer.samplePreviewManager, readerService: appContainer.readerService, dependencies: .testDouble())
         return (vm, book)
     }
 

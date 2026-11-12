@@ -1298,7 +1298,8 @@ final class AccountDetailViewModelSignedInDerivationTests: PalaceTestCase {
             settings: container.settings,
             userAccountPublisher: container.userAccountPublisher,
             drmAuthorizerProvider: container.drmAuthorizerProvider,
-            credentialSnapshotProvider: { _ in box.snapshot }
+            credentialSnapshotProvider: { _ in box.snapshot },
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 

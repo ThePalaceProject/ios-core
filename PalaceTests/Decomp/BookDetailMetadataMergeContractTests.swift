@@ -215,7 +215,8 @@ final class BookDetailMetadataMergeContractTests: XCTestCase {
             opdsFeedService: appContainer.opdsFeedService,
             samplePreviewManager: appContainer.samplePreviewManager,
             readerService: appContainer.readerService,
-            metadataHydrator: hydrator
+            metadataHydrator: hydrator,
+            dependencies: .testDouble()
         )
     }
 

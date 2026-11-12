@@ -142,7 +142,8 @@ final class AccountSwitchCleanupTests: XCTestCase {
             downloadCenter: AppContainer.production().downloadCenter,
             accountsManager: accountsManager,
             samplePreviewManager: AppContainer.production().samplePreviewManager,
-            readerService: AppContainer.production().readerService
+            readerService: AppContainer.production().readerService,
+            bookOpenDependencies: .testDouble()
         )
 
         let book = TPPBookMocker.mockBook(identifier: "cache-test", title: "Cache Test", authors: "Author")

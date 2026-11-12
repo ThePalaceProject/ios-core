@@ -38,7 +38,8 @@ final class TPPSignInAdobeSkipTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: drmAuthorizer
+            drmAuthorizer: drmAuthorizer,
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 

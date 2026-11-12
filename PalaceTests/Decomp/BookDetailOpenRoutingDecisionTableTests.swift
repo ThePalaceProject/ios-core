@@ -4,11 +4,10 @@
 //
 //  Pins every cell of `BookDetailViewModel.openBook(_:completion:)` routing
 //  (format → destination), in both registry states that reach it:
+//    .epub / .pdf   → the injected reader opened once, completion invoked
 //    .audiobook     → session opened once, completion invoked
 //    .streamingHTML → route pushed once, completion invoked
 //    .unsupported   → format error, completion NOT invoked (a caller's spinner stays)
-//  EPUB/PDF go through `BookOpenRouter` and the non-injected reader service, so their
-//  cells are covered by the pure `BookOpenRouter` table instead.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -28,47 +27,57 @@ final class BookDetailOpenRoutingDecisionTableTests: XCTestCase {
 
     private var appContainer: AppContainer!
     private var coordinator: NavigationCoordinator!
-    private var pinnedRouter: AppTabRouter!
+    private var navigationHub: NavigationCoordinatorHub!
+    private var readers: BookReaderOpeningSpy!
 
     override func setUp() {
         super.setUp()
         appContainer = makeTestAppContainer()
-        // The streamingHTML arm resolves its coordinator off the PRODUCTION hub
-        // (`AppContainer.production().navigationCoordinatorHub`), so a test
-        // container cannot observe it. Register a real coordinator on the
-        // production hub for the duration of the test, pinning the tab router so
-        // the lookup does not depend on whatever an earlier test left in
-        // `pendingTab` — the PP-5022 hazard documented in
-        // StreamingReaderPresentationContractTests.
-        pinnedRouter = AppTabRouter()
-        pinnedRouter.selected = .myBooks
-        AppContainer.production().tabRouterHub.router = pinnedRouter  // MIGRATED-DEFERRED: BookOpenRouter.presentStreamingReader resolves its coordinator off the PRODUCTION hub, so the production hub IS the contract under test; a makeTestAppContainer() hub is a different object the router never consults.
+        // A hub with no tab router resolves to the last registered stack, so
+        // the streamingHTML arm lands on this coordinator.
         coordinator = NavigationCoordinator()
-        AppContainer.production().navigationCoordinatorHub.register(coordinator, for: .myBooks)  // MIGRATED-DEFERRED: same hub, same reason: this is where the router looks.
+        navigationHub = NavigationCoordinatorHub(tabRouterHub: nil)
+        navigationHub.register(coordinator, for: .myBooks)
+        readers = BookReaderOpeningSpy()
     }
 
     override func tearDown() {
-        // The hub holds coordinators weakly; dropping the strong references is
-        // what clears the registration.
         coordinator = nil
-        pinnedRouter = nil
+        navigationHub = nil
+        readers = nil
         appContainer = nil
         super.tearDown()
     }
 
     // MARK: - The table, one test per (format, state) row
 
-    // `.epub` and `.pdf` are DELIBERATELY not driven here. Both arms run
-    // `BookOpenRouter` -> `AppContainer.production().readerService`, and a unit
-    // context has a presenter, so the open actually executes: a measured run of
-    // an earlier draft of this file logged "Content Protection Error on first
-    // open - attempting transparent re-download", added the fixture to the
-    // PRODUCTION registry and started a download task. A pin that dirties the
-    // production registry to observe a routing decision is not a pin. Their
-    // cells are asserted instead by `BookOpenRouterTests`, the pure
-    // format -> destination table the extraction adds, which reaches no reader
-    // at all. What is NOT claimed: this file does not pin the epub/pdf
-    // destinations behaviourally, and nothing else in the suite does either.
+    /// `.epub` — opens the screen's injected reader, not the app's reader service.
+    func testOpenBook_epub_opensTheInjectedReaderOnce() async {
+        // MISSING-001-OK: table-driven row — the assertions live in `runRow`.
+        await runRow(
+            book: TPPBookMocker.mockBook(distributorType: .EpubZip),
+            expectedType: .epub,
+            state: .downloadSuccessful,
+            expectSessionOpens: 0,
+            expectRouteGrowth: 0,
+            expectCompletion: true,
+            expectEPUBOpens: 1
+        )
+    }
+
+    /// `.pdf` — opens the injected reader's PDF entry point.
+    func testOpenBook_pdf_opensTheInjectedReadersPDFEntryOnce() async {
+        // MISSING-001-OK: table-driven row — the assertions live in `runRow`.
+        await runRow(
+            book: TPPBookMocker.mockBook(distributorType: .OpenAccessPDF),
+            expectedType: .pdf,
+            state: .downloadSuccessful,
+            expectSessionOpens: 0,
+            expectRouteGrowth: 0,
+            expectCompletion: true,
+            expectPDFOpens: 1
+        )
+    }
 
     /// `.audiobook` — the one positive destination that is injectable. Opens the
     /// session exactly once and does NOT push a streaming route.
@@ -196,7 +205,9 @@ final class BookDetailOpenRoutingDecisionTableTests: XCTestCase {
                         state: TPPBookState,
                         expectSessionOpens: Int,
                         expectRouteGrowth: Int,
-                        expectCompletion: Bool) async {
+                        expectCompletion: Bool,
+                        expectEPUBOpens: Int = 0,
+                        expectPDFOpens: Int = 0) async {
         XCTAssertEqual(book.defaultBookContentType, expectedType,
                        "precondition: the fixture must classify as \(expectedType) — otherwise this row measures a different cell than it names")
 
@@ -232,6 +243,10 @@ final class BookDetailOpenRoutingDecisionTableTests: XCTestCase {
                        "\(expectedType): streamingHTML route pushes")
         XCTAssertEqual(completionInvoked, expectCompletion,
                        "\(expectedType): completion invocation")
+        XCTAssertEqual(readers.openedEPUBIdentifiers, Array(repeating: book.identifier, count: expectEPUBOpens),
+                       "\(expectedType): injected EPUB reader opens")
+        XCTAssertEqual(readers.openedPDFIdentifiers, Array(repeating: book.identifier, count: expectPDFOpens),
+                       "\(expectedType): injected PDF reader opens")
         XCTAssertTrue(vm.processingButtons.isEmpty,
                       "\(expectedType): every arm of the open switch clears processingButtons")
     }
@@ -250,7 +265,9 @@ final class BookDetailOpenRoutingDecisionTableTests: XCTestCase {
             opdsFeedService: appContainer.opdsFeedService,
             samplePreviewManager: appContainer.samplePreviewManager,
             readerService: appContainer.readerService,
-            audiobookSession: session
+            dependencies: .testDouble(bookOpen: .testDouble(readers: readers,
+                                                            audiobookSession: session,
+                                                            navigationHub: navigationHub))
         )
     }
 

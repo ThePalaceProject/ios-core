@@ -161,7 +161,7 @@ final class BookDetailOpenRoutingTests: XCTestCase {
             opdsFeedService: appContainer.opdsFeedService,
             samplePreviewManager: appContainer.samplePreviewManager,
             readerService: appContainer.readerService,
-            audiobookSession: session
+            dependencies: .testDouble(bookOpen: .testDouble(audiobookSession: session))
         )
     }
 
