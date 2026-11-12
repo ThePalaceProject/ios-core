@@ -59,10 +59,14 @@ import PalaceUtilities
 
     /// Production entry point that also wires the PP-4963 trace.
     convenience init(book: TPPBook, positionTrace: AudiobookPositionTraceRecorder?) {
+        let container = AppContainer.production()
         self.init(
             book: book,
-            registry: AppContainer.production().bookRegistry,
-            annotationsManager: TPPAnnotationsWrapper(),
+            registry: container.bookRegistry,
+            // The book opens from the selected library. Pinning that library
+            // here keeps its annotations there after the patron selects
+            // another library while it plays (PP-5552).
+            annotationsManager: TPPAnnotationsWrapper(accountId: container.accountsManager.currentAccountId),
             positionWriter: nil,
             positionTrace: positionTrace
         )
