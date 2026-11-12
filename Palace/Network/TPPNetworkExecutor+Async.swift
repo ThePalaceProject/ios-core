@@ -3,8 +3,8 @@
 //  Palace
 //
 //  The executor's awaited entry points. Split out of `TPPNetworkExecutor.swift`
-//  so that file stays under its code-line ceiling; the callback forms these
-//  bridge to, and the shared `preflight` both use, remain there.
+//  so that file stays under its code-line ceiling; the callback forms most of
+//  these bridge to, `execute`, and the shared `preflight` remain there.
 //
 //  Every overload here resumes on the awaiting caller's actor, which is the
 //  reason callers are being moved onto them (PP-5301): a completion parameter
