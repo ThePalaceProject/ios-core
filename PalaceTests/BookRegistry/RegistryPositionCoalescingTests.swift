@@ -9,6 +9,7 @@
 //  the sign-out does not write the old shelf back.
 //
 
+import Combine
 import XCTest
 @testable import Palace
 import PalaceBookModel
@@ -298,6 +299,91 @@ final class RegistryPositionCoalescingTests: XCTestCase {
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: primary.path),
                        "a save that captured the shelf before sign-out must not write it after sign-out")
+    }
+
+    // MARK: - Save order
+
+    /// Two saves can reach the disk queue in the other order from their
+    /// snapshots; the older snapshot must not replace the newer file.
+    func testSaveOrder_OlderSnapshotQueuedAfterANewerSave_DoesNotWriteTheOlderShelf() async {
+        await fixture.addBooks(["a1"])
+        fixture.recorder.holdNextSaveSnapshot(account: accountA)
+        let registry = self.registry
+        let saveDone = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            registry.saveSync()
+            saveDone.signal()
+        }
+        let held = await waitOffMain(fixture.recorder.held, timeout: 10)
+        XCTAssertTrue(held, "premise: the save holds the shelf without a2 and has not queued its write")
+
+        await fixture.addBooks(["a2"])
+        XCTAssertNotNil(fixture.persistedLocations(accountA)?["a2"], "premise: the newer save wrote a2")
+
+        fixture.recorder.release.signal()
+        let finished = await waitOffMain(saveDone, timeout: 20)
+        XCTAssertTrue(finished)
+
+        XCTAssertEqual(Set(fixture.persistedLocations(accountA).map { Array($0.keys) } ?? []), ["a1", "a2"],
+                       "the older snapshot must not remove a2 from the registry file")
+    }
+
+    /// A shelf save dropped for an older snapshot still reports the change:
+    /// the newer file on disk holds it.
+    func testSaveOrder_DroppedOlderShelfSave_StillReportsTheRegistryChange() async {
+        await fixture.addBooks(["a1"])
+        fixture.recorder.holdNextSaveSnapshot(account: accountA)
+        let registry = self.registry
+        let saveDone = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            registry.setFulfillmentId("f1", for: "a1")
+            saveDone.signal()
+        }
+        let held = await waitOffMain(fixture.recorder.held, timeout: 10)
+        XCTAssertTrue(held, "premise: the fulfillment save holds its snapshot and has not queued its write")
+        await fixture.addBooks(["a2"])
+
+        var changes = 0
+        let subscription = registry.registryDidChangePublisher.sink { changes += 1 }
+        fixture.recorder.release.signal()
+        let finished = await waitOffMain(saveDone, timeout: 20)
+        XCTAssertTrue(finished)
+        await registry._awaitPendingPersistenceForTesting()
+        await registry._awaitPendingWritesForTesting()
+        subscription.cancel()
+
+        XCTAssertEqual(changes, 1, "the dropped save must still announce its shelf change")
+        XCTAssertEqual(Set(fixture.persistedLocations(accountA).map { Array($0.keys) } ?? []), ["a1", "a2"])
+    }
+
+    /// A synchronous save also counts as the newest file on disk: an older
+    /// async save queued after it must not replace it.
+    func testSaveOrder_OlderAsyncSaveQueuedAfterANewerSaveSync_DoesNotWriteTheOlderShelf() async {
+        await fixture.addBooks(["a1"])
+        await setPosition("p0", for: "a1", .coalesced)
+        XCTAssertEqual(fixture.persistedLocations(accountA)?["a1"], "p0", "premise: the first turn is written at once")
+        fixture.recorder.holdNextSaveSnapshot(account: accountA)
+        let registry = self.registry
+        let saveDone = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            registry.setFulfillmentId("f1", for: "a1")
+            saveDone.signal()
+        }
+        let held = await waitOffMain(fixture.recorder.held, timeout: 10)
+        XCTAssertTrue(held, "premise: the async save holds the shelf at p0")
+
+        await setPosition("p1", for: "a1", .coalesced)
+        XCTAssertEqual(fixture.persistedLocations(accountA)?["a1"], "p0", "premise: p1 waits in memory")
+        registry.saveSync()
+        XCTAssertEqual(fixture.persistedLocations(accountA)?["a1"], "p1", "premise: only the synchronous save wrote p1")
+
+        fixture.recorder.release.signal()
+        let finished = await waitOffMain(saveDone, timeout: 20)
+        XCTAssertTrue(finished)
+        await registry._awaitPendingPersistenceForTesting()
+
+        XCTAssertEqual(fixture.persistedLocations(accountA)?["a1"], "p1",
+                       "the async save that saw p0 must not replace the newer synchronous save")
     }
 
     // MARK: - Account switch
