@@ -14,9 +14,7 @@ import PalaceCatalog
 /// lazily on first read (the members are `@MainActor`); the initializer touches
 /// no isolated state, so a container can still be built on any thread.
 ///
-/// Process-wide services (audiobook session and presenter, playback
-/// bootstrapper, sample preview, rating, side-loading, book-open tracker,
-/// offline-queue coordinator) stay in `AppContainer`'s statics.
+/// Services that live for the whole process are in `ProcessServices`.
 @MainActor
 final class AppContainerOwnedServices {
     var signInModalSheetPresenter: SignInModalSheetPresenter?
@@ -25,6 +23,11 @@ final class AppContainerOwnedServices {
     var catalogRepository: CatalogRepositoryProtocol?
 
     nonisolated init() {}
+
+    /// The owned services that hold state for the current library.
+    func accountScopedServices() -> [AccountScopedResetting] {
+        [bookCellModelCache].compactMap { $0 }
+    }
 }
 
 /// Weak reference to a container's owned services, held by `nonOwningCopy()`.

@@ -354,3 +354,12 @@ extension BookCellModelCache {
         Log.info(#file, "BookCellModelCache: Cleared \(previousCount) entries after memory warning")
     }
 }
+
+// MARK: - Library switch
+
+extension BookCellModelCache: AccountScopedResetting {
+    /// Drops the previous library's models before the switch begins.
+    func resetForAccountSwitch() {
+        handleAccountChange()
+    }
+}
