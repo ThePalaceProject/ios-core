@@ -886,12 +886,10 @@ protocol AnnotationsManager {
     }
 
     /// The annotations collection of the library `accountId` names. The
-    /// selected library keeps `annotationsURL`, which follows its main feed;
-    /// any other library is addressed through its catalog URL.
+    /// selected library keeps `annotationsURL`, which follows its main feed
+    /// (and `annotationsURLOverride` in tests); any other library is addressed
+    /// through its catalog URL.
     static func annotationsURL(forAccountId accountId: String?) -> URL? {
-        if let override = annotationsURLOverride {
-            return override
-        }
         let manager = Self.currentAccountsManager
         guard let accountId, accountId != manager.currentAccountId else {
             return annotationsURL

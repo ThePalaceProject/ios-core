@@ -20,7 +20,7 @@ import PalaceReadingPosition
 /// Two libraries with loaded account details. Library B is selected; the book
 /// under test belongs to library A.
 private final class BookAndSelectedLibraries: NSObject, TPPLibraryAccountsProvider, @unchecked Sendable {
-    let accountA: Account
+    var accountA: Account
     let accountB: Account
     let patronA = TPPUserAccountMock()
     let patronB = TPPUserAccountMock()
@@ -170,6 +170,7 @@ final class TPPAnnotationsBookLibraryScopeTests: XCTestCase {
         TPPAnnotations.executorOverride = nil
         TPPAnnotations.accountsManagerOverride = nil
         AnnotationDevice.accountsManagerOverride = nil
+        AnnotationDevice.firebaseDeviceIDOverride = nil
         TPPAnnotations.offlineQueueOverride = nil
         TPPAnnotations.errorLoggerOverride = nil
         TPPAnnotations.annotationsURLOverride = savedAnnotationsURLOverride
@@ -288,7 +289,67 @@ final class TPPAnnotationsBookLibraryScopeTests: XCTestCase {
         XCTAssertEqual(requests.first?.device, Self.deviceB)
     }
 
+    /// The common case: no switch. The selected library's URL comes from its
+    /// main feed (pinned here by the override), not its catalog URL.
+    func testPostListeningPosition_BookFromSelectedLibrary_UsesSelectedLibraryFeed() async {
+        let selectedFeedAnnotations = URL(string: "https://feed.example.test/selected/annotations/")!
+        libraries.selectedId = libraries.accountA.uuid
+        TPPAnnotations.annotationsURLOverride = selectedFeedAnnotations
+
+        _ = await postListeningPosition(with: bookAnnotations)
+
+        XCTAssertEqual(sent.value.map(\.url), [selectedFeedAnnotations])
+        XCTAssertEqual(sent.value.first?.authorization, "Bearer bearerA")
+    }
+
+    func testPostListeningPosition_LibraryAWithoutCatalogURL_SendsNothing() async throws {
+        let link = OPDS2Link(href: "https://example.test/home", type: nil, rel: "alternate", templated: false,
+                             displayNames: nil, descriptions: nil)
+        let metadata = OPDS2Publication.Metadata(updated: Date(), description: nil,
+                                                 id: "urn:uuid:library-without-catalog", title: "No Catalog")
+        let noCatalog = Account(publication: OPDS2Publication(links: [link], metadata: metadata, images: nil),
+                                imageCache: MockImageCache())
+        noCatalog._setState(.detailsLoaded(try XCTUnwrap(detailsA)))
+        XCTAssertNil(noCatalog.catalogUrl, "fixture precondition")
+        libraries.accountA = noCatalog
+        signInLibraryB()
+        TPPAnnotations.annotationsURLOverride = Self.libraryBAnnotations
+
+        let response = await postListeningPosition(with: TPPAnnotationsWrapper(accountId: noCatalog.uuid))
+
+        XCTAssertNil(response)
+        XCTAssertEqual(sent.value.count, 0)
+    }
+
+    /// Without an Adobe device ID for library A, the shared fallback is sent,
+    /// not library B's Adobe ID.
+    func testPostListeningPosition_LibraryAHasNoAdobeDeviceID_SendsFallbackDevice() async {
+        signInLibraryB()
+        libraries.patronA.setDeviceID("")
+        AnnotationDevice.firebaseDeviceIDOverride = "fallback-device"
+
+        _ = await postListeningPosition(with: bookAnnotations)
+
+        XCTAssertEqual(sent.value.first?.device, "urn:uuid:fallback-device")
+    }
+
     // MARK: - Bookmarks
+
+    func testGetServerBookmarks_SyncTurnedOffForLibraryA_SendsNothing() async {
+        signInLibraryB()
+        detailsA.syncPermissionGranted = false
+        let book = AnnotationsTestFixtures.createTestBook(annotationsURL: Self.libraryAAnnotations)
+        let annotations = bookAnnotations
+
+        let fetched: Bool = await withCheckedContinuation { continuation in
+            annotations.getServerBookmarks(forBook: book, atURL: book.annotationsURL, motivation: .bookmark) {
+                continuation.resume(returning: $0 != nil)
+            }
+        }
+
+        XCTAssertFalse(fetched)
+        XCTAssertEqual(sent.value.count, 0)
+    }
 
     func testPostAudiobookBookmark_BookFromLibraryAWhileBSelected_PostsToLibraryA() async throws {
         let serverId = try await TPPAnnotations.postAudiobookBookmark(forBook: AnnotationsTestFixtures.testBookID,
@@ -355,18 +416,22 @@ final class TPPAnnotationsBookLibraryScopeTests: XCTestCase {
 
     // MARK: - Producer: the audiobook position write
 
-    /// The 15-second autosave goes through the position writer and adapter; this
-    /// drives that chain, not only the wrapper.
-    func testSaveListeningPosition_AfterSwitchToLibraryB_ReachesLibraryA() async throws {
+    /// Built through the init the audiobook session uses while library A is
+    /// selected; the autosave after the switch to B goes through the position
+    /// writer and adapter to library A.
+    func testSaveListeningPosition_OpenedInLibraryAThenSwitchedToB_ReachesLibraryA() async throws {
         let book = TPPBookMocker.mockBook(identifier: AnnotationsTestFixtures.testBookID, title: "Scope Book")
         let registry = TPPBookRegistryMock()
         registry.addBook(book, state: .downloadSuccessful)
         let manifest = try Manifest.from(jsonFileName: ManifestJSON.snowcrash.rawValue, bundle: Bundle(for: type(of: self)))
         let tracks = Tracks(manifest: manifest, audiobookID: book.identifier, token: nil)
+        libraries.selectedId = libraries.accountA.uuid
         let sut = AudiobookBookmarkBusinessLogic(book: book,
+                                                 positionTrace: nil,
                                                  registry: registry,
-                                                 annotationsManager: bookAnnotations,
+                                                 accountsManager: libraries,
                                                  debounceInterval: nil)
+        libraries.selectedId = libraries.accountB.uuid
 
         sut.saveListeningPosition(at: TrackPosition(track: tracks.tracks[1], timestamp: 42.0, tracks: tracks), completion: nil)
         await sut._awaitPositionWriteForTesting()

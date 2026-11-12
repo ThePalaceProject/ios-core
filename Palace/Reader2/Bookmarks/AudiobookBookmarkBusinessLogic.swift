@@ -62,13 +62,29 @@ import PalaceUtilities
         let container = AppContainer.production()
         self.init(
             book: book,
+            positionTrace: positionTrace,
             registry: container.bookRegistry,
-            // The book opens from the selected library. Pinning that library
-            // here keeps its annotations there after the patron selects
-            // another library while it plays (PP-5552).
-            annotationsManager: TPPAnnotationsWrapper(accountId: container.accountsManager.currentAccountId),
+            accountsManager: container.accountsManager
+        )
+    }
+
+    /// The book opens from the selected library. Pinning that library here
+    /// keeps its annotations there after the patron selects another library
+    /// while it plays (PP-5552).
+    convenience init(
+        book: TPPBook,
+        positionTrace: AudiobookPositionTraceRecorder?,
+        registry: TPPBookRegistryProvider,
+        accountsManager: TPPLibraryAccountsProvider,
+        debounceInterval: TimeInterval? = 1.0
+    ) {
+        self.init(
+            book: book,
+            registry: registry,
+            annotationsManager: TPPAnnotationsWrapper(accountId: accountsManager.currentAccountId),
             positionWriter: nil,
-            positionTrace: positionTrace
+            positionTrace: positionTrace,
+            debounceInterval: debounceInterval
         )
     }
 
