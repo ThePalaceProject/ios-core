@@ -847,6 +847,20 @@ protocol AnnotationsManager {
         return details
     }
 
+    /// Details of a library named by `accountId`. Selecting another library
+    /// marks the previous one `.detailsEvicted` but keeps its parsed `details`,
+    /// and an audiobook from that library keeps playing and syncing (PP-5552).
+    /// Every other state still requires `.detailsLoaded`.
+    fileprivate static func details(ofBookLibrary account: Account?) -> AccountDetails? {
+        if let details = loadedDetails(of: account) {
+            return details
+        }
+        guard let account, case .detailsEvicted = account.loadState else {
+            return nil
+        }
+        return account.details
+    }
+
     /// Annotation-syncing is possible only if the given `account` is signed-in
     /// and if the currently selected library supports it.
     ///
@@ -865,7 +879,7 @@ protocol AnnotationsManager {
         let manager = accountsManager ?? Self.currentAccountsManager
         let account = accountId.map(manager.userAccount(for:)) ?? manager.currentUserAccount
         let acct = accountId.map(manager.account) ?? manager.currentAccount
-        let details = loadedDetails(of: acct)
+        let details = accountId == nil ? loadedDetails(of: acct) : details(ofBookLibrary: acct)
         let hasCreds = account.hasCredentials()
         let supportsSync = details?.supportsSimplyESync == true
         let permissionGranted = details?.syncPermissionGranted == true

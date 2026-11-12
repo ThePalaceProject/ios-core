@@ -200,6 +200,13 @@ final class TPPAnnotationsBookLibraryScopeTests: XCTestCase {
         TPPAnnotationsWrapper(accountId: libraries.accountA.uuid)
     }
 
+    /// What selecting library B does to library A in the app: its state
+    /// becomes `.detailsEvicted` and its parsed details stay on the account.
+    private func evictLibraryA() {
+        libraries.accountA.details = detailsA
+        libraries.accountA._setState(.detailsEvicted(.libraryDeselected(uuid: libraries.accountA.uuid)))
+    }
+
     private func signInLibraryB() {
         libraries.patronB.setAuthToken("bearerB", barcode: "patronB", pin: "2222",
                                        expirationDate: Date().addingTimeInterval(3600))
@@ -333,6 +340,35 @@ final class TPPAnnotationsBookLibraryScopeTests: XCTestCase {
         XCTAssertEqual(sent.value.first?.device, "urn:uuid:fallback-device")
     }
 
+    func testPostListeningPosition_LibraryAEvictedBySwitch_PostsToLibraryA() async {
+        evictLibraryA()
+
+        _ = await postListeningPosition(with: bookAnnotations)
+
+        XCTAssertEqual(sent.value.map(\.url), [Self.libraryAAnnotations])
+        XCTAssertEqual(sent.value.first?.authorization, "Bearer bearerA")
+    }
+
+    /// An evicted library whose details never loaded has nothing to check sync against.
+    func testPostListeningPosition_LibraryAEvictedWithoutDetails_SendsNothing() async {
+        libraries.accountA.details = nil
+        libraries.accountA._setState(.detailsEvicted(.libraryDeselected(uuid: libraries.accountA.uuid)))
+
+        let response = await postListeningPosition(with: bookAnnotations)
+
+        XCTAssertNil(response)
+        XCTAssertEqual(sent.value.count, 0)
+    }
+
+    /// Eviction applies only to a library named by the caller; the selected
+    /// library still needs `.detailsLoaded`.
+    func testSyncIsPossibleAndPermitted_SelectedLibraryEvicted_IsFalse() {
+        libraries.selectedId = libraries.accountA.uuid
+        evictLibraryA()
+
+        XCTAssertFalse(TPPAnnotationsWrapper().syncIsPossibleAndPermitted)
+    }
+
     // MARK: - Bookmarks
 
     func testGetServerBookmarks_SyncTurnedOffForLibraryA_SendsNothing() async {
@@ -432,6 +468,7 @@ final class TPPAnnotationsBookLibraryScopeTests: XCTestCase {
                                                  accountsManager: libraries,
                                                  debounceInterval: nil)
         libraries.selectedId = libraries.accountB.uuid
+        evictLibraryA()
 
         sut.saveListeningPosition(at: TrackPosition(track: tracks.tracks[1], timestamp: 42.0, tracks: tracks), completion: nil)
         await sut._awaitPositionWriteForTesting()
