@@ -114,7 +114,7 @@ class TPPAccountListDataSourceTests: XCTestCase {
     )
     
     // Act
-    dataSource.loadData("eread")
+    dataSource.setFilter("eread")
     
     // Assert — filter is already case-insensitive, both eRead libraries should match
     let names = allNames(from: dataSource)
@@ -122,5 +122,109 @@ class TPPAccountListDataSourceTests: XCTestCase {
       "eRead Illinois",
       "eRead Kids - Springfield",
     ])
+  }
+
+  // MARK: - Reload Tests
+
+  /// PP-5542: a pull-to-refresh or a finished catalog load reloads the list while the
+  /// patron's search text is still in the search bar; the reload must keep that search.
+  func testLoadData_AfterSearchTyped_KeepsSearchFilter() {
+    let accounts = [
+      makeAccount(name: "eRead Kids - Springfield"),
+      makeAccount(name: "Austin Public Library"),
+    ]
+    let dataSource = TPPAccountListDataSource(
+      accountsProvider: { accounts },
+      nationalAccountUUIDs: []
+    )
+    let searchBar = UISearchBar()
+    searchBar.text = "eread"
+    dataSource.searchBar(searchBar, textDidChange: "eread")
+
+    // Act — the reload the account list makes on refresh and on catalog load.
+    dataSource.loadData()
+
+    XCTAssertEqual(allNames(from: dataSource), ["eRead Kids - Springfield"])
+  }
+
+  /// PP-5542: a reload also picks up libraries the catalog added, filtered by the search.
+  func testLoadData_AfterSearchSubmitted_FiltersNewlyLoadedAccounts() {
+    var accounts = [makeAccount(name: "Austin Public Library")]
+    let dataSource = TPPAccountListDataSource(
+      accountsProvider: { accounts },
+      nationalAccountUUIDs: []
+    )
+    let searchBar = UISearchBar()
+    searchBar.text = "eread"
+    dataSource.searchBarSearchButtonClicked(searchBar)
+    accounts.append(makeAccount(name: "eRead Illinois"))
+    accounts.append(makeAccount(name: "Zion Public Library"))
+
+    dataSource.loadData()
+
+    XCTAssertEqual(allNames(from: dataSource), ["eRead Illinois"])
+  }
+
+  /// PP-5542: after the patron cancels the search, a reload shows every library again.
+  func testLoadData_AfterSearchCancelled_ShowsAllAccounts() {
+    let accounts = [
+      makeAccount(name: "eRead Kids - Springfield"),
+      makeAccount(name: "Austin Public Library"),
+    ]
+    let dataSource = TPPAccountListDataSource(
+      accountsProvider: { accounts },
+      nationalAccountUUIDs: []
+    )
+    let searchBar = UISearchBar()
+    searchBar.text = "eread"
+    dataSource.searchBar(searchBar, textDidChange: "eread")
+    dataSource.searchBarCancelButtonClicked(searchBar)
+
+    dataSource.loadData()
+
+    XCTAssertEqual(searchBar.text, "")
+    XCTAssertEqual(allNames(from: dataSource), ["Austin Public Library", "eRead Kids - Springfield"])
+  }
+
+  /// PP-5542: the search bar's clear button sends empty text; a reload after it shows every library.
+  func testLoadData_AfterSearchCleared_ShowsAllAccounts() {
+    let accounts = [
+      makeAccount(name: "eRead Kids - Springfield"),
+      makeAccount(name: "Austin Public Library"),
+    ]
+    let dataSource = TPPAccountListDataSource(
+      accountsProvider: { accounts },
+      nationalAccountUUIDs: []
+    )
+    let searchBar = UISearchBar()
+    dataSource.searchBar(searchBar, textDidChange: "eread")
+    dataSource.searchBar(searchBar, textDidChange: "")
+
+    dataSource.loadData()
+
+    XCTAssertEqual(allNames(from: dataSource), ["Austin Public Library", "eRead Kids - Springfield"])
+  }
+
+  /// PP-5542: a reload applies the search to the national section too, so only
+  /// matching national libraries stay at the top of the list.
+  func testLoadData_AfterSearchTyped_FiltersNationalAccounts() {
+    let accounts = [
+      makeAccount(name: "Palace Bookshelf", uuid: "urn:uuid:national-1"),
+      makeAccount(name: "Open eBooks", uuid: "urn:uuid:national-2"),
+      makeAccount(name: "Palace Public Library"),
+      makeAccount(name: "Austin Public Library"),
+    ]
+    let dataSource = TPPAccountListDataSource(
+      accountsProvider: { accounts },
+      nationalAccountUUIDs: ["urn:uuid:national-1", "urn:uuid:national-2"]
+    )
+    dataSource.searchBar(UISearchBar(), textDidChange: "palace")
+
+    dataSource.loadData()
+
+    XCTAssertEqual(dataSource.accounts(in: 0), 1)
+    XCTAssertEqual(dataSource.account(at: IndexPath(row: 0, section: 0)).name, "Palace Bookshelf")
+    XCTAssertEqual(dataSource.accounts(in: 1), 1)
+    XCTAssertEqual(dataSource.account(at: IndexPath(row: 0, section: 1)).name, "Palace Public Library")
   }
 }

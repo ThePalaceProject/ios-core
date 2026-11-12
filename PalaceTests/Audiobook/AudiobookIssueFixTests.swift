@@ -17,6 +17,7 @@ import PalacePreferences
 import XCTest
 @testable import Palace
 @testable import PalaceAudiobookToolkit
+import PalaceDownloads
 
 // MARK: - Position Persistence Logic Tests (Bug 3: CHAPTER_POSITION_LOST)
 

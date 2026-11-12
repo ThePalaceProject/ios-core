@@ -10,6 +10,7 @@
 //
 
 import Foundation
+import PalaceDownloads
 
 extension TPPUserAccount: DownloadUserAccount {
 

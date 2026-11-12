@@ -13,6 +13,7 @@ import PalaceCatalog
 import PalaceBookModel
 import PalacePreferences
 @testable import Palace
+import PalaceDownloads
 
 @MainActor
 final class BookDetailBorrowFailureRecoveryTests: XCTestCase {

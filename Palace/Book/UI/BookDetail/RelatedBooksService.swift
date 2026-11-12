@@ -60,8 +60,8 @@ struct RelatedBooksService {
 
     /// Groups a related-works feed's entries into lanes by their grouping link's
     /// title, keeping the first `href` seen for each group as that lane's "more"
-    /// destination. Entries without a grouping link, and entries that do not map
-    /// to a book, are skipped.
+    /// destination. Entries without a grouping link, and entries that
+    /// `TPPBook.catalogBook(from:registryMetadata:)` leaves out, are skipped.
     ///
     /// Returns nil for a feed that is not `.acquisitionGrouped` — the related
     /// lanes are only defined for the grouped shape.
@@ -76,7 +76,7 @@ struct RelatedBooksService {
             for entry in entries {
                 guard let group = entry.groupAttributes else { continue }
                 let groupTitle = group.title ?? ""
-                if let book = CatalogViewModel.makeBook(from: entry, bookRegistry: registry) {
+                if let book = TPPBook.catalogBook(from: entry, registryMetadata: registry.updatedBookMetadata) {
                     groupTitleToBooks[groupTitle, default: []].append(book)
                     if groupTitleToMoreURL[groupTitle] == nil { groupTitleToMoreURL[groupTitle] = group.href }
                 }

@@ -14,6 +14,7 @@ import Combine
 import PalaceCatalog
 @testable import Palace
 import PalaceBookModel
+import PalaceDownloads
 
 @MainActor
 final class BorrowErrorPresenterTests: XCTestCase {

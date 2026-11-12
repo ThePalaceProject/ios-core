@@ -145,6 +145,34 @@ final class RelatedBooksServiceTests: XCTestCase {
         XCTAssertNil(RelatedBooksService.lanes(from: feed, registry: registry, authorName: nil))
     }
 
+    /// Entries in a format the app cannot open are left out, and a group whose
+    /// only entry is left out yields no lane.
+    func testLanes_entriesThatAreNotOpenableBooks_areSkipped() throws {
+        let feed = try parse(feedXML: [
+            groupedEntryXML(id: "ok-1", group: "Series", acquisitionType: "application/epub+zip"),
+            groupedEntryXML(id: "odd-1", group: "Series", acquisitionType: "application/x-not-a-book"),
+            groupedEntryXML(id: "odd-2", group: "Only Unopenable", acquisitionType: "application/x-not-a-book")
+        ].joined(separator: "\n"))
+
+        let lanes = try XCTUnwrap(RelatedBooksService.lanes(from: feed, registry: registry, authorName: nil))
+
+        XCTAssertEqual(Array(lanes.keys), ["Series"])
+        XCTAssertEqual(lanes["Series"]?.books.map(\.identifier), ["urn:uuid:ok-1"])
+    }
+
+    /// A lane shows the registry's copy of a book the patron already holds.
+    func testLanes_bookInRegistry_showsTheRegistryCopy() throws {
+        let feed = try makeGroupedFeed(entries: [("Popular", "book-1", "https://example.com/group/popular")])
+        let held = try XCTUnwrap(TPPBook(entry: (feed.entries as? [TPPOPDSEntry])?.first))
+        held.title = "Held Title"
+        registry.addBook(held, location: nil, state: .downloadSuccessful, fulfillmentId: nil,
+                         readiumBookmarks: nil, genericBookmarks: nil)
+
+        let lanes = try XCTUnwrap(RelatedBooksService.lanes(from: feed, registry: registry, authorName: nil))
+
+        XCTAssertEqual(lanes["Popular"]?.books.map(\.title), ["Held Title"])
+    }
+
     // MARK: - fetchLanes outcomes
 
     /// The happy path: `fetchLanes` fetches the URL it is given and returns the
@@ -217,6 +245,19 @@ final class RelatedBooksServiceTests: XCTestCase {
         }.joined(separator: "\n")
 
         return try parse(feedXML: grouped + "\n" + loose)
+    }
+
+    private func groupedEntryXML(id: String, group: String, acquisitionType: String) -> String {
+        let acquisition = "<link rel=\"http://opds-spec.org/acquisition/open-access\" href=\"https://example.com/books/\(id).epub\" type=\"\(acquisitionType)\"/>"
+        return """
+        <entry>
+          <id>urn:uuid:\(id)</id>
+          <title>Title \(id)</title>
+          <updated>2024-01-01T00:00:00Z</updated>
+          \(acquisition)
+          <link rel="collection" href="https://example.com/group/\(id)" title="\(group)"/>
+        </entry>
+        """
     }
 
     private func makeUngroupedFeed() throws -> TPPOPDSFeed {

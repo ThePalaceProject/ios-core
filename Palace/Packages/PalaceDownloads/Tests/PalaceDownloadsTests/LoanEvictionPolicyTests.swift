@@ -1,6 +1,6 @@
 //
 //  LoanEvictionPolicyTests.swift
-//  PalaceTests
+//  PalaceDownloadsTests
 //
 //  Reliability WS-C — exhaustive matrix for the INV-2 guardrail.
 //  {expired / not / no-expiry} × {online / offline} × {within / after grace}.
@@ -9,7 +9,7 @@
 //
 
 import XCTest
-@testable import Palace
+@testable import PalaceDownloads
 
 @MainActor
 final class LoanEvictionPolicyTests: XCTestCase {

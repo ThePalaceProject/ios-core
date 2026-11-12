@@ -16,6 +16,7 @@ import PalaceCatalog
 import PalaceBookModel
 import PalaceBookRegistry
 import PalaceUtilities
+import PalaceDownloads
 
 // MARK: - ReturnOrigin
 

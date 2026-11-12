@@ -1163,38 +1163,6 @@ final class BookDetailViewModelTests: XCTestCase {
         XCTAssertTrue(vm.relatedBooksByLane.isEmpty)
     }
 
-    // MARK: showMoreBooksForLane
-
-    func testShowMoreBooksForLane_SetsSelectedBookURL() {
-        let (vm, _, _) = makeVM()
-        let url = URL(string: "https://example.com/more")!
-        vm.relatedBooksByLane = ["L": BookLane(title: "L", books: [], subsectionURL: url)]
-        vm.showMoreBooksForLane(laneTitle: "L")
-        XCTAssertEqual(vm.selectedBookURL, url)
-    }
-
-    func testShowMoreBooksForLane_MissingLane_LeavesSelectedNil() {
-        let (vm, _, _) = makeVM()
-        vm.selectedBookURL = nil
-        vm.showMoreBooksForLane(laneTitle: "nope")
-        XCTAssertNil(vm.selectedBookURL)
-        // A present lane with a URL must contrast: selecting it must set selectedBookURL
-        let url = URL(string: "https://example.com/lane")!
-        vm.relatedBooksByLane = ["valid": BookLane(title: "valid", books: [], subsectionURL: url)]
-        vm.showMoreBooksForLane(laneTitle: "valid")
-        XCTAssertEqual(vm.selectedBookURL, url, "A lane with a URL must set selectedBookURL")
-    }
-
-    func testShowMoreBooksForLane_LaneWithNilURL_DoesNotSetSelected() {
-        let (vm, _, _) = makeVM()
-        vm.relatedBooksByLane = ["L": BookLane(title: "L", books: [], subsectionURL: nil)]
-        vm.selectedBookURL = nil
-        vm.showMoreBooksForLane(laneTitle: "L")
-        XCTAssertNil(vm.selectedBookURL)
-        // The lane dictionary must still contain the lane entry
-        XCTAssertNotNil(vm.relatedBooksByLane["L"], "Lane must remain in the dictionary")
-    }
-
     // MARK: fetchRelatedBooks guard
 
     func testFetchRelatedBooks_NilURL_IsNoOp_AndDoesNotSetLoading() {
