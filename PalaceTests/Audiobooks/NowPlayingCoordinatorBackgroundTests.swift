@@ -188,6 +188,26 @@ final class NowPlayingCoordinatorBackgroundTests: XCTestCase {
         )
     }
 
+    /// Closing the player ends playback, so a foreground return long after the
+    /// close must not report a dry stream for a book that is no longer playing.
+    func testDryStreamGuard_doesNotLog_afterPlayerCloses() {
+        let t0 = Date()
+        fakeNow.value = t0
+        coordinator.updateNowPlaying(
+            title: "Closed", artist: nil, album: nil,
+            elapsed: 10, duration: 600, isPlaying: true, playbackRate: .normalTime
+        )
+
+        coordinator.clearNowPlaying()
+        fakeNow.value = t0.addingTimeInterval(45)
+        coordinator.applicationDidBecomeActive()
+
+        XCTAssertEqual(
+            loggedDryStreamErrors.value.count, 0,
+            "After the player closes nothing is playing, so the guard must not log."
+        )
+    }
+
     /// Guard NEGATIVE case — not playing means no expectation of timer
     /// freshness, so no log even if lastUpdateTime is old.
     func testDryStreamGuard_doesNotLog_whenNotPlaying() {
