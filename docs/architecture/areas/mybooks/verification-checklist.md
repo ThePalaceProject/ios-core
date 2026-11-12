@@ -83,7 +83,7 @@ States are implicit via the registry's `TPPBookState`; the operation drives tran
 
 1. `borrowAsync` (line 335) — `setProcessing(true)` → request loan → parse response
 2. `borrowResponseState` (line 163) — pure mapper: response → `(TPPBookState, PalaceError?)`. Default `.downloadNeeded`; sets `.holding` on Hold acquisition. **F-014** lived here: inverted `attemptDownload && state != .downloadNeeded` predicate stranded users at the Download tap; reverted in 5e3476998.
-3. Auth-error handling — `BorrowAuthErrorDecision` enum threads decisions out without exposing internals. Calls `hasBorrowReauthBeenAttempted` (line 601) circuit breaker, then routes either to OIDC silent reauth or to sign-in modal.
+3. Auth-error handling — `BorrowReducerCore.authErrorReason` classifies the failure and `BorrowReducerCore.failureEffects` returns the ordered plan (SQ-007 suppression, reauth breaker, stale mark, OIDC silent reauth, coordinator refresh or sign-in modal, alert). `BorrowOperation.routeBorrowFailure` runs it; the breaker read stays in `BorrowOperation+ReauthBreaker.swift`.
 4. `clearAllBorrowReauthState` (line 113) — MBDC forwarder; central clear on account switch.
 5. Timeout — `withTimeout` 30s bound (line 145); F-014 follow-up.
 

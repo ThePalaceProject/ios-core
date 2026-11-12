@@ -180,7 +180,8 @@ enum BorrowReducerCore {
         "http://palaceproject.io/terms/problem/auth/unrecoverable/credentials/invalid",
     ]
 
-    /// Classifies a borrow failure. A problem document decides on its own: one
+    /// Classifies a borrow failure. An `.authentication` error is always one.
+    /// Otherwise a problem document decides on its own: one
     /// that is not about credentials (a loan limit arrives as 403 with one) is
     /// not an auth error, since signing in cannot fix it (PP-5359). Without a
     /// document, a bare 401/403 or the invalid-credentials code is one; a

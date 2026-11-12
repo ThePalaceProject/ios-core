@@ -99,7 +99,7 @@ final class BorrowOperationCleverReauthTests: XCTestCase {
     /// error with credentials present would skip the browser-reauth arm,
     /// fall through the `!hasCredentials && needsAuth` arm (false — we
     /// HAVE creds), and end up at the "no automatic recovery" log line →
-    /// `.showGenericError` → user sees a generic toast with no recovery
+    /// `.showBorrowError` → user sees a generic toast with no recovery
     /// path.
     ///
     /// Post-Module-B, `needsBrowserReauth = authDef?.isBrowserBased == true
@@ -144,7 +144,7 @@ final class BorrowOperationCleverReauthTests: XCTestCase {
     /// `(authDef?.isSaml == true || authDef?.isOidc == true) && hasCredentials`.
     /// Pre-Module-B, an OAuth-intermediary library that received a
     /// `no-active-loan` problem doc with credentials would NOT be treated
-    /// as an auth error → fell through to `.showGenericError` → generic
+    /// as an auth error → fell through to `.showBorrowError` → generic
     /// alert with no re-auth attempt.
     ///
     /// Post-Module-B, the predicate broadens to `isBrowserBased` — Clever
