@@ -15,7 +15,8 @@ import Foundation
 ///
 /// Because there are two copies, they can silently drift. This copy is kept
 /// **semantically identical** to the canonical one: `Environment: Sendable`,
-/// an `@Sendable` `run` closure, and `Action: Sendable` on `.send`. Change
+/// an `@Sendable` `run` closure, an `isNone` marker set only by `.none`, and
+/// `Action: Sendable` on `.send`. Change
 /// both copies together, and do not add a third.
 ///
 /// ## Semantics (mirrors `Store.Effect`)
@@ -27,8 +28,8 @@ import Foundation
 /// `Environment: Sendable` (Swift 6): the `@MainActor` `Store` hands the
 /// environment to `run` from an `async` context that hops off the main actor,
 /// so the environment value crosses an isolation boundary; a `Sendable`
-/// environment makes that crossing safe. `AuthEnvironment` is an empty value
-/// bag and conforms to `Sendable` for exactly this reason.
+/// environment makes that crossing safe. `AuthEnvironment` holds only a
+/// `@Sendable` closure and conforms to `Sendable` for exactly this reason.
 ///
 /// ## Finish-line (gated follow-up, NOT this contract)
 /// True unification collapses both copies into a shared SPM module that the app
@@ -37,12 +38,22 @@ import Foundation
 public struct Effect<Action, Environment: Sendable> {
     public let run: @Sendable (Environment) async -> Action?
 
+    /// True only for `.none`. A closure cannot be compared, so this is how a
+    /// runner skips scheduling a task that would do nothing.
+    // PUBLIC_INTENT: the app's sign-in effect runner reads it across the package boundary.
+    public let isNone: Bool
+
     public init(run: @escaping @Sendable (Environment) async -> Action?) {
+        self.init(run: run, isNone: false)
+    }
+
+    private init(run: @escaping @Sendable (Environment) async -> Action?, isNone: Bool) {
         self.run = run
+        self.isNone = isNone
     }
 
     public static var none: Effect<Action, Environment> {
-        Effect { _ in nil }
+        Effect(run: { _ in nil }, isNone: true)
     }
 
     public static func send(_ action: Action) -> Effect<Action, Environment> where Action: Sendable {
