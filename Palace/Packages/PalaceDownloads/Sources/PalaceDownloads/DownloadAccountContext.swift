@@ -1,6 +1,6 @@
 //
 //  DownloadAccountContext.swift
-//  Palace
+//  PalaceDownloads
 //
 //  Downloads-owned account-context protocols. They invert the Downloads→Accounts
 //  read coupling without widening PalaceBookRegistry's `AccountScopeProviding`,
@@ -16,7 +16,8 @@ import Foundation
 
 /// Account-scope reads the download subsystem needs (per-account file
 /// isolation + auth-surface host classification). Value-only.
-protocol DownloadAccountScopeProviding: Sendable {
+// PUBLIC_INTENT: AccountsManagerDownloadContextAdapter conforms app-side.
+public protocol DownloadAccountScopeProviding: Sendable {
     /// The current library's identifier. Backs per-account download-file
     /// scoping (`BookFileManager.fileUrl(for:)`) and the account stamped on a
     /// durable started-task record (`MyBooksDownloadCenter.persistStartedTaskRecord`),
@@ -36,7 +37,8 @@ protocol DownloadAccountScopeProviding: Sendable {
 /// Resolves the credential-bearing account the download subsystem authenticates
 /// against — current library or a captured library UUID (capture-at-start
 /// discipline for operations that outlive a library switch).
-protocol DownloadCredentialsProviding: Sendable {
+// PUBLIC_INTENT: AccountsManagerDownloadContextAdapter conforms app-side.
+public protocol DownloadCredentialsProviding: Sendable {
     func currentUserAccount() -> any DownloadUserAccount
     func userAccount(forAccount accountID: String) -> any DownloadUserAccount
 }
@@ -44,7 +46,8 @@ protocol DownloadCredentialsProviding: Sendable {
 /// The credential/auth capability surface the download subsystem reads and
 /// writes on a per-library account. `TPPUserAccount` conforms app-side. Unlike
 /// the registry's value-only boundary, the 401-recovery writeback must cross.
-protocol DownloadUserAccount: AnyObject, Sendable {
+// PUBLIC_INTENT: TPPUserAccount conforms app-side.
+public protocol DownloadUserAccount: AnyObject, Sendable {
     // Value queries (replace the `authDefinition` object — it never crosses).
     var needsAuth: Bool { get }
     var isSaml: Bool { get }
@@ -78,7 +81,8 @@ protocol DownloadUserAccount: AnyObject, Sendable {
 /// Package-local mirror of `AccountDetails.Authentication.ReauthStrategy`. The
 /// app-side adapter maps the real enum here via an EXHAUSTIVE switch, so a new
 /// upstream case is a compile error rather than silent `.none` drift.
-enum DownloadReauthStrategy: Equatable, Sendable {
+// PUBLIC_INTENT: the app-side account adapters map to this type.
+public enum DownloadReauthStrategy: Equatable, Sendable {
     /// Browser-based sign-in flow (SAML IdP, OIDC provider).
     case browser
     /// Programmatic token refresh via tokenURL (OAuth, basic-token).
@@ -92,7 +96,8 @@ enum DownloadReauthStrategy: Equatable, Sendable {
 /// Package-local mirror of `TPPAccountAuthState`. The app-side adapter maps the
 /// real `@objc` enum here via an EXHAUSTIVE switch (do NOT move the `@objc`
 /// enum into the package). A new upstream case is a compile error here.
-enum DownloadAuthState: Equatable, Sendable {
+// PUBLIC_INTENT: the app-side account adapters map to this type.
+public enum DownloadAuthState: Equatable, Sendable {
     /// No credentials stored; Adobe DRM deactivated.
     case loggedOut
     /// Fully authenticated; Adobe DRM activated.

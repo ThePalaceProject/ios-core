@@ -184,15 +184,10 @@ class TPPNetworkResponder: NSObject, @unchecked Sendable {
     /// reproductions during review, and a clean-build run of this file with the
     /// closure default restored, which passed.
     ///
-    /// A live example of the dangerous form is `TPPNetworkExecutor.swift`'s
-    /// DI-friendly init, whose `accountsManager` default calls
-    /// `AppContainer.production()`. It is safe today only because overload
-    /// ranking prefers the `@objc` init for the container's own call — safe by
-    /// accident, not by design.
-    ///
-    /// `nil` is used here regardless: it keeps container reads off every
-    /// construction path by shape rather than by argument-evaluation rules, which
-    /// is the property worth having when the container builds you.
+    /// `nil` keeps container reads off every construction path by shape rather
+    /// than by argument-evaluation rules, which is the property worth having when
+    /// the container builds you. `TPPNetworkExecutor`'s DI init takes the same
+    /// `nil` default for its `accountsManager` (PP-4980).
     init(credentialsProvider: NYPLBasicAuthCredentialsProvider? = nil,
          useFallbackCaching: Bool = false,
          fallbackCredentialsProvider: (() -> NYPLBasicAuthCredentialsProvider)? = nil) {

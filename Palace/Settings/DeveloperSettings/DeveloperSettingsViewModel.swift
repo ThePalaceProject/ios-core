@@ -525,7 +525,8 @@ final class DeveloperSettingsViewModel: ObservableObject {
             bookDownloadsCenter: container.downloadCenter,
             userAccountProvider: TPPUserAccount.self,
             uiDelegate: nil,
-            drmAuthorizer: container.drmAuthorizerProvider()
+            drmAuthorizer: container.drmAuthorizerProvider(),
+            appNetwork: container.networkExecutor
         )
     }
 

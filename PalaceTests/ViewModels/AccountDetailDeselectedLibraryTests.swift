@@ -103,7 +103,8 @@ final class AccountDetailDeselectedLibraryTests: PalaceTestCase {
             settings: appContainer.settings,
             userAccountPublisher: appContainer.userAccountPublisher,
             drmAuthorizerProvider: { nil },
-            credentialSnapshotProvider: { _ in credentials }
+            credentialSnapshotProvider: { _ in credentials },
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 

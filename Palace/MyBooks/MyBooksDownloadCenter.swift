@@ -18,6 +18,7 @@ import PalaceCatalog
 import PalaceBookModel
 import PalaceBookRegistry
 import PalaceUtilities
+import PalaceDownloads
 
 #if FEATURE_OVERDRIVE
 import OverdriveProcessor
@@ -149,6 +150,8 @@ private final class RedirectCompletionBox: @unchecked Sendable {
     private let overdriveDownloadHandler: OverdriveDownloadHandler
     #endif
     private let credentialPromptCoordinator: CredentialPromptCoordinator
+    /// Where this center's sign-in prompts go; see `presentSignInForCurrentAccount`.
+    let signInRoute = DownloadCenterSignInRoute()
     /// Owns the pre-dispatch parsing of URL session download
     /// completions: rights resolution + cache write-back, problem-doc
     /// detection, OPDS entry / OPDS2 publication routing, and the
@@ -649,7 +652,7 @@ private final class RedirectCompletionBox: @unchecked Sendable {
             stateManager: stateManager,
             reauthenticator: reauthenticator,
             userAccountProvider: resolveAccountForBorrow,
-            credentialRequestState: self.credentialRequestState
+            credentialRequestState: self.credentialRequestState, universalLinksSettings: settings
         )
         // BookContentResetService runs the bulk-reset flows; shares the
         // same registry / state / file-manager / progress reporter /
@@ -676,13 +679,13 @@ private final class RedirectCompletionBox: @unchecked Sendable {
         // start-download when the user has no stored credentials.
         // Closures over SignInModalPresenter + AdobeCertificate so
         // tests can substitute fakes without UIKit/DRM at hand.
+        let signInRoute = self.signInRoute
         self.credentialPromptCoordinator = CredentialPromptCoordinator(
             stateManager: stateManager,
             userAccountProvider: resolveAccountForBorrow,
             credentialRequestState: self.credentialRequestState,
             presentSignInModal: { completion in
-                AppContainer.production().signInModalSheetPresenter
-                    .presentSignInModalForCurrentAccount(completion: completion)
+                signInRoute.present(completion)
             },
             isAdobeDRMExpired: {
                 #if FEATURE_DRM_CONNECTOR
@@ -869,8 +872,7 @@ private final class RedirectCompletionBox: @unchecked Sendable {
             reporter.downloadErrorPublisher.send(errorInfo)
         }
         let presentSignInModalClosure: @MainActor (@escaping () -> Void) -> Void = { completion in
-            AppContainer.production().signInModalSheetPresenter
-                .presentSignInModalForCurrentAccount(completion: completion)
+            signInRoute.present(completion)
         }
         let attemptOIDCReauthClosure: () async -> Bool = {
             await BorrowOperation.attemptOIDCSilentReauth(userAccount: resolveAccountForBorrowOp())

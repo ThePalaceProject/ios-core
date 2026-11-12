@@ -126,7 +126,8 @@ final class AccountDetailReauthSheetTests: PalaceTestCase {
             settings: appContainer.settings,
             userAccountPublisher: appContainer.userAccountPublisher,
             drmAuthorizerProvider: { nil },
-            credentialSnapshotProvider: { [credentialsBox] _ in Self.snapshot(credentialsBox.value) }
+            credentialSnapshotProvider: { [credentialsBox] _ in Self.snapshot(credentialsBox.value) },
+            appNetwork: SignInAppNetworkSpy()
         )
         for _ in 0..<20 { await Task.yield() }
         viewModel.forceReauthMode = forceReauthMode

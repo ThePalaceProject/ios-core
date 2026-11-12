@@ -27,7 +27,8 @@ final class TPPPreferredAuthSelectionTests: XCTestCase {
             bookDownloadsCenter: TPPMyBooksDownloadsCenterMock(),
             userAccountProvider: TPPUserAccountProviderMock.self,
             uiDelegate: nil,
-            drmAuthorizer: nil
+            drmAuthorizer: nil,
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 

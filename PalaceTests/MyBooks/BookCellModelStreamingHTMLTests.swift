@@ -132,7 +132,8 @@ final class BookCellModelStreamingHTMLTests: XCTestCase {
             accountsManager: AppContainer.production().accountsManager,
             samplePreviewManager: AppContainer.production().samplePreviewManager,
             readerService: readerService,
-            reachability: mockReachability
+            reachability: mockReachability,
+            bookOpenDependencies: .testDouble()
         )
     }
 

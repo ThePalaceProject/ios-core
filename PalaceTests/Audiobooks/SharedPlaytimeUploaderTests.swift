@@ -380,6 +380,19 @@ final class SharedPlaytimeUploaderTests: XCTestCase {
                        "a send the switch cancelled must not hold its entry forever")
     }
 
+    /// The container calls this on `.willSwitch`, before the switch cancels the send.
+    func testResetForAccountSwitch_ReleasesAnUnansweredSend_ForTheNextTrigger() {
+        policy.setScene(.active)
+        save("entry-1")
+        tick()
+
+        sut.resetForAccountSwitch()
+        tick()
+
+        XCTAssertEqual(executor.sentEntryIds, [["entry-1"], ["entry-1"]],
+                       "a send the switch is about to cancel must not hold its entry forever")
+    }
+
     func testLateAnswerToACancelledSend_DoesNotReleaseTheNewerSend() {
         policy.setScene(.active)
         save("entry-1")

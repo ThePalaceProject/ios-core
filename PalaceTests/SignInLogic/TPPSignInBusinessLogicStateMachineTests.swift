@@ -34,7 +34,8 @@ final class TPPSignInBusinessLogicStateMachineTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: uiDelegate,
-            drmAuthorizer: drmAuthorizer
+            drmAuthorizer: drmAuthorizer,
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 

@@ -1,9 +1,11 @@
 //
 //  AccountRegistryStore.swift
-//  Palace
+//  PalaceAccounts
 //
 //  Account-registry state (catalog hash, account sets, `uuid → Account` index,
-//  slim launch fallback) and thread-safe access to it. A class, not an actor:
+//  slim launch fallback) and thread-safe access to it. Generic over the entry
+//  type so the package does not name the app-target `Account`; the app uses
+//  `AccountRegistryStore<Account>`. A class, not an actor:
 //  `AccountsManager.account(_:)` is a synchronous `@objc` requirement. Writes are
 //  synchronous under `accountSetsLock`, giving read-after-write ordering; the
 //  slim set has its own lock. `@unchecked Sendable` on that basis.
@@ -14,6 +16,13 @@
 import Foundation
 import PalaceLogging
 
+/// What the registry store needs from an account: reference identity (the
+/// index-coherence check compares with `===`) and a stable `uuid` key.
+// PUBLIC_INTENT: the app's Account adopts this as the store's entry type.
+public protocol AccountRegistryEntry: AnyObject {
+    var uuid: String { get }
+}
+
 /// Carries non-Sendable values into the write critical section.
 /// `@unchecked Sendable`: each is used exactly once, under the
 /// `accountSetsLock` write lock, never concurrently.
@@ -21,12 +30,12 @@ private struct VoidWorkBox: @unchecked Sendable {
     let work: () -> Void
 }
 
-private struct AccountsReplacementBox: @unchecked Sendable {
-    let accounts: [Account]
+private struct AccountsReplacementBox<Entry>: @unchecked Sendable {
+    let accounts: [Entry]
 }
 
-private struct AccountSetsMutationBox: @unchecked Sendable {
-    let mutate: (inout [String: [Account]]) -> Void
+private struct AccountSetsMutationBox<Entry>: @unchecked Sendable {
+    let mutate: (inout [String: [Entry]]) -> Void
 }
 
 /// Reader/writer lock the CALLING thread takes itself.
@@ -56,7 +65,8 @@ private final class ReadWriteLock: @unchecked Sendable {
 }
 
 /// Thread-safe holder of the account-registry state. See the file header.
-final class AccountRegistryStore: @unchecked Sendable {
+// PUBLIC_INTENT: AccountsManager and AccountRegistryLoader (app target) hold and drive the store.
+public final class AccountRegistryStore<Entry: AccountRegistryEntry>: @unchecked Sendable {
 
     /// The current catalog hash (`prod` / `beta` / custom-URL). Written on the
     /// write lock, read under it — bundled into ONE critical section with
@@ -64,14 +74,14 @@ final class AccountRegistryStore: @unchecked Sendable {
     /// concurrent library switch can never key the bucket to a stale hash.
     private var _currentHash: String
 
-    private var accountSets = [String: [Account]]()
+    private var accountSets = [String: [Entry]]()
 
     /// O(1) `uuid → Account` index derived from `accountSets`, kept in lockstep with
     /// it under `accountSetsLock` (rebuilt in the SAME write critical section as any `accountSets`
     /// mutation — see `mutate`). Lets `account(_:)` resolve a UUID without a linear
     /// scan over ~1142 accounts on the main-thread display path. MUST only change via
     /// `mutate` so it can never desync from `accountSets`.
-    private var accountByUUID = [String: Account]()
+    private var accountByUUID = [String: Entry]()
 
     /// Guards `_currentHash` / `accountSets` / `accountByUUID`. Taken directly by
     /// the calling thread — see `ReadWriteLock` for why this is not a queue.
@@ -83,10 +93,11 @@ final class AccountRegistryStore: @unchecked Sendable {
     /// FALLBACK only and MUST NOT flip `currentBucketIsLoaded` true (a truncated-picker
     /// bug). Guarded by its own `NSLock` so the `account(_:)` `accountSetsLock` read and
     /// this fallback never contend on the same lock.
-    private var slimAccountsByUUID = [String: Account]()
+    private var slimAccountsByUUID = [String: Entry]()
     private let slimAccountsLock = NSLock()
 
-    init(currentHash: String = "") {
+    // PUBLIC_INTENT: AccountsManager and AccountRegistryLoader (app target) hold and drive the store.
+    public init(currentHash: String = "") {
         self._currentHash = currentHash
     }
 
@@ -110,17 +121,20 @@ final class AccountRegistryStore: @unchecked Sendable {
     /// Single synchronized read of the current hash, for callers that need only the
     /// hash (never paired atomically with a bucket read — those use the atomic
     /// methods below).
-    var currentHash: String {
+    // PUBLIC_INTENT: AccountsManager and AccountRegistryLoader (app target) hold and drive the store.
+    public var currentHash: String {
         performRead { self._currentHash }
     }
 
-    func setCurrentHash(_ hash: String) {
+    // PUBLIC_INTENT: AccountsManager and AccountRegistryLoader (app target) hold and drive the store.
+    public func setCurrentHash(_ hash: String) {
         performWrite { self._currentHash = hash }
     }
 
     // MARK: - Reads
 
-    func account(_ uuid: String) -> Account? {
+    // PUBLIC_INTENT: AccountsManager and AccountRegistryLoader (app target) hold and drive the store.
+    public func account(_ uuid: String) -> Entry? {
         if let full = performRead({ accountByUUID[uuid] }) {
             return full
         }
@@ -132,7 +146,8 @@ final class AccountRegistryStore: @unchecked Sendable {
 
     /// Accounts for an explicit hash. Used by callers that already hold the hash they
     /// want (the hub `accounts(key)` facade when a key is passed, plus tests).
-    func accounts(forKey key: String) -> [Account] {
+    // PUBLIC_INTENT: AccountsManager and AccountRegistryLoader (app target) hold and drive the store.
+    public func accounts(forKey key: String) -> [Entry] {
         performRead { self.accountSets[key] ?? [] }
     }
 
@@ -140,19 +155,22 @@ final class AccountRegistryStore: @unchecked Sendable {
     /// sampled in ONE `performRead`, so a library-switch write cannot land between
     /// them and key the bucket to a stale hash. Do NOT reimplement as
     /// `accounts(forKey: currentHash)` — that is two separate lock acquisitions.
-    func accountsForCurrentHash() -> [Account] {
+    // PUBLIC_INTENT: AccountsManager and AccountRegistryLoader (app target) hold and drive the store.
+    public func accountsForCurrentHash() -> [Entry] {
         performRead { self.accountSets[self._currentHash] ?? [] }
     }
 
     /// Whether the CURRENT hash's bucket is non-empty, read ATOMICALLY (same
     /// single-critical-section snapshot as `accountsForCurrentHash`). Reflects the
     /// FULL account list only — the slim fallback never flips this true.
-    func currentBucketIsLoaded() -> Bool {
+    // PUBLIC_INTENT: AccountsManager and AccountRegistryLoader (app target) hold and drive the store.
+    public func currentBucketIsLoaded() -> Bool {
         performRead { !(self.accountSets[self._currentHash]?.isEmpty ?? true) }
     }
 
     /// Whether an explicit hash's bucket is non-empty.
-    func bucketIsNonEmpty(hash: String) -> Bool {
+    // PUBLIC_INTENT: AccountsManager and AccountRegistryLoader (app target) hold and drive the store.
+    public func bucketIsNonEmpty(hash: String) -> Bool {
         performRead { self.accountSets[hash]?.isEmpty == false }
     }
 
@@ -162,7 +180,8 @@ final class AccountRegistryStore: @unchecked Sendable {
     /// `accountSetsLock` write lock, then rebuilds `accountByUUID` in the SAME critical
     /// section so the two can never desync. Adding a write that bypasses this silently
     /// breaks `account(_:)` lookups (guarded by the index-coherence tests).
-    func mutate(_ mutate: @escaping (inout [String: [Account]]) -> Void) {
+    // PUBLIC_INTENT: AccountsManager and AccountRegistryLoader (app target) hold and drive the store.
+    public func mutate(_ mutate: @escaping (inout [String: [Entry]]) -> Void) {
         let box = AccountSetsMutationBox(mutate: mutate)
         // Index rebuilt inside the SAME critical section as the mutation, so a
         // reader can never observe updated `accountSets` with a stale
@@ -198,7 +217,8 @@ final class AccountRegistryStore: @unchecked Sendable {
     /// (recursive `wrlock` on a non-recursive pthread lock = deadlock on the launch
     /// thread) nor pair `performRead` with a later `mutate` (TOCTOU against the owned
     /// crawl tasks).
-    func replaceBucket(hash: String, accounts: [Account], isCompleteFeed: Bool) -> Bool {
+    // PUBLIC_INTENT: AccountsManager and AccountRegistryLoader (app target) hold and drive the store.
+    public func replaceBucket(hash: String, accounts: [Entry], isCompleteFeed: Bool) -> Bool {
         let box = AccountsReplacementBox(accounts: accounts)
         return accountSetsLock.write {
             let resident = self.accountSets[hash] ?? []
@@ -218,7 +238,8 @@ final class AccountRegistryStore: @unchecked Sendable {
 
     // MARK: - Slim launch-hydration fallback
 
-    func storeSlim(_ accounts: [Account]) {
+    // PUBLIC_INTENT: AccountsManager and AccountRegistryLoader (app target) hold and drive the store.
+    public func storeSlim(_ accounts: [Entry]) {
         slimAccountsLock.lock()
         defer { slimAccountsLock.unlock() }
         for account in accounts {
@@ -226,7 +247,8 @@ final class AccountRegistryStore: @unchecked Sendable {
         }
     }
 
-    func slimAccount(_ uuid: String) -> Account? {
+    // PUBLIC_INTENT: AccountsManager and AccountRegistryLoader (app target) hold and drive the store.
+    public func slimAccount(_ uuid: String) -> Entry? {
         slimAccountsLock.lock()
         defer { slimAccountsLock.unlock() }
         return slimAccountsByUUID[uuid]
@@ -236,8 +258,9 @@ final class AccountRegistryStore: @unchecked Sendable {
 
     /// Pure: flatten `accountSets` into a `uuid → Account` index. When a UUID appears
     /// in more than one bucket, the last-enumerated wins.
-    static func buildAccountIndex(_ sets: [String: [Account]]) -> [String: Account] {
-        var index = [String: Account]()
+    // PUBLIC_INTENT: AccountsManager+TestingSupport (app target) forwards to it.
+    public static func buildAccountIndex(_ sets: [String: [Entry]]) -> [String: Entry] {
+        var index = [String: Entry]()
         for accounts in sets.values {
             for account in accounts {
                 index[account.uuid] = account

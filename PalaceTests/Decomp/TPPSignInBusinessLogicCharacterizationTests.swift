@@ -89,7 +89,7 @@ final class SignInRequestServiceCharacterizationTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: TPPDRMAuthorizingMock())
+            drmAuthorizer: TPPDRMAuthorizingMock(), appNetwork: SignInAppNetworkSpy())
     }
 
     override func tearDownWithError() throws {
@@ -133,7 +133,7 @@ final class SignInRequestServiceCharacterizationTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: recording,
-            drmAuthorizer: TPPDRMAuthorizingMock())
+            drmAuthorizer: TPPDRMAuthorizingMock(), appNetwork: SignInAppNetworkSpy())
 
         XCTAssertNil(blogic.makeRequest(for: .signIn, context: "precondition"),
                      "precondition: makeRequest must be nil for a detail-less library")
@@ -295,7 +295,7 @@ final class CredentialStoreCharacterizationTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock(),
-            drmAuthorizer: TPPDRMAuthorizingMock())
+            drmAuthorizer: TPPDRMAuthorizingMock(), appNetwork: SignInAppNetworkSpy())
     }
 
     override func tearDownWithError() throws {

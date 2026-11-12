@@ -12,6 +12,7 @@ import PalaceCatalog
 @testable import Palace
 @testable import PalaceAuth
 import PalaceBookModel
+import PalaceDownloads
 
 @MainActor
 final class BorrowOperationReauthLoopTests: XCTestCase {

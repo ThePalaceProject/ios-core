@@ -66,4 +66,10 @@
 # 222 -> 221: PP-5452 reads the production container once in syncAsync.
 # 221 -> 220: PP-5451 reads LCP download progress through the download
 #   center injected into the content wait, not a fresh production container.
-217
+# 217 -> 204: PP-5544 hands the book-open router, the book detail screen, the
+#   sign-in business logic and the sign-in redirect handler their readers,
+#   navigation, sign-in sheet, rating prompt, network and universal-links
+#   setting from the composition root (13 sites).
+# 204 -> 202: PP-5545 drops the executor DI init's container default and
+#   routes the download center's two sign-in prompts through one bound closure.
+202

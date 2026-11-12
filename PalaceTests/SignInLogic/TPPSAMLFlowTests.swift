@@ -497,7 +497,8 @@ final class TPPSAMLStateMachineTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: uiDelegate,
-            drmAuthorizer: nil
+            drmAuthorizer: nil,
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 
@@ -619,7 +620,8 @@ final class TPPSAMLStateIsolationTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: nil,
-            drmAuthorizer: nil
+            drmAuthorizer: nil,
+            appNetwork: SignInAppNetworkSpy()
         )
 
         // Library without SAML auth — samlHelperIfNeeded should be nil
@@ -643,7 +645,8 @@ final class TPPSAMLStateIsolationTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: nil,
-            drmAuthorizer: nil
+            drmAuthorizer: nil,
+            appNetwork: SignInAppNetworkSpy()
         )
 
         // Select SAML auth, which should trigger lazy creation
@@ -782,7 +785,8 @@ final class TPPSAMLRegressionTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: uiDelegate,
-            drmAuthorizer: nil
+            drmAuthorizer: nil,
+            appNetwork: SignInAppNetworkSpy()
         )
 
         businessLogic.selectedAuthentication = libraryMock.oauthAuthentication

@@ -14,6 +14,7 @@ import PalaceCatalog
 @testable import Palace
 import PalaceBookModel
 import PalaceLogging
+@testable import PalaceAccounts
 
 @MainActor
 final class AccountsManagerStateMachineWiringTests: PalaceWiringTestCase {

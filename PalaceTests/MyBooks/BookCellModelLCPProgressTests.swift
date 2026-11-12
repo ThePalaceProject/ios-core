@@ -44,7 +44,8 @@ final class BookCellModelLCPProgressTests: XCTestCase {
             accountsManager: appContainer.accountsManager,
             samplePreviewManager: appContainer.samplePreviewManager,
             readerService: appContainer.readerService,
-            reachability: appContainer.reachability
+            reachability: appContainer.reachability,
+            bookOpenDependencies: .testDouble()
         )
     }
 

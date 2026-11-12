@@ -151,7 +151,8 @@ Unit tests in `PalaceTests/MyBooks/` (41 files):
 - `BookContentResetServiceTests.swift`, `LocalBookContentServiceTests.swift`, `BookFileManagerTests.swift`
 - `BookSignInRedirectHandlerTests.swift`, `CredentialPromptCoordinatorTests.swift`, `BorrowErrorPresenterTests.swift`
 - `BookCellModelOfflineTests.swift`, `MyBooksViewModelTests.swift`
-- `RedirectPolicyTests.swift`, `RetryClassificationTests.swift`, `UserRetryTrackerTests.swift`
+- `RetryClassificationTests.swift`
+- In `Palace/Packages/PalaceDownloads/Tests/PalaceDownloadsTests/` (run by `swift test`): `RedirectPolicyTests.swift`, `UserRetryTrackerTests.swift`, `LoanEvictionPolicyTests.swift`
 - `MyBooksSimplifiedBearerTokenTests.swift`, `TPPBookBearerTokenTests.swift`, `DownloadErrorInfoTests.swift`
 
 Reducer tests:

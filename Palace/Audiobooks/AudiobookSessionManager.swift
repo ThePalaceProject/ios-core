@@ -415,7 +415,7 @@ public final class AudiobookSessionManager: ObservableObject {
             readinessTimeout: readinessTimeout,
             notificationCenter: notificationCenter,
             overdriveRefulfillStarter: overdriveRefulfillStarter,
-            showOpenFailureAlert: showOpenFailureAlert ?? AudiobookOpenFailureAlert.presenter(bookRegistry: appContainer.bookRegistry),
+            showOpenFailureAlert: showOpenFailureAlert ?? AudiobookOpenFailureAlert.presenter(bookRegistry: appContainer.bookRegistry, openDependencies: appContainer.bookOpenDependencies),
             contentIsLocal: contentIsLocal,
             awaitContentLocal: awaitContentLocal ?? Self.contentLandingWait(downloadCenter: appContainer.downloadCenter),
             lcpLicenceNeedsCheck: lcpLicenceNeedsCheck ?? { [downloadCenter = appContainer.downloadCenter] book in

@@ -99,7 +99,8 @@ final class TPPSignInOIDCStubCallbackTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: uiDelegate,
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
         // Without this, oidcLogIn() returns at its `oidcAuthenticationUrl`
         // guard before reaching the seam, and every assertion below passes or

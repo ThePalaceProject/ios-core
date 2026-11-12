@@ -11,6 +11,7 @@ import PalaceCatalog
 @testable import Palace
 @testable import PalaceBookRegistry
 import PalaceBookModel
+import PalaceDownloads
 
 @MainActor
 final class BookReturnServiceTests: XCTestCase {
