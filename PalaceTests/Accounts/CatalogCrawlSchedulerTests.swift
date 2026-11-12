@@ -3,7 +3,7 @@
 //  PalaceTests
 //
 //  Unit tests for the PP-4754 owned-crawl infrastructure split out of
-//  AccountsManager: `OwnedCrawlTaskRegistry` (self-pruning, insert-vs-complete
+//  AccountsManager: `OwnedTaskRegistry` (self-pruning, insert-vs-complete
 //  race guard) and `CrawlTaskScheduler` (the two-arm injectable spawn seam).
 //
 //  These are pure, offline, network-free tests — no AccountsManager, no crawl,
@@ -18,12 +18,12 @@ import XCTest
 
 final class CatalogCrawlSchedulerTests: XCTestCase {
 
-    // MARK: - OwnedCrawlTaskRegistry: self-pruning
+    // MARK: - OwnedTaskRegistry: self-pruning
 
     /// A registered task that later `complete`s prunes its token — the live set
     /// returns to zero. Catches a dropped `removeValue` in `complete`.
     func test_registerThenComplete_prunesTokenToZero() {
-        let registry = OwnedCrawlTaskRegistry()
+        let registry = OwnedTaskRegistry()
         let token = UUID()
         let task = Task<Void, Never> {}
 
@@ -40,7 +40,7 @@ final class CatalogCrawlSchedulerTests: XCTestCase {
     /// of the `completedBeforeInsert` tombstone guard in `register`
     /// (without it, count would be 1 — a permanently-leaked finished task).
     func test_completeBeforeRegister_tombstoneSkipsInsert() {
-        let registry = OwnedCrawlTaskRegistry()
+        let registry = OwnedTaskRegistry()
         let token = UUID()
         let task = Task<Void, Never> {}
 
@@ -60,7 +60,7 @@ final class CatalogCrawlSchedulerTests: XCTestCase {
     /// tombstone a token it just successfully removed, silently dropping a
     /// subsequent registration of that token).
     func test_completeOfLiveToken_leavesNoTombstoneForReuse() {
-        let registry = OwnedCrawlTaskRegistry()
+        let registry = OwnedTaskRegistry()
         let token = UUID()
 
         registry.register(token, Task<Void, Never> {})
@@ -78,7 +78,7 @@ final class CatalogCrawlSchedulerTests: XCTestCase {
     /// prune the other. Guards against clearing the whole map on any
     /// completion.
     func test_independentTokens_pruneIndependently() {
-        let registry = OwnedCrawlTaskRegistry()
+        let registry = OwnedTaskRegistry()
         let a = UUID(), b = UUID()
         registry.register(a, Task<Void, Never> {})
         registry.register(b, Task<Void, Never> {})
@@ -91,12 +91,12 @@ final class CatalogCrawlSchedulerTests: XCTestCase {
         XCTAssertEqual(liveTokens, [b], "the surviving token must be the one not completed")
     }
 
-    // MARK: - OwnedCrawlTaskRegistry: cancellation
+    // MARK: - OwnedTaskRegistry: cancellation
 
     /// `cancelAll()` cancels every live task. A no-op cancelAll would leave
     /// the suspended task waiting forever and hang the await below.
     func test_cancelAll_cancelsEveryLiveTask() async {
-        let registry = OwnedCrawlTaskRegistry()
+        let registry = OwnedTaskRegistry()
         let suspicious = Task<Void, Never> {
             // Suspends until cancelled; `Task.sleep` throws on cancel so `try?`
             // lets it complete cleanly. No wall-clock dependence — the value is
@@ -115,7 +115,7 @@ final class CatalogCrawlSchedulerTests: XCTestCase {
     /// `snapshot()` returns the live (token, task) pairs so the drain can await
     /// them. Confirms the returned handle is the one registered.
     func test_snapshot_returnsRegisteredHandles() {
-        let registry = OwnedCrawlTaskRegistry()
+        let registry = OwnedTaskRegistry()
         let token = UUID()
         let task = Task<Void, Never> {}
         registry.register(token, task)

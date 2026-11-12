@@ -39,6 +39,42 @@ private actor SpyPositionWriter: PositionWriter {
     }
 }
 
+/// Holds every `save` until `open()` is called, so a test can act while a post
+/// is still running.
+private actor PostGate {
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        if isOpen { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func open() {
+        isOpen = true
+        let pending = waiters
+        waiters.removeAll()
+        for waiter in pending { waiter.resume() }
+    }
+}
+
+private actor GatedPositionWriter: PositionWriter {
+    private let gate: PostGate
+    private(set) var savedSnapshots: [PositionSnapshot] = []
+
+    init(gate: PostGate) { self.gate = gate }
+
+    func save(_ snapshot: PositionSnapshot) async throws -> ServerPositionID? {
+        await gate.wait()
+        savedSnapshots.append(snapshot)
+        return "gated-server-id"
+    }
+
+    func load(for bookID: String) async throws -> PositionSnapshot? { nil }
+
+    func cancel(for bookID: String) async {}
+}
+
 // Deliberately NOT @MainActor: the code under test is nonisolated and the
 // fixtures (Publication / TPPBook / factory) are non-Sendable — driving them
 // from a @MainActor test is a Swift 6 sending error, while from a
@@ -261,6 +297,61 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
         XCTAssertEqual(saved.count, 2,
                        "Poster always delegates to writer; throttling is the writer's job")
         XCTAssertTrue(saved.allSatisfy { $0.bookID == testBook.identifier })
+    }
+
+    // MARK: - Write-task ownership (PP-5554)
+
+    /// Each finished post must leave the poster's task set; before PP-5554 the
+    /// poster kept one handle per accepted page turn for the whole session.
+    func testStoreReadPosition_manyAcceptedLocators_keepsNoFinishedWriteTasks() async throws {
+        let turns = 50
+        for index in 1...turns {
+            let fraction = Double(index) / Double(turns + 1)
+            poster.storeReadPosition(locator: createLocator(
+                href: "/chapter1.xhtml",
+                progression: fraction,
+                totalProgression: fraction
+            ))
+        }
+
+        for task in poster.pendingWriteTasksForTesting() { await task.value }
+
+        let saved = await spyWriter.savedSnapshots
+        XCTAssertEqual(saved.count, turns, "every accepted locator must still reach the writer")
+        XCTAssertEqual(poster.liveWriteTaskCountForTesting, 0,
+                       "finished posts must not stay in the poster's task set")
+    }
+
+    /// Closing the reader while a post is still running saves the final position
+    /// locally and keeps the running post joinable until it finishes.
+    func testStoreFinalPositionAndFlush_whilePostIsRunning_keepsPostJoinableUntilItFinishes() async throws {
+        let gate = PostGate()
+        let gatedWriter = GatedPositionWriter(gate: gate)
+        let gatedPoster = TPPLastReadPositionPoster(
+            book: testBook,
+            publication: publication,
+            bookRegistryProvider: bookRegistryMock,
+            positionWriter: gatedWriter
+        )
+
+        gatedPoster.storeReadPosition(locator: createLocator(
+            href: "/chapter1.xhtml", progression: 0.5, totalProgression: 0.25))
+        gatedPoster.storeFinalPositionAndFlush(locator: createLocator(
+            href: "/chapter2.xhtml", progression: 0.5, totalProgression: 0.6))
+
+        XCTAssertEqual(gatedPoster.liveWriteTaskCountForTesting, 2,
+                       "posts that have not finished must stay owned and joinable")
+        let stored = bookRegistryMock.location(forIdentifier: testBook.identifier)?.locationString ?? ""
+        XCTAssertTrue(stored.contains("/chapter2.xhtml"),
+                      "close must save the final position locally without waiting for the server")
+
+        await gate.open()
+        for task in gatedPoster.pendingWriteTasksForTesting() { await task.value }
+
+        let saved = await gatedWriter.savedSnapshots
+        XCTAssertEqual(saved.count, 2, "both posts must complete after the reader closes")
+        XCTAssertEqual(gatedPoster.liveWriteTaskCountForTesting, 0,
+                       "each post must leave the task set once it finishes")
     }
 
     // MARK: - shouldStore Predicate Boundary Tests (P0 #1)

@@ -518,6 +518,7 @@
 		3DDF3224DA8EDA75AA1FA64F /* TPPProblemReportViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCB1E4A5E6A1E450001D2751 /* TPPProblemReportViewController.swift */; };
 		3DFA32525D80836005DEB6FC /* TPPReaderBlockNavigationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D14070A4A26128AE43AC74C6 /* TPPReaderBlockNavigationTests.swift */; };
 		3E215F31F58252D657451CF5 /* MyBooksDownloadCenter+AuthRetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59EBD1672825A70855ADF22B /* MyBooksDownloadCenter+AuthRetry.swift */; };
+		3E327861B8B1A694ADEE5EAF /* OwnedTaskRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EE2805BFF44C8A72FBCD021 /* OwnedTaskRegistry.swift */; };
 		3E3870516DA911431642CD2E /* AccessibilityServiceProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21803F06C0E1741DD2F7973E /* AccessibilityServiceProtocol.swift */; };
 		3E8896598610C11A901D8F8E /* DeferredAmbientSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21A2C628C8573E9D5FB95F67 /* DeferredAmbientSync.swift */; };
 		3EC206476E6C170ECF92ECA8 /* UIView+TPPViewAdditions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 581C6B05F79FEB7A95DD4BA5 /* UIView+TPPViewAdditions.swift */; };
@@ -1015,6 +1016,7 @@
 		767A5147E32D8898618AAA81 /* FirebaseTriageTelemetrySink.swift in Sources */ = {isa = PBXBuildFile; fileRef = C814ACEF8225153039002C2F /* FirebaseTriageTelemetrySink.swift */; };
 		76C676B1C1BF8F2434C03DB9 /* AccountDetailViewModelLeakTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ACF84E5F5C8C9579E5C61B9 /* AccountDetailViewModelLeakTests.swift */; };
 		76FD3B6DF6B2C07153FBBADE /* TPPBookDetailDownloadFailedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADDA3478B2DF503D6CBD4575 /* TPPBookDetailDownloadFailedView.swift */; };
+		77818D9F9AAC2A3FB7EE5543 /* OwnedTaskRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EE2805BFF44C8A72FBCD021 /* OwnedTaskRegistry.swift */; };
 		77B0D2A0D5EAB95AFA232581 /* AccessibilityServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A2EAE5D772D960178EBD800 /* AccessibilityServiceTests.swift */; };
 		77D37C73FF8E8B1FC7CF6124 /* ReaderInitialLocationNavigator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AB1721A59302ABD56C2667E /* ReaderInitialLocationNavigator.swift */; };
 		782F513B7404858F0463BFDF /* PalaceLogging in Frameworks */ = {isa = PBXBuildFile; productRef = B7890FD5F70ADDBD798D7FC7 /* PalaceLogging */; };
@@ -3098,6 +3100,7 @@
 		5E4EA91D371E9EA24A03452E /* ChapterScrubberReadout.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ChapterScrubberReadout.swift; sourceTree = "<group>"; };
 		5E5F3E40C7728913B9661C1B /* AccountDetailReauthSheetTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AccountDetailReauthSheetTests.swift; sourceTree = "<group>"; };
 		5EBFFFA78FB0357C5C37E4E0 /* TestAppContainerFactoryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TestAppContainerFactoryTests.swift; sourceTree = "<group>"; };
+		5EE2805BFF44C8A72FBCD021 /* OwnedTaskRegistry.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OwnedTaskRegistry.swift; sourceTree = "<group>"; };
 		5F1704ABF47C266A439012C8 /* BookDetailBorrowFailureRecoveryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BookDetailBorrowFailureRecoveryTests.swift; sourceTree = "<group>"; };
 		5F1A2C7B9E8D6A34F0C1B2D5 /* DiskBudgetManagerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DiskBudgetManagerTests.swift; sourceTree = "<group>"; };
 		5F34F09B1F2983AA534E4A06 /* BookDetailViewModel+StreamableLoanListen.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = "BookDetailViewModel+StreamableLoanListen.swift"; sourceTree = "<group>"; };
@@ -5752,6 +5755,7 @@
 				1183F359194F847100DC322F /* TPPAsync.h */,
 				1183F35A194F847100DC322F /* TPPAsync.m */,
 				732F929223ECB51F0099244C /* TPPBackgroundExecutor.swift */,
+				5EE2805BFF44C8A72FBCD021 /* OwnedTaskRegistry.swift */,
 			);
 			path = Concurrency;
 			sourceTree = "<group>";
@@ -10115,6 +10119,7 @@
 				7886F06CAA3E3C0F8D5F23FA /* DownloadCenterSignInRoute.swift in Sources */,
 				07BE6BA4FC36C7BAFCAE3500 /* ProcessServices.swift in Sources */,
 				CD10604618226CE706FB03DD /* AccountScopedResetting.swift in Sources */,
+				3E327861B8B1A694ADEE5EAF /* OwnedTaskRegistry.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -10748,6 +10753,7 @@
 				A2086E70B479CD7E21540073 /* DownloadCenterSignInRoute.swift in Sources */,
 				062EA11DA3007219C24C79CD /* ProcessServices.swift in Sources */,
 				22B60D5308CADD4669361838 /* AccountScopedResetting.swift in Sources */,
+				77818D9F9AAC2A3FB7EE5543 /* OwnedTaskRegistry.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
