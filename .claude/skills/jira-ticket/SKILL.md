@@ -165,6 +165,11 @@ When this skill is used alongside real delivery, keep Jira honest in lockstep:
 - **PR opened / up for review** -> **Code Review** (id 51).
 - **PR merged** -> **Done** (id 31).
 
+A Story with sub-tasks gets a feature branch, `feature/PP-XXXX-<slug>` from `develop`.
+Each sub-task PR targets that branch, not `develop`. A sub-task stays in **Code Review**
+when its PR merges into the feature branch, and moves to **Done** when the feature branch
+merges into `develop`. See `docs/architecture/feature-branch-workflow.md`.
+
 PR titles, PR bodies and commit messages follow "Writing conventions" in `CLAUDE.md`
 (What / Why / How verified, about 20 lines, no AI footer). Put the PP key in the PR title
 and commit subject; `jira-pr-opened.yml` copies the PR's What and Why onto the ticket.

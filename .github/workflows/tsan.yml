@@ -14,6 +14,10 @@ name: Thread Sanitizer
 #     ignores a name that matches nothing.
 on:
   pull_request:
+    # Pull requests into a feature/** branch skip this macOS workflow; the
+    # feature branch's own PR into develop runs it. See
+    # docs/architecture/feature-branch-workflow.md.
+    branches: [develop, main, 'release/**', 'hotfix/**', beta]
     # A race needs Swift to introduce it, so a diff that touches none is 32
     # macos-26 minutes that cannot change the answer. GitHub skips only when
     # EVERY changed path matches, so any Swift file still runs the lane.

@@ -5,6 +5,13 @@ on:
   # docs-only PR. The `changes` job below decides instead, and the
   # `build-and-test` gate reports success when nothing relevant changed.
   pull_request:
+    # Pull requests into a feature/** branch skip this macOS workflow; the
+    # feature branch's own PR into develop runs it. See
+    # docs/architecture/feature-branch-workflow.md.
+    # The base filter does not cause the waiting-check problem above: a required
+    # check applies to pull requests into the branch that requires it, and every
+    # base that can require `build-and-test` is in this list.
+    branches: [develop, main, 'release/**', 'hotfix/**', beta]
   workflow_dispatch:
     inputs:
       shards:

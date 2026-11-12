@@ -20,7 +20,8 @@ description: Release & Hotfix Merge Policy
 | `release/X.Y.Z` | `main` | `--merge` (no-ff) |
 | `hotfix/X.Y.Z-*` | `main` | `--merge` (no-ff) |
 | Hotfix forward-port branch | `develop` | `--merge` (no-ff) |
-| Feature PR | `develop` | `--squash` is fine |
+| Single PR, or sub-task PR into a `feature/**` branch | `develop` or the feature branch | `--squash` is fine |
+| `feature/**` branch ([why](./feature-branch-workflow.md)) | `develop` | `--merge` (no-ff) |
 
 GitHub UI: use **"Create a merge commit"**. CLI: `gh pr merge <num> --merge`.
 

@@ -20,6 +20,10 @@ name: Audiobook Toolkit Tests
 # than failing or reading as a run that tested something.
 on:
   pull_request:
+    # Pull requests into a feature/** branch skip this macOS workflow; the
+    # feature branch's own PR into develop runs it. See
+    # docs/architecture/feature-branch-workflow.md.
+    branches: [develop, main, 'release/**', 'hotfix/**', beta]
     paths:
       - 'ios-audiobooktoolkit'
       - '.github/workflows/audiobook-toolkit-tests.yml'

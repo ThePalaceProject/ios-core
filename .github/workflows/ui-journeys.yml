@@ -7,6 +7,10 @@ name: UI Journeys
 # scheme and are unaffected; this lane uses the PalaceUITests scheme.
 on:
   pull_request:
+    # Pull requests into a feature/** branch skip this macOS workflow; the
+    # feature branch's own PR into develop runs it. See
+    # docs/architecture/feature-branch-workflow.md.
+    branches: [develop, main, 'release/**', 'hotfix/**', beta]
     paths:
       - 'Palace/**'
       - 'PalaceUITests/**'

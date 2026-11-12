@@ -3,7 +3,9 @@ name: Update Jira on PR Open
 on:
   pull_request:
     types: [opened, reopened, ready_for_review]
-    branches: [main, develop]
+    # feature/**: a sub-task PR into a feature branch moves its ticket to Code
+    # Review too. See docs/architecture/feature-branch-workflow.md.
+    branches: [main, develop, 'feature/**']
   workflow_dispatch:
     inputs:
       pr_number:
