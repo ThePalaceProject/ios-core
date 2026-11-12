@@ -92,9 +92,9 @@ extension SentRequest: @unchecked Sendable {}
 @MainActor
 final class TPPAnnotationsBookLibraryScopeTests: XCTestCase {
 
-    private static let libraryAAnnotations = URL(string: "https://lion.lyrasistechnology.org/acton/annotations/")!
-    private static let libraryBAnnotations = URL(string: "http://acl.simplye-ca.org/CALMDA/annotations/")!
-    private static let serverAnnotationID = "https://lion.lyrasistechnology.org/acton/annotations/77"
+    private static let libraryAAnnotations = URL(string: "https://bibliomation.lyrasistechnology.org/douglashebron/annotations/")!
+    private static let libraryBAnnotations = URL(string: "https://bibliomation.lyrasistechnology.org/douglascanaan/annotations/")!
+    private static let serverAnnotationID = "https://bibliomation.lyrasistechnology.org/douglashebron/annotations/77"
     private static let deviceA = "urn:uuid:device-library-a"
     private static let deviceB = "urn:uuid:device-library-b"
 
@@ -119,15 +119,19 @@ final class TPPAnnotationsBookLibraryScopeTests: XCTestCase {
         let authDocData = try Data(contentsOf: XCTUnwrap(bundle.url(forResource: "nypl_authentication_document", withExtension: "json")))
         let authDoc = try OPDS2AuthenticationDocument.fromData(authDocData)
 
-        let accountA = Account(publication: try XCTUnwrap(feed.catalogs.first { $0.metadata.title == "Acton Public Library" }),
+        let accountA = Account(publication: try XCTUnwrap(feed.catalogs.first { $0.metadata.title == "Douglas Library of Hebron" }),
                                imageCache: MockImageCache())
-        let accountB = Account(publication: try XCTUnwrap(feed.catalogs.first { $0.metadata.title == "Alameda County Library" }),
+        let accountB = Account(publication: try XCTUnwrap(feed.catalogs.first { $0.metadata.title == "Douglas Library of North Canaan" }),
                                imageCache: MockImageCache())
         detailsA = AccountDetails(authenticationDocument: authDoc, uuid: accountA.uuid, defaults: defaults)
         detailsB = AccountDetails(authenticationDocument: authDoc, uuid: accountB.uuid, defaults: defaults)
         accountA._setState(.detailsLoaded(detailsA))
         accountB._setState(.detailsLoaded(detailsB))
         XCTAssertTrue(detailsA.supportsSimplyESync, "fixture precondition: the auth document must advertise sync")
+        // The selected library's URL comes from the host app's saved main feed.
+        // If that ever named library A, a post to the wrong library would look right.
+        XCTAssertNotEqual(TPPConfiguration.mainFeedURL()?.appendingPathComponent("annotations/"), Self.libraryAAnnotations,
+                          "precondition: the host's main feed must not be library A")
 
         libraries = BookAndSelectedLibraries(accountA: accountA, accountB: accountB)
         libraries.patronA.setAuthToken("bearerA", barcode: "patronA", pin: "1111",
