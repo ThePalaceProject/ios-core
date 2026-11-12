@@ -148,6 +148,12 @@ final class ProcessServicesTests: XCTestCase {
 
     /// Registering B's offline-queue executor fills B's slot and leaves A's empty.
     func testOfflineQueueCoordinator_RegistersInItsOwnContainerOnly() {
+        // Registering points the app-wide offline queue at B's coordinator,
+        // which dies with B; rebuild the app graph so its own registers again.
+        addTeardownBlock { @MainActor in
+            AppContainer._resetForTesting()
+            _ = AppContainer.production() // MIGRATED-DEFERRED: re-registers the app's offline-queue executor
+        }
         containerB.ensureOfflineQueueExecutorRegistered()
 
         XCTAssertNotNil(containerB.processServices.offlineQueueCoordinator.withLock { $0 },

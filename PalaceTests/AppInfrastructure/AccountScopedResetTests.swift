@@ -102,6 +102,7 @@ final class AccountScopedResetTests: XCTestCase {
     func testRealSwitch_OnContainerA_ResetsOnlyItsOwnServices() async {
         let containerA = makeTestAppContainer(bookRegistry: TPPBookRegistryMock())
         let containerB = makeTestAppContainer(bookRegistry: TPPBookRegistryMock())
+        _ = containerA.bookCellModelCache.model(for: TPPBookMocker.mockBook(distributorType: .EpubZip))
         _ = containerB.bookCellModelCache.model(for: TPPBookMocker.mockBook(distributorType: .EpubZip))
         let (_, next) = seedSwitch(in: containerA)
 
@@ -109,7 +110,35 @@ final class AccountScopedResetTests: XCTestCase {
         await awaitConditionAsync { !containerA.accountsManager.isAccountSwitching }
         await drainMainQueueAsync()
 
+        XCTAssertEqual(containerA.bookCellModelCache.count, 0, "The container that switched must drop its models")
         XCTAssertEqual(containerB.bookCellModelCache.count, 1, "Another container's cache must keep its models")
+    }
+
+    /// A refresh of the same library is not a switch, so the container does
+    /// not reset its services synchronously; the cache clears on its own hop.
+    func testRefreshRequest_DoesNotRunTheSwitchReset() {
+        let container = makeTestAppContainer(bookRegistry: TPPBookRegistryMock())
+        let cache = container.bookCellModelCache
+        _ = cache.model(for: TPPBookMocker.mockBook(distributorType: .EpubZip))
+
+        container.accountsManager.requestCurrentLibraryRefresh()
+
+        XCTAssertEqual(cache.count, 1, "Only .willSwitch may run the switch reset")
+    }
+
+    /// Leaving a library for none is a switch too: `.willSwitch` names no target.
+    func testSwitchToNoLibrary_SendsWillSwitchWithNilTarget() async {
+        let container = makeTestAppContainer(bookRegistry: TPPBookRegistryMock())
+        let (prior, _) = seedSwitch(in: container)
+        var events: [String] = []
+        container.accountsManager.accountSwitchPublisher
+            .sink { events.append(Self.describe($0)) }
+            .store(in: &cancellables)
+
+        container.accountsManager.currentAccount = nil
+        await awaitConditionAsync { !container.accountsManager.isAccountSwitching }
+
+        XCTAssertEqual(events, ["willSwitch(\(prior)→nil)", "selected"])
     }
 
     // MARK: - Playback survives a switch
@@ -147,21 +176,26 @@ final class AccountScopedResetTests: XCTestCase {
         let process = Mirror(reflecting: container.processServices).children
         let owned = try XCTUnwrap(ownedServicesStorage(of: container), "Could not read the owned services")
         let children = Array(process) + Array(Mirror(reflecting: owned).children)
+        let lockHeld = Self.lockHeldServices(of: container.processServices)
         XCTAssertGreaterThan(children.count, 12, "Expected to read every stored service")
 
         for child in children {
             let label = child.label ?? "<unlabelled>"
-            let value = Self.unwrapped(child.value)
-            if Self.resetOnSwitch.contains(label) {
-                let service = try XCTUnwrap(value as? AccountScopedResetting,
-                                            "\(label) is listed as reset on a switch but does not conform")
-                XCTAssertTrue(resetters.contains { $0 === service },
-                              "\(label) conforms but is missing from accountScopedServices()")
-            } else if Self.livesForTheProcess.contains(label) {
-                XCTAssertFalse(value is AccountScopedResetting,
-                               "\(label) conforms to AccountScopedResetting; move it to resetOnSwitch")
-            } else {
+            if label == "accountSwitchSubscription" { continue }
+            let value = lockHeld[label] ?? Self.unwrapped(child.value)
+            guard Self.resetOnSwitch.contains(label) || Self.livesForTheProcess.contains(label) else {
                 XCTFail("\(label) has no lifetime decision; add it to resetOnSwitch or livesForTheProcess")
+                continue
+            }
+            let service = try XCTUnwrap(value, "Setup: \(label) must be built before it is checked")
+            if Self.resetOnSwitch.contains(label) {
+                let resetter = try XCTUnwrap(service as? AccountScopedResetting,
+                                             "\(label) is listed as reset on a switch but does not conform")
+                XCTAssertTrue(resetters.contains { $0 === resetter },
+                              "\(label) conforms but is missing from accountScopedServices()")
+            } else {
+                XCTAssertFalse(service is AccountScopedResetting,
+                               "\(label) conforms to AccountScopedResetting; move it to resetOnSwitch")
             }
         }
         XCTAssertEqual(resetters.count, Self.resetOnSwitch.count)
@@ -179,9 +213,17 @@ final class AccountScopedResetTests: XCTestCase {
         "samplePreviewManager", "audiobookSession", "audiobookSessionPresenter", "playbackBootstrapper",
         "appRatingService", "ratingPromptPresenter", "activityPolicy",
         "sideloadedBookRegistry", "sideloadedBookManager", "offlineQueueCoordinator",
-        "accountSwitchSubscription",
         "signInModalSheetPresenter", "catalogAPI", "catalogRepository",
     ]
+
+    /// The cells kept behind a lock, read through it so their values can be checked.
+    private static func lockHeldServices(of services: ProcessServices) -> [String: Any] {
+        var values: [String: Any] = [:]
+        values["sideloadedBookRegistry"] = services.sideloadedBookRegistry.withLock { $0 }
+        values["sideloadedBookManager"] = services.sideloadedBookManager.withLock { $0 }
+        values["offlineQueueCoordinator"] = services.offlineQueueCoordinator.withLock { $0 }
+        return values
+    }
 
     // MARK: - Helpers
 
@@ -202,7 +244,14 @@ final class AccountScopedResetTests: XCTestCase {
         _ = container.ratingPromptPresenter
         _ = container.playtimeUploader
         _ = container.sideloadedBookManager
-        container.ensureOfflineQueueExecutorRegistered()
+        // Filled directly: registering would point the app-wide offline queue
+        // at a coordinator that dies with this test's container.
+        let coordinator = OfflineQueueCoordinator.production(
+            downloadCenter: container.downloadCenter,
+            bookRegistry: container.bookRegistry,
+            currentLibraryID: { nil }
+        )
+        container.processServices.offlineQueueCoordinator.withLock { $0 = coordinator }
         _ = container.bookCellModelCache
         _ = container.catalogRepository
         _ = container.signInModalSheetPresenter
@@ -213,7 +262,7 @@ final class AccountScopedResetTests: XCTestCase {
         return link.flatMap { Mirror(reflecting: $0).children.first?.value as? AppContainerOwnedServices }
     }
 
-    /// The value inside an optional cell or a lock, so conformance can be checked.
+    /// The value inside an optional cell, so conformance can be checked.
     private static func unwrapped(_ value: Any) -> Any? {
         let mirror = Mirror(reflecting: value)
         if mirror.displayStyle == .optional {
