@@ -226,6 +226,11 @@ public final class AudiobookSessionManager: ObservableObject {
     /// pass a spy. `@MainActor` because that accessor is.
     private let audiobookSessionPresenterProvider: @MainActor () -> AudiobookSessionPresenter
 
+    /// Resolves the playback bootstrapper that primes the audio session before
+    /// an open and on foreground return. A provider, not a stored reference:
+    /// the bootstrapper's own session provider resolves this session.
+    private let playbackBootstrapperProvider: @MainActor () -> PlaybackAudioSessionPriming
+
     /// Resolves whether the in-app-playback-nav feature is enabled. Gates
     /// which presentation `presentSession` drives: off → the legacy
     /// full-screen pushed `.audio` route; on → the root-level presenter
@@ -314,6 +319,7 @@ public final class AudiobookSessionManager: ObservableObject {
         bookCoverRegistryProvider: @escaping () -> TPPBookCoverRegistry,
         navigationCoordinatorHubProvider: @escaping () -> NavigationCoordinatorHub,
         audiobookSessionPresenterProvider: @escaping @MainActor () -> AudiobookSessionPresenter,
+        playbackBootstrapperProvider: @escaping @MainActor () -> PlaybackAudioSessionPriming,
         inAppPlaybackNavEnabledProvider: @escaping () -> Bool,
         lcpContentDownloadTrigger: @escaping (TPPBook) -> Void,
         lcpStreamingEnabledProvider: @escaping () -> Bool,
@@ -337,6 +343,7 @@ public final class AudiobookSessionManager: ObservableObject {
         self.bookCoverRegistryProvider = bookCoverRegistryProvider
         self.navigationCoordinatorHubProvider = navigationCoordinatorHubProvider
         self.audiobookSessionPresenterProvider = audiobookSessionPresenterProvider
+        self.playbackBootstrapperProvider = playbackBootstrapperProvider
         self.inAppPlaybackNavEnabledProvider = inAppPlaybackNavEnabledProvider
         self.lcpContentDownloadTrigger = lcpContentDownloadTrigger
         self.lcpStreamingEnabledProvider = lcpStreamingEnabledProvider
@@ -376,6 +383,7 @@ public final class AudiobookSessionManager: ObservableObject {
         bookCoverRegistryProvider: @escaping () -> TPPBookCoverRegistry = { TPPBookCoverRegistry.shared },
         navigationCoordinatorHubProvider: @escaping () -> NavigationCoordinatorHub = { AppContainer.production().navigationCoordinatorHub },
         audiobookSessionPresenterProvider: @escaping @MainActor () -> AudiobookSessionPresenter = { AppContainer.production().audiobookSessionPresenter },
+        playbackBootstrapperProvider: (@MainActor () -> PlaybackAudioSessionPriming)? = nil,
         inAppPlaybackNavEnabledProvider: @escaping () -> Bool = { RemoteFeatureFlags.shared.isInAppPlaybackNavEnabled },
         lcpContentDownloadTrigger: @escaping (TPPBook) -> Void = { book in
             AppContainer.production().downloadCenter.redownloadLCPContentFile(for: book)
@@ -407,6 +415,7 @@ public final class AudiobookSessionManager: ObservableObject {
             bookCoverRegistryProvider: bookCoverRegistryProvider,
             navigationCoordinatorHubProvider: navigationCoordinatorHubProvider,
             audiobookSessionPresenterProvider: audiobookSessionPresenterProvider,
+            playbackBootstrapperProvider: playbackBootstrapperProvider ?? { appContainer.playbackBootstrapper },
             inAppPlaybackNavEnabledProvider: inAppPlaybackNavEnabledProvider,
             lcpContentDownloadTrigger: lcpContentDownloadTrigger,
             lcpStreamingEnabledProvider: lcpStreamingEnabledProvider,
@@ -739,7 +748,7 @@ public final class AudiobookSessionManager: ObservableObject {
         // foreground re-entry), so a plain first open issued play() against an
         // inactive session → AVError -11849 ("Operation Stopped") → slow start via
         // auto-reopen. Pre-existing (also on 3.1.0); this removes the slow start.
-        AppContainer.production().playbackBootstrapper.ensureAudioSessionActiveForPlayback()
+        playbackBootstrapperProvider().ensureAudioSessionActiveForPlayback()
 
         loadGeneration &+= 1
         let generation = loadGeneration
@@ -891,7 +900,7 @@ public final class AudiobookSessionManager: ObservableObject {
     public func recoverPlaybackForForegroundEntry() {
         guard let _ = manager else { return }
         // Re-prime the audio session; `ensureInitialized` is idempotent.
-        AppContainer.production().playbackBootstrapper.ensureInitialized()
+        playbackBootstrapperProvider().ensureInitialized()
         if case .playing = state {
             // Was playing pre-background; ask the toolkit to resume.
             // `manager.play()` is idempotent.
