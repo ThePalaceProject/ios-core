@@ -1,0 +1,142 @@
+[
+  {
+    "args" : {
+      "action" : "bearerTokenReceived",
+      "hasExpiration" : "false",
+      "token" : "token-A"
+    },
+    "method" : "dispatch"
+  },
+  {
+    "args" : {
+      "name" : "Alice"
+    },
+    "method" : "patronSet"
+  },
+  {
+    "args" : {
+      "action" : "credentialsValidationStarted"
+    },
+    "method" : "dispatch"
+  },
+  {
+    "args" : {
+      "accountId" : "urn:uuid:065c0c11-0d0f-42a3-82e4-277b18786949",
+      "bearer" : "token-A",
+      "enableTokenRefresh" : "false",
+      "hasBearer" : "true",
+      "path" : "\/NYNYPL\/patrons\/me"
+    },
+    "method" : "validationRequest"
+  },
+  {
+    "args" : {
+      "action" : "bearerTokenReceived",
+      "hasExpiration" : "false",
+      "token" : "token-B"
+    },
+    "method" : "dispatch"
+  },
+  {
+    "args" : {
+      "name" : "Bea"
+    },
+    "method" : "patronSet"
+  },
+  {
+    "args" : {
+      "action" : "credentialsValidationStarted"
+    },
+    "method" : "dispatch"
+  },
+  {
+    "args" : {
+      "accountId" : "urn:uuid:065c0c11-0d0f-42a3-82e4-277b18786949",
+      "bearer" : "token-B",
+      "enableTokenRefresh" : "false",
+      "hasBearer" : "true",
+      "path" : "\/NYNYPL\/patrons\/me"
+    },
+    "method" : "validationRequest"
+  },
+  {
+    "args" : {
+      "action" : "credentialsValidationSucceeded"
+    },
+    "method" : "dispatch"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "delegate.didReceiveCredentials"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "registry.sync"
+  },
+  {
+    "args" : {
+      "action" : "userAccountUpdated"
+    },
+    "method" : "dispatch"
+  },
+  {
+    "args" : {
+      "progress" : "finished"
+    },
+    "method" : "reportSignInProgress"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "delegate.didCompleteSignIn"
+  },
+  {
+    "args" : {
+      "action" : "credentialsValidationSucceeded"
+    },
+    "method" : "dispatch"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "delegate.didReceiveCredentials"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "registry.sync"
+  },
+  {
+    "args" : {
+      "action" : "userAccountUpdated"
+    },
+    "method" : "dispatch"
+  },
+  {
+    "args" : {
+      "progress" : "finished"
+    },
+    "method" : "reportSignInProgress"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "delegate.didCompleteSignIn"
+  },
+  {
+    "args" : {
+      "authToken" : "token-B",
+      "cookieCount" : "0",
+      "patronName" : "Bea"
+    },
+    "method" : "storedAccount"
+  }
+]

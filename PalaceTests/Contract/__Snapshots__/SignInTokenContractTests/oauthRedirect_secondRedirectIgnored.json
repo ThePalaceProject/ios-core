@@ -1,0 +1,100 @@
+[
+  {
+    "args" : {
+      "progress" : "started"
+    },
+    "method" : "reportSignInProgress"
+  },
+  {
+    "args" : {
+      "action" : "credentialCaptureStarted"
+    },
+    "method" : "dispatch"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "delegate.willSignIn"
+  },
+  {
+    "args" : {
+      "host" : "circulation.example.com"
+    },
+    "method" : "openInBrowser"
+  },
+  {
+    "args" : {
+      "action" : "bearerTokenReceived",
+      "hasExpiration" : "false",
+      "token" : "first-token"
+    },
+    "method" : "dispatch"
+  },
+  {
+    "args" : {
+      "name" : "Alice"
+    },
+    "method" : "patronSet"
+  },
+  {
+    "args" : {
+      "action" : "credentialsValidationStarted"
+    },
+    "method" : "dispatch"
+  },
+  {
+    "args" : {
+      "accountId" : "urn:uuid:065c0c11-0d0f-42a3-82e4-277b18786949",
+      "bearer" : "first-token",
+      "enableTokenRefresh" : "false",
+      "hasBearer" : "true",
+      "path" : "\/NYNYPL\/patrons\/me"
+    },
+    "method" : "validationRequest"
+  },
+  {
+    "args" : {
+      "action" : "credentialsValidationSucceeded"
+    },
+    "method" : "dispatch"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "delegate.didReceiveCredentials"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "registry.sync"
+  },
+  {
+    "args" : {
+      "action" : "userAccountUpdated"
+    },
+    "method" : "dispatch"
+  },
+  {
+    "args" : {
+      "progress" : "finished"
+    },
+    "method" : "reportSignInProgress"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "delegate.didCompleteSignIn"
+  },
+  {
+    "args" : {
+      "authToken" : "first-token",
+      "cookieCount" : "0",
+      "patronName" : "Alice"
+    },
+    "method" : "storedAccount"
+  }
+]
