@@ -55,6 +55,7 @@ class JourneyTestCase: XCTestCase {
             XCTFail("the test bundle has no Fixtures folder")
             return
         }
+        Self.warmUpOnce(fixtures: fixtures)
         let app = XCUIApplication()
         app.launchEnvironment["PALACE_MOCK_BACKEND_SCENARIO"] = scenario
         app.launchEnvironment["PALACE_MOCK_BACKEND_FIXTURES"] = fixtures
@@ -63,6 +64,40 @@ class JourneyTestCase: XCTestCase {
         app.launch()
         self.app = app
         registerCleanup()
+    }
+
+    private static var didWarmUp = false
+
+    /// Launches the app once per test run, before the first journey, and walks
+    /// it to the Libraries list. The first launch on a freshly booted CI
+    /// simulator is much slower than later ones: about 60 s before the
+    /// automation session starts, then about 40 s with a busy main thread while
+    /// the registry swaps in. A journey that pays that cost fails its 30 s waits.
+    /// Nothing here asserts; a slow or failed warm-up leaves the journey's own
+    /// waits to report the problem.
+    private static func warmUpOnce(fixtures: String) {
+        guard !didWarmUp else { return }
+        didWarmUp = true
+        let warmUpTimeout: TimeInterval = 180
+        let app = XCUIApplication()
+        app.launchEnvironment["PALACE_MOCK_BACKEND_SCENARIO"] = FixtureLibrary.scenario
+        app.launchEnvironment["PALACE_MOCK_BACKEND_FIXTURES"] = fixtures
+        app.launchEnvironment["PALACE_MOCK_BACKEND_RESET"] = "1"
+        app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launch()
+        let settingsTab = app.tabBars.buttons[AccessibilityID.TabBar.settingsTab]
+        if settingsTab.waitForExistence(timeout: warmUpTimeout), settingsTab.isHittable {
+            settingsTab.tap()
+            let libraries = app.descendants(matching: .any)[AccessibilityID.Settings.manageLibrariesButton]
+            if libraries.waitForExistence(timeout: warmUpTimeout), libraries.isHittable {
+                libraries.tap()
+                _ = app.descendants(matching: .any)
+                    .matching(identifier: "\(AccessibilityID.Libraries.row).\(FixtureLibrary.libraryID)")
+                    .firstMatch
+                    .waitForExistence(timeout: warmUpTimeout)
+            }
+        }
+        app.terminate()
     }
 
     /// The fixtures are copied into this test bundle; the app reads them from
