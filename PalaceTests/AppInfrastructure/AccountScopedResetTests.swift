@@ -182,7 +182,16 @@ final class AccountScopedResetTests: XCTestCase {
         for child in children {
             let label = child.label ?? "<unlabelled>"
             if label == "accountSwitchSubscription" { continue }
-            let value = lockHeld[label] ?? Self.unwrapped(child.value)
+            let value: Any?
+            if String(describing: type(of: child.value)).hasPrefix("OSAllocatedUnfairLock") {
+                guard let held = lockHeld[label] else {
+                    XCTFail("\(label) is lock-held; read it through its lock in lockHeldServices(of:)")
+                    continue
+                }
+                value = held
+            } else {
+                value = Self.unwrapped(child.value)
+            }
             guard Self.resetOnSwitch.contains(label) || Self.livesForTheProcess.contains(label) else {
                 XCTFail("\(label) has no lifetime decision; add it to resetOnSwitch or livesForTheProcess")
                 continue
@@ -216,13 +225,14 @@ final class AccountScopedResetTests: XCTestCase {
         "signInModalSheetPresenter", "catalogAPI", "catalogRepository",
     ]
 
-    /// The cells kept behind a lock, read through it so their values can be checked.
-    private static func lockHeldServices(of services: ProcessServices) -> [String: Any] {
-        var values: [String: Any] = [:]
-        values["sideloadedBookRegistry"] = services.sideloadedBookRegistry.withLock { $0 }
-        values["sideloadedBookManager"] = services.sideloadedBookManager.withLock { $0 }
-        values["offlineQueueCoordinator"] = services.offlineQueueCoordinator.withLock { $0 }
-        return values
+    /// The cells kept behind a lock, read through it so their values can be
+    /// checked. A cell that is still empty keeps its key with a nil value.
+    private static func lockHeldServices(of services: ProcessServices) -> [String: Any?] {
+        [
+            "sideloadedBookRegistry": services.sideloadedBookRegistry.withLock { $0 } as Any?,
+            "sideloadedBookManager": services.sideloadedBookManager.withLock { $0 } as Any?,
+            "offlineQueueCoordinator": services.offlineQueueCoordinator.withLock { $0 } as Any?,
+        ]
     }
 
     // MARK: - Helpers
