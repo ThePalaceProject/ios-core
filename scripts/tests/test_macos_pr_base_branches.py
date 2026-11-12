@@ -1,17 +1,16 @@
-"""Pull requests into a feature/** branch run no macOS workflow.
+"""Pull requests into a feature/** branch run no macOS workflow; every other base does.
 
 Multi-PR work lands its sub-task PRs on a feature branch, and the feature
 branch's PR into develop runs the macOS CI once for all of them
-(docs/architecture/feature-branch-workflow.md). Every workflow that has a macOS
-job and a `pull_request` trigger must therefore list its bases, and the list
-must cover develop and leave out feature branches. Workflows that only fire on
-`closed` (the upload and release jobs) are out of scope: they already filter on
-their base.
+(docs/architecture/feature-branch-workflow.md). PRs into any other base
+(develop, main, release/**, hotfix/**, and work branches such as feat/* or
+fix/*) keep their macOS runs. Workflows that only fire on `closed` (the upload
+and release jobs) are out of scope: they already filter on their base.
 """
 
 from __future__ import annotations
 
-import fnmatch
+import re
 from pathlib import Path
 
 import pytest
@@ -19,7 +18,10 @@ import pytest
 yaml = pytest.importorskip("yaml")
 
 _WORKFLOWS = Path(__file__).resolve().parents[2] / ".github/workflows"
-_ALLOWED = {"develop", "main", "release/**", "hotfix/**", "beta"}
+
+# Ledger has filtered to [main, develop] since before the feature-branch rule.
+_NARROWER_BASES = {"ledger.yml"}
+_KEPT_BASES = ["develop", "main", "release/3.5.0", "hotfix/3.4.1-x", "feat/x", "fix/PP-1-y"]
 
 
 def _triggers(doc):
@@ -52,9 +54,20 @@ def _macos_pr_workflows():
     return found
 
 
-def _matches(branch: str, patterns) -> bool:
-    # GitHub's `**` matches across `/`; fnmatch's `*` already does.
-    return any(fnmatch.fnmatchcase(branch, p) for p in patterns)
+def _glob(pattern: str) -> re.Pattern:
+    # GitHub filter globs: `**` crosses `/`, `*` does not.
+    out = ""
+    for part in re.split(r"(\*\*|\*)", pattern):
+        out += {"**": ".*", "*": "[^/]*"}.get(part, re.escape(part))
+    return re.compile(out + r"\Z")
+
+
+def _runs_for_base(pr: dict, base: str) -> bool:
+    if "branches" in pr:
+        return any(_glob(p).match(base) for p in pr["branches"])
+    if "branches-ignore" in pr:
+        return not any(_glob(p).match(base) for p in pr["branches-ignore"])
+    return True
 
 
 def test_the_scan_finds_the_known_macos_pr_workflows():
@@ -63,14 +76,12 @@ def test_the_scan_finds_the_known_macos_pr_workflows():
 
 
 @pytest.mark.parametrize("name,pr", _macos_pr_workflows())
-def test_macos_pr_workflow_lists_its_bases(name, pr):
-    branches = pr.get("branches")
-    assert branches, f"{name}: pull_request has no `branches`, so a PR into feature/** runs it"
-    assert set(branches) <= _ALLOWED, f"{name}: unexpected bases {set(branches) - _ALLOWED}"
+def test_a_pr_into_a_feature_branch_does_not_run_it(name, pr):
+    assert not _runs_for_base(pr, "feature/PP-1-x"), f"{name}: a PR into a feature branch runs it"
 
 
 @pytest.mark.parametrize("name,pr", _macos_pr_workflows())
-def test_macos_pr_workflow_runs_for_develop_and_skips_feature_branches(name, pr):
-    branches = pr.get("branches") or ["**"]
-    assert _matches("develop", branches), f"{name}: a PR into develop would not run it"
-    assert not _matches("feature/PP-1-x", branches), f"{name}: a PR into a feature branch runs it"
+def test_a_pr_into_any_other_base_still_runs_it(name, pr):
+    bases = ["develop", "main"] if name in _NARROWER_BASES else _KEPT_BASES
+    dropped = [b for b in bases if not _runs_for_base(pr, b)]
+    assert not dropped, f"{name}: a PR into {dropped} would not run it"

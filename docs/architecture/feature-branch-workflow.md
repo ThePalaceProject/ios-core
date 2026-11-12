@@ -29,9 +29,11 @@ commit.
   multi-PR story. Sub-task branches start from the feature branch.
 - Single-PR work (one bug, one small change, a dependency bump) still targets
   `develop` directly.
-- Bring `develop` into the feature branch only when GitHub reports a conflict,
-  or right before opening the feature PR. The same holds for any open PR branch:
-  each such merge starts a new CI run and changes nothing reviewers look at.
+- Keep the feature branch current with `develop` only when GitHub reports a
+  conflict, or right before opening its PR into `develop`.
+- Merge every sub-task PR into the feature branch before the feature PR merges.
+  A sub-task PR left open would otherwise have to be retargeted onto `develop`
+  (see below).
 
 ## Why: the macOS queue
 
@@ -53,20 +55,29 @@ load without removing any check from what reaches `develop`.
 
 ## How the CI tells the PRs apart
 
-Each macOS workflow with a `pull_request` trigger lists its bases:
-`develop`, `main`, `release/**`, `hotfix/**`, `beta`. A PR into a `feature/**`
-branch matches none of them, so GitHub does not start those workflows.
-`scripts/tests/test_macos_pr_base_branches.py` keeps every macOS workflow on
-that list. `pr-hygiene.yml` and `tooling-checks.yml` have no base filter and run
-on every PR.
+Each macOS workflow with a `pull_request` trigger ignores PRs whose base is
+`feature/**` (`branches-ignore`). A PR into any other base, including `develop`,
+`main`, `release/**`, `hotfix/**` and work branches such as `feat/*` or `fix/*`,
+still runs it. `ledger.yml` keeps its own, narrower filter: it runs only on PRs
+into `main` and `develop`. `scripts/tests/test_macos_pr_base_branches.py` checks
+both directions for every macOS workflow. `pr-hygiene.yml` and
+`tooling-checks.yml` have no base filter and run on every PR.
 
 `unit-testing.yml` has no `paths-ignore`, because a path-skipped workflow never
 reports and a required check would wait forever. A base filter does not cause
-that: a required check applies to PRs into the branch that requires it, and
-every base that can require one is on the list.
+that: a required check applies to PRs into the branch that requires it, and no
+`feature/**` branch requires one.
 
 GitHub reads the workflow files from the PR's merge result, so the filter
 applies to every PR opened after this change is on `develop`.
+
+### Retargeting a PR onto develop
+
+Changing a PR's base sends an `edited` event. These workflows do not listen to
+`edited`, because a title or body edit would then start a run, and with
+`cancel-in-progress` it would cancel the run already going. So a PR moved from a
+feature branch onto `develop` has no macOS run until it gets a new push or is
+closed and reopened. Do one of those before merging it.
 
 ## What a sub-task PR is gated on
 
@@ -97,9 +108,10 @@ have it, and the sub-task PR numbers would be gone from `develop`.
   (`jira-pr-opened.yml`).
 - When the feature PR merges into `develop`, `jira-update-on-merge.yml` reads
   the PP keys from the title, the branch and the subject line of every commit
-  in the PR, and moves each one as it does for a single PR. Commit bodies are
-  not read, because they name related tickets that the change does not
-  implement.
+  in the PR, and moves each one to QA/Review, as it does for a single PR.
+  Commit bodies are not read, because they name related tickets that the change
+  does not implement.
+- Moving a ticket to Done stays a manual step after QA, as for a single PR.
 
 ## Not done
 

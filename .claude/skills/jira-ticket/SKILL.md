@@ -167,8 +167,10 @@ When this skill is used alongside real delivery, keep Jira honest in lockstep:
 
 A Story with sub-tasks gets a feature branch, `feature/PP-XXXX-<slug>` from `develop`.
 Each sub-task PR targets that branch, not `develop`. A sub-task stays in **Code Review**
-when its PR merges into the feature branch, and moves to **Done** when the feature branch
-merges into `develop`. See `docs/architecture/feature-branch-workflow.md`.
+when its PR merges into the feature branch. When the feature branch merges into `develop`,
+the merge workflow moves every key in it to **QA/Review**, as for a single PR; moving a
+sub-task to **Done** is the later manual step, the same as for a single PR today. See
+`docs/architecture/feature-branch-workflow.md`.
 
 PR titles, PR bodies and commit messages follow "Writing conventions" in `CLAUDE.md`
 (What / Why / How verified, about 20 lines, no AI footer). Put the PP key in the PR title

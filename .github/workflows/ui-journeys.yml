@@ -8,9 +8,9 @@ name: UI Journeys
 on:
   pull_request:
     # Pull requests into a feature/** branch skip this macOS workflow; the
-    # feature branch's own PR into develop runs it. See
-    # docs/architecture/feature-branch-workflow.md.
-    branches: [develop, main, 'release/**', 'hotfix/**', beta]
+    # feature branch's own PR into develop runs it. Every other base still
+    # runs it. See docs/architecture/feature-branch-workflow.md.
+    branches-ignore: ['feature/**']
     paths:
       - 'Palace/**'
       - 'PalaceUITests/**'
