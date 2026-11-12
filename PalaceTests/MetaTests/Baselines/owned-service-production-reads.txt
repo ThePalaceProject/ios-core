@@ -8,8 +8,7 @@
 Palace/AppInfrastructure/DLNavigator.swift signInModalSheetPresenter
 Palace/Network/TPPNetworkExecutor.swift signInModalSheetPresenter
 Palace/SignInLogic/SignInModalPresenter+SignInModalPresenting.swift signInModalSheetPresenter
-Palace/MyBooks/MyBooksDownloadCenter.swift signInModalSheetPresenter
-Palace/MyBooks/MyBooksDownloadCenter.swift signInModalSheetPresenter
+Palace/MyBooks/DownloadCenterSignInRoute.swift signInModalSheetPresenter
 Palace/MyBooks/TokenRefreshInterceptor.swift signInModalSheetPresenter
 #
 # View models built with a container, whose sign-in branch runs only for a

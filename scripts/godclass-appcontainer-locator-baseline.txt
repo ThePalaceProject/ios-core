@@ -70,4 +70,6 @@
 #   sign-in business logic and the sign-in redirect handler their readers,
 #   navigation, sign-in sheet, rating prompt, network and universal-links
 #   setting from the composition root (13 sites).
-204
+# 204 -> 202: PP-5545 drops the executor DI init's container default and
+#   routes the download center's two sign-in prompts through one bound closure.
+202

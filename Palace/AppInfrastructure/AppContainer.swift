@@ -113,11 +113,30 @@ struct AppContainer: @unchecked Sendable {
     /// The copy keeps every collaborator and the other override, so chained
     /// `with...` calls preserve both. It owns new storage: its other owned
     /// services are built against the copy, and `self`'s are left untouched.
+    /// The copy shares `self`'s download center, so that center's sign-in
+    /// prompts go to `presenter` while it is alive, then back to `self`'s.
     @MainActor
     func withSignInModalSheetPresenter(_ presenter: SignInModalSheetPresenter) -> AppContainer {
         var copy = withNewOwnedServices()
         copy._signInModalSheetPresenterOverride = presenter
+        routeDownloadCenterSignIn(preferring: presenter)
         return copy
+    }
+
+    /// Binds `downloadCenter`'s sign-in prompts to this container's presenter,
+    /// resolved when a prompt is shown, so a center never presents another
+    /// container's sheet. `preferred` is held weakly and wins while it lives.
+    /// Called by the production builder and the test factory.
+    ///
+    /// The closure keeps a copy of this container, so the center and the
+    /// container's collaborators retain each other; the center already lives
+    /// as long as its URLSession, which retains it as delegate.
+    func routeDownloadCenterSignIn(preferring preferred: SignInModalSheetPresenter? = nil) {
+        let owner = nonOwningCopy()
+        downloadCenter.presentSignInForCurrentAccount = { [weak preferred] completion in
+            (preferred ?? owner.signInModalSheetPresenter)
+                .presentSignInModalForCurrentAccount(completion: completion)
+        }
     }
 
     /// Returns a copy of this container whose `audiobookSessionPresenter` is
@@ -652,7 +671,7 @@ struct AppContainer: @unchecked Sendable {
         let tabRouterHub = AppTabRouterHub()
         let navigationCoordinatorHub = NavigationCoordinatorHub(tabRouterHub: tabRouterHub)
 
-        return AppContainer(
+        let container = AppContainer(
             bookRegistry: bookRegistry,
             networkExecutor: executor,
             // Bind the drain-time credential provider HERE, where
@@ -692,6 +711,8 @@ struct AppContainer: @unchecked Sendable {
             authCoordinator: authCoordinator,
             downloadNetworkLossMonitor: downloadNetworkLossMonitor
         )
+        container.routeDownloadCenterSignIn()
+        return container
     }
 
     #if DEBUG
