@@ -487,7 +487,7 @@ final class AppContainerIsolationLintTests: XCTestCase {
 
   /// Entries the owned-service baseline holds. Lowered together with the
   /// baseline when a listed read is removed; a raise needs both edits.
-  static let ownedServiceBaselineCeiling = 10
+  static let ownedServiceBaselineCeiling = 9
 
   /// The services `AppContainerOwnedServices` stores, read from its source so
   /// a service added there is covered without editing this lint.
