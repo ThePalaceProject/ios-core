@@ -333,11 +333,14 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
             return account(uuid)
         }
         set {
+            // Per-library services reset when `.willSwitch` reaches them on main.
+            // Running the switch on main keeps that reset ahead of the cleanup
+            // below and `.selected` after it.
+            guard Thread.isMainThread else { return DispatchQueue.main.async { self.currentAccount = newValue } }
             let previousAccountId = currentAccountId
             let newAccountId = newValue?.uuid
 
-            Log.debug(#file, "Setting currentAccount to <\(newValue?.name ?? "[N/A]")>")
-            Log.debug(#file, "Previous account: \(previousAccountId ?? "nil") → New account: \(newAccountId ?? "nil")")
+            Log.debug(#file, "Setting currentAccount to <\(newValue?.name ?? "[N/A]")>, previous: \(previousAccountId ?? "nil")")
 
             if let previousAccountId, previousAccountId != newAccountId {
                 Log.info(#file, "🔄 Account switch detected - cleaning up active content")

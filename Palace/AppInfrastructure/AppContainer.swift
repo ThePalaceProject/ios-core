@@ -230,6 +230,7 @@ struct AppContainer: @unchecked Sendable {
             reachabilityProvider: { [reachability] in reachability },
             navigationCoordinatorHubProvider: { [navigationCoordinatorHub] in navigationCoordinatorHub },
             audiobookSessionPresenterProvider: { container.sharedAudiobookSessionPresenter },
+            playbackBootstrapperProvider: { container.playbackBootstrapper },
             inAppPlaybackNavEnabledProvider: { flags.isInAppPlaybackNavEnabled },
             lcpContentDownloadTrigger: { [downloadCenter] book in
                 downloadCenter.redownloadLCPContentFile(for: book)
