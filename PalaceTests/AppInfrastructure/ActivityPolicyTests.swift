@@ -276,12 +276,21 @@ final class ActivityPolicyTests: XCTestCase {
 
     // MARK: - AppContainer
 
-    /// The main scene and CarPlay resolve the policy through separate container
-    /// reads; both must reach the same instance.
+    /// The main scene and CarPlay resolve the policy through separate
+    /// `production()` reads; both must reach the same instance.
     func testAppContainer_handsOutOnePolicyPerProcess() {
-        let first = makeTestAppContainer()
-        let second = makeTestAppContainer()
+        let sceneRead = AppContainer.production().activityPolicy // MIGRATED-DEFERRED: both scene delegates read production()
+        let carPlayRead = AppContainer.production().activityPolicy // MIGRATED-DEFERRED: both scene delegates read production()
 
-        XCTAssertTrue(first.activityPolicy === second.activityPolicy)
+        XCTAssertTrue(sceneRead === carPlayRead)
+    }
+
+    /// A copy of a container, such as a SwiftUI environment copy, keeps its policy.
+    func testAppContainer_CopyWithAnOverride_KeepsTheSamePolicy() {
+        let container = makeTestAppContainer()
+
+        let copy = container.withAudiobookSessionPresenter(SpyAudiobookSessionPresenter())
+
+        XCTAssertTrue(copy.activityPolicy === container.activityPolicy)
     }
 }

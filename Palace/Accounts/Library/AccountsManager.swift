@@ -67,7 +67,8 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
     }
 
     let ageCheck: TPPAgeCheckVerifying
-    /// Backs `currentLibraryChangePublisher`. The `currentAccount` setter sends `.selected`.
+    /// Backs `currentLibraryChangePublisher`. The `currentAccount` setter sends
+    /// `.willSwitch` before a switch's cleanup and `.selected` after it.
     let currentLibraryChanges = CurrentLibraryChangeBroadcaster()
     /// Backs `catalogLoadedPublisher`. The registry loader sends after each catalog load.
     let catalogLoads = MainThreadBroadcaster<Void>()
@@ -338,8 +339,9 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
             Log.debug(#file, "Setting currentAccount to <\(newValue?.name ?? "[N/A]")>")
             Log.debug(#file, "Previous account: \(previousAccountId ?? "nil") → New account: \(newAccountId ?? "nil")")
 
-            if previousAccountId != newAccountId, previousAccountId != nil {
+            if let previousAccountId, previousAccountId != newAccountId {
                 Log.info(#file, "🔄 Account switch detected - cleaning up active content")
+                currentLibraryChanges.send(.willSwitch(from: previousAccountId, to: newAccountId))
                 isAccountSwitching = true
                 cleanupActiveContentBeforeAccountSwitch(from: previousAccountId, to: newAccountId)
                 // Evict decoded cover images — the new library has different covers.
@@ -372,10 +374,8 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
             // 404 (PR #1021). Awaiters throw `AccountLoadError.evicted`. The marker
             // is overwritten via `.basicInfoLoaded` if the UUID becomes current again.
             if let prev = previousAccountId, prev != newAccountId {
-                switchDeps.accountStateStore.setState(
-                    .detailsEvicted(.libraryDeselected(uuid: prev)),
-                    for: prev
-                )
+                switchDeps.accountStateStore.setState(.detailsEvicted(.libraryDeselected(uuid: prev)),
+                                                      for: prev)
             }
 
             // Drive the new currentAccount past `.basicInfoLoaded` after the

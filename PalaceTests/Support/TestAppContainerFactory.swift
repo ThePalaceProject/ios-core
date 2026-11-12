@@ -311,7 +311,9 @@ func makeTestAppContainer(
     tabRouterHub: tabRouterHub,
     drmAuthorizerProvider: { nil },
     authCoordinator: authCoordinator,
-    downloadNetworkLossMonitor: downloadNetworkLossMonitor
+    downloadNetworkLossMonitor: downloadNetworkLossMonitor,
+    // Its own audiobook session, uploader and side-load caches, wired to this graph.
+    processServices: ProcessServices()
   )
   container.routeDownloadCenterSignIn()
   return container

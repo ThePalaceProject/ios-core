@@ -142,8 +142,8 @@ struct DefaultSideloadFileManaging: SideloadFileManaging {
 /// Concurrency: `@unchecked Sendable`. All stored dependencies are immutable
 /// `let`s and are themselves internally synchronised (the registries are
 /// lock/queue-backed; `BookFileManager` is effectively stateless path logic).
-/// The manager holds no mutable state of its own. It is cached in an
-/// `AppContainer` static the same way `SideloadedBookRegistry` is, and its
+/// The manager holds no mutable state of its own. It is cached in a
+/// `ProcessServices` cell the same way `SideloadedBookRegistry` is, and its
 /// `rehydrateAtLaunch()` runs off the main actor from the registry-load
 /// completion — so it cannot be `@MainActor`-only.
 final class SideloadedBookManager: @unchecked Sendable {

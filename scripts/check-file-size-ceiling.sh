@@ -110,6 +110,7 @@ read -r -d '' ALLOWLIST <<'EOF'
 # with this gate's own import-excluding counter. 362 -> 358 when PP-5471 moved
 # the test-only static shims to AccountsManager+TestingSupport.swift. 358 -> 349
 # when PP-5472 moved the account-provider protocols to LibraryAccountProtocols.swift.
+# 349 -> 348 when PP-5545 added the `.willSwitch` send and joined the eviction call.
 #
 # Carried over from the retired six-file freeze at their MEASURED sizes, not the
 # freeze's stale numbers. Without these three the swap would LOOSEN exactly the
@@ -117,7 +118,7 @@ read -r -d '' ALLOWLIST <<'EOF'
 # 429 lines of headroom, TPPSignInBusinessLogic 162 and BorrowOperation 279 —
 # 870 in total, on two CLAUDE.md critical paths (sign-in, borrow). The allowlist
 # only ratchets down, so pinning them costs nothing and closes the regression.
-349  Palace/Accounts/Library/AccountsManager.swift
+348  Palace/Accounts/Library/AccountsManager.swift
 599  Palace/SignInLogic/TPPSignInBusinessLogic.swift
 471  Palace/MyBooks/BorrowOperation.swift
 # Package source is in scope (see THE RULE). This one was already over the

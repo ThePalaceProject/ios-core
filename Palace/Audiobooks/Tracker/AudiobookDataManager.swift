@@ -173,7 +173,7 @@ class AudiobookDataManager: @unchecked Sendable {
         changes
             .sink { [weak self] _ in
                 guard let self else { return }
-                self.syncQueue.async(flags: .barrier) { self.inFlight.removeAll() }
+                self.releaseInFlightSends()
                 self.audiobookLogger.logEvent(
                     forBookId: "",
                     event: "Account changed — cross-account playtimes uploads will be deferred to next foreground sync"
@@ -521,5 +521,19 @@ extension AudiobookDataManager: DataManager {
             return
         }
         save(time: timeEntry)
+    }
+}
+
+// MARK: - Library switch
+
+extension AudiobookDataManager: AccountScopedResetting {
+    /// Releases every in-flight entry before the switch cancels its request,
+    /// so the next send carries it.
+    func resetForAccountSwitch() {
+        releaseInFlightSends()
+    }
+
+    fileprivate func releaseInFlightSends() {
+        syncQueue.async(flags: .barrier) { self.inFlight.removeAll() }
     }
 }

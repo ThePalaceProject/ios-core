@@ -66,6 +66,21 @@ struct AppContainer: @unchecked Sendable {
     /// new owner link; `nonOwningCopy()` gets a weak one.
     private var ownedServicesLink: OwnedServicesLink
 
+    /// The process-lifetime services this container's graph drives. Every
+    /// copy shares them; `nonOwningCopy()` holds them weakly.
+    private var processServicesLink: ProcessServicesLink
+
+    /// The services that live for the whole process (see `ProcessServices`).
+    /// When a non-owning copy outlives its owner, it gets a throwaway set.
+    var processServices: ProcessServices {
+        switch processServicesLink {
+        case .owner(let services):
+            return services
+        case .nonOwning(let reference):
+            return reference.services ?? ProcessServices()
+        }
+    }
+
     /// The storage this container resolves owned services from. When a
     /// non-owning copy outlives its owner, it gets a throwaway storage, so
     /// each read builds a working but uncached service.
@@ -79,18 +94,24 @@ struct AppContainer: @unchecked Sendable {
         }
     }
 
-    /// A copy that resolves this container's owned services without keeping
-    /// them alive. Services the container owns hold this form of their
+    /// A copy that resolves this container's owned and process services
+    /// without keeping them alive. Those services hold this form of their
     /// container, so they do not form a retain cycle with it.
     func nonOwningCopy() -> AppContainer {
         var copy = self
-        switch ownedServicesLink {
-        case .owner(let storage):
+        if case .owner(let storage) = ownedServicesLink {
             copy.ownedServicesLink = .nonOwning(WeakOwnedServices(storage))
-        case .nonOwning:
-            break
+        }
+        if case .owner(let services) = processServicesLink {
+            copy.processServicesLink = .nonOwning(WeakProcessServices(services))
         }
         return copy
+    }
+
+    /// The services, built so far, that drop their state on a library switch.
+    @MainActor
+    func accountScopedServices() -> [AccountScopedResetting] {
+        processServices.accountScopedServices() + ownedServices.accountScopedServices()
     }
 
     /// SwiftUI-observable facade over the static `SignInModalPresenter` API.
@@ -179,41 +200,56 @@ struct AppContainer: @unchecked Sendable {
 
     @MainActor
     var samplePreviewManager: SamplePreviewManager {
-        if let cached = AppContainer._samplePreviewManager { return cached }
+        let services = processServices
+        if let cached = services.samplePreviewManager { return cached }
         let manager = SamplePreviewManager(activityPolicy: activityPolicy)
-        AppContainer._samplePreviewManager = manager
+        services.samplePreviewManager = manager
         return manager
     }
 
     /// Process-wide audiobook session manager. Reads
     /// `accountsManager.currentAccount` internally on every operation, so
-    /// account switches are observed without per-account caching. The cache
-    /// cell stores the concrete `AudiobookSessionManager`; callers see only
-    /// the `AudiobookSessionManaging` protocol surface.
+    /// account switches are observed without per-account caching, and a
+    /// library switch does not stop playback. The cache cell stores the
+    /// concrete `AudiobookSessionManager`; callers see only the
+    /// `AudiobookSessionManaging` protocol surface.
     @MainActor
     var audiobookSession: AudiobookSessionManaging {
-        if let cached = AppContainer._audiobookSession { return cached }
+        let services = processServices
+        if let cached = services.audiobookSession { return cached }
         // Pass the flag provider explicitly so the frozen god-class default arg
         // (RemoteFeatureFlags.shared, exception E4) stops firing in production.
         // FeatureFlagProviding is Sendable, so capturing `flags` in the
         // @escaping () -> Bool is clean under Swift 6 `complete`.
         let flags = self.featureFlags
+        // The providers resolve this container's graph, not the app's, so a
+        // test container's session reaches its own hub, presenter and center.
+        let container = nonOwningCopy()
         let session = AudiobookSessionManager(
             appContainer: self,
-            inAppPlaybackNavEnabledProvider: { flags.isInAppPlaybackNavEnabled }
+            reachabilityProvider: { [reachability] in reachability },
+            navigationCoordinatorHubProvider: { [navigationCoordinatorHub] in navigationCoordinatorHub },
+            audiobookSessionPresenterProvider: { container.sharedAudiobookSessionPresenter },
+            inAppPlaybackNavEnabledProvider: { flags.isInAppPlaybackNavEnabled },
+            lcpContentDownloadTrigger: { [downloadCenter] book in
+                downloadCenter.redownloadLCPContentFile(for: book)
+            },
+            overdriveRefulfillStarter: { [downloadCenter] book in
+                downloadCenter.startDownload(for: book, withRequest: nil)
+            }
         )
-        AppContainer._audiobookSession = session
+        services.audiobookSession = session
         return session
     }
 
     /// Side-loading (PP-2678) — process-wide registry of side-loaded books.
     /// Source of truth for the sync-exemption set (consumed by
     /// `BookRegistrySync.sync()` via a lazy provider) and the side-loaded
-    /// catalog lane. File-backed shared cache, lazy + cached;
-    /// `_resetForTesting()` nils it so its
-    /// on-disk manifest state does not bleed across test classes.
+    /// catalog lane. File-backed shared cache, lazy + cached in
+    /// `processServices`.
     var sideloadedBookRegistry: SideloadedBookRegistry {
-        if let cached = AppContainer._sideloadedBookRegistry.withLock({ $0 }) { return cached }
+        let slot = processServices.sideloadedBookRegistry
+        if let cached = slot.withLock({ $0 }) { return cached }
         // Built outside the lock (matches the prior non-atomic check-then-set
         // race semantics — `SideloadedBookRegistry()` does no `production()`
         // re-entry, so no deadlock even if two first-callers each build one).
@@ -221,25 +257,20 @@ struct AppContainer: @unchecked Sendable {
         // the loser's instance is discarded; production callers observe a
         // single stable registry either way.
         let registry = SideloadedBookRegistry()
-        return AppContainer._sideloadedBookRegistry.withLock { slot in
-            if let existing = slot { return existing }
-            slot = registry
+        return slot.withLock { stored in
+            if let existing = stored { return existing }
+            stored = registry
             return registry
         }
     }
-    /// Swift 6: `OSAllocatedUnfairLock`-guarded so the off-main first access
-    /// (its `identifiers` is read off-main) is concurrency-safe without a
-    /// `@MainActor` annotation that would forbid the off-main read. The
-    /// stored value (`SideloadedBookRegistry`) is itself `@unchecked Sendable`.
-    private static let _sideloadedBookRegistry = OSAllocatedUnfairLock<SideloadedBookRegistry?>(initialState: nil)
 
     /// Side-loading (PP-2677) — orchestrates the import/remove/rehydrate flow on
     /// top of `sideloadedBookRegistry`. Writes the main `bookRegistry` too, so
     /// the reader sees the book as `.downloadSuccessful`. Lazy + cached like
-    /// `sideloadedBookRegistry`; `_resetForTesting()` nils it so a stale
-    /// manager doesn't outlive the registry it was wired to.
+    /// `sideloadedBookRegistry`.
     var sideloadedBookManager: SideloadedBookManager {
-        if let cached = AppContainer._sideloadedBookManager.withLock({ $0 }) { return cached }
+        let slot = processServices.sideloadedBookManager
+        if let cached = slot.withLock({ $0 }) { return cached }
         // Built outside the lock (see `sideloadedBookRegistry`). Reads
         // `self.sideloadedBookRegistry`, which acquires a DIFFERENT lock —
         // consistent manager→registry ordering, no reverse path, no deadlock.
@@ -248,15 +279,12 @@ struct AppContainer: @unchecked Sendable {
             sideloadedRegistry: self.sideloadedBookRegistry,
             bookFileManager: BookFileManager(accountScope: self.downloadAccountContext)
         )
-        return AppContainer._sideloadedBookManager.withLock { slot in
-            if let existing = slot { return existing }
-            slot = manager
+        return slot.withLock { stored in
+            if let existing = stored { return existing }
+            stored = manager
             return manager
         }
     }
-    /// Swift 6: `OSAllocatedUnfairLock`-guarded (see `_sideloadedBookRegistry`).
-    /// Stored value is `@unchecked Sendable`.
-    private static let _sideloadedBookManager = OSAllocatedUnfairLock<SideloadedBookManager?>(initialState: nil)
 
     /// Process-wide audiobook session presenter — the root-level
     /// SwiftUI-observable bridge between the manager's published state and
@@ -265,8 +293,15 @@ struct AppContainer: @unchecked Sendable {
     /// `docs/architecture/in-app-navigation-during-playback.md`.
     @MainActor
     var audiobookSessionPresenter: AudiobookSessionPresenter {
-        if let override = _audiobookSessionPresenterOverride { return override }
-        if let cached = AppContainer._audiobookSessionPresenter { return cached }
+        _audiobookSessionPresenterOverride ?? sharedAudiobookSessionPresenter
+    }
+
+    /// The process presenter, ignoring a test override: the one the session
+    /// publishes to, as it did when it resolved the app's presenter.
+    @MainActor
+    private var sharedAudiobookSessionPresenter: AudiobookSessionPresenter {
+        let services = processServices
+        if let cached = services.audiobookSessionPresenter { return cached }
         let presenter = AudiobookSessionPresenter(
             sessionManager: self.audiobookSession,
             // The player's download bar must distinguish the `.lcpa` network
@@ -279,7 +314,7 @@ struct AppContainer: @unchecked Sendable {
             },
             activityPolicy: activityPolicy
         )
-        AppContainer._audiobookSessionPresenter = presenter
+        services.audiobookSessionPresenter = presenter
         return presenter
     }
 
@@ -290,12 +325,14 @@ struct AppContainer: @unchecked Sendable {
     /// through AppContainer rather than spinning up a parallel manager.
     @MainActor
     var playbackBootstrapper: PlaybackBootstrapper {
-        if let cached = AppContainer._playbackBootstrapper { return cached }
+        let services = processServices
+        if let cached = services.playbackBootstrapper { return cached }
+        let container = nonOwningCopy()
         let bootstrapper = PlaybackBootstrapper(
             appContainer: self,
-            audiobookSessionProvider: { [self] in self.audiobookSession }
+            audiobookSessionProvider: { container.audiobookSession }
         )
-        AppContainer._playbackBootstrapper = bootstrapper
+        services.playbackBootstrapper = bootstrapper
         return bootstrapper
     }
 
@@ -304,7 +341,8 @@ struct AppContainer: @unchecked Sendable {
     /// Remote Config. Lazy + cached like the audiobook services above.
     @MainActor
     var appRatingService: AppRatingService {
-        if let cached = AppContainer._appRatingService { return cached }
+        let services = processServices
+        if let cached = services.appRatingService { return cached }
         let flags = self.featureFlags
         let service = AppRatingService(
             tracker: RatingEngagementTracker(settings: self.settings),
@@ -317,7 +355,7 @@ struct AppContainer: @unchecked Sendable {
             crashFreeProbe: { FirebaseManager.shared.wasLastSessionCrashFree() },
             now: Date.init
         )
-        AppContainer._appRatingService = service
+        services.appRatingService = service
         return service
     }
 
@@ -326,13 +364,14 @@ struct AppContainer: @unchecked Sendable {
     /// audiobook presenter above.
     @MainActor
     var ratingPromptPresenter: RatingPromptPresenter {
-        if let cached = AppContainer._ratingPromptPresenter { return cached }
+        let services = processServices
+        if let cached = services.ratingPromptPresenter { return cached }
         let presenter = RatingPromptPresenter(
             service: self.appRatingService,
             reviewRequester: RatingReviewRequester(),
             feedbackPresenter: RatingFeedbackPresenter()
         )
-        AppContainer._ratingPromptPresenter = presenter
+        services.ratingPromptPresenter = presenter
         return presenter
     }
 
@@ -363,14 +402,15 @@ struct AppContainer: @unchecked Sendable {
     /// delegates and CarPlay push into it; it reads nothing from the container.
     @MainActor
     var activityPolicy: ActivityPolicy {
-        if let cached = AppContainer._activityPolicy { return cached }
+        let services = processServices
+        if let cached = services.activityPolicy { return cached }
         let policy = ActivityPolicy(
             notificationCenter: .default,
             thermalState: { ProcessInfo.processInfo.thermalState },
             isLowPowerModeEnabled: { ProcessInfo.processInfo.isLowPowerModeEnabled },
             scheduler: TimerTickScheduler()
         )
-        AppContainer._activityPolicy = policy
+        services.activityPolicy = policy
         return policy
     }
 
@@ -379,7 +419,8 @@ struct AppContainer: @unchecked Sendable {
     /// every book, and entries left by a closed book still get sent.
     @MainActor
     var playtimeUploader: AudiobookDataManager {
-        if let cached = AppContainer._playtimeUploader { return cached }
+        let services = processServices
+        if let cached = services.playtimeUploader { return cached }
         let accountsManager = self.accountsManager
         let isAudioPlaying = PlaytimeUploadSchedule.isAudioPlaying(from: audiobookSession)
         let uploader = AudiobookDataManager(
@@ -388,7 +429,7 @@ struct AppContainer: @unchecked Sendable {
             currentLibraryChanges: accountsManager.currentLibraryChangePublisher,
             uploadTriggers: PlaytimeUploadSchedule.triggers(from: activityPolicy, isAudioPlaying: isAudioPlaying)
         )
-        AppContainer._playtimeUploader = uploader
+        services.playtimeUploader = uploader
         return uploader
     }
 
@@ -433,15 +474,6 @@ struct AppContainer: @unchecked Sendable {
         return repository
     }
 
-    @MainActor private static var _samplePreviewManager: SamplePreviewManager?
-    @MainActor private static var _audiobookSession: AudiobookSessionManager?
-    @MainActor private static var _audiobookSessionPresenter: AudiobookSessionPresenter?
-    @MainActor private static var _playbackBootstrapper: PlaybackBootstrapper?
-    @MainActor private static var _appRatingService: AppRatingService?
-    @MainActor private static var _ratingPromptPresenter: RatingPromptPresenter?
-    @MainActor private static var _activityPolicy: ActivityPolicy?
-    @MainActor private static var _playtimeUploader: AudiobookDataManager?
-
     init(
         bookRegistry: TPPBookRegistryProvider,
         networkExecutor: TPPNetworkExecutor,
@@ -462,7 +494,8 @@ struct AppContainer: @unchecked Sendable {
         tabRouterHub: AppTabRouterHub,
         drmAuthorizerProvider: @escaping () -> TPPDRMAuthorizing?,
         authCoordinator: AuthCoordinator,
-        downloadNetworkLossMonitor: DownloadNetworkLossMonitor? = nil
+        downloadNetworkLossMonitor: DownloadNetworkLossMonitor? = nil,
+        processServices: ProcessServices = ProcessServices()
     ) {
         self.bookRegistry = bookRegistry
         self.networkExecutor = networkExecutor
@@ -484,7 +517,13 @@ struct AppContainer: @unchecked Sendable {
         self.tabRouterHub = tabRouterHub
         self.drmAuthorizerProvider = drmAuthorizerProvider
         self.authCoordinator = authCoordinator
-        self.ownedServicesLink = .owner(AppContainerOwnedServices())
+        let ownedServices = AppContainerOwnedServices()
+        self.ownedServicesLink = .owner(ownedServices)
+        self.processServicesLink = .owner(processServices)
+        processServices.resetAccountScopedServices(
+            on: accountsManager.accountSwitchPublisher,
+            ownedServices: ownedServices
+        )
     }
 
     /// Binds a network-loss monitor to `downloadCenter`'s reachability (the one
@@ -511,16 +550,13 @@ struct AppContainer: @unchecked Sendable {
         return container
     }
 
-    /// Installs the offline-queue executor exactly once. The coordinator is
-    /// retained in a process-wide slot so its `[weak self]` executor closure
-    /// stays alive; the `setExecutor` call lives in
+    /// Installs the offline-queue executor once per process services. The
+    /// coordinator is retained in `processServices` so its `[weak self]`
+    /// executor closure stays alive; the `setExecutor` call lives in
     /// `OfflineQueueCoordinator.registerExecutor()`. No-op on later calls.
-    private static let _offlineQueueCoordinator =
-        OSAllocatedUnfairLock<OfflineQueueCoordinator?>(initialState: nil)
-
     func ensureOfflineQueueExecutorRegistered() {
         let coordinator: OfflineQueueCoordinator? =
-            AppContainer._offlineQueueCoordinator.withLock { slot in
+            processServices.offlineQueueCoordinator.withLock { slot in
                 if slot != nil { return nil }
                 let accountsManager = self.accountsManager
                 let c = OfflineQueueCoordinator.production(
@@ -709,7 +745,9 @@ struct AppContainer: @unchecked Sendable {
                 #endif
             },
             authCoordinator: authCoordinator,
-            downloadNetworkLossMonitor: downloadNetworkLossMonitor
+            downloadNetworkLossMonitor: downloadNetworkLossMonitor,
+            // The app's one set; every `production()` read and copy shares it.
+            processServices: ProcessServices()
         )
         container.routeDownloadCenterSignIn()
         return container
@@ -746,48 +784,22 @@ struct AppContainer: @unchecked Sendable {
         // their late writes to `AccountStateStore.shared` are then wiped by
         // that store's resetter, which `PalaceTestSetup` runs after this one.
         AccountsManager._drainAllLiveInstancesForTesting()
+        // The rebuilt graph owns new process services, so no session, presenter,
+        // side-loaded cache or offline-queue coordinator of the discarded graph
+        // serves the next test class. Offline-queue registration runs in an
+        // unawaited `Task` and `OfflineQueueService`'s `setExecutor` is
+        // last-writer-wins, so across repeated resets the order of the resulting
+        // registrations is unspecified; nothing reads that executor in tests.
         let rebuilt = Self._buildCachedAppContainer()
         _cachedLock.withLock { $0 = rebuilt }
-        // The builder rebuilds neither the audiobook/rating statics nor
-        // `_samplePreviewManager`. Left intact, the presenter carries
-        // active-session state across test classes (e.g. a presenter left
-        // `.playing`). `_samplePreviewManager` is omitted for a narrower
-        // reason: its init takes no container collaborators, so it cannot serve
-        // a discarded graph. Its `toolbar` and `currentBookID` are reachable
-        // only through `toggle(for:)`, which no test drives; a test that called
-        // it would leave a playing sample session and need this slot cleared
-        // too. Test resets always run on main, hence `assumeIsolated`.
-        MainActor.assumeIsolated {
-            _audiobookSession = nil
-            _audiobookSessionPresenter = nil
-            _playbackBootstrapper = nil
-            _appRatingService = nil
-            _ratingPromptPresenter = nil
-            _playtimeUploader = nil
-        }
-        // The side-loaded registry is a file-backed cache that would bleed
-        // manifest state across test classes; the manager holds a reference to
-        // it, so both are cleared together.
-        _sideloadedBookRegistry.withLock { $0 = nil }
-        _sideloadedBookManager.withLock { $0 = nil }
-        // The coordinator captures the downloadCenter and bookRegistry of the
-        // container that registered it, and `ensureOfflineQueueExecutorRegistered()`
-        // no-ops while the slot is filled — so a slot surviving the rebuild would
-        // serve the new graph from the discarded one, with no way to replace it.
-        // Registration runs in an unawaited `Task` and `OfflineQueueService`'s
-        // `setExecutor` is last-writer-wins, so across repeated resets the order
-        // of the resulting registrations is unspecified. Nothing reads that
-        // executor in tests today; a test that did would need it pinned.
-        _offlineQueueCoordinator.withLock { $0 = nil }
         // Leave the flag at the test-safe `true`; see the doc comment above.
         AccountsManager.deferInitialLoadCatalogsForTesting = true
     }
 
-    /// Lets the reset contract test observe the offline-queue slot. Reuses the
-    /// surrounding `#if DEBUG`; declared unconditionally it would reach Release,
-    /// and `_offlineQueueCoordinator` is `private` so tests have no other seam.
+    /// Lets the reset contract test observe the cached graph's offline-queue
+    /// slot without `production()`, which would fill it.
     internal static var _offlineQueueCoordinatorForTesting: OfflineQueueCoordinator? {
-        _offlineQueueCoordinator.withLock { $0 }
+        _cachedValue().processServices.offlineQueueCoordinator.withLock { $0 }
     }
     #endif
 }
