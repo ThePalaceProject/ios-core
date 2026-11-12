@@ -61,14 +61,16 @@ finish line says what the code looks like when the debt is repaid.
 | Debt | Where | Finish line |
 |---|---|---|
 | **Shape-only `BorrowReducer`** | `Palace/Book/UI/BookDetail/BorrowReducer.swift:117` | Integrated: `BookDetailViewModel` runs it at `:306` and `:833`. Every branch returns `.none` and the ViewModel still performs the borrow, download, return and cancel side effects. Repaid when at least one of those side effects is returned by the reducer as an `Effect` and run by its caller, instead of being started by the ViewModel. |
-| **Shape-only `AuthReducer`** | `Palace/Packages/PalaceAuth/Sources/PalaceAuth/AuthReducer.swift:139` | Integrated: `TPPSignInBusinessLogic.authState` (`Palace/SignInLogic/TPPSignInBusinessLogic.swift:194`) is the source of truth for in-flight sign-in state, and every legacy `@objc` auth property is computed from it through `dispatch(_:)` (`:198`). `.bearerTokenReceived` returns the credential-validation effect, which `dispatch(_:)` starts (`Palace/SignInLogic/TPPSignInBusinessLogic+AuthEffects.swift`); the other 11 branches return `.none`. Token requests, credential saves and DRM activation still run in `TPPSignInBusinessLogic`. Repaid on the same terms as `BorrowReducer`. |
 | **Duplicate `Effect`** | canonical at `Palace/AppInfrastructure/Store.swift:21`; mirror at `Palace/Packages/PalaceAuth/Sources/PalaceAuth/Effect.swift:39` | Two copies, both with `Environment: Sendable`, because `PalaceAuth` cannot import the app module. Keep the mirror identical to the canonical type and do not add a third copy. Repaid when both move into one SPM module that the app target and `PalaceAuth` import. |
 
-**`BorrowReducer` and `AuthReducer` are shape-only by declaration, not by
-accident.** They are pure state machines, already integrated and covered by
-`BorrowReducerTests`, `BorrowReducerContractTests` and `AuthReducerTests`; only
-their effects have not moved across. That is the last step of a migration, not a
-design defect.
+**`BorrowReducer` is shape-only by declaration, not by accident.** It is a pure
+state machine, already integrated and covered by `BorrowReducerTests` and
+`BorrowReducerContractTests`; only its effects have not moved across. That is the
+last step of a migration, not a design defect. `AuthReducer` met the same finish
+line in PP-5558: `.bearerTokenReceived` returns the credential-validation effect,
+which `TPPSignInBusinessLogic.dispatch(_:)` starts
+(`Palace/SignInLogic/TPPSignInBusinessLogic+AuthEffects.swift`). Token requests,
+credential saves and DRM activation still run in `TPPSignInBusinessLogic`.
 
 ## Out-of-family by design — NOT debt
 
