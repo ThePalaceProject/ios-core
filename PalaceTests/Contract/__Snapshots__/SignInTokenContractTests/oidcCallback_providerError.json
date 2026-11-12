@@ -1,0 +1,17 @@
+[
+  {
+    "args" : {
+      "message" : "Consent declined",
+      "title" : "Login Failed"
+    },
+    "method" : "delegate.didEncounterValidationError"
+  },
+  {
+    "args" : {
+      "authToken" : "nil",
+      "cookieCount" : "0",
+      "patronName" : "nil"
+    },
+    "method" : "storedAccount"
+  }
+]

@@ -1,0 +1,38 @@
+[
+  {
+    "args" : {
+      "accountId" : "urn:uuid:065c0c11-0d0f-42a3-82e4-277b18786949",
+      "tokenURL" : "https:\/\/library.test\/token",
+      "username" : "barcode"
+    },
+    "method" : "executeTokenRefresh"
+  },
+  {
+    "args" : {
+      "action" : "credentialsValidationFailed",
+      "title" : "Invalid Credentials"
+    },
+    "method" : "dispatch"
+  },
+  {
+    "args" : {
+      "message" : "Please check your username and password and try again.",
+      "title" : "Invalid Credentials"
+    },
+    "method" : "delegate.didEncounterValidationError"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "getBearerTokenCompletion"
+  },
+  {
+    "args" : {
+      "authToken" : "nil",
+      "cookieCount" : "0",
+      "patronName" : "nil"
+    },
+    "method" : "storedAccount"
+  }
+]

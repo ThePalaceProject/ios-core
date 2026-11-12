@@ -1,0 +1,83 @@
+[
+  {
+    "args" : {
+      "action" : "bearerTokenReceived",
+      "hasExpiration" : "false",
+      "token" : "saml-token"
+    },
+    "method" : "dispatch"
+  },
+  {
+    "args" : {
+      "name" : "Sam"
+    },
+    "method" : "patronSet"
+  },
+  {
+    "args" : {
+      "error" : "nil",
+      "title" : "nil"
+    },
+    "method" : "redirectCompletion"
+  },
+  {
+    "args" : {
+      "action" : "credentialsValidationStarted"
+    },
+    "method" : "dispatch"
+  },
+  {
+    "args" : {
+      "accountId" : "urn:uuid:065c0c11-0d0f-42a3-82e4-277b18786949",
+      "bearer" : "saml-token",
+      "enableTokenRefresh" : "false",
+      "hasBearer" : "true",
+      "path" : "\/NYNYPL\/patrons\/me"
+    },
+    "method" : "validationRequest"
+  },
+  {
+    "args" : {
+      "action" : "credentialsValidationSucceeded"
+    },
+    "method" : "dispatch"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "delegate.didReceiveCredentials"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "registry.sync"
+  },
+  {
+    "args" : {
+      "action" : "userAccountUpdated"
+    },
+    "method" : "dispatch"
+  },
+  {
+    "args" : {
+      "progress" : "finished"
+    },
+    "method" : "reportSignInProgress"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "delegate.didCompleteSignIn"
+  },
+  {
+    "args" : {
+      "authToken" : "saml-token",
+      "cookieCount" : "1",
+      "patronName" : "Sam"
+    },
+    "method" : "storedAccount"
+  }
+]
