@@ -15,7 +15,11 @@ final class TPPSignInAuthEffectsTests: XCTestCase {
         try await super.setUp()
         TPPUserAccountMock.resetShared()
         libraryAccountMock = TPPLibraryAccountMock()
-        businessLogic = ValidationCountingBusinessLogic(
+        businessLogic = makeBusinessLogic(probe: nil)
+    }
+
+    private func makeBusinessLogic(probe: ValidationProbe?) -> ValidationCountingBusinessLogic {
+        let logic = ValidationCountingBusinessLogic(
             libraryAccountID: libraryAccountMock.tppAccountUUID,
             libraryAccountsProvider: libraryAccountMock,
             urlSettingsProvider: TPPURLSettingsProviderMock(),
@@ -26,6 +30,8 @@ final class TPPSignInAuthEffectsTests: XCTestCase {
             uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock(),
             drmAuthorizer: TPPDRMAuthorizingMock(),
             appNetwork: SignInAppNetworkSpy())
+        logic.probe = probe
+        return logic
     }
 
     override func tearDown() async throws {
@@ -49,6 +55,22 @@ final class TPPSignInAuthEffectsTests: XCTestCase {
         XCTAssertEqual(businessLogic.authToken, "tok")
     }
 
+    /// The patron can close the sign-in screen while the account check runs;
+    /// the check must still finish, so the effect must keep the object alive.
+    func testDispatch_BearerTokenReceived_ValidatesAfterTheCallerReleasesTheSignInObject() async {
+        let probe = ValidationProbe()
+        var released: ValidationCountingBusinessLogic? = makeBusinessLogic(probe: probe)
+        weak var weakLogic = released
+
+        released?.dispatch(.bearerTokenReceived(token: "tok", expiration: nil))
+        released = nil
+        XCTAssertEqual(probe.count, 0, "Validation runs after the synchronous caller returns")
+
+        // Each wait fails the test if its condition never holds.
+        await awaitConditionAsync { probe.count == 1 }
+        await awaitConditionAsync { weakLogic == nil }
+    }
+
     func testDispatch_ActionWithoutEffect_StartsNoSignInTask() async {
         businessLogic.dispatch(.credentialCaptureStarted(barcode: "b", pin: "p"))
         businessLogic.dispatch(.errorCleared)
@@ -61,13 +83,22 @@ final class TPPSignInAuthEffectsTests: XCTestCase {
     }
 }
 
+/// Counts validations outside the business logic, so a test can read the
+/// count after the business logic is gone.
+@MainActor
+private final class ValidationProbe {
+    var count = 0
+}
+
 /// Replaces the network validation with a counter so the test observes only
 /// whether `dispatch(_:)` started it.
 private final class ValidationCountingBusinessLogic: TPPSignInBusinessLogic {
+    var probe: ValidationProbe?
     private(set) var validationCount = 0
 
     override func validateCredentials() async {
         validationCount += 1
+        probe?.count += 1
     }
 }
 
