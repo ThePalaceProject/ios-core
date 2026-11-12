@@ -33,7 +33,8 @@ final class TPPSignInDeselectedLibraryTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: nil,
-            drmAuthorizer: nil
+            drmAuthorizer: nil,
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 
@@ -76,7 +77,8 @@ final class TPPSignInDeselectedLibraryTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: nil,
-            drmAuthorizer: nil
+            drmAuthorizer: nil,
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 

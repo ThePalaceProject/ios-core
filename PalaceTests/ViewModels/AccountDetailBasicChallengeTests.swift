@@ -41,7 +41,8 @@ final class AccountDetailBasicChallengeTests: PalaceTestCase {
             settings: appContainer.settings,
             userAccountPublisher: appContainer.userAccountPublisher,
             drmAuthorizerProvider: { nil },
-            credentialSnapshotProvider: { _ in signedOut }
+            credentialSnapshotProvider: { _ in signedOut },
+            appNetwork: SignInAppNetworkSpy()
         )
         // The responder holds its provider weakly; the test owns the view model.
         responder = TPPNetworkResponder(credentialsProvider: viewModel,

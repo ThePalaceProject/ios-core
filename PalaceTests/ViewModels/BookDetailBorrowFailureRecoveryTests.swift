@@ -13,6 +13,7 @@ import PalaceCatalog
 import PalaceBookModel
 import PalacePreferences
 @testable import Palace
+import PalaceDownloads
 
 @MainActor
 final class BookDetailBorrowFailureRecoveryTests: XCTestCase {
@@ -42,7 +43,8 @@ final class BookDetailBorrowFailureRecoveryTests: XCTestCase {
             opdsFeedService: appContainer.opdsFeedService,
             samplePreviewManager: appContainer.samplePreviewManager,
             readerService: appContainer.readerService,
-            metadataHydrator: { _ in nil }
+            metadataHydrator: { _ in nil },
+            dependencies: .testDouble()
         )
     }
 

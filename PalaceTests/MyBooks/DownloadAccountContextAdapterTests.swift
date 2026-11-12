@@ -17,6 +17,7 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceDownloads
 
 @MainActor
 final class DownloadAccountContextAdapterTests: PalaceWiringTestCase {

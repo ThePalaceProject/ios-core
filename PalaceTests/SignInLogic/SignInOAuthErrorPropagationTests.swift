@@ -37,7 +37,8 @@ final class SignInOAuthErrorPropagationTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
         businessLogic.selectedAuthentication = libraryMock.samlAuthentication
     }

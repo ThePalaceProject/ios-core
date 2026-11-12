@@ -13,6 +13,7 @@ import PalaceCatalog
 import PalaceLogging
 import PalaceBookModel
 import PalaceUtilities
+import PalaceDownloads
 
 // MARK: - Carrier boxes
 

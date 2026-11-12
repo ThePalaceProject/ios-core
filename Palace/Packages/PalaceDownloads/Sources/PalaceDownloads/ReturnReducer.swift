@@ -1,6 +1,6 @@
 //
 //  ReturnReducer.swift
-//  Palace
+//  PalaceDownloads
 //
 //  Pure return decisions. `BookReturnService` runs the effects (revoke fetch,
 //  processing flag, bookmark deletion, sync, reauth, alerts); this decides:
@@ -14,18 +14,21 @@
 
 import Foundation
 
-enum ReturnReducer {
+// PUBLIC_INTENT: BookReturnService (app target) runs this plan.
+public enum ReturnReducer {
 
     // MARK: - Top-level route
 
-    enum StartRoute: Equatable {
+    // PUBLIC_INTENT: BookReturnService (app target) runs this plan.
+    public enum StartRoute: Equatable, Sendable {
         /// `book.revokeURL == nil` — skip the OPDS round trip, clean up locally.
         case cleanupWithoutNetwork
         /// A revoke URL exists — set processing and fetch the revoke feed.
         case revokeOverNetwork
     }
 
-    static func startRoute(hasRevokeURL: Bool) -> StartRoute {
+    // PUBLIC_INTENT: BookReturnService (app target) runs this plan.
+    public static func startRoute(hasRevokeURL: Bool) -> StartRoute {
         hasRevokeURL ? .revokeOverNetwork : .cleanupWithoutNetwork
     }
 
@@ -33,25 +36,50 @@ enum ReturnReducer {
 
     /// Pure facts the service extracts from a revoke failure. Kept as values so
     /// the classifier never touches an `Error`/`NSError`/problem-doc object.
-    struct ErrorFacts: Equatable {
+    // PUBLIC_INTENT: BookReturnService (app target) runs this plan.
+    public struct ErrorFacts: Equatable, Sendable {
         /// `error` is `PalaceError.parsing(.opdsFeedInvalid)` — the OverDrive
         /// revoke endpoint returns non-OPDS XML that the parser rejects, but the
         /// revoke almost certainly SUCCEEDED server-side.
-        let isOPDSParseFailure: Bool
+        // PUBLIC_INTENT: BookReturnService (app target) runs this plan.
+        public let isOPDSParseFailure: Bool
         /// Problem-doc type is `TypeNoActiveLoan`.
-        let isNoActiveLoan: Bool
+        // PUBLIC_INTENT: BookReturnService (app target) runs this plan.
+        public let isNoActiveLoan: Bool
         /// Problem-doc detail contains `DetailLoanTermLimitReached`.
-        let isLoanTermLimitReached: Bool
+        // PUBLIC_INTENT: BookReturnService (app target) runs this plan.
+        public let isLoanTermLimitReached: Bool
         /// The failure is a recoverable auth error (invalid-credentials type,
         /// recoverable-auth problem doc, or the invalid-credentials NSError code).
-        let isAuthError: Bool
+        // PUBLIC_INTENT: BookReturnService (app target) runs this plan.
+        public let isAuthError: Bool
         /// A genuine offline / no-connection `NSURLError`.
-        let isOffline: Bool
+        // PUBLIC_INTENT: BookReturnService (app target) runs this plan.
+        public let isOffline: Bool
         /// An offline-return enqueuer is wired (production reliability path).
-        let hasOfflineEnqueuer: Bool
+        // PUBLIC_INTENT: BookReturnService (app target) runs this plan.
+        public let hasOfflineEnqueuer: Bool
+
+        // PUBLIC_INTENT: BookReturnService (app target) runs this plan.
+        public init(
+            isOPDSParseFailure: Bool,
+            isNoActiveLoan: Bool,
+            isLoanTermLimitReached: Bool,
+            isAuthError: Bool,
+            isOffline: Bool,
+            hasOfflineEnqueuer: Bool
+        ) {
+            self.isOPDSParseFailure = isOPDSParseFailure
+            self.isNoActiveLoan = isNoActiveLoan
+            self.isLoanTermLimitReached = isLoanTermLimitReached
+            self.isAuthError = isAuthError
+            self.isOffline = isOffline
+            self.hasOfflineEnqueuer = hasOfflineEnqueuer
+        }
     }
 
-    enum ErrorRoute: Equatable {
+    // PUBLIC_INTENT: BookReturnService (app target) runs this plan.
+    public enum ErrorRoute: Equatable, Sendable {
         /// The loan is already gone (or the revoke succeeded but returned
         /// non-OPDS XML) — run the local treat-as-success cleanup.
         case treatAsSuccessCleanup
@@ -66,7 +94,8 @@ enum ReturnReducer {
     /// Mirrors the `handleRevokeError` ladder order: parse-fail → loan-gone →
     /// auth-error → offline → generic. Parse-fail and loan-gone collapse to the
     /// same cleanup outcome (both mean "the server no longer holds this loan").
-    static func classifyError(_ facts: ErrorFacts) -> ErrorRoute {
+    // PUBLIC_INTENT: BookReturnService (app target) runs this plan.
+    public static func classifyError(_ facts: ErrorFacts) -> ErrorRoute {
         if facts.isOPDSParseFailure || facts.isNoActiveLoan || facts.isLoanTermLimitReached {
             return .treatAsSuccessCleanup
         }
@@ -81,7 +110,8 @@ enum ReturnReducer {
 
     // MARK: - Ordered cleanup sequence
 
-    enum Effect: Equatable {
+    // PUBLIC_INTENT: BookReturnService (app target) runs this plan.
+    public enum Effect: Equatable, Sendable {
         /// `localContentService.deleteLocalContent(for:)` — only when the book
         /// had downloaded content.
         case deleteLocalContent
@@ -107,7 +137,8 @@ enum ReturnReducer {
     ///   returned book and uses `updateAndRemoveBook` THEN `setState`; the
     ///   treat-as-success cleanup paths (no parsed book) use `setState` THEN
     ///   `removeBook`. Matches `BookReturnService.swift` :364-365 vs :402-403.
-    static func cleanupEffects(downloaded: Bool, useUpdateAndRemove: Bool = false) -> [Effect] {
+    // PUBLIC_INTENT: BookReturnService (app target) runs this plan.
+    public static func cleanupEffects(downloaded: Bool, useUpdateAndRemove: Bool = false) -> [Effect] {
         var effects: [Effect] = []
         if downloaded {
             effects.append(.deleteLocalContent)

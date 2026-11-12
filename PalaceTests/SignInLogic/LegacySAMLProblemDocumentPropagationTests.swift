@@ -64,7 +64,8 @@ final class LegacySAMLProblemDocumentPropagationTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: TPPDRMAuthorizingMock()
+            drmAuthorizer: TPPDRMAuthorizingMock(),
+            appNetwork: SignInAppNetworkSpy()
         )
 
         // Construct a presenter wired to the same businessLogic the
@@ -268,7 +269,8 @@ final class LegacySAMLProblemDocumentPropagationTests: XCTestCase {
                 userAccountProvider: TPPUserAccountMock.self,
                 networkExecutor: networkExecutor,
                 uiDelegate: uiDelegate,
-                drmAuthorizer: TPPDRMAuthorizingMock()
+                drmAuthorizer: TPPDRMAuthorizingMock(),
+                appNetwork: SignInAppNetworkSpy()
             )
             throwawayPresenter.businessLogic = throwawayBL
         }

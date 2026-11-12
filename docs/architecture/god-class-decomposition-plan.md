@@ -23,6 +23,11 @@ state + I/O + lock cluster out of the hub:
 
 Preceded by the `AccountNetworking` seam (#1360, inverting the last concrete `TPPNetworkExecutor` type edge).
 
+**Package step (PP-5546, started).** The first change moves `AccountRegistryCache`, `AccountRegistryStore`
+(now generic over `AccountRegistryEntry`, which the app's `Account` adopts), `CrawlState` and the
+`AccountNetworking` protocol into `Palace/Packages/PalaceAccounts`. The other collaborators stay in the
+app target for now.
+
 **3a-6 `CurrentAccountStore` — deliberately NOT extracted (STOP decision, 2026-07-31).** The
 `currentAccount` get/set switch pipeline (~61 executable LOC; almost no state of its own —
 `currentAccountId` is computed over `UserDefaults`, `isAccountSwitching` is one `Bool`) is the
@@ -115,7 +120,7 @@ inversion.
 - **The god-orchestrators are accreting, not shrinking.** 19-day deltas: AudiobookSessionManager +529 (+24%), AccountsManager +549 (+33%), MyBooksDownloadCenter +328 (+18%). Every reliability fix (F-011 readiness gates, PP-4542 position resolve, WS-A durable downloads, CP-D1 launch hydration) lands *inside* the hub because the hub is where the seams are. Without a ratchet, decomposition is bailing a leaking boat.
 - **39 declared singletons are the coupling substrate.** The triad cut `.shared` call sites 732→~564, but the highest-fan-in ambient reaches remain: TPPKeychain.shared (40), RemoteFeatureFlags.shared (32), FirebaseManager.shared (25), UserAccountPublisher.shared (16), ImageCache.shared (16), NotificationService.shared (12), AccountStateStore.shared (8). Notably, **several of these already have AppContainer seams that consumers bypass** (`imageCache`, `userAccountPublisher`, `bookRegistry` are container members; `AppContainer._buildCachedAppContainer()` itself still reads `ImageCache.shared` and `UserAccountPublisher.shared` to build them). Even `appRatingService` construction inside AppContainer reaches for `RemoteFeatureFlags.shared` / `FirebaseManager.shared` via closures. The pattern exists; enforcement doesn't.
 - **`AppContainer.production()` is itself used as a service locator** — e.g. `Palace/ErrorHandling/ErrorDetail.swift` and `Palace/Book/UI/TPPProblemReportViewController.swift` call `AppContainer.production().accountsManager` in default args / bodies. That's a `.shared` read with extra steps: it preserves the ambient-reach graph and defeats testability the same way. The target must treat `AppContainer.production()` outside composition roots as a violation, not a win.
-- **Known debt from the triad**: AuthReducer is integrated into TPPSignInBusinessLogic (`authState` is the source of truth and the legacy `@objc` properties compute from it), but its effects still run in the class — finish line in [state-management-doctrine.md](./state-management-doctrine.md#tracked-debt--allowed-each-with-a-finish-line). MBDC is de-singletonized but its body is intact. The seven `@MainActor private static var` cache cells in `AppContainer` (`Palace/AppInfrastructure/AppContainer.swift:371-377`: `_samplePreviewManager`, `_audiobookSession`, `_audiobookSessionPresenter`, `_playbackBootstrapper`, `_appRatingService`, `_ratingPromptPresenter`, `_activityPolicy`) are process-wide singletons with hand-maintained `_resetForTesting()` bookkeeping, a recurring source of test pollution. **Finish line:** each cell becomes state of one container instance, so a test that builds its own container gets its own objects and `_resetForTesting()` has no static cell left to clear.
+- **Known debt from the triad**: AuthReducer is integrated into TPPSignInBusinessLogic (`authState` is the source of truth and the legacy `@objc` properties compute from it), but its effects still run in the class — finish line in [state-management-doctrine.md](./state-management-doctrine.md#tracked-debt--allowed-each-with-a-finish-line). MBDC is de-singletonized but its body is intact. The `AppContainer` static cache cells (audiobook session, presenter and bootstrapper, sample preview, rating service and prompt, activity policy, play-time uploader, the side-load caches and the offline-queue slot) moved into one `ProcessServices` instance per built container in PP-5545 (`Palace/AppInfrastructure/ProcessServices.swift`). A test that builds its own container gets its own objects, and `_resetForTesting()` has no static cell left to clear.
 
 **One-sentence diagnosis:** the architecture has the right *mechanisms* (packages, container, reducers, contracts) but the wrong *defaults* — inside the monolithic target, reaching sideways is free, so every fix accretes onto a hub; the fix is to make sideways reach a compile error by promoting the hub folders' lower halves into SPM packages with an enforced DAG, leaving thin app-target shells.
 
@@ -198,6 +203,18 @@ PalaceAccounts         → PalaceAuth, PalaceCatalog, PalaceNetwork,
 PalaceReadingPosition  → (as today)
 PalaceDownloads        → PalaceBookModel, PalaceBookRegistry, PalaceNetwork,
                          PalaceAuth (AuthCoordinator surface), PalaceLogging
+                         [as first shipped (PP-5547): no dependencies. It holds
+                         the Foundation-only cores (ReturnReducer,
+                         RedirectPolicy, UserRetryTracker, LoanEvictionPolicy,
+                         the DownloadAccountContext protocols), and CI runs
+                         its tests with macOS `swift test`. PalaceBookModel
+                         imports UIKit and declares no macOS platform, so
+                         adding it as a dependency ends the macOS test run;
+                         the package tests then need an iOS Simulator run.
+                         Cores that need `TPPBookState` (DownloadStartReducer,
+                         DownloadReconciliation) stay in the app target until
+                         that trade is made. See
+                         Palace/Packages/PalaceDownloads/Package.swift.]
 PalaceAudiobookSession → PalaceBookModel, PalaceReadingPosition,
                          PalacePreferences, PalaceLogging (+ toolkit, see caveat)
 App target             → all of the above
@@ -344,7 +361,7 @@ Each row names the *verified* code behind both directions (grepped this session)
 
 **Explicitly not-yet-mapped (findings, not hidden gaps):**
 1. **The other ~31 declared singletons** below this fan-in tier (e.g. `AdobeDRMService.shared`, `DLNavigator.shared`, sim/debug helpers) are not individually mapped here. Disposition rule: each wave's checklist includes "any `.shared` in files the wave touches gets a container seam or a written exemption." A full 39-row census is a Wave 0 deliverable (one script run against `reference_god_class_candidates` data), not an ADR blocker.
-2. **AppContainer's static lazy caches** (`_audiobookSession`, `_appRatingService`, `_sideloadedBookManager`, …) are process-wide singletons wearing container clothes, each with hand-maintained `_resetForTesting` bookkeeping. The sign-in sheet presenter, book cell cache and catalog API/repository are now owned per container (`AppContainerOwnedServices`). Target: fold into instance `let`s as their construction-order constraints allow (several exist only to break init cycles that die when AccountsManager decomposes in Wave 3). Mapped as a Wave-3/6 side effect, not a standalone wave.
+2. **AppContainer's static lazy caches** are resolved: the sign-in sheet presenter, book cell cache and catalog API/repository are owned per container (`AppContainerOwnedServices`), and the process-lifetime cells are owned by one `ProcessServices` instance per built container (PP-5545).
 3. **`AppContainer.production()` as service locator** (default args in ErrorHandling, Book/UI, Settings, Logging): mapped to the Wave 0 ratchet (count monotone-down) + per-wave cleanup, since each occurrence dies naturally when its file gets constructor injection.
 
 ---
@@ -419,7 +436,7 @@ Strictly ordered, critical path: **(i)** characterization tests for `TPPSignInBu
 **Status 2026-09-29: the extraction and cycle 8 are COMPLETE; the cycle 7 navigation inversion is DEFERRED to Wave 7.** See the Wave 5 section at the top for the measured evidence, the reason for the deferral, and the two distinct shapes cycle 7 turns out to have.
 
 ### Wave 6 — Audiobook session split (after 4; package conditional)
-In-target decomposition per §3a-1 first (reducer, position resolver, readiness gate, TOC normalizer as separate injected files); `PalaceAudiobookSession` package **only if** the toolkit-API caveat resolves. Retire the `_audiobookSession`/`_playbackBootstrapper` static caches into container lets as construction order allows.
+In-target decomposition per §3a-1 first (reducer, position resolver, readiness gate, TOC normalizer as separate injected files); `PalaceAudiobookSession` package **only if** the toolkit-API caveat resolves. The session and bootstrapper cells already live in `ProcessServices` (PP-5545).
 
 ### Wave 7 — Sweep + declare
 Remaining `.shared` census rows dispositioned; `AppContainer.production()` locator count → allowlist-only; ledger `componentRoots` updated to package-first; ratchet thresholds converted from "trend-down" to "hard ceiling"; ADR finalized into `docs/architecture/` with the before/after ledger runs as evidence.

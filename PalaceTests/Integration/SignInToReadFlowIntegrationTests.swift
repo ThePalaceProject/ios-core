@@ -108,7 +108,8 @@ class SignInToReadFlowIntegrationTests: PalaceWiringTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: drmAuthorizer
+            drmAuthorizer: drmAuthorizer,
+            appNetwork: SignInAppNetworkSpy()
         )
 
         readerOpenedBookIds.reset()

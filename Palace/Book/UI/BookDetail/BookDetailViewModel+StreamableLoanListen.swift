@@ -75,7 +75,7 @@ extension BookDetailViewModel {
 
         switch destination {
         case .epubReader, .pdfReader:
-            BookOpenRouter.open(resolvedBook, bookRegistry: registry, onFinish: finishOnMain)
+            BookOpenRouter.open(resolvedBook, bookRegistry: registry, dependencies: dependencies.bookOpen, onFinish: finishOnMain)
         case .audiobookSession:
             openAudiobook(resolvedBook, completion: finishOnMain, onLoadingShellPresented: onLoadingShellPresented)
         case .streamingReader:
@@ -83,7 +83,7 @@ extension BookDetailViewModel {
             // point; this arm covers the rare path where another call site
             // funnels a streamingHTML book through `openBook` (a
             // coordinator-level resume, say).
-            BookOpenRouter.presentStreamingReader(resolvedBook)
+            BookOpenRouter.presentStreamingReader(resolvedBook, navigationHub: dependencies.bookOpen.navigationHub)
             processingButtons.removeAll()
             completion?()
         case .unsupported:

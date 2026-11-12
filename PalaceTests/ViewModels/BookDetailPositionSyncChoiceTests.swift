@@ -46,7 +46,8 @@ final class BookDetailPositionSyncChoiceTests: XCTestCase {
             opdsFeedService: appContainer.opdsFeedService,
             samplePreviewManager: appContainer.samplePreviewManager,
             readerService: appContainer.readerService,
-            metadataHydrator: { _ in nil }
+            metadataHydrator: { _ in nil },
+            dependencies: .testDouble()
         )
     }
 

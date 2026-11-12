@@ -40,7 +40,8 @@ final class BookCellModelCacheTests: XCTestCase {
             downloadCenter: appContainer.downloadCenter,
             accountsManager: appContainer.accountsManager,
             samplePreviewManager: appContainer.samplePreviewManager,
-            readerService: appContainer.readerService
+            readerService: appContainer.readerService,
+            bookOpenDependencies: .testDouble()
         )
     }
 
@@ -218,7 +219,8 @@ final class BookCellModelCacheTests: XCTestCase {
             downloadCenter: appContainer.downloadCenter,
             accountsManager: appContainer.accountsManager,
             samplePreviewManager: appContainer.samplePreviewManager,
-            readerService: appContainer.readerService
+            readerService: appContainer.readerService,
+            bookOpenDependencies: .testDouble()
         )
 
         let book = makeTestBook(identifier: "downloadingBook", title: "Test Book")
@@ -259,7 +261,8 @@ final class BookCellModelCacheTests: XCTestCase {
             downloadCenter: appContainer.downloadCenter,
             accountsManager: appContainer.accountsManager,
             samplePreviewManager: appContainer.samplePreviewManager,
-            readerService: appContainer.readerService
+            readerService: appContainer.readerService,
+            bookOpenDependencies: .testDouble()
         )
 
         let book = makeTestBook(identifier: "activeDownload", title: "Active Download")
@@ -299,7 +302,8 @@ final class BookCellModelCacheTests: XCTestCase {
             downloadCenter: appContainer.downloadCenter,
             accountsManager: appContainer.accountsManager,
             samplePreviewManager: appContainer.samplePreviewManager,
-            readerService: appContainer.readerService
+            readerService: appContainer.readerService,
+            bookOpenDependencies: .testDouble()
         )
 
         let book = makeTestBook(identifier: "holdBook", title: "Hold Book")

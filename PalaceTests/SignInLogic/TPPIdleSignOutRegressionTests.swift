@@ -42,7 +42,8 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: drmAuthorizer
+            drmAuthorizer: drmAuthorizer,
+            appNetwork: SignInAppNetworkSpy()
         )
     }
 
@@ -215,7 +216,8 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: TPPRequestExecutorMock(),
             uiDelegate: TPPSignInOutBusinessLogicUIDelegateMock(),
-            drmAuthorizer: drmAuthorizer
+            drmAuthorizer: drmAuthorizer,
+            appNetwork: SignInAppNetworkSpy()
         )
         signInBL.selectedAuthentication = libraryMock.barcodeAuthentication
         signInBL.updateUserAccount(
@@ -402,7 +404,8 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: nil
+            drmAuthorizer: nil,
+            appNetwork: SignInAppNetworkSpy()
         )
         noDrmBL.selectedAuthentication = libraryMock.barcodeAuthentication
         noDrmBL.updateUserAccount(

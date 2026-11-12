@@ -10,6 +10,7 @@
 import Foundation
 import PalaceBookModel
 import PalaceBookRegistry
+import PalaceDownloads
 
 /// Resolves the on-disk URL for a book download. Per-account, hashed
 /// identifier, LCP-aware file extension. Creates the content directory on

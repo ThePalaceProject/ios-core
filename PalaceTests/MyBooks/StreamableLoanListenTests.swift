@@ -149,7 +149,7 @@ final class StreamableLoanListenTests: XCTestCase {
             samplePreviewManager: container.samplePreviewManager,
             readerService: container.readerService,
             reachability: MockReachability(initiallyConnected: true),
-            audiobookSession: session
+            bookOpenDependencies: .testDouble(audiobookSession: session)
         )
         model.downloadStarter = started
         return model
@@ -246,7 +246,7 @@ final class StreamableLoanListenTests: XCTestCase {
             samplePreviewManager: container.samplePreviewManager,
             readerService: container.readerService,
             reachability: MockReachability(initiallyConnected: false),
-            audiobookSession: session
+            bookOpenDependencies: .testDouble(audiobookSession: session)
         )
         model.downloadStarter = { _ in started += 1 }
 
@@ -279,8 +279,8 @@ final class StreamableLoanListenTests: XCTestCase {
             readerService: container.readerService,
             metadataHydrator: { _ in nil },
             relatedBooksFetcher: { _ in throw URLError(.notConnectedToInternet) },
-            audiobookSession: session,
-            authGateOverride: { $0() }
+            authGateOverride: { $0() },
+            dependencies: .testDouble(bookOpen: .testDouble(audiobookSession: session))
         )
         model.downloadStarter = started
         return model

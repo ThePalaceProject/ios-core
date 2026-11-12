@@ -64,7 +64,7 @@ public final class PlaybackBootstrapper {
     /// manager participates in cold-launch init, so taking the reference at
     /// construction time would risk an init-order race. Closure form lets
     /// tests inject a mock and lets the production closure resolve through
-    /// `AppContainer.production().audiobookSession` lazily.
+    /// its container's `audiobookSession` lazily.
     private let audiobookSessionProvider: () -> AudiobookSessionManaging
     /// Off-main-safe read of "is an audiobook manager currently bound," for the
     /// remote-command handlers, which run on MediaRemote's background queue and

@@ -15,6 +15,7 @@ import XCTest
 import PalaceCatalog
 @testable import Palace
 import PalaceBookModel
+import PalaceDownloads
 
 // MARK: - BookReturnService broadening (site 4.10)
 

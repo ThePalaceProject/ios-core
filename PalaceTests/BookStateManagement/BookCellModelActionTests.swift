@@ -37,13 +37,13 @@ final class BookCellModelActionTests: XCTestCase {
     private func makeModel(state: TPPBookState = .downloadSuccessful) -> BookCellModel {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         mockRegistry.addBook(book, state: state)
-        return BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: AppContainer.production().accountsManager, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
+        return BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: AppContainer.production().accountsManager, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService, bookOpenDependencies: .testDouble())
     }
 
     private func makeHoldModel() -> BookCellModel {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         mockRegistry.addBook(book, state: .holding)
-        return BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: AppContainer.production().accountsManager, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService)
+        return BookCellModel(book: book, imageCache: mockImageCache, bookRegistry: mockRegistry, downloadCenter: AppContainer.production().downloadCenter, accountsManager: AppContainer.production().accountsManager, samplePreviewManager: AppContainer.production().samplePreviewManager, readerService: AppContainer.production().readerService, bookOpenDependencies: .testDouble())
     }
 
     // MARK: - Return: confirmation alert shown before any action

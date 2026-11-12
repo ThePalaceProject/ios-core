@@ -6,7 +6,8 @@
 //
 //  `destination(for:)` is the pure, table-testable decision; `open(_:...)`
 //  performs it, including the per-identifier lock that stops a second tap from
-//  starting a parallel open. Callers pass the registry they were built with.
+//  starting a parallel open. Callers pass the registry and the
+//  `BookOpenDependencies` they were built with.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -116,7 +117,7 @@ enum BookOpenRouter {
     ///   the given delay; tests pass a scheduler they fire by hand.
     static func open(_ book: TPPBook,
                      bookRegistry: TPPBookRegistryProvider,
-                     audiobookSession: AudiobookSessionManaging? = nil,
+                     dependencies: BookOpenDependencies,
                      onFinish: (() -> Void)? = nil,
                      onLoadingShellPresented: (@MainActor () -> Void)? = nil,
                      scheduleSafetyRelease: @MainActor (TimeInterval, @escaping @MainActor () -> Void) -> Void = BookOpenRouter.scheduleOnMainQueue) {
@@ -138,7 +139,7 @@ enum BookOpenRouter {
 
         dispatch(resolvedBook,
                  token: token,
-                 audiobookSession: audiobookSession,
+                 dependencies: dependencies,
                  onFinish: onFinish,
                  onLoadingShellPresented: onLoadingShellPresented)
     }
@@ -147,8 +148,8 @@ enum BookOpenRouter {
     /// destination resolver can look it up. Shared by this router's dispatch and
     /// by `BookDetailViewModel`'s direct `.readStreaming` action, which reaches
     /// the shell without going through the open lock.
-    static func presentStreamingReader(_ book: TPPBook) {
-        guard let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator else {
+    static func presentStreamingReader(_ book: TPPBook, navigationHub: NavigationCoordinatorHub) {
+        guard let coordinator = navigationHub.coordinator else {
             // PP-5022 — a warn line is not a patron-visible outcome.
             ReaderService.presentUnreachableReaderAlert(for: book, source: "BookOpenRouter.presentStreamingReader")
             return
@@ -169,25 +170,25 @@ enum BookOpenRouter {
 
     private static func dispatch(_ book: TPPBook,
                                  token: UUID,
-                                 audiobookSession: AudiobookSessionManaging?,
+                                 dependencies: BookOpenDependencies,
                                  onFinish: (() -> Void)?,
                                  onLoadingShellPresented: (@MainActor () -> Void)?) {
         switch destination(for: book) {
         case .epubReader:
             spawnOpenTask {
                 defer { finish(book.identifier, token, onFinish) }
-                AppContainer.production().readerService.openEPUB(book)
+                dependencies.readers.openEPUB(book)
             }
         case .pdfReader:
             Task { @MainActor in
-                presentPDF(book) { finish(book.identifier, token, onFinish) }
+                presentPDF(book, readers: dependencies.readers) { finish(book.identifier, token, onFinish) }
             }
         case .audiobookSession:
             // Route through the single audiobook owner. The session manager
             // stops the previous session (releasing its DRM decryptor) before
             // loading the new audiobook — the ordering invariant that prevents
             // a stale LCP Publication from hanging publicationOpener.open().
-            let session = audiobookSession ?? AppContainer.production().audiobookSession
+            let session = dependencies.audiobookSession()
             spawnOpenTask {
                 defer { finish(book.identifier, token, onFinish) }
                 _ = await session.openAudiobook(
@@ -202,7 +203,7 @@ enum BookOpenRouter {
             // no LCP / DRM grant, no on-disk asset.
             spawnOpenTask {
                 defer { finish(book.identifier, token, onFinish) }
-                presentStreamingReader(book)
+                presentStreamingReader(book, navigationHub: dependencies.navigationHub)
             }
         case .unsupported:
             finish(book.identifier, token, onFinish)
@@ -222,7 +223,7 @@ enum BookOpenRouter {
         return true
     }
 
-    private static func presentPDF(_ book: TPPBook, completion: (() -> Void)? = nil) {
+    private static func presentPDF(_ book: TPPBook, readers: BookReaderOpening, completion: (() -> Void)? = nil) {
         // Single PDF seam: `ReaderService.openPDF` gates LCP vs plain
         // internally. LCP-protected PDFs stream through Readium's
         // publication-open + disk-extract pipeline; plain (non-LCP) PDFs use
@@ -233,7 +234,7 @@ enum BookOpenRouter {
         // has been dispatched (immediately for plain; after the async
         // publication open for LCP — the caller typically holds a loading
         // indicator on it).
-        AppContainer.production().readerService.openPDF(book) {
+        readers.openPDF(book) {
             completion?()
         }
     }

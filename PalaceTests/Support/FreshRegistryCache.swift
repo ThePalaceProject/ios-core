@@ -7,6 +7,7 @@
 
 import Foundation
 @testable import Palace
+import PalaceAccounts
 
 /// Serves `data` as a fresh cached catalog for every hash, so `loadCatalogs`
 /// takes the disk-cache path.

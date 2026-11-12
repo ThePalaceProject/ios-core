@@ -4,6 +4,7 @@ import PalacePreferences
 import PalaceLogging
 import PalaceCatalog
 import PalaceBookRegistry
+import PalaceAccounts
 
 let currentAccountIdentifierKey = "TPPCurrentAccountIdentifier"
 
@@ -66,7 +67,8 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
     }
 
     let ageCheck: TPPAgeCheckVerifying
-    /// Backs `currentLibraryChangePublisher`. The `currentAccount` setter sends `.selected`.
+    /// Backs `currentLibraryChangePublisher`. The `currentAccount` setter sends
+    /// `.willSwitch` before a switch's cleanup and `.selected` after it.
     let currentLibraryChanges = CurrentLibraryChangeBroadcaster()
     /// Backs `catalogLoadedPublisher`. The registry loader sends after each catalog load.
     let catalogLoads = MainThreadBroadcaster<Void>()
@@ -128,7 +130,7 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
     /// On-disk catalog cache (`DiskAccountRegistryCache` by default).
     private let registryCache: any AccountRegistryCaching
     /// Account-registry state and its thread-safe access. See `AccountRegistryStore`.
-    private let registryStore: AccountRegistryStore
+    private let registryStore: AccountRegistryStore<Account>
 
     /// Alias retained so `AccountsManager.authDocInflightTimeout` keeps resolving for
     /// the wiring-suite tests; the value + the fetch machinery live on `AuthDocumentLoader`.
@@ -226,7 +228,7 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
         crawlScheduler: CrawlTaskScheduler = .production,
         switchDependencies: AccountSwitchDependencies = .production,
         registryCache: any AccountRegistryCaching = DiskAccountRegistryCache(),
-        registryStore: AccountRegistryStore = AccountRegistryStore(),
+        registryStore: AccountRegistryStore<Account> = AccountRegistryStore<Account>(),
         processEnvironment: [String: String] = ProcessInfo.processInfo.environment
     ) {
         self.defaults = defaults
@@ -337,8 +339,9 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
             Log.debug(#file, "Setting currentAccount to <\(newValue?.name ?? "[N/A]")>")
             Log.debug(#file, "Previous account: \(previousAccountId ?? "nil") → New account: \(newAccountId ?? "nil")")
 
-            if previousAccountId != newAccountId, previousAccountId != nil {
+            if let previousAccountId, previousAccountId != newAccountId {
                 Log.info(#file, "🔄 Account switch detected - cleaning up active content")
+                currentLibraryChanges.send(.willSwitch(from: previousAccountId, to: newAccountId))
                 isAccountSwitching = true
                 cleanupActiveContentBeforeAccountSwitch(from: previousAccountId, to: newAccountId)
                 // Evict decoded cover images — the new library has different covers.
@@ -371,10 +374,8 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
             // 404 (PR #1021). Awaiters throw `AccountLoadError.evicted`. The marker
             // is overwritten via `.basicInfoLoaded` if the UUID becomes current again.
             if let prev = previousAccountId, prev != newAccountId {
-                switchDeps.accountStateStore.setState(
-                    .detailsEvicted(.libraryDeselected(uuid: prev)),
-                    for: prev
-                )
+                switchDeps.accountStateStore.setState(.detailsEvicted(.libraryDeselected(uuid: prev)),
+                                                      for: prev)
             }
 
             // Drive the new currentAccount past `.basicInfoLoaded` after the
@@ -400,8 +401,10 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
         }
     }
 
-    /// Cleans up active audiobook playback, in-flight network requests, and other
-    /// content before switching accounts to prevent cross-account credential leaks.
+    /// Cancels in-flight network requests, clears borrow re-auth state and pops
+    /// every navigation stack before an account switch, so no request or screen
+    /// carries the prior library's credentials. Audiobook playback is left
+    /// running on purpose: it continues across a library switch, as CarPlay expects.
     private func cleanupActiveContentBeforeAccountSwitch(from previousId: String?, to newId: String?) {
         networkExecutor.cancelNonEssentialTasks()
         borrowReauthResetter.clearAllBorrowReauthState()
@@ -637,7 +640,7 @@ extension AccountsManager {
 
     /// Test-only: the registry store, so a test can seed and read its current
     /// hash on a manager built through `makeFreshAccountsManager()`.
-    var _registryStoreForTesting: AccountRegistryStore { registryStore }
+    var _registryStoreForTesting: AccountRegistryStore<Account> { registryStore }
 
     /// Test-only seam: populate an accountSets bucket without going through
     /// OPDS2 parsing, through `registryStore.mutate` so the index stays coherent.

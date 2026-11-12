@@ -560,6 +560,18 @@ jobs:
         if: ${{ !cancelled() && steps.plan.outputs.packages == 'true' }}
         run: swift test --enable-code-coverage --package-path Palace/Packages/PalaceUtilities
 
+      # PalaceAccounts holds the account-registry leaf types (PP-5546); its
+      # only dependency is PalaceLogging.
+      - name: Run PalaceAccounts package tests
+        if: ${{ !cancelled() && steps.plan.outputs.packages == 'true' }}
+        run: swift test --enable-code-coverage --package-path Palace/Packages/PalaceAccounts
+
+      # PalaceDownloads holds the download subsystem's Foundation-only decision
+      # cores (PP-5547). No package dependencies, so it runs on the host.
+      - name: Run PalaceDownloads package tests
+        if: ${{ !cancelled() && steps.plan.outputs.packages == 'true' }}
+        run: swift test --enable-code-coverage --package-path Palace/Packages/PalaceDownloads
+
       # One llvm-cov export per package above, for the report job. A package
       # whose tests did not finish leaves no file, and the report then reads
       # as incomplete rather than as that package at 0%.
@@ -570,7 +582,7 @@ jobs:
           set -uo pipefail
           OUT="$RUNNER_TEMP/package-coverage"
           mkdir -p "$OUT"
-          for pkg in PalaceTriageBot PalaceAuth PalaceLogging PalaceReadingPosition PalaceUtilities; do
+          for pkg in PalaceTriageBot PalaceAuth PalaceLogging PalaceReadingPosition PalaceUtilities PalaceAccounts PalaceDownloads; do
             src=$(swift test --show-codecov-path --package-path "Palace/Packages/$pkg")
             if [ -f "$src" ]; then cp "$src" "$OUT/$pkg.json"; else echo "::warning::no coverage file for $pkg at $src"; fi
           done
@@ -980,7 +992,7 @@ jobs:
           ARGS=(--json coverage-data.json --repo-root "$GITHUB_WORKSPACE" --expect-local-packages
                 --host-package-dir package-coverage)
           # The packages the test job runs with `swift test --enable-code-coverage`.
-          for pkg in PalaceTriageBot PalaceAuth PalaceLogging PalaceReadingPosition PalaceUtilities; do
+          for pkg in PalaceTriageBot PalaceAuth PalaceLogging PalaceReadingPosition PalaceUtilities PalaceAccounts PalaceDownloads; do
             ARGS+=(--expect-host-package "$pkg")
           done
           if [ "$COMPLETE" != "true" ]; then

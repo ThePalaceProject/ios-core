@@ -164,7 +164,7 @@ class SignInFlowFixture: XCTestCase {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: TPPDRMAuthorizingMock())
+            drmAuthorizer: TPPDRMAuthorizingMock(), appNetwork: SignInAppNetworkSpy())
         businessLogic.userAccount.removeAll()
         setLoaded()
     }
@@ -367,7 +367,7 @@ final class SignInReadinessRaceCharacterizationTests: SignInFlowFixture {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: TPPDRMAuthorizingMock())
+            drmAuthorizer: TPPDRMAuthorizingMock(), appNetwork: SignInAppNetworkSpy())
 
         await orphan.logIn()
         for _ in 0..<5 { await Task.yield() }
@@ -460,7 +460,7 @@ final class SignInTokenErrorCharacterizationTests: SignInFlowFixture {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: TPPDRMAuthorizingMock())
+            drmAuthorizer: TPPDRMAuthorizingMock(), appNetwork: SignInAppNetworkSpy())
     }
 
     private func httpError(_ code: Int) -> NSError {
@@ -687,7 +687,7 @@ final class SignInCredentialSideEffectCharacterizationTests: SignInFlowFixture {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: TPPDRMAuthorizingMock())
+            drmAuthorizer: TPPDRMAuthorizingMock(), appNetwork: SignInAppNetworkSpy())
         other.selectedAuthentication = libraryMock.barcodeAuthentication
 
         other.updateUserAccount(forDRMAuthorization: true,
@@ -933,7 +933,7 @@ final class SignInStatePrecedenceCharacterizationTests: SignInFlowFixture {
             userAccountProvider: TPPUserAccountMock.self,
             networkExecutor: networkExecutor,
             uiDelegate: uiDelegate,
-            drmAuthorizer: TPPDRMAuthorizingMock())
+            drmAuthorizer: TPPDRMAuthorizingMock(), appNetwork: SignInAppNetworkSpy())
 
         var reported: Bool?
         orphan.ensureAuthenticationDocumentIsLoaded { reported = $0 }
