@@ -555,6 +555,9 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
         authDocLoader.driveCurrentAccountAuthDocIfNeeded()
     }
 
+    /// Forwards to `authDocLoader`; `AccountsManager+Reconnect.swift` binds through it.
+    func bindAuthDocDriveToReconnect(_ connectivity: AnyPublisher<Bool, Never>) -> Bool { authDocLoader.driveAfterEachReconnect(on: connectivity) }
+
     // MARK: – Parsing & notifying
 
     /// Forwards to `registryLoader`. `internal` so the cache-read and launch-snapshot
@@ -670,6 +673,7 @@ extension AccountsManager {
         // surface `_backgroundFetchTaskWasExplicitlyCancelled` (which reads this flag)
         // distinguishes "we called cancel" from "handle nilled by another path."
         _explicitCancelCalled = true
+        authDocLoader.cancelReconnectDrive()
         registryLoader.cancelBackgroundWork()
     }
 
@@ -679,6 +683,7 @@ extension AccountsManager {
     /// semantics engage for the pending auth-doc main-hop.
     func cancelAndDrainBackgroundWork(timeout: TimeInterval = 3.0) {
         _explicitCancelCalled = true
+        authDocLoader.cancelReconnectDrive()
         registryLoader.cancelAndDrainBackgroundWork(timeout: timeout)
     }
 
@@ -690,14 +695,13 @@ extension AccountsManager {
 
     /// Test-only observation surface: `true` iff `cancelBackgroundWork()` was called on this
     /// instance.
-    var _backgroundFetchTaskWasExplicitlyCancelled: Bool {
-        return _explicitCancelCalled
-    }
+    var _backgroundFetchTaskWasExplicitlyCancelled: Bool { _explicitCancelCalled }
+
+    /// Test-only: whether the reconnect drive is bound (see `bindAuthDocDriveToReconnect`).
+    var _hasReconnectSubscriptionForTesting: Bool { authDocLoader.isBoundToReconnect }
 
     /// Test-only observation-surface forwarder: `true` iff the loader's `backgroundFetchTask` is nil.
-    var _backgroundFetchTaskHandleIsNil: Bool {
-        return registryLoader._backgroundFetchTaskHandleIsNil
-    }
+    var _backgroundFetchTaskHandleIsNil: Bool { registryLoader._backgroundFetchTaskHandleIsNil }
 
     /// Test-only observation-surface forwarder.
     @available(*, deprecated, message: "Use _backgroundFetchTaskWasExplicitlyCancelled + _backgroundFetchTaskHandleIsNil so cancel-vs-nil mutations are independently observable. See swarm_4b64e4e0 qa-fixup Fix 3.")
