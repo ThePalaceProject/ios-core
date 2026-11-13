@@ -29,6 +29,16 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
     // `CatalogAPI` protocol is not yet annotated `Sendable` (owned by a
     // sibling modernization pass); the lock makes the conformance sound today.
     private let api: CatalogAPI
+
+    /// How many feeds the patron has read, and how many format-entry lists,
+    /// stay in memory; the least recently read is dropped first (PP-5585).
+    static let readFeedLimit = 100
+
+    /// How many preloaded facet feeds the patron has not opened stay in
+    /// memory; the oldest is dropped first, and a preload never drops a read
+    /// feed. Each load preloads up to five facets (PP-5585).
+    static let preloadedFeedLimit = 40
+
     private static let lastAppLaunchKey = "CatalogRepository.lastAppLaunch"
 
     /// Test seam: injectable "now" provider so unit tests can drive the
@@ -58,12 +68,18 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
     /// `SearchFormatEntry`) are not yet `Sendable`; the lock itself provides
     /// the synchronization that makes that safe.
     private struct CacheState {
-        var memoryCache: [String: CachedFeed] = [:]
+        var memoryCache = RecentEntries<CachedFeed>(
+            readLimit: CatalogRepository.readFeedLimit,
+            preloadLimit: CatalogRepository.preloadedFeedLimit
+        )
         /// Dedicated cache for format entry points, keyed by groups-feed URL.
         /// Pre-warmed by loadTopLevelCatalog so search can display the format
         /// picker immediately without an extra network round-trip when the
         /// user first opens search.
-        var formatEntriesCache: [String: [SearchFormatEntry]] = [:]
+        var formatEntriesCache = RecentEntries<[SearchFormatEntry]>(
+            readLimit: CatalogRepository.readFeedLimit,
+            preloadLimit: CatalogRepository.preloadedFeedLimit
+        )
         /// Track if we need to refresh stale content in background.
         var needsBackgroundRefresh = false
     }
@@ -224,7 +240,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
     public func loadTopLevelCatalog(at url: URL) async throws -> CatalogFeed? {
         let cacheKey = cacheKey(for: url)
 
-        let cachedEntry = cache.withLockUnchecked { $0.memoryCache[cacheKey] }
+        let cachedEntry = cache.withLockUnchecked { $0.memoryCache.peek(cacheKey) }
 
         // STALE-WHILE-REVALIDATE PATTERN:
         // 1. Fresh cache (< 10 min) → return immediately
@@ -233,6 +249,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
 
         if let entry = cachedEntry, !isExpired(entry) {
             Log.debug(#file, "Returning fresh cached catalog feed for \(url.absoluteString)")
+            cache.withLockUnchecked { $0.memoryCache.markRead(cacheKey) }
             prewarmFormatEntriesCache(from: entry.feed, cacheKey: cacheKey)
             return entry.feed
         }
@@ -241,6 +258,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
         let needsBackgroundRefresh = cache.withLockUnchecked { $0.needsBackgroundRefresh }
         if let entry = cachedEntry, isStaleButUsable(entry) || needsBackgroundRefresh {
             Log.info(#file, "Returning stale cached catalog feed, refreshing in background: \(url.absoluteString)")
+            cache.withLockUnchecked { $0.memoryCache.markRead(cacheKey) }
             prewarmFormatEntriesCache(from: entry.feed, cacheKey: cacheKey)
 
             // Schedule background refresh (fire-and-forget in production). The
@@ -279,6 +297,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
             // If network fails and we have ANY cached content (even too old), use it as fallback
             if let entry = cachedEntry {
                 Log.warn(#file, "Network failed, using old cached feed as fallback: \(error.localizedDescription)")
+                cache.withLockUnchecked { $0.memoryCache.markRead(cacheKey) }
                 return entry.feed
             }
 
@@ -290,6 +309,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
         guard let feed = feed else {
             // Fallback to cached content if fetch returns nil
             if let entry = cachedEntry {
+                cache.withLockUnchecked { $0.memoryCache.markRead(cacheKey) }
                 return entry.feed
             }
             throw NSError(domain: "CatalogRepository", code: 0,
@@ -298,11 +318,15 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
 
         // Cache the result
         let cachedFeed = CachedFeed(feed: feed, timestamp: now())
-        cache.withLockUnchecked { $0.memoryCache[cacheKey] = cachedFeed }
+        cache.withLockUnchecked { $0.memoryCache.set(cachedFeed, for: cacheKey) }
         prewarmFormatEntriesCache(from: feed, cacheKey: cacheKey)
 
-        Task.detached(priority: .background) {
+        let preloadTask = Task.detached(priority: .background) {
             await self.preloadRelatedFacets(from: feed)
+        }
+        // Test-only: lets a test join the preload. No-op in production.
+        refreshTracking.withLock { state in
+            if state.isTracking { state.tasks.append(preloadTask) }
         }
 
         return feed
@@ -318,7 +342,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
             guard let feed = feed else { return }
 
             let cachedFeed = CachedFeed(feed: feed, timestamp: now())
-            cache.withLockUnchecked { $0.memoryCache[cacheKey] = cachedFeed }
+            cache.withLockUnchecked { $0.memoryCache.set(cachedFeed, for: cacheKey) }
             Log.info(#file, "Background refresh completed for: \(url.absoluteString)")
 
             // Preload related facets too
@@ -337,8 +361,8 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
         let entries = DefaultCatalogAPI.extractSearchEntryPoints(from: feed)
         guard !entries.isEmpty else { return }
         cache.withLockUnchecked { state in
-            guard state.formatEntriesCache[cacheKey] == nil else { return }
-            state.formatEntriesCache[cacheKey] = entries
+            guard !state.formatEntriesCache.contains(cacheKey) else { return }
+            state.formatEntriesCache.set(entries, for: cacheKey)
         }
     }
 
@@ -376,7 +400,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
 
         // Check the dedicated format-entries cache first. Pre-warmed by loadTopLevelCatalog
         // so the search format picker has data without an extra network round-trip.
-        let cached = cache.withLockUnchecked { $0.formatEntriesCache[cacheKey] }
+        let cached = cache.withLockUnchecked { $0.formatEntriesCache.value(for: cacheKey) }
         if let cached, !cached.isEmpty {
             return cached
         }
@@ -384,7 +408,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
         // Cache miss — fetch from network and cache for next time.
         let entries = try await api.fetchSearchEntryPoints(from: url)
         if !entries.isEmpty {
-            cache.withLockUnchecked { $0.formatEntriesCache[cacheKey] = entries }
+            cache.withLockUnchecked { $0.formatEntriesCache.set(entries, for: cacheKey) }
         }
         return entries
     }
@@ -395,7 +419,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
 
     public func invalidateCache(for url: URL) {
         let cacheKey = cacheKey(for: url)
-        cache.withLockUnchecked { $0.memoryCache[cacheKey] = nil }
+        cache.withLockUnchecked { $0.memoryCache.remove(cacheKey) }
     }
 
     public func cachedFeed(for url: URL) -> CatalogFeed? {
@@ -403,7 +427,8 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
         // Synchronous, read-only lookup under the cache lock. The unfair lock
         // holds only briefly, so calling this from the MainActor is safe.
         return cache.withLockUnchecked { state in
-            guard let entry = state.memoryCache[cacheKey], !isTooOld(entry) else { return nil }
+            guard let entry = state.memoryCache.peek(cacheKey), !isTooOld(entry) else { return nil }
+            state.memoryCache.markRead(cacheKey)
             return entry.feed
         }
     }
@@ -476,13 +501,13 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
                     guard let self else { return }
                     let cacheKey = self.cacheKey(for: url)
 
-                    let isCached = self.cache.withLockUnchecked { $0.memoryCache[cacheKey] != nil }
+                    let isCached = self.cache.withLockUnchecked { $0.memoryCache.contains(cacheKey) }
                     guard !isCached else { return }
 
                     do {
                         if let preloadedFeed = try await self.api.fetchFeed(at: url) {
                             let cachedFeed = CachedFeed(feed: preloadedFeed, timestamp: self.now())
-                            self.cache.withLockUnchecked { $0.memoryCache[cacheKey] = cachedFeed }
+                            self.cache.withLockUnchecked { $0.memoryCache.setPreloaded(cachedFeed, for: cacheKey) }
                         }
                     } catch {
                         // Silently fail preloading
@@ -490,5 +515,81 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
                 }
             }
         }
+    }
+}
+
+/// Feeds the patron has read and feeds preloaded ahead of time, kept in two
+/// tiers with separate limits (PP-5585). Read entries drop the least recently
+/// read first; preloads drop the oldest first and never drop a read entry.
+/// Reading a preload moves it to the read tier. `contains` and `peek` do not
+/// count as reads. Not thread-safe: `CatalogRepository` keeps it inside its
+/// cache lock.
+struct RecentEntries<Value> {
+    let readLimit: Int
+    let preloadLimit: Int
+    private var values: [String: Value] = [:]
+    /// Keys from least to most recently read; at most `readLimit` long.
+    private var readOrder: [String] = []
+    /// Unread preloads from oldest to newest; at most `preloadLimit` long.
+    private var preloadOrder: [String] = []
+
+    init(readLimit: Int, preloadLimit: Int) {
+        self.readLimit = readLimit
+        self.preloadLimit = preloadLimit
+    }
+
+    var count: Int { values.count }
+
+    func contains(_ key: String) -> Bool {
+        values[key] != nil
+    }
+
+    func peek(_ key: String) -> Value? {
+        values[key]
+    }
+
+    /// Returns the value and counts it as read.
+    mutating func value(for key: String) -> Value? {
+        guard let value = values[key] else { return nil }
+        markRead(key)
+        return value
+    }
+
+    /// Moves an existing entry to the most recently read place.
+    mutating func markRead(_ key: String) {
+        guard values[key] != nil else { return }
+        preloadOrder.removeAll { $0 == key }
+        readOrder.removeAll { $0 == key }
+        readOrder.append(key)
+        while readOrder.count > readLimit {
+            values[readOrder.removeFirst()] = nil
+        }
+    }
+
+    /// Stores a value the patron asked for, as read.
+    mutating func set(_ value: Value, for key: String) {
+        values[key] = value
+        markRead(key)
+    }
+
+    /// Stores a preloaded value unless the key is already present, so a
+    /// preload never replaces or demotes an entry.
+    mutating func setPreloaded(_ value: Value, for key: String) {
+        guard values[key] == nil else { return }
+        values[key] = value
+        preloadOrder.append(key)
+        while preloadOrder.count > preloadLimit {
+            values[preloadOrder.removeFirst()] = nil
+        }
+    }
+
+    mutating func remove(_ key: String) {
+        values[key] = nil
+        readOrder.removeAll { $0 == key }
+        preloadOrder.removeAll { $0 == key }
+    }
+
+    mutating func removeAll() {
+        self = RecentEntries(readLimit: readLimit, preloadLimit: preloadLimit)
     }
 }

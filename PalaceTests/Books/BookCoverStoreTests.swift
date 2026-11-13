@@ -333,6 +333,45 @@ final class BookCoverStoreTests: XCTestCase {
         XCTAssertLessThanOrEqual(limited.imageByteCount, 2 * first.decodedBytes)
     }
 
+    /// When one release is not enough, the limit keeps releasing the next oldest
+    /// cover until the store is back under it.
+    func testFarOverByteLimit_releasesUntilUnderTheLimit() async {
+        let first = solidImage(width: 10, height: 10)
+        let limit = 2 * first.decodedBytes
+        let limited = makeLimitedStore(byteLimit: limit, keepRecent: 1)
+        let cache = CountingCache()
+        let a = Self.makeBook("far-a", cache: cache, store: limited)
+        let b = Self.makeBook("far-b", cache: cache, store: limited)
+        let c = Self.makeBook("far-c", cache: cache, store: limited)
+        await settle()
+        a.coverImage = first
+        b.coverImage = solidImage(width: 10, height: 10)
+        XCTAssertEqual(limited.imageByteCount, limit, "precondition: at the limit")
+
+        // Twice the size of the others, so one release is not enough.
+        c.coverImage = solidImage(width: 10, height: 20)
+
+        XCTAssertNil(limited.state(for: "far-a").coverImage)
+        XCTAssertNil(limited.state(for: "far-b").coverImage)
+        XCTAssertNotNil(limited.state(for: "far-c").coverImage)
+        XCTAssertLessThanOrEqual(limited.imageByteCount, limit)
+    }
+
+    /// A book that has only a thumbnail is released too; My Books rows can hold
+    /// thumbnails with no full cover.
+    func testReleaseImages_releasesAThumbnailOnlyEntry() async {
+        let limited = makeLimitedStore(byteLimit: .max, keepRecent: 0)
+        let book = Self.makeBook("thumb-only", cache: CountingCache(), store: limited)
+        await settle()
+        book.thumbnailImage = solidImage(width: 5, height: 5)
+        XCTAssertNil(limited.state(for: "thumb-only").coverImage, "precondition: no cover")
+
+        limited.releaseImages()
+
+        XCTAssertNil(limited.state(for: "thumb-only").thumbnailImage)
+        XCTAssertEqual(limited.imageByteCount, 0)
+    }
+
     /// A memory warning releases covers outside the recently read floor and sends
     /// no change notice, so a view that drew the cover keeps its frame.
     func testReleaseImages_keepsRecentlyReadCovers_releasesTheRestWithoutNotices() async {
