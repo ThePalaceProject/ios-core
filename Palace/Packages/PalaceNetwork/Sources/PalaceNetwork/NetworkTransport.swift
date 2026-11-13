@@ -204,9 +204,28 @@ public final class ActiveTasksStore {
         urlSession.configuration.urlCache?.removeAllCachedResponses()
     }
 
+    /// Empties the memory part of the response cache and keeps the disk part,
+    /// so catalog pages still load from disk after a memory warning (PP-5580).
+    // PUBLIC_INTENT: called by the app target's memory warning handler.
+    public func releaseMemoryCache() {
+        urlSession.configuration.urlCache?.releaseMemory()
+    }
+
     /// Bytes the response cache holds in memory now (PP-5509).
     // PUBLIC_INTENT: read by the app target's memory event record.
     public var cacheMemoryUsage: Int {
         urlSession.configuration.urlCache?.currentMemoryUsage ?? 0
+    }
+}
+
+extension URLCache {
+    /// Empties the memory part and leaves the disk part alone. URLCache has no
+    /// call for this, but lowering `memoryCapacity` drops what memory holds,
+    /// and the capacity is set back right away.
+    // PUBLIC_INTENT: called by NetworkTransport and by tests in the app target.
+    public func releaseMemory() {
+        let capacity = memoryCapacity
+        memoryCapacity = 0
+        memoryCapacity = capacity
     }
 }

@@ -471,6 +471,11 @@ struct AppContainer: @unchecked Sendable {
             api: catalogAPI,
             accountID: { [weak accountsManager] in accountsManager?.currentAccount?.uuid }
         )
+        // The repository's in-memory feeds go on a memory warning; its disk
+        // cache stays. Held weakly, so the container still owns its lifetime.
+        MemoryReleaseCoordinator.shared.register(repository, stage: .catalogFeeds) { repository in
+            repository.releaseInMemoryCaches()
+        }
         storage.catalogRepository = repository
         return repository
     }

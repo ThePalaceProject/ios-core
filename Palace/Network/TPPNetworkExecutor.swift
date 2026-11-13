@@ -750,6 +750,11 @@ extension TPPNetworkExecutor {
     @objc func clearCache() {
         transport.clearCache()
     }
+
+    /// Empties the memory part of the response cache only (PP-5580).
+    func releaseMemoryCache() {
+        transport.releaseMemoryCache()
+    }
 }
 
 extension TPPNetworkExecutor {

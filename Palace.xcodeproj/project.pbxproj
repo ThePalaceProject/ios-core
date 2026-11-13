@@ -747,6 +747,7 @@
 		623B25D26DCF91EAA4183E29 /* FirebaseTriageTelemetrySink.swift in Sources */ = {isa = PBXBuildFile; fileRef = C814ACEF8225153039002C2F /* FirebaseTriageTelemetrySink.swift */; };
 		624388D87B1CA40CD178FA52 /* LCPAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96D27685071B8A1E07185FD0 /* LCPAdapter.swift */; };
 		624540115C326459A7998446 /* AudiobookPlayerCloseControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84908ACD8E23A7FFE558A414 /* AudiobookPlayerCloseControl.swift */; };
+		62607F208BF8B28E8B3DAFA1 /* MemoryReleaseCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F537817E69EEAF08950A5FA5 /* MemoryReleaseCoordinator.swift */; };
 		626AD1F36BC818F5E9FAC725 /* LibrariesSectionViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2D4C9FAC4974D7D0F087712 /* LibrariesSectionViewModelTests.swift */; };
 		62842E5CA00D435AAD8F227E /* NavigationCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D36A0EAF9098429CA6DCAD16 /* NavigationCoordinatorTests.swift */; };
 		62C1341EB93B4F818F366C2B /* GeneralCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B97ED224E7C43B89FBBEE5A /* GeneralCacheTests.swift */; };
@@ -2279,6 +2280,7 @@
 		F3A24CE1CCBD41DA554460AA /* AccountsManagerAccountScopeAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19F86127F411D9B44A7A6CB3 /* AccountsManagerAccountScopeAdapter.swift */; };
 		F3A4B5C6D7E8F9A0B1C2D3E4 /* DownloadTaskLifecycleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A2B3C4D5E6F7A8B9C0D1E2 /* DownloadTaskLifecycleService.swift */; };
 		F3D0B1820DA683D0A25A3D50 /* DownloadTransferRetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 645A5614EC730C72D2EAA1B1 /* DownloadTransferRetryTests.swift */; };
+		F3E6CD4C65792951D71D37D1 /* MemoryReleaseCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = F537817E69EEAF08950A5FA5 /* MemoryReleaseCoordinator.swift */; };
 		F440EE174E5D621ED231A498 /* AccountDetailReauthSheetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E5F3E40C7728913B9661C1B /* AccountDetailReauthSheetTests.swift */; };
 		F44DED83ED7B4324B4C605D6 /* CarPlayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2634B33D2AE74BF5948971BA /* CarPlayTests.swift */; };
 		F4565465A1B2C3D4E5F6071A /* OverdriveDownloadHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3465465A1B2C3D4E5F60829 /* OverdriveDownloadHandler.swift */; };
@@ -4223,6 +4225,7 @@
 		F4C5D6E7F8091A2B3C4D5E6F /* DownloadQueueOrchestrator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadQueueOrchestrator.swift; sourceTree = "<group>"; };
 		F50CD9E479507A611B0E15B7 /* MemoryEventRecorderTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MemoryEventRecorderTests.swift; sourceTree = "<group>"; };
 		F51D20F07CB1B97EEF4EA5B0 /* AppContainerOwnedServices.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AppContainerOwnedServices.swift; sourceTree = "<group>"; };
+		F537817E69EEAF08950A5FA5 /* MemoryReleaseCoordinator.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MemoryReleaseCoordinator.swift; sourceTree = "<group>"; };
 		F59A401EA03CDC4931610FA1 /* CredentialPrivacyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialPrivacyTests.swift; sourceTree = "<group>"; };
 		F5BE5A110D160E0C9209BA33 /* MockBackendLaunchHookTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MockBackendLaunchHookTests.swift; sourceTree = "<group>"; };
 		F5CBFE0B23AFFE343E256AE1 /* AccountDetailViewModelTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AccountDetailViewModelTests.swift; sourceTree = "<group>"; };
@@ -5381,6 +5384,7 @@
 				54936AD50EC319ADCEFBB98E /* AppCacheSizes.swift */,
 				814AF54C36BC7DEEC453A767 /* BookOpenDependencies.swift */,
 				B57170DDBC6DDFA1544206B0 /* ProcessServices.swift */,
+				F537817E69EEAF08950A5FA5 /* MemoryReleaseCoordinator.swift */,
 			);
 			path = AppInfrastructure;
 			sourceTree = "<group>";
@@ -10145,6 +10149,7 @@
 				CD10604618226CE706FB03DD /* AccountScopedResetting.swift in Sources */,
 				3E327861B8B1A694ADEE5EAF /* OwnedTaskRegistry.swift in Sources */,
 				5D6060E4ADEACDD0FA471CC4 /* AudiobookSessionManager+ForegroundRecovery.swift in Sources */,
+				62607F208BF8B28E8B3DAFA1 /* MemoryReleaseCoordinator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -10780,6 +10785,7 @@
 				22B60D5308CADD4669361838 /* AccountScopedResetting.swift in Sources */,
 				77818D9F9AAC2A3FB7EE5543 /* OwnedTaskRegistry.swift in Sources */,
 				8E3EDAEFCB92A8428332679D /* AudiobookSessionManager+ForegroundRecovery.swift in Sources */,
+				F3E6CD4C65792951D71D37D1 /* MemoryReleaseCoordinator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

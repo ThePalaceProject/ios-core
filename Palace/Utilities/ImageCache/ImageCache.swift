@@ -145,12 +145,9 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
         processingQueue.maxConcurrentOperationCount = limits.maxConcurrentProcessing
         memoryImages.totalCostLimit = limits.memoryCostLimitMB * 1024 * 1024
 
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleMemoryWarning),
-            name: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil
-        )
+        MemoryReleaseCoordinator.shared.register(self, stage: .decodedImages) { cache in
+            cache.handleMemoryWarning()
+        }
     }
 
     /// Drops queued decodes and decoded images, and slows the queue to one

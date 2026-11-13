@@ -114,13 +114,16 @@ final class AppCacheSizesTests: XCTestCase {
     // MARK: - LCP
 
     #if LCP
-    func testLCPDecryptCache_CountsStoredPlaintextBytes() {
+    /// The cache keeps each ciphertext as its key, so the key bytes are held
+    /// too and count toward its size (PP-5580). The 16 MB limit still applies
+    /// to the plaintext only, as before.
+    func testLCPDecryptCache_CountsStoredPlaintextAndKeyBytes() {
         let cache = LCPDecryptCache()
 
         cache.store(Data(count: 2_048), for: Data([1, 2, 3]))
         cache.store(Data(count: 1_024), for: Data([4, 5, 6]))
 
-        XCTAssertEqual(cache.byteCount, 3_072)
+        XCTAssertEqual(cache.byteCount, 3_072 + 6)
         XCTAssertEqual(cache.decrypted(for: Data([1, 2, 3]))?.count, 2_048)
     }
     #endif

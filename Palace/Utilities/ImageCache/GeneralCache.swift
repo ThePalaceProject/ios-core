@@ -25,7 +25,6 @@ public enum CachePolicy {
 // name. The memory-only clears skip the lock because `CountedCache` is itself
 // thread-safe and dropping a memory entry can never make a read wrong (the
 // value is still on disk, or in `.memoryOnly` mode it is simply gone).
-// `memoryWarningObserver` is set once during `init` and only read in `deinit`.
 // `Key`/`Value` are constrained to `Sendable` so cached values can cross
 // threads safely (all call sites use `GeneralCache<String, Data>`).
 public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codable & Sendable>: @unchecked Sendable {
@@ -60,7 +59,6 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
     /// wins. Guarded by `lock`.
     private var pendingWrites: [Key: UInt64] = [:]
     private var lastWriteGeneration: UInt64 = 0
-    private var memoryWarningObserver: NSObjectProtocol?
 
     private final class Entry: Codable, Sendable {
         let value: Value
@@ -101,20 +99,14 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
             cacheDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(cacheName, isDirectory: true)
             try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
             configureCacheLimits()
-            setupMemoryWarningHandler()
+            registerMemoryRelease()
             return
         }
         cacheDirectory = cachesDir.appendingPathComponent(cacheName, isDirectory: true)
         try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
 
         configureCacheLimits()
-        setupMemoryWarningHandler()
-    }
-
-    deinit {
-        if let observer = memoryWarningObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
+        registerMemoryRelease()
     }
 
     private func configureCacheLimits() {
@@ -140,19 +132,16 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
         memoryCache.countLimit = itemCountLimit
     }
 
-    private func setupMemoryWarningHandler() {
-        memoryWarningObserver = NotificationCenter.default.addObserver(
-            forName: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.handleMemoryWarning()
+    private func registerMemoryRelease() {
+        MemoryReleaseCoordinator.shared.register(self, stage: .cachedData) { cache in
+            cache.handleMemoryWarning()
         }
     }
 
     private func handleMemoryWarning() {
-        // Runs on the main thread; deliberately does not take `lock`, which a
-        // reader may be holding across disk I/O. See the type comment.
+        // Runs on the thread that posted the warning (main, from UIKit);
+        // deliberately does not take `lock`, which a reader may be holding
+        // across disk I/O. See the type comment.
         memoryCache.removeAllObjects()
     }
 

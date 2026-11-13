@@ -117,12 +117,15 @@ final class BookCellModelCache: ObservableObject {
     }
 
     private func setupMemoryWarningObserver() {
-        NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.handleMemoryWarning()
+        MemoryReleaseCoordinator.shared.register(self, stage: .bookCells) { cache in
+            // The models are main-actor state. UIKit posts the warning on main;
+            // from any other thread, clear on the next main-queue turn.
+            if Thread.isMainThread {
+                MainActor.assumeIsolated { cache.handleMemoryWarning() }
+            } else {
+                Task { @MainActor in cache.handleMemoryWarning() }
             }
-            .store(in: &cancellables)
+        }
     }
 
     private func setupAccountChangeObserver() {

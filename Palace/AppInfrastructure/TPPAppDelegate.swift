@@ -859,58 +859,34 @@ extension TPPAppDelegate {
 import UIKit
 import PalaceUtilities
 
-/// Severity levels for cache cleanup operations
-private enum CleanupSeverity {
-    case medium
-    case high
-}
-
 /// Centralized observer for memory pressure, thermal state, and disk space cleanup.
 /// Performs cache purges, download throttling, and space reclamation when needed.
 ///
 /// `@unchecked Sendable` invariant (mirrors `FirebaseManager`): every stored
 /// property is either an immutable `let` of a `Sendable` type
-/// (`monitorQueue` is a `DispatchQueue`) or the single piece of mutable
-/// state (`proactiveMonitoringTask`) which is guarded by
-/// `OSAllocatedUnfairLock`. All work runs off the main actor on
-/// `monitorQueue` or in a detached `Task`; the type is intentionally NOT
-/// `@MainActor` because its job is background pressure monitoring and disk
-/// reclamation. Cross-actor hops to the main actor are made explicitly
-/// where UIKit-adjacent collaborators require it (see `proactiveCacheCleanup`
-/// and `handleMemoryWarning`). This lets the `static let shared` singleton
-/// and the `self`-capturing queue/task closures satisfy the `complete`
-/// concurrency checker without a `@MainActor` annotation that would be
-/// semantically wrong for a background monitor.
+/// (`monitorQueue` is a `DispatchQueue`) or mutable state guarded by
+/// `OSAllocatedUnfairLock` (`pressureSource`). Work runs off the main actor
+/// on `monitorQueue`; the type is intentionally NOT `@MainActor` because its
+/// job is background pressure monitoring and disk reclamation. Hops to the
+/// main actor are made explicitly where a collaborator requires it (see
+/// `registerReleaseSteps`).
 final class MemoryPressureMonitor: @unchecked Sendable {
     static let shared = MemoryPressureMonitor()
 
     private let monitorQueue = DispatchQueue(label: "org.thepalaceproject.memory-pressure", qos: .utility)
 
-    /// The proactive-monitoring loop task. Guarded by
-    /// `OSAllocatedUnfairLock` because it is written from `start()` (via
-    /// `startProactiveMonitoring()`) and read+cancelled from `stop()`,
-    /// which may be invoked from different threads over the monitor's
-    /// lifetime.
-    private let proactiveMonitoringTask = OSAllocatedUnfairLock<Task<Void, Never>?>(initialState: nil)
-
     /// Writes the footprint and cache sizes at each memory event (PP-5509).
     let memoryEvents = MemoryEventRecorder()
 
-    /// The system memory pressure source. It only records; what is released on
-    /// pressure is unchanged (the memory warning handler still does that).
+    /// The system memory pressure source. It only records; releasing happens
+    /// on the memory warning, through `MemoryReleaseCoordinator`.
     private let pressureSource = OSAllocatedUnfairLock<DispatchSourceMemoryPressure?>(initialState: nil)
 
     private init() {}
 
     func start() {
         startMemoryPressureSource()
-
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleMemoryWarning),
-            name: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil
-        )
+        registerReleaseSteps(on: .shared)
 
         if #available(iOS 11.0, *) {
             NotificationCenter.default.addObserver(
@@ -933,9 +909,32 @@ final class MemoryPressureMonitor: @unchecked Sendable {
             // Relax startup reclamation threshold to avoid aggressive evictions on older devices
             self?.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 256)
         }
+    }
 
-        // Start proactive memory monitoring
-        startProactiveMonitoring()
+    /// This monitor's part of a memory warning: record the event before
+    /// anything is released, empty the response cache's memory part, pause
+    /// downloads, and free disk space when under 256 MB is left.
+    func registerReleaseSteps(on coordinator: MemoryReleaseCoordinator) {
+        coordinator.register(self, stage: .record) { monitor in
+            monitor.memoryEvents.record(.warning)
+        }
+        coordinator.register(self, stage: .networkResponses) { monitor in
+            monitor.monitorQueue.async {
+                // N1: the executor's PRIVATE URLCache serves feeds. Only its
+                // memory part goes, so catalog pages still load from disk.
+                AppContainer.production().networkExecutor.releaseMemoryCache()
+            }
+        }
+        coordinator.register(self, stage: .downloads) { _ in
+            DispatchQueue.main.async {
+                AppContainer.production().downloadCenter.pauseAllDownloads()
+            }
+        }
+        coordinator.register(self, stage: .diskSpace) { monitor in
+            monitor.monitorQueue.async {
+                monitor.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 256)
+            }
+        }
     }
 
     private func startMemoryPressureSource() {
@@ -951,90 +950,10 @@ final class MemoryPressureMonitor: @unchecked Sendable {
         source.resume()
     }
 
-    /// Proactively monitors memory usage and cleans up before hitting critical levels
-    private func startProactiveMonitoring() {
-        let task = Task { [weak self] in
-            while !Task.isCancelled {
-                // Check every 30 seconds
-                try? await Task.sleep(nanoseconds: 30_000_000_000)
-
-                await self?.checkMemoryPressure()
-            }
-        }
-        proactiveMonitoringTask.withLock { $0 = task }
-    }
-
-    /// Checks current memory usage and takes action if needed
-    private func checkMemoryPressure() async {
-        var info = mach_task_basic_info()
-        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
-
-        let kerr: kern_return_t = withUnsafeMutablePointer(to: &info) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
-                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
-            }
-        }
-
-        guard kerr == KERN_SUCCESS else { return }
-
-        let usedMemoryMB = Int64(info.resident_size) / (1024 * 1024)
-        let totalMemoryMB = Int64(ProcessInfo.processInfo.physicalMemory) / (1024 * 1024)
-        let memoryPercentage = Double(usedMemoryMB) / Double(totalMemoryMB)
-
-        // Take proactive action if memory usage is high
-        if memoryPercentage > 0.75 {
-            Log.warn(#file, "High memory usage detected: \(usedMemoryMB)MB / \(totalMemoryMB)MB (\(Int(memoryPercentage * 100))%)")
-            await proactiveCacheCleanup(severity: .high)
-        } else if memoryPercentage > 0.60 {
-            await proactiveCacheCleanup(severity: .medium)
-        }
-    }
-
-    /// Proactively cleans up caches based on severity
-    private func proactiveCacheCleanup(severity: CleanupSeverity) async {
-        switch severity {
-        case .high:
-            // Aggressive cleanup — N1: clear the executor's PRIVATE URLCache
-            // (feeds live there, not in `URLCache.shared`).
-            AppContainer.production().networkExecutor.clearCache()
-            await MainActor.run {
-                AppContainer.production().downloadCenter.pauseAllDownloads()
-            }
-            Log.info(#file, "Performed aggressive cache cleanup due to high memory pressure")
-
-        case .medium:
-            // Moderate cleanup - just network caches. N1: the executor's PRIVATE
-            // URLCache is the one serving feeds, so clear it (not `URLCache.shared`).
-            AppContainer.production().networkExecutor.clearCache()
-            Log.info(#file, "Performed moderate cache cleanup due to medium memory pressure")
-        }
-    }
-
     func stop() {
         pressureSource.withLock { source in
             source?.cancel()
             source = nil
-        }
-        proactiveMonitoringTask.withLock { task in
-            task?.cancel()
-            task = nil
-        }
-    }
-
-    @objc private func handleMemoryWarning() {
-        monitorQueue.async {
-            // Record before releasing, so the line shows what the warning found.
-            self.memoryEvents.record(.warning)
-
-            // N1: clear the executor's PRIVATE URLCache (feeds live there, not
-            // in `URLCache.shared`).
-            AppContainer.production().networkExecutor.clearCache()
-
-            DispatchQueue.main.async {
-                AppContainer.production().downloadCenter.pauseAllDownloads()
-            }
-
-            self.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 256)
         }
     }
 
