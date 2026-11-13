@@ -541,7 +541,7 @@ struct RecentEntries<Value> {
     }
 
     mutating func remove(_ key: String) {
-        guard values.removeValue(forKey: key) != nil else { return }
+        values[key] = nil
         order.removeAll { $0 == key }
     }
 

@@ -129,6 +129,21 @@ final class CatalogRepositoryFeedLimitTests: XCTestCase {
         }
     }
 
+    /// After an invalidation, later feeds past the limit still drop the oldest
+    /// remaining feed, not the ones just loaded.
+    func testInvalidateCache_ThenTwoFeedsPastTheLimit_DropsTheOldestRemaining() async throws {
+        let repository = makeRepository()
+        try await load(repository, 0..<limit)
+
+        repository.invalidateCache(for: url(0))
+        try await load(repository, limit..<(limit + 2))
+
+        XCTAssertNil(repository.cachedFeed(for: url(1)))
+        for index in 2..<(limit + 2) {
+            XCTAssertNotNil(repository.cachedFeed(for: url(index)), "feed \(index) should stay in memory")
+        }
+    }
+
     /// After a memory warning clears the feeds, a full set of new feeds fits again.
     func testReleaseInMemoryCaches_ThenLoadingToTheLimit_KeepsEveryFeed() async throws {
         let repository = makeRepository()
@@ -163,6 +178,20 @@ final class CatalogRepositoryFeedLimitTests: XCTestCase {
 
     // MARK: - Format entries
 
+    /// Loading a feed with format entry points fills the format-entries cache,
+    /// so opening search needs no extra request.
+    func testLoadTopLevelCatalog_FeedWithEntryPoints_PrewarmsFormatEntries() async throws {
+        let repository = makeRepository()
+        let groups = url(500)
+        api.stubbedFeeds[groups] = try XCTUnwrap(Self.makeFeedWithEntryPoints())
+
+        _ = try await repository.loadTopLevelCatalog(at: groups)
+        let entries = try await repository.fetchSearchEntryPoints(from: groups)
+
+        XCTAssertEqual(entries.map(\.title), ["eBooks", "Audiobooks"])
+        XCTAssertTrue(api.fetchSearchEntryPointsCalls.isEmpty)
+    }
+
     /// The format-entries cache has the same limit and drops the oldest first.
     func testFetchSearchEntryPoints_OnePastTheLimit_RefetchesOnlyTheOldest() async throws {
         let repository = makeRepository()
@@ -180,5 +209,28 @@ final class CatalogRepositoryFeedLimitTests: XCTestCase {
         XCTAssertEqual(api.fetchSearchEntryPointsCalls.filter { $0 == url(0) }.count, 2)
         XCTAssertEqual(api.fetchSearchEntryPointsCalls.filter { $0 == url(1) }.count, 1)
         XCTAssertEqual(api.fetchSearchEntryPointsCalls.filter { $0 == url(limit) }.count, 1)
+    }
+
+    private static func makeFeedWithEntryPoints() -> CatalogFeed? {
+        let xml = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom"
+              xmlns:opds="http://opds-spec.org/2010/catalog"
+              xmlns:simplified="http://librarysimplified.org/terms/">
+            <id>http://example.org/groups/</id>
+            <title>Groups Feed</title>
+            <updated>2024-01-15T12:00:00Z</updated>
+            <link href="http://example.org/groups/?entrypoint=Book"
+                  rel="http://opds-spec.org/facet" title="eBooks" opds:facetGroup="Formats"
+                  simplified:facetGroupType="http://librarysimplified.org/terms/rel/entrypoint"/>
+            <link href="http://example.org/groups/?entrypoint=Audio"
+                  rel="http://opds-spec.org/facet" title="Audiobooks" opds:facetGroup="Formats"
+                  simplified:facetGroupType="http://librarysimplified.org/terms/rel/entrypoint"/>
+        </feed>
+        """
+        guard let data = xml.data(using: .utf8),
+              let tppXML = TPPXML(data: data),
+              let opdsFeed = TPPOPDSFeed(xml: tppXML) else { return nil }
+        return CatalogFeed(feed: opdsFeed)
     }
 }
