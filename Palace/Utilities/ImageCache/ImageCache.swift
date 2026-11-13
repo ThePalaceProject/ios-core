@@ -135,17 +135,24 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
         cacheName: String = "ImageCache",
         encode: @escaping @Sendable (UIImage, CGFloat) -> Data? = { $0.jpegData(compressionQuality: $1) },
         decodedImageBytes: CacheByteCounter = CacheByteCounter(),
-        compressedDataBytes: CacheByteCounter = CacheByteCounter()
+        compressedDataBytes: CacheByteCounter = CacheByteCounter(),
+        memoryRelease: MemoryReleaseCoordinator = .shared
     ) {
         memoryImages = CountedCache(counter: decodedImageBytes)
-        dataCache = GeneralCache<String, Data>(cacheName: cacheName, mode: .memoryAndDisk, byteCounter: compressedDataBytes)
+        dataCache = GeneralCache<String, Data>(
+            cacheName: cacheName,
+            mode: .memoryAndDisk,
+            writeData: { try $0.write(to: $1) },
+            byteCounter: compressedDataBytes,
+            memoryRelease: memoryRelease
+        )
         self.encode = encode
         limits = Self.limits(forDeviceMemoryMB: deviceMemoryMB)
         memoryImages.countLimit = limits.countLimit
         processingQueue.maxConcurrentOperationCount = limits.maxConcurrentProcessing
         memoryImages.totalCostLimit = limits.memoryCostLimitMB * 1024 * 1024
 
-        MemoryReleaseCoordinator.shared.register(self, stage: .decodedImages) { cache in
+        memoryRelease.register(self, stage: .decodedImages) { cache in
             cache.handleMemoryWarning()
         }
     }
