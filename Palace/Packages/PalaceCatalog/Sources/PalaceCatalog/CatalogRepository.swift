@@ -1,9 +1,6 @@
 import Foundation
 import os
 import PalaceLogging
-#if canImport(UIKit)
-import UIKit
-#endif
 
 public protocol CatalogRepositoryProtocol: Sendable {
     func loadTopLevelCatalog(at url: URL) async throws -> CatalogFeed?
@@ -132,7 +129,6 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
         self.accountIDProvider = { nil }
         self.defaults = defaults
         self.checkStaleCacheStatus()
-        self.subscribeToMemoryWarning()
     }
 
     /// Production initializer that scopes the cache by the current
@@ -146,7 +142,6 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
         self.accountIDProvider = accountID
         self.defaults = defaults
         self.checkStaleCacheStatus()
-        self.subscribeToMemoryWarning()
     }
 
     /// Test-only initializer that accepts an injectable clock. Production code
@@ -160,7 +155,6 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
         self.accountIDProvider = { nil }
         self.defaults = defaults
         self.checkStaleCacheStatus()
-        self.subscribeToMemoryWarning()
     }
 
     /// Test-only initializer that injects both a clock and an account-ID
@@ -173,11 +167,6 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
         self.accountIDProvider = accountID
         self.defaults = defaults
         self.checkStaleCacheStatus()
-        self.subscribeToMemoryWarning()
-    }
-
-    deinit {
-        NotificationCenter.default.removeObserver(self)
     }
 
     /// Build the cache key for `url`. Scoped by the current account UUID
@@ -194,18 +183,12 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
     // pressure intentionally — dropping it would force a re-download of
     // every catalog page after the OS sends a warning, which is exactly
     // what disk caching is meant to avoid.
-    private func subscribeToMemoryWarning() {
-        #if canImport(UIKit)
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleMemoryWarning),
-            name: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil
-        )
-        #endif
-    }
 
-    @objc private func handleMemoryWarning() {
+    /// Drops the in-memory feed and format-entries maps. The app calls this
+    /// from its one memory warning handler; the package does not observe the
+    /// warning itself (PP-5580).
+    // PUBLIC_INTENT: called by the app target's memory warning handler and tests.
+    public func releaseInMemoryCaches() {
         Log.info(#file, "Memory warning received — clearing in-memory catalog cache (disk cache preserved)")
         cache.withLockUnchecked { state in
             state.memoryCache.removeAll()

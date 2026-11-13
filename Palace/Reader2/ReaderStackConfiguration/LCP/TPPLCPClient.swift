@@ -22,41 +22,45 @@ import UIKit
 /// blocks for a typical 50MB book but small enough that the OS will
 /// reclaim it before evicting the foreground app.
 ///
-/// `NotificationCenter` listener purges everything on a system memory
-/// warning (or our pre-emptive `ReaderService.openPDF` notification).
+/// A system memory warning purges everything, through the step registered
+/// with `MemoryReleaseCoordinator`.
 /// `@unchecked Sendable` invariant: the sole stored property `cache` is an
 /// immutable `let` and `CountedCache` is thread-safe, so concurrent
-/// `decrypted(for:)` / `store(_:for:)` calls are safe. The observer is
+/// `decrypted(for:)` / `store(_:for:)` calls are safe. The release step is
 /// registered once in `init`, and `handleMemoryWarning` only calls the
 /// thread-safe `removeAllObjects()`. No unsynchronized mutable state exists.
 final class LCPDecryptCache: @unchecked Sendable {
     static let shared = LCPDecryptCache(byteCounter: AppCacheCounters.lcpDecrypt)
     private let cache: CountedCache<NSData, NSData>
 
-    init(byteCounter: CacheByteCounter = CacheByteCounter()) {
+    init(byteCounter: CacheByteCounter = CacheByteCounter(), memoryRelease: MemoryReleaseCoordinator = .shared) {
         cache = CountedCache(counter: byteCounter)
         cache.totalCostLimit = 16 * 1024 * 1024  // 16MB
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleMemoryWarning),
-            name: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil
-        )
+        memoryRelease.register(self, stage: .lcpDecrypt) { cache in
+            cache.handleMemoryWarning()
+        }
     }
 
-    @objc private func handleMemoryWarning() {
+    private func handleMemoryWarning() {
         cache.removeAllObjects()
     }
 
-    /// Bytes of plaintext held now (PP-5509).
+    /// Bytes of plaintext and ciphertext keys held now (PP-5509, PP-5580).
     var byteCount: Int { cache.byteCount }
 
     func decrypted(for ciphertext: Data) -> Data? {
         cache.object(forKey: ciphertext as NSData) as Data?
     }
 
+    /// The limit costs the plaintext only, as before; the count also includes
+    /// the ciphertext key, which the cache holds too (PP-5580).
     func store(_ plaintext: Data, for ciphertext: Data) {
-        cache.setObject(plaintext as NSData, forKey: ciphertext as NSData, cost: plaintext.count)
+        cache.setObject(
+            plaintext as NSData,
+            forKey: ciphertext as NSData,
+            cost: plaintext.count,
+            bytes: plaintext.count + ciphertext.count
+        )
     }
 }
 

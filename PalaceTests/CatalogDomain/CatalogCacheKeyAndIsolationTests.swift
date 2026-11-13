@@ -221,14 +221,14 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
 
     // MARK: - 3. Cache eviction under memory pressure (FIXED — Gap 3)
     //
-    // The repository now subscribes to UIApplication.didReceiveMemoryWarning-
-    // Notification and drops its in-memory feed + format-entries caches when
-    // one fires. The on-disk URLCache.shared is NOT touched: it's content-
+    // The app registers the repository with the memory release coordinator,
+    // which drops its in-memory feed + format-entries caches on a memory
+    // warning. The on-disk URLCache.shared is NOT touched: it's content-
     // addressed and the whole point of disk caching is that it survives
     // memory pressure. The tests below pin both halves of that contract.
 
     /// Mutant killed: a regression that detaches the memory-warning
-    /// observer or makes `handleMemoryWarning` a no-op. After a memory
+    /// release step or makes `releaseInMemoryCaches` a no-op. After a memory
     /// warning, the in-memory cache MUST be empty and the next read MUST
     /// hit the network.
     func testInMemoryCache_AfterSystemMemoryWarning_IsClearedAndNextReadHitsNetwork() async throws {
@@ -239,8 +239,8 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         XCTAssertEqual(api.fetchFeedCallCount, 1)
         XCTAssertNotNil(sut.cachedFeed(for: url), "Sanity: feed is cached before memory warning")
 
-        // Simulate memory pressure. The repository subscribes to this
-        // notification and drops its in-memory feed map.
+        // Simulate memory pressure. The app registers the repository with the
+        // memory release coordinator, which drops its in-memory feed map.
         //
         // Post on the main thread: UIKit ALWAYS delivers this notification on
         // main in production, and posting `object: nil` is a process-wide
@@ -250,18 +250,19 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         // Exception. The main-hop restores production semantics and makes this
         // test robust to suite-wide observer leaks.
         //
-        // `NotificationCenter.post` delivers to the `@objc handleMemoryWarning`
-        // observer SYNCHRONOUSLY, and the handler evicts the in-memory cache
+        // `NotificationCenter.post` delivers to the coordinator SYNCHRONOUSLY,
+        // and the repository's release step evicts the in-memory cache
         // synchronously under the cache lock (no queue hop, no detached Task).
         // So the eviction is already complete when `post` returns — a
         // wall-clock poll would only add sim-clone-starvation flake for no
         // determinism gain. Assert directly.
+        let center = NotificationCenter()
+        let coordinator = MemoryReleaseCoordinator(center: center)
+        coordinator.register(sut, stage: .catalogFeeds) { $0.releaseInMemoryCaches() }
         await MainActor.run {
-            NotificationCenter.default.post(
-                name: UIApplication.didReceiveMemoryWarningNotification,
-                object: nil
-            )
+            center.post(name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
         }
+        withExtendedLifetime(coordinator) {}
 
         XCTAssertNil(sut.cachedFeed(for: url),
                      "Gap 3 FIX: in-memory cache must be cleared after memory warning")
@@ -283,7 +284,7 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
     /// the format-entries cache (re-read => network). The on-disk
     /// URLCache.shared is content-addressed and is intentionally NOT
     /// touched by our handler — that's documented by the
-    /// `subscribeToMemoryWarning` doc comment in CatalogRepository.swift.
+    /// `releaseInMemoryCaches` doc comment in CatalogRepository.swift.
     /// (We deliberately do NOT assert on URLCache.shared here because
     /// the OS itself evicts URLCache.shared on memory pressure, making
     /// any URLCache.shared probe a flaky test of iOS, not our code.)
@@ -314,12 +315,13 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         //
         // Delivery + eviction are synchronous under `post` (see the sibling
         // test's note), so both caches are cleared by the time `post` returns.
+        let center = NotificationCenter()
+        let coordinator = MemoryReleaseCoordinator(center: center)
+        coordinator.register(sut, stage: .catalogFeeds) { $0.releaseInMemoryCaches() }
         await MainActor.run {
-            NotificationCenter.default.post(
-                name: UIApplication.didReceiveMemoryWarningNotification,
-                object: nil
-            )
+            center.post(name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
         }
+        withExtendedLifetime(coordinator) {}
 
         // The in-memory feed cache is cleared synchronously by the handler.
         XCTAssertNil(sut.cachedFeed(for: url),

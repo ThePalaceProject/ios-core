@@ -45,6 +45,8 @@ struct AppContainer: @unchecked Sendable {
     let tabRouterHub: AppTabRouterHub
     /// Universal-link redirects that end a browser sign-in.
     let signInRedirects = SignInRedirectRelay()
+    /// Runs each registered cache's release step on a memory warning (PP-5580).
+    let memoryRelease: MemoryReleaseCoordinator
     let drmAuthorizerProvider: () -> TPPDRMAuthorizing?
 
     /// Single auth-refresh dispatcher. Every network consumer that sees a
@@ -194,6 +196,15 @@ struct AppContainer: @unchecked Sendable {
             activityPolicy: activityPolicy,
             bookOpenDependencies: bookOpenDependencies
         )
+        memoryRelease.register(cache, stage: .bookCells) { cache in
+            // The models are main-actor state. UIKit posts the warning on main;
+            // from any other thread, clear on the next main-queue turn.
+            if Thread.isMainThread {
+                MainActor.assumeIsolated { cache.handleMemoryWarning() }
+            } else {
+                Task { @MainActor in cache.handleMemoryWarning() }
+            }
+        }
         storage.bookCellModelCache = cache
         return cache
     }
@@ -471,6 +482,11 @@ struct AppContainer: @unchecked Sendable {
             api: catalogAPI,
             accountID: { [weak accountsManager] in accountsManager?.currentAccount?.uuid }
         )
+        // The repository's in-memory feeds go on a memory warning; its disk
+        // cache stays. Held weakly, so the container still owns its lifetime.
+        memoryRelease.register(repository, stage: .catalogFeeds) { repository in
+            repository.releaseInMemoryCaches()
+        }
         storage.catalogRepository = repository
         return repository
     }
@@ -496,8 +512,10 @@ struct AppContainer: @unchecked Sendable {
         drmAuthorizerProvider: @escaping () -> TPPDRMAuthorizing?,
         authCoordinator: AuthCoordinator,
         downloadNetworkLossMonitor: DownloadNetworkLossMonitor? = nil,
-        processServices: ProcessServices = ProcessServices()
+        processServices: ProcessServices = ProcessServices(),
+        memoryRelease: MemoryReleaseCoordinator = .shared
     ) {
+        self.memoryRelease = memoryRelease
         self.bookRegistry = bookRegistry
         self.networkExecutor = networkExecutor
         self.networkQueue = networkQueue

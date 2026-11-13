@@ -135,28 +135,32 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
         cacheName: String = "ImageCache",
         encode: @escaping @Sendable (UIImage, CGFloat) -> Data? = { $0.jpegData(compressionQuality: $1) },
         decodedImageBytes: CacheByteCounter = CacheByteCounter(),
-        compressedDataBytes: CacheByteCounter = CacheByteCounter()
+        compressedDataBytes: CacheByteCounter = CacheByteCounter(),
+        memoryRelease: MemoryReleaseCoordinator = .shared
     ) {
         memoryImages = CountedCache(counter: decodedImageBytes)
-        dataCache = GeneralCache<String, Data>(cacheName: cacheName, mode: .memoryAndDisk, byteCounter: compressedDataBytes)
+        dataCache = GeneralCache<String, Data>(
+            cacheName: cacheName,
+            mode: .memoryAndDisk,
+            writeData: { try $0.write(to: $1) },
+            byteCounter: compressedDataBytes,
+            memoryRelease: memoryRelease
+        )
         self.encode = encode
         limits = Self.limits(forDeviceMemoryMB: deviceMemoryMB)
         memoryImages.countLimit = limits.countLimit
         processingQueue.maxConcurrentOperationCount = limits.maxConcurrentProcessing
         memoryImages.totalCostLimit = limits.memoryCostLimitMB * 1024 * 1024
 
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleMemoryWarning),
-            name: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil
-        )
+        memoryRelease.register(self, stage: .decodedImages) { cache in
+            cache.handleMemoryWarning()
+        }
     }
 
     /// Drops queued decodes and decoded images, and slows the queue to one
     /// operation for 60 s. Queued writes still run: cancelling them would make
     /// the next sync fetch and encode those covers again.
-    @objc func handleMemoryWarning() {
+    func handleMemoryWarning() {
         for operation in processingQueue.operations where operation is ImageDecodeOperation {
             operation.cancel()
         }
