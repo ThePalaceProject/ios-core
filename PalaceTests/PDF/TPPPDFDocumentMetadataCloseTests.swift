@@ -46,6 +46,7 @@ final class TPPPDFDocumentMetadataCloseTests: XCTestCase {
     func testStoreFinalPositionAndFlush_unsavedPageChange_postsItThenFlushes() async {
         let metadata = makeMetadata()
         sync.isOn = true
+        await writer.setSaveDelay(nanoseconds: 300_000_000)
         metadata.currentPage = 9
 
         await metadata.storeFinalPositionAndFlush().value
@@ -105,11 +106,16 @@ private final class SyncSwitch: @unchecked Sendable {
     }
 }
 
-/// Records saves and flushes in call order.
+/// Records saves (when they return) and flushes in order.
 private actor CloseRecordingWriter: PositionWriter {
     private(set) var events: [String] = []
+    private var saveDelay: UInt64 = 0
+
+    /// Holds each save open, so a flush that does not wait for it lands first.
+    func setSaveDelay(nanoseconds: UInt64) { saveDelay = nanoseconds }
 
     func save(_ snapshot: PositionSnapshot) async throws -> ServerPositionID? {
+        if saveDelay > 0 { try? await Task.sleep(nanoseconds: saveDelay) }
         events.append("save")
         return nil
     }
