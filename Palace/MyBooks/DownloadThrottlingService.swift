@@ -10,7 +10,6 @@
 //
 
 import Foundation
-import os
 import UIKit
 import PalaceLogging
 
@@ -65,9 +64,9 @@ struct MainQueueResumeScheduler: DownloadResumeScheduling {
 ///   from the `Task { }` hops. Those hops touch only the actor-serialized
 ///   `stateManager.downloadCoordinator` / `SafeDictionary` members and the
 ///   `URLSessionTask` suspend/resume API (thread-safe). `pendingMemoryResume`
-///   is lock-guarded; `lastMemoryWarningTask` is written by the memory warning
-///   step on the main thread. `@unchecked` only because the stored service
-///   types are not themselves `Sendable`.
+///   is guarded by `pendingMemoryResumeLock`; `lastMemoryWarningTask` is
+///   written by the memory warning step on the main thread. `@unchecked` only
+///   because the stored service types are not themselves `Sendable`.
 final class DownloadThrottlingService: @unchecked Sendable {
 
     weak var delegate: DownloadThrottlingServiceDelegate?
@@ -95,7 +94,8 @@ final class DownloadThrottlingService: @unchecked Sendable {
     private let resumeScheduler: DownloadResumeScheduling
     /// The resume scheduled by the last memory warning. Warnings and the
     /// resume arrive on different threads.
-    private let pendingMemoryResume = OSAllocatedUnfairLock<DownloadResumeCancellable?>(uncheckedState: nil)
+    private var pendingMemoryResume: DownloadResumeCancellable?
+    private let pendingMemoryResumeLock = NSLock()
 
     /// Block-based observer registration handle so `deinit` can clean up
     /// without forcing the service to be `@objc` selector-callable.
@@ -211,9 +211,9 @@ final class DownloadThrottlingService: @unchecked Sendable {
         let resume = resumeScheduler.schedule(after: Self.memoryRecoveryDelay) { [weak self] in
             self?.resumeAfterMemoryRecovery()
         }
-        pendingMemoryResume.withLock { pending in
-            pending?.cancel()
-            pending = resume
+        pendingMemoryResumeLock.withLock {
+            pendingMemoryResume?.cancel()
+            pendingMemoryResume = resume
         }
     }
 
@@ -225,9 +225,9 @@ final class DownloadThrottlingService: @unchecked Sendable {
     }
 
     private func cancelPendingMemoryResume() {
-        pendingMemoryResume.withLock { pending in
-            pending?.cancel()
-            pending = nil
+        pendingMemoryResumeLock.withLock {
+            pendingMemoryResume?.cancel()
+            pendingMemoryResume = nil
         }
     }
 
