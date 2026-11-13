@@ -1662,10 +1662,6 @@ extension MyBooksDownloadCenter {
         throttlingService.limitActiveDownloads(max: max)
     }
 
-    @objc func pauseAllDownloads() {
-        throttlingService.pauseAllDownloads()
-    }
-
     /// Pauses downloads for a memory warning and resumes them after a quiet
     /// period (PP-5587).
     @objc func pauseDownloadsForMemoryWarning() {
