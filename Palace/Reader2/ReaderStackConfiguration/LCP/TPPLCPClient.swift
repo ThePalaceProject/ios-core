@@ -34,10 +34,10 @@ final class LCPDecryptCache: @unchecked Sendable {
     static let shared = LCPDecryptCache(byteCounter: AppCacheCounters.lcpDecrypt)
     private let cache: CountedCache<NSData, NSData>
 
-    init(byteCounter: CacheByteCounter = CacheByteCounter()) {
+    init(byteCounter: CacheByteCounter = CacheByteCounter(), memoryRelease: MemoryReleaseCoordinator = .shared) {
         cache = CountedCache(counter: byteCounter)
         cache.totalCostLimit = 16 * 1024 * 1024  // 16MB
-        MemoryReleaseCoordinator.shared.register(self, stage: .lcpDecrypt) { cache in
+        memoryRelease.register(self, stage: .lcpDecrypt) { cache in
             cache.handleMemoryWarning()
         }
     }
