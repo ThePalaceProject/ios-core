@@ -343,6 +343,41 @@ final class DownloadThrottlingServiceTests: XCTestCase {
     }
 }
 
+// MARK: - Download center entry point
+
+/// The memory warning step calls the download center, not the service. Pins
+/// that the center's entry point pauses AND schedules the resume (PP-5587).
+final class MyBooksDownloadCenterMemoryWarningTests: XCTestCase {
+
+    func testPauseDownloadsForMemoryWarning_pausesEbookAndSchedulesResume() async {
+        let stateManager = DownloadStateManager()
+        let scheduler = ManualResumeScheduler()
+        let service = DownloadThrottlingService(
+            stateManager: stateManager,
+            notificationCenter: NotificationCenter(),
+            resumeScheduler: scheduler
+        )
+        let center = MyBooksDownloadCenter(
+            bookRegistry: TPPBookRegistryMock(),
+            throttlingService: service,
+            stateManager: stateManager
+        )
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let task = FakeDownloadTask(state: .running, identifier: 1)
+        await stateManager.bookIdentifierToDownloadInfo.set(
+            book.identifier,
+            value: MyBooksDownloadInfo(downloadProgress: 0.0, downloadTask: task, rightsManagement: .none)
+        )
+        await stateManager.taskIdentifierToBook.set(1, value: book)
+
+        center.pauseDownloadsForMemoryWarning()
+        await service.lastMemoryWarningTask?.value
+
+        XCTAssertEqual(task.state, .suspended)
+        XCTAssertEqual(scheduler.pendingDelays, [DownloadThrottlingService.memoryRecoveryDelay])
+    }
+}
+
 // MARK: - Test fakes
 
 /// URLSessionDownloadTask subclass with overridable state + capturing
