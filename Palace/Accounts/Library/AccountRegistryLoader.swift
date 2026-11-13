@@ -100,7 +100,7 @@ final class AccountRegistryLoader: @unchecked Sendable {
 
     /// Owns every background catalog-crawl Task (PP-4754) so the reset choreography can
     /// cancel + await them. Self-pruning + internally synchronized.
-    private let ownedCrawlTasks = OwnedCrawlTaskRegistry()
+    private let ownedCrawlTasks = OwnedTaskRegistry()
 
     /// Loader-local copy of the XCTest env gate (the hub's `_isRunningUnderXCTest`).
     private static let _isRunningUnderXCTest =
