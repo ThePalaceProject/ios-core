@@ -12,12 +12,30 @@
 
 import Foundation
 import PalaceLogging
-#if canImport(UIKit)
-import UIKit
-#endif
 
 /// Concrete `PositionWriter` that posts via an injected
 /// `PositionNetworkAdapter` and applies per-`bookID` throttling.
+///
+/// Throttle: the first save for a book posts at once and opens a window of
+/// `throttle` seconds. Saves inside the window replace one queued snapshot,
+/// and one deferred flush posts the newest of them when the window ends.
+///
+/// Ownership and cancellation:
+/// - The writer owns each deferred-flush post: it holds the flush's `Task`
+///   until that Task ends and keeps no Task that has finished.
+/// - `cancel(for:)` drops the book's queued snapshot, stops a scheduled flush
+///   from posting, and cancels a deferred-flush post that is running. It
+///   returns after that post's Task has ended. Other books are unaffected.
+/// - A post started by `save(_:)` runs in the caller's task, and only the
+///   caller can cancel it; the save then throws `PositionWriterError.cancelled`.
+/// - A cancelled post stops waiting for the adapter. If the adapter ignores
+///   task cancellation (`EPUBPositionAdapter` does), its HTTP request can
+///   still reach the server after `cancel(for:)` returns.
+/// - A post that completes after cancel changes no writer state: no queued
+///   snapshot comes back and no second post starts.
+/// - When the background task expires, the running post is cancelled and the
+///   background task is ended exactly once. A queued snapshot is kept for its
+///   flush.
 ///
 /// Not an `actor`: the writer owns `UIBackgroundTaskIdentifier` lifetime,
 /// and `UIApplication.beginBackgroundTask`/`endBackgroundTask` are not
@@ -25,11 +43,21 @@ import UIKit
 /// pattern is the template.
 public final class RemotePositionWriter: PositionWriter, @unchecked Sendable {
 
+    /// Runs `work` once `delay` seconds have passed.
+    typealias FlushScheduler = @Sendable (_ delay: TimeInterval, _ work: @escaping @Sendable () -> Void) -> Void
+
+    /// Production flush timer.
+    static let afterDelay: FlushScheduler = { delay, work in
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
     // MARK: - Dependencies
 
     private let network: PositionNetworkAdapter
     private let throttle: TimeInterval
     private let clock: @Sendable () -> Date
+    private let scheduleFlush: FlushScheduler
+    private let backgroundTasks: PositionBackgroundTasks
 
     // MARK: - State (guarded by `queue`)
 
@@ -41,53 +69,69 @@ public final class RemotePositionWriter: PositionWriter, @unchecked Sendable {
     /// Per-book bookkeeping. Keyed by bookID.
     private var state: [String: BookState] = [:]
 
+    /// Deferred-flush posts that are running, keyed by a token. Each Task
+    /// removes its own entry when it ends.
+    private var ownedFlushes: [UInt64: OwnedFlush] = [:]
+
+    /// Source of flush and task tokens.
+    private var lastID: UInt64 = 0
+
     private struct BookState {
         /// Wall-clock time of the most recent in-flight or completed POST.
         /// New snapshots within `throttle` of this time are queued, not
         /// posted immediately.
         var lastPostAttempt: Date
         /// The snapshot waiting for the throttle window to elapse. Older
-        /// queued snapshots are silently dropped when a newer one arrives.
+        /// queued snapshots are dropped when a newer one arrives.
         var queued: PositionSnapshot?
-        /// Set when a deferred-flush task is scheduled. We only ever have
-        /// one deferred flush pending per book.
-        var deferredFlushScheduled: Bool
+        /// The flush timer scheduled for this window. A timer whose ID no
+        /// longer matches belongs to a window that `cancel(for:)` dropped.
+        var scheduledFlush: UInt64?
+    }
+
+    private struct OwnedFlush {
+        let bookID: String
+        let task: Task<Void, Never>
     }
 
     // MARK: - Init
 
-    public init(
+    public convenience init(
         network: PositionNetworkAdapter,
         throttle: TimeInterval = 15.0,
         clock: @escaping @Sendable () -> Date = { Date() }
     ) {
+        self.init(
+            network: network,
+            throttle: throttle,
+            clock: clock,
+            scheduleFlush: RemotePositionWriter.afterDelay,
+            backgroundTasks: .application
+        )
+    }
+
+    /// Tests inject the flush timer and the background-task calls.
+    init(
+        network: PositionNetworkAdapter,
+        throttle: TimeInterval,
+        clock: @escaping @Sendable () -> Date,
+        scheduleFlush: @escaping FlushScheduler,
+        backgroundTasks: PositionBackgroundTasks
+    ) {
         self.network = network
         self.throttle = throttle
         self.clock = clock
+        self.scheduleFlush = scheduleFlush
+        self.backgroundTasks = backgroundTasks
     }
 
     // MARK: - PositionWriter
 
     public func save(_ snapshot: PositionSnapshot) async throws -> ServerPositionID? {
-        // Decide synchronously on the serial queue whether to post now or
-        // queue for later. If we post now, we return the server ID from
-        // the network call; if we queue, we return `nil`.
-        let decision: SaveDecision = await withCheckedContinuation { continuation in
-            queue.async { [weak self] in
-                guard let self else {
-                    continuation.resume(returning: .drop)
-                    return
-                }
-                continuation.resume(returning: self.decideOnQueue(for: snapshot))
-            }
-        }
-
-        switch decision {
+        switch await onQueue({ self.decideOnQueue(for: snapshot) }) {
         case .postNow(let snapshot):
             return try await performPost(snapshot)
         case .queueAndDefer:
-            return nil
-        case .drop:
             return nil
         }
     }
@@ -97,20 +141,22 @@ public final class RemotePositionWriter: PositionWriter, @unchecked Sendable {
     }
 
     public func cancel(for bookID: String) async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            queue.async { [weak self] in
-                self?.state.removeValue(forKey: bookID)
-                continuation.resume()
-            }
+        let running = await onQueue { () -> [Task<Void, Never>] in
+            self.state.removeValue(forKey: bookID)
+            let tasks = self.ownedFlushes.values.filter { $0.bookID == bookID }.map(\.task)
+            tasks.forEach { $0.cancel() }
+            return tasks
+        }
+        for task in running {
+            await task.value
         }
     }
 
     // MARK: - Decision (serial-queue isolated)
 
-    private enum SaveDecision {
+    private enum SaveDecision: Sendable {
         case postNow(PositionSnapshot)
         case queueAndDefer
-        case drop
     }
 
     /// Called from `queue`. Mutates `state`.
@@ -119,7 +165,7 @@ public final class RemotePositionWriter: PositionWriter, @unchecked Sendable {
         var bookState = state[snapshot.bookID] ?? BookState(
             lastPostAttempt: .distantPast,
             queued: nil,
-            deferredFlushScheduled: false
+            scheduledFlush: nil
         )
 
         let elapsed = now.timeIntervalSince(bookState.lastPostAttempt)
@@ -136,69 +182,208 @@ public final class RemotePositionWriter: PositionWriter, @unchecked Sendable {
         // Inside window — queue the latest snapshot, scheduling a deferred
         // flush if one isn't already scheduled.
         bookState.queued = snapshot
-        let remaining = max(throttle - elapsed, 0)
-        if !bookState.deferredFlushScheduled {
-            bookState.deferredFlushScheduled = true
-            scheduleDeferredFlush(for: snapshot.bookID, after: remaining)
+        if bookState.scheduledFlush == nil {
+            let flushID = makeID()
+            bookState.scheduledFlush = flushID
+            scheduleDeferredFlush(for: snapshot.bookID, flushID: flushID, after: max(throttle - elapsed, 0))
         }
         state[snapshot.bookID] = bookState
         return .queueAndDefer
     }
 
-    /// Schedules a deferred flush. Called from `queue`.
-    private func scheduleDeferredFlush(for bookID: String, after delay: TimeInterval) {
-        queue.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self else { return }
-            guard var bookState = self.state[bookID] else { return }
-            bookState.deferredFlushScheduled = false
-            guard let queued = bookState.queued else {
-                self.state[bookID] = bookState
-                return
-            }
-            // Stamp the slot before launching the POST so any concurrent
-            // saves queue against the new window.
-            bookState.lastPostAttempt = self.clock()
-            bookState.queued = nil
-            self.state[bookID] = bookState
+    /// Called from `queue`.
+    private func makeID() -> UInt64 {
+        lastID += 1
+        return lastID
+    }
 
-            // Fire-and-forget — the deferred flush has no caller to
-            // surface errors to. Log and move on.
-            Task {
-                do {
-                    _ = try await self.performPost(queued)
-                } catch {
-                    Log.error("PalaceReadingPosition",
-                              "Deferred flush for \(bookID) failed: \(error)")
-                }
+    /// Schedules a deferred flush. Called from `queue`.
+    private func scheduleDeferredFlush(for bookID: String, flushID: UInt64, after delay: TimeInterval) {
+        scheduleFlush(delay) { [weak self] in
+            guard let self else { return }
+            self.queue.async { self.flushOnQueue(bookID: bookID, flushID: flushID) }
+        }
+    }
+
+    /// Called from `queue` when a flush timer fires.
+    private func flushOnQueue(bookID: String, flushID: UInt64) {
+        guard var bookState = state[bookID], bookState.scheduledFlush == flushID else { return }
+        bookState.scheduledFlush = nil
+        guard let queued = bookState.queued else {
+            state[bookID] = bookState
+            return
+        }
+        // Stamp the slot before launching the POST so any concurrent
+        // saves queue against the new window.
+        bookState.lastPostAttempt = clock()
+        bookState.queued = nil
+        state[bookID] = bookState
+        startOwnedFlush(of: queued)
+    }
+
+    /// Starts the flush post and records its Task. Called from `queue`.
+    ///
+    /// The Task removes its entry with a block on `queue`, and this block
+    /// inserts the entry before it returns, so the removal always finds it.
+    private func startOwnedFlush(of snapshot: PositionSnapshot) {
+        let token = makeID()
+        let bookID = snapshot.bookID
+        let task = Task {
+            do {
+                _ = try await self.performPost(snapshot)
+            } catch PositionWriterError.cancelled {
+                Log.info("PalaceReadingPosition", "Deferred flush for \(bookID) was cancelled")
+            } catch {
+                Log.error("PalaceReadingPosition", "Deferred flush for \(bookID) failed: \(error)")
             }
+            self.queue.async { self.ownedFlushes[token] = nil }
+        }
+        ownedFlushes[token] = OwnedFlush(bookID: bookID, task: task)
+    }
+
+    private func onQueue<T: Sendable>(_ body: @escaping @Sendable () -> T) async -> T {
+        await withCheckedContinuation { continuation in
+            queue.async { continuation.resume(returning: body()) }
         }
     }
 
     // MARK: - Network
 
     private func performPost(_ snapshot: PositionSnapshot) async throws -> ServerPositionID {
-        let taskID = beginBackgroundTask()
-        defer { endBackgroundTask(taskID) }
-        return try await network.post(snapshot)
+        let post = InFlightPost(backgroundTasks: backgroundTasks)
+        post.beginBackgroundTask()
+        defer { post.endBackgroundTask() }
+        let network = self.network
+        return try await post.run { try await network.post(snapshot) }
     }
 
-    // MARK: - Background-task lifetime
+    // MARK: - Test seams
 
-#if canImport(UIKit)
-    private func beginBackgroundTask() -> UIBackgroundTaskIdentifier {
-        UIApplication.shared.beginBackgroundTask(withName: "PalaceReadingPosition.post") {
-            // Expiration handler intentionally empty — we don't have a
-            // hook to cancel an in-flight URL request from here, and
-            // the iOS watchdog will tear the task down anyway.
+    /// Number of deferred-flush Tasks the writer holds.
+    func ownedFlushTaskCount() async -> Int {
+        await onQueue { self.ownedFlushes.count }
+    }
+
+    /// Returns after every block already submitted to the writer's queue has run.
+    func waitForQueue() async {
+        await onQueue {}
+    }
+
+    /// Returns once the writer holds no deferred-flush Task.
+    func waitForOwnedFlushes() async {
+        while true {
+            let tasks = await onQueue { self.ownedFlushes.values.map(\.task) }
+            if tasks.isEmpty { return }
+            for task in tasks {
+                await task.value
+            }
+        }
+    }
+}
+
+/// One network post: the adapter call, the task waiting for it, and the
+/// background task around it.
+///
+/// Cancelling the waiting task, or the background task expiring, ends the
+/// wait with `PositionWriterError.cancelled` and cancels the adapter call
+/// without waiting for it to return.
+///
+/// `@unchecked Sendable`: all mutable state is guarded by `lock`.
+private final class InFlightPost: @unchecked Sendable {
+    private let lock = NSLock()
+    private let backgroundTasks: PositionBackgroundTasks
+    private var waiter: CheckedContinuation<ServerPositionID, Error>?
+    private var adapterCall: Task<Void, Never>?
+    private var abandoned = false
+    private var backgroundID: Int?
+    private var endRequested = false
+    private var backgroundEnded = false
+
+    init(backgroundTasks: PositionBackgroundTasks) {
+        self.backgroundTasks = backgroundTasks
+    }
+
+    private func locked<T>(_ body: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return body()
+    }
+
+    /// UIKit may run the expiration handler before `begin` returns the
+    /// identifier; the end it requested then happens here.
+    func beginBackgroundTask() {
+        let id = backgroundTasks.begin { self.expire() }
+        let endNow = locked { () -> Bool in
+            backgroundID = id
+            guard endRequested, !backgroundEnded else { return false }
+            backgroundEnded = true
+            return true
+        }
+        if endNow {
+            backgroundTasks.end(id)
         }
     }
 
-    private func endBackgroundTask(_ id: UIBackgroundTaskIdentifier) {
-        guard id != .invalid else { return }
-        UIApplication.shared.endBackgroundTask(id)
+    /// Ends the background task. Both the expiration handler and the post's
+    /// exit call this; only the first call ends it.
+    func endBackgroundTask() {
+        let id = locked { () -> Int? in
+            endRequested = true
+            guard let id = backgroundID, !backgroundEnded else { return nil }
+            backgroundEnded = true
+            return id
+        }
+        if let id {
+            backgroundTasks.end(id)
+        }
     }
-#else
-    private func beginBackgroundTask() -> Int { 0 }
-    private func endBackgroundTask(_ id: Int) {}
-#endif
+
+    func run(_ call: @escaping @Sendable () async throws -> ServerPositionID) async throws -> ServerPositionID {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                let started = locked { () -> Bool in
+                    guard !abandoned else { return false }
+                    waiter = continuation
+                    adapterCall = Task {
+                        let result: Result<ServerPositionID, Error>
+                        do {
+                            result = .success(try await call())
+                        } catch {
+                            result = .failure(error)
+                        }
+                        self.deliver(result)
+                    }
+                    return true
+                }
+                if !started {
+                    continuation.resume(throwing: PositionWriterError.cancelled)
+                }
+            }
+        } onCancel: {
+            abandon()
+        }
+    }
+
+    private func deliver(_ result: Result<ServerPositionID, Error>) {
+        let waiter = locked { () -> CheckedContinuation<ServerPositionID, Error>? in
+            defer { self.waiter = nil }
+            return self.waiter
+        }
+        waiter?.resume(with: result)
+    }
+
+    private func abandon() {
+        let (waiter, call) = locked { () -> (CheckedContinuation<ServerPositionID, Error>?, Task<Void, Never>?) in
+            abandoned = true
+            defer { self.waiter = nil }
+            return (self.waiter, adapterCall)
+        }
+        call?.cancel()
+        waiter?.resume(throwing: PositionWriterError.cancelled)
+    }
+
+    private func expire() {
+        abandon()
+        endBackgroundTask()
+    }
 }

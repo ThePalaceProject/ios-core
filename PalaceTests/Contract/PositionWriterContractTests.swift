@@ -339,12 +339,10 @@ final class PositionWriterContractTests: XCTestCase {
     ///       capture inside the iOS-only `endBackgroundTask` branch is
     ///       reachable from this test surface, not from the SPM bundle.
     ///
-    /// The `if id != .invalid` guard at `RemotePositionWriter.swift:201` cannot be
-    /// exercised from the SPM macOS runtime, and this scenario does not cover it
-    /// either: an unconditional `endBackgroundTask` still matches the snapshot.
-    /// It does catch removing the `defer` block entirely, which would leak the
-    /// begin call when `network.post` throws. Covering the guard needs an
-    /// injection seam over `UIApplication.shared`.
+    /// The begin/end pairing and expiration are pinned with injected
+    /// `PositionBackgroundTasks` in the package's
+    /// `RemotePositionWriterOwnershipTests`. The `.invalid` guard in
+    /// `PositionBackgroundTasks.application` is not covered by either suite.
     func test_backgroundTask_postCompletes_aroundNetworkPost() async throws {
         let log = CallLog()
         let adapter = SpyPositionNetworkAdapter(log: log)
