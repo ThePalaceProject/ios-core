@@ -645,6 +645,9 @@ struct AppContainer: @unchecked Sendable {
             borrowReauthResetter: DownloadCenterBorrowReauthResetter(),
             switchDependencies: .production
         )
+        // A launch made offline leaves the current account unloaded; load it
+        // when the network comes back (PP-5492).
+        accountsManager.reloadCurrentAccountWhenConnected(reachability.connectivityPublisher)
         // Built before TPPBookRegistry, which takes ImageLoading as a required
         // init parameter (a default-arg resolution here would re-enter the lock).
         let imageCache = ImageCache.shared

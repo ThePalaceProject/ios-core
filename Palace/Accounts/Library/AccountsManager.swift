@@ -95,7 +95,8 @@ final class AccountsManagerBoolFlag: @unchecked Sendable {
     /// Per-account auth-document fetch. Built in `init` before `super.init()` (its
     /// closures reach the manager through `AccountsManagerOwnerRef`) because first
     /// access is concurrent on a cold launch. Release binds `isTornDown` to `{ false }`.
-    private let authDocLoader: AuthDocumentLoader
+    /// Internal so `AccountsManager+Reconnect.swift` can bind connectivity to it.
+    let authDocLoader: AuthDocumentLoader
     /// Injectable background-crawl spawn seam (see `CatalogCrawlScheduler`).
     /// Immutable `Sendable` `let`; `.production` by default, recording under test.
     private let crawlScheduler: CrawlTaskScheduler

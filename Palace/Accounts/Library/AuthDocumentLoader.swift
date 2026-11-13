@@ -11,6 +11,7 @@
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
+import Combine
 import Foundation
 import PalaceLogging
 
@@ -48,6 +49,9 @@ final class AuthDocumentLoader: @unchecked Sendable {
     /// nor the async terminal), or a late drive pollutes the next test. Production binds
     /// `{ false }`.
     private let isTornDown: @Sendable () -> Bool
+
+    /// Holds the connectivity subscription from `driveAfterEachReconnect(on:)`.
+    private let reconnectSubscription = AccountsManagerSubscription()
 
     init(
         accountStateStore: AccountStateStore,
@@ -189,6 +193,30 @@ final class AuthDocumentLoader: @unchecked Sendable {
             break
         }
         fetchAuthDocumentWithStateMachine(for: account) { _ in }
+    }
+
+    /// Drives the current account when the network comes back. Like
+    /// `driveCurrentAccountAuthDocIfNeeded`, and also retries a fetch that could not
+    /// reach the server. A launch made offline leaves `.detailsFailed`, which the
+    /// launch drive treats as final and on which `awaitReady()` throws (PP-5492).
+    func driveCurrentAccountAuthDocAfterReconnect() {
+        guard let account = currentAccountProvider() else { return }
+        guard case .detailsFailed(.authDocumentFetchFailed) = accountStateStore.state(for: account.uuid) else {
+            driveCurrentAccountAuthDocIfNeeded()
+            return
+        }
+        fetchAuthDocumentWithStateMachine(for: account) { _ in }
+    }
+
+    /// Runs `driveCurrentAccountAuthDocAfterReconnect` each time `connectivity`
+    /// reports the network is back, for the loader's lifetime. A later call
+    /// replaces the earlier subscription.
+    func driveAfterEachReconnect(on connectivity: AnyPublisher<Bool, Never>) {
+        reconnectSubscription.hold(
+            connectivity
+                .filter { $0 }
+                .sink { [weak self] _ in self?.driveCurrentAccountAuthDocAfterReconnect() }
+        )
     }
 
     #if DEBUG
