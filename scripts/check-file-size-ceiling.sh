@@ -120,7 +120,7 @@ read -r -d '' ALLOWLIST <<'EOF'
 # only ratchets down, so pinning them costs nothing and closes the regression.
 348  Palace/Accounts/Library/AccountsManager.swift
 596  Palace/SignInLogic/TPPSignInBusinessLogic.swift
-471  Palace/MyBooks/BorrowOperation.swift
+411  Palace/MyBooks/BorrowOperation.swift
 # Package source is in scope (see THE RULE). This one was already over the
 # ceiling inside the old blind spot; pinned here at its measured size so the
 # scope widening lands green rather than red-on-arrival.
