@@ -15,6 +15,9 @@ struct BorrowState {
     /// Mirrors `BookDetailViewModel.localBookStateOverride`. While set to
     /// `.returning`, registry emissions for any state except `.unregistered`
     /// are suppressed so the "Returning…" UI sticks until the server confirms.
+    /// Every transition that lands on `.unregistered` clears it: the VM copies
+    /// this value back after its `bookState` write, so a value left armed here
+    /// would outlive the return and drop the next borrow (PP-5493).
     var localBookStateOverride: TPPBookState? = nil
     var downloadProgress: Double = 0.0
     var processingButtons: Set<BookButtonType> = []
@@ -60,6 +63,11 @@ enum BorrowAction {
     /// User confirmed return (passed the auth gate). Insert `.returning` into
     /// processing immediately for instant feedback; the network call follows.
     case returnStartConfirmed
+
+    /// The return call reported back, on success or failure. Ends a return the
+    /// registry has not settled yet; a registry state that already ended it
+    /// (including a re-borrow after it) stands.
+    case returnFinished
 
     /// User chose Cancel. The cancel side effect is fired by the VM (it holds
     /// the download center reference); `registryState` is the registry's
@@ -130,6 +138,7 @@ enum BorrowReducer {
             state.bookState = registryState
             switch registryState {
             case .unregistered:
+                state.localBookStateOverride = nil
                 state.isManagingHold = false
                 state.showHalfSheet = false
                 state.processingButtons.subtract([.returning, .cancelHold, .return, .remove])
@@ -204,6 +213,19 @@ enum BorrowReducer {
             state.processingButtons.insert(.returning)
             return .none
 
+        case .returnFinished:
+            state.processingButtons.remove(.returning)
+            // The post-return sync can hold the completion for up to 30 s while
+            // account details load, so the registry's `.unregistered` and even
+            // a re-borrow may already be here. Only a return still showing
+            // ends on `.unregistered`.
+            guard state.localBookStateOverride == .returning || state.bookState == .returning else {
+                return .none
+            }
+            state.localBookStateOverride = nil
+            state.bookState = .unregistered
+            return .none
+
         case .cancelTapped(let registryState, let registryProcessing):
             // A borrow still in flight also reads `.unregistered`: the registry
             // only learns of the loan when the request returns. Resolving from
@@ -220,16 +242,12 @@ enum BorrowReducer {
             // up; a failure arrives separately on `downloadErrorPublisher`.
             guard !registryProcessing else { return .none }
             state.downloadProgress = 0.0
-            // Deliberately NOT gated on `localBookStateOverride`, unlike the
-            // registry path above. Two reasons, and the second is the load-bearing
-            // one. The flag is unreliable: `BookDetailViewModel.applyBorrowState`
-            // writes `bookState` first, whose `didSet` nils the override on
-            // `.unregistered`, then mirrors the snapshot's stale value straight
-            // back — so it can stay armed indefinitely. And the window it would
-            // protect renders no Cancel at all: `isProcessingDownload` reads
-            // `bookState == .downloading` and the acquire buttons, and a return
-            // raises neither. Gating on it stranded Cancel on exactly the
-            // `.downloading` sheet this case exists to resolve.
+            // Not gated on `localBookStateOverride`, unlike the registry path
+            // above: the window it would protect renders no Cancel at all.
+            // `isProcessingDownload` reads `bookState == .downloading` and the
+            // acquire buttons, and a return raises neither. Gating on it
+            // stranded Cancel on the `.downloading` sheet this case exists to
+            // resolve (PP-5407).
             state.bookState = registryState
             state.processingButtons.subtract(downloadRelatedButtons)
             // Exhaustive (no `default:`) for the same reason the registry
@@ -244,6 +262,7 @@ enum BorrowReducer {
                 // Close the sheet rather than leave it on a dead button, and
                 // drop the return-side flags the sheet would otherwise reopen
                 // onto.
+                state.localBookStateOverride = nil
                 state.isManagingHold = false
                 state.showHalfSheet = false
                 state.processingButtons.subtract([.returning, .cancelHold, .return, .remove])

@@ -118,5 +118,125 @@
       "output.showHalfSheet" : "true"
     },
     "method" : "registryStateChanged"
+  },
+  {
+    "args" : {
+      "input.newRegistryState" : "unregistered",
+      "input.priorBookState" : "returning",
+      "output.bookState" : "unregistered",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "nil",
+      "output.processingButtons" : "download,get,reserve,retry",
+      "output.showHalfSheet" : "false"
+    },
+    "method" : "registryStateChanged.overrideArmed"
+  },
+  {
+    "args" : {
+      "input.newRegistryState" : "download-needed",
+      "input.priorBookState" : "returning",
+      "output.bookState" : "returning",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "returning",
+      "output.processingButtons" : "download,get,reserve,retry,returning",
+      "output.showHalfSheet" : "true"
+    },
+    "method" : "registryStateChanged.overrideArmed"
+  },
+  {
+    "args" : {
+      "input.newRegistryState" : "downloading",
+      "input.priorBookState" : "returning",
+      "output.bookState" : "returning",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "returning",
+      "output.processingButtons" : "download,get,reserve,retry,returning",
+      "output.showHalfSheet" : "true"
+    },
+    "method" : "registryStateChanged.overrideArmed"
+  },
+  {
+    "args" : {
+      "input.newRegistryState" : "download-failed",
+      "input.priorBookState" : "returning",
+      "output.bookState" : "returning",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "returning",
+      "output.processingButtons" : "download,get,reserve,retry,returning",
+      "output.showHalfSheet" : "true"
+    },
+    "method" : "registryStateChanged.overrideArmed"
+  },
+  {
+    "args" : {
+      "input.newRegistryState" : "download-successful",
+      "input.priorBookState" : "returning",
+      "output.bookState" : "returning",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "returning",
+      "output.processingButtons" : "download,get,reserve,retry,returning",
+      "output.showHalfSheet" : "true"
+    },
+    "method" : "registryStateChanged.overrideArmed"
+  },
+  {
+    "args" : {
+      "input.newRegistryState" : "used",
+      "input.priorBookState" : "returning",
+      "output.bookState" : "returning",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "returning",
+      "output.processingButtons" : "download,get,reserve,retry,returning",
+      "output.showHalfSheet" : "true"
+    },
+    "method" : "registryStateChanged.overrideArmed"
+  },
+  {
+    "args" : {
+      "input.newRegistryState" : "holding",
+      "input.priorBookState" : "returning",
+      "output.bookState" : "returning",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "returning",
+      "output.processingButtons" : "download,get,reserve,retry,returning",
+      "output.showHalfSheet" : "true"
+    },
+    "method" : "registryStateChanged.overrideArmed"
+  },
+  {
+    "args" : {
+      "input.newRegistryState" : "returning",
+      "input.priorBookState" : "returning",
+      "output.bookState" : "returning",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "returning",
+      "output.processingButtons" : "download,get,reserve,retry,returning",
+      "output.showHalfSheet" : "true"
+    },
+    "method" : "registryStateChanged.overrideArmed"
+  },
+  {
+    "args" : {
+      "input.newRegistryState" : "unsupported",
+      "input.priorBookState" : "returning",
+      "output.bookState" : "returning",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "returning",
+      "output.processingButtons" : "download,get,reserve,retry,returning",
+      "output.showHalfSheet" : "true"
+    },
+    "method" : "registryStateChanged.overrideArmed"
+  },
+  {
+    "args" : {
+      "input.newRegistryState" : "saml-started",
+      "input.priorBookState" : "returning",
+      "output.bookState" : "returning",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "returning",
+      "output.processingButtons" : "download,get,reserve,retry,returning",
+      "output.showHalfSheet" : "true"
+    },
+    "method" : "registryStateChanged.overrideArmed"
   }
 ]
