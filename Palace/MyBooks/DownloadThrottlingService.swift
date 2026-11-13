@@ -5,7 +5,7 @@
 //  The active-download concurrency cap, suspend/resume, and the observer that
 //  re-applies the cap when the app becomes active. Audiobook tasks are never
 //  suspended, because the patron may be streaming. MyBooksDownloadCenter's
-//  `limitActiveDownloads(max:)` / `pauseAllDownloads()` /
+//  `limitActiveDownloads(max:)` / `pauseDownloadsForMemoryWarning()` /
 //  `resumeIntelligentDownloads()` delegate here.
 //
 
@@ -24,6 +24,30 @@ protocol DownloadThrottlingServiceDelegate: AnyObject {
     func schedulePendingStartsAsync() async
 }
 
+// MARK: - Resume scheduling
+
+/// A scheduled resume that a new memory warning can cancel.
+protocol DownloadResumeCancellable: AnyObject {
+    func cancel()
+}
+
+/// Runs work after a delay. Injected so tests control the quiet period after
+/// a memory warning without waiting on the clock.
+protocol DownloadResumeScheduling {
+    func schedule(after delay: TimeInterval, _ work: @escaping @Sendable () -> Void) -> DownloadResumeCancellable
+}
+
+extension DispatchWorkItem: DownloadResumeCancellable {}
+
+/// Schedules on the main queue, where the memory warning also arrives.
+struct MainQueueResumeScheduler: DownloadResumeScheduling {
+    func schedule(after delay: TimeInterval, _ work: @escaping @Sendable () -> Void) -> DownloadResumeCancellable {
+        let item = DispatchWorkItem(block: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
+        return item
+    }
+}
+
 // MARK: - DownloadThrottlingService
 
 /// Concurrency policy for the download center. Suspends non-audiobook tasks
@@ -39,7 +63,9 @@ protocol DownloadThrottlingServiceDelegate: AnyObject {
 ///   wiring) and read in `deinit` — a single-threaded lifecycle, never touched
 ///   from the `Task { }` hops. Those hops touch only the actor-serialized
 ///   `stateManager.downloadCoordinator` / `SafeDictionary` members and the
-///   `URLSessionTask` suspend/resume API (thread-safe). `@unchecked` only
+///   `URLSessionTask` suspend/resume API (thread-safe). `pendingMemoryResume`
+///   is guarded by `pendingMemoryResumeLock`; `lastMemoryWarningTask` is
+///   written by the memory warning step on the main thread. `@unchecked` only
 ///   because the stored service types are not themselves `Sendable`.
 final class DownloadThrottlingService: @unchecked Sendable {
 
@@ -55,8 +81,21 @@ final class DownloadThrottlingService: @unchecked Sendable {
     /// exactly as before; only a reference is now kept.
     private(set) var lastLimitActiveDownloadsTask: Task<Void, Never>?
 
+    /// Handle to the Task spawned by `pauseDownloadsForMemoryWarning()`, so
+    /// tests can join the pause.
+    private(set) var lastMemoryWarningTask: Task<Void, Never>?
+
+    /// The quiet period after the last memory warning before paused
+    /// downloads resume (PP-5587).
+    static let memoryRecoveryDelay: TimeInterval = 30
+
     private let stateManager: DownloadStateManager
     private let notificationCenter: NotificationCenter
+    private let resumeScheduler: DownloadResumeScheduling
+    /// The resume scheduled by the last memory warning. Warnings and the
+    /// resume arrive on different threads.
+    private var pendingMemoryResume: DownloadResumeCancellable?
+    private let pendingMemoryResumeLock = NSLock()
 
     /// Block-based observer registration handle so `deinit` can clean up
     /// without forcing the service to be `@objc` selector-callable.
@@ -64,10 +103,12 @@ final class DownloadThrottlingService: @unchecked Sendable {
 
     init(
         stateManager: DownloadStateManager,
-        notificationCenter: NotificationCenter = .default
+        notificationCenter: NotificationCenter = .default,
+        resumeScheduler: DownloadResumeScheduling = MainQueueResumeScheduler()
     ) {
         self.stateManager = stateManager
         self.notificationCenter = notificationCenter
+        self.resumeScheduler = resumeScheduler
     }
 
     deinit {
@@ -128,14 +169,7 @@ final class DownloadThrottlingService: @unchecked Sendable {
 
     /// Suspends every non-audiobook download task. Audiobook tasks survive
     /// because the user may be streaming — a suspend would tear the
-    /// connection mid-stream.
-    func pauseAllDownloads() {
-        Task { [weak self] in
-            await self?.pauseAllDownloadsAsync()
-        }
-    }
-
-    /// Async body of `pauseAllDownloads`. `internal` (not `private`) so
+    /// connection mid-stream. `internal` (not `private`) so
     /// callers already inside an `async` context — and tests — can `await` the
     /// suspend fan-out to completion deterministically instead of polling.
     /// Behavior is unchanged; only the access level widened.
@@ -148,6 +182,45 @@ final class DownloadThrottlingService: @unchecked Sendable {
                 continue
             }
             info.downloadTask.suspend()
+        }
+    }
+
+    // MARK: - Memory warning
+
+    /// Pauses non-audiobook downloads for a memory warning, then resumes them
+    /// once `memoryRecoveryDelay` passes with no further warning (PP-5587).
+    /// Without the resume they stay paused until the app next becomes active.
+    func pauseDownloadsForMemoryWarning() {
+        // Cancel now, not inside the Task: a resume that fires before the
+        // Task runs would undo this warning's pause.
+        cancelPendingMemoryResume()
+        lastMemoryWarningTask = Task { [weak self] in
+            await self?.pauseDownloadsForMemoryWarningAsync()
+        }
+    }
+
+    func pauseDownloadsForMemoryWarningAsync() async {
+        await pauseAllDownloadsAsync()
+        let resume = resumeScheduler.schedule(after: Self.memoryRecoveryDelay) { [weak self] in
+            self?.resumeAfterMemoryRecovery()
+        }
+        pendingMemoryResumeLock.withLock {
+            pendingMemoryResume?.cancel()
+            pendingMemoryResume = resume
+        }
+    }
+
+    /// Re-applies the current cap, so a thermal or power limit set during the
+    /// wait still applies, and only suspended tasks resume.
+    private func resumeAfterMemoryRecovery() {
+        Log.info(#file, "Resuming downloads paused by a memory warning")
+        limitActiveDownloads(max: stateManager.maxConcurrentDownloads)
+    }
+
+    private func cancelPendingMemoryResume() {
+        pendingMemoryResumeLock.withLock {
+            pendingMemoryResume?.cancel()
+            pendingMemoryResume = nil
         }
     }
 
