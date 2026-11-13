@@ -10,6 +10,10 @@ name: NonDRM Build
 on:
   workflow_dispatch:
   pull_request:
+    # Pull requests into a feature/** branch skip this macOS workflow; the
+    # feature branch's own PR into develop runs it. Every other base still
+    # runs it. See docs/architecture/feature-branch-workflow.md.
+    branches-ignore: ['feature/**']
     paths:
       - 'Palace/**'
       - 'Palace.xcodeproj/**'

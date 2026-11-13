@@ -9,6 +9,10 @@ jobs:
   update-jira:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
+    # pull-requests: read lists a feature PR's commits (Extract Jira tickets).
+    permissions:
+      contents: read
+      pull-requests: read
     
     steps:
       - name: Checkout code
@@ -51,8 +55,12 @@ jobs:
       - name: Extract Jira tickets
         id: tickets
         env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUM: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           # Extract the IMPLEMENTED ticket(s) from the PR TITLE and BRANCH only.
           #
@@ -66,8 +74,23 @@ jobs:
           # NOTE: env vars (not direct interpolation) prevent shell injection.
           ALL_TEXT="$PR_TITLE $PR_BRANCH"
 
+          # A feature branch carries several sub-task PRs, each squashed into one
+          # commit whose subject names its ticket. When the feature PR lands on
+          # develop, every one of those tickets landed, so read the subject line
+          # of each commit in the PR as well. Subjects only, for the same reason
+          # the body is skipped above. See docs/architecture/feature-branch-workflow.md.
+          if [ "$BASE_REF" = "develop" ] && [[ "$PR_BRANCH" == feature/* ]]; then
+            if SUBJECTS=$(gh api --paginate "repos/$REPO/pulls/$PR_NUM/commits" \
+                --jq '.[].commit.message | split("\n")[0]'); then
+              echo "Feature PR: reading $(printf '%s\n' "$SUBJECTS" | grep -c . || true) commit subjects"
+              ALL_TEXT="$ALL_TEXT"$'\n'"$SUBJECTS"
+            else
+              echo "::warning::Could not list the commits of feature PR #$PR_NUM; using the title and branch only"
+            fi
+          fi
+
           # Extract unique PP-XXXX tickets (silently skip if none found)
-          TICKETS=$(echo "$ALL_TEXT" | grep -oE 'PP-[0-9]+' | sort -u | tr '\n' ' ' || true)
+          TICKETS=$(./scripts/jira-integration.sh extract-tickets "$ALL_TEXT" | sort -u | tr '\n' ' ' || true)
           
           if [ -z "$TICKETS" ]; then
             # No tickets found - this is fine, not all PRs have Jira tickets
