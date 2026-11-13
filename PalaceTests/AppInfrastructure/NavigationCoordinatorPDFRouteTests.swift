@@ -203,4 +203,5 @@ private struct InertPositionWriter: PositionWriter {
     func save(_ snapshot: PositionSnapshot) async throws -> ServerPositionID? { nil }
     func load(for bookID: String) async throws -> PositionSnapshot? { nil }
     func cancel(for bookID: String) async {}
+    func flush(for bookID: String) async {}
 }

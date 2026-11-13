@@ -56,4 +56,16 @@ public protocol PositionWriter: Sendable {
     /// Idempotent. Cancelling a book with no pending state is a no-op.
     /// Cancelling for one book does not affect any other book's queue.
     func cancel(for bookID: String) async
+
+    /// Post the book's queued snapshot now instead of when its throttle
+    /// window ends. Used when a reader closes, so the last position reaches
+    /// the server even if the app is suspended soon after (PP-5595).
+    ///
+    /// The post runs in a writer-owned task inside a background task, so a
+    /// caller that does not await this call still gets the post. Returns
+    /// after that post, and any flush post already running for the book,
+    /// has ended. `cancel(for:)` cancels it like any other flush post.
+    ///
+    /// A no-op when nothing is queued. Other books are unaffected.
+    func flush(for bookID: String) async
 }

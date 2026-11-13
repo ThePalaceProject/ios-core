@@ -35,6 +35,8 @@ private final class SpyPositionWriter: PositionWriter, @unchecked Sendable {
     private var _saveResult: SaveOutcome = .success("spy-server-id")
     private var _loadResult: PositionSnapshot? = nil
     private var _cancelledBookIDs: [String] = []
+    private var _flushedBookIDs: [String] = []
+    private var _events: [String] = []
     private var _onSave: (() -> Void)?
 
     func setOnSave(_ hook: @escaping () -> Void) {
@@ -63,6 +65,17 @@ private final class SpyPositionWriter: PositionWriter, @unchecked Sendable {
         return _cancelledBookIDs
     }
 
+    var flushedBookIDs: [String] {
+        lock.lock(); defer { lock.unlock() }
+        return _flushedBookIDs
+    }
+
+    /// Saves (when they return) and flushes in order, as "save" and "flush:<bookID>".
+    var events: [String] {
+        lock.lock(); defer { lock.unlock() }
+        return _events
+    }
+
     func save(_ snapshot: PositionSnapshot) async throws -> ServerPositionID? {
         let (result, hook) = lock.withLock { () -> (SaveOutcome, (() -> Void)?) in
             _savedSnapshots.append(snapshot)
@@ -70,6 +83,7 @@ private final class SpyPositionWriter: PositionWriter, @unchecked Sendable {
         }
 
         hook?()  // race-window injection: tests can mutate registry between SUT's local-save and post-save guard
+        lock.withLock { _events.append("save") }
 
         switch result {
         case .success(let id):
@@ -87,6 +101,13 @@ private final class SpyPositionWriter: PositionWriter, @unchecked Sendable {
 
     func cancel(for bookID: String) async {
         lock.withLock { _cancelledBookIDs.append(bookID) }
+    }
+
+    func flush(for bookID: String) async {
+        lock.withLock {
+            _flushedBookIDs.append(bookID)
+            _events.append("flush:\(bookID)")
+        }
     }
 }
 
@@ -275,6 +296,80 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
                      "(local is safe; the user's data is not lost)")
     }
 
+    // MARK: - 4a. Send the last position on close (PP-5595)
+
+    /// Closing the player sends the final position: its save runs first, then the writer is flushed.
+    func testFlushPendingRemotePositionWrite_afterFinalSave_flushesAfterTheSaveRuns() async {
+        spyWriter.saveResult = .throttled
+        // Holds the save open, so a flush that does not wait for it lands first.
+        spyWriter.setOnSave { Thread.sleep(forTimeInterval: 0.3) }
+
+        sut.saveListeningPosition(at: position(trackIndex: 1, time: 120.0), completion: nil)
+        await sut.flushPendingRemotePositionWrite()
+
+        XCTAssertEqual(spyWriter.events, ["save", "flush:\(bookIdentifier)"])
+    }
+
+    /// With no save in flight, close still flushes what the writer queued earlier.
+    func testFlushPendingRemotePositionWrite_noSaveInFlight_flushesTheWriter() async {
+        await sut.flushPendingRemotePositionWrite()
+
+        XCTAssertEqual(spyWriter.events, ["flush:\(bookIdentifier)"])
+        XCTAssertTrue(spyWriter.cancelledBookIDs.isEmpty, "close must not cancel the queued position")
+    }
+
+    // MARK: - 4a-2. What stopPlayback does to the remote position (PP-5595)
+
+    /// Close keeps the final position: it is saved, then flushed, and never cancelled.
+    func testSettleRemotePosition_close_savesThenFlushesWithoutCancelling() async {
+        spyWriter.saveResult = .throttled
+        var savedFinal = false
+
+        let flush = await AudiobookSessionManager.settleRemotePosition(logic: sut, persistFinalPosition: true) {
+            savedFinal = true
+            sut.saveListeningPosition(at: position(trackIndex: 1, time: 90.0), completion: nil)
+        }
+        await flush?.value
+
+        XCTAssertTrue(savedFinal)
+        XCTAssertEqual(spyWriter.events, ["save", "flush:\(bookIdentifier)"])
+        XCTAssertTrue(spyWriter.cancelledBookIDs.isEmpty, "a close must not drop the queued position")
+    }
+
+    /// A return drops the queued position (3.2.3 Cause 2): cancel, no final save, no flush.
+    func testSettleRemotePosition_return_cancelsWithoutSavingOrFlushing() async {
+        var savedFinal = false
+
+        let flush = await AudiobookSessionManager.settleRemotePosition(logic: sut, persistFinalPosition: false) {
+            savedFinal = true
+        }
+
+        XCTAssertNil(flush)
+        XCTAssertFalse(savedFinal)
+        XCTAssertEqual(spyWriter.cancelledBookIDs, [bookIdentifier])
+        XCTAssertTrue(spyWriter.flushedBookIDs.isEmpty, "a return must not post the position")
+    }
+
+    /// With no bookmark logic bound, a close still saves the final position.
+    func testSettleRemotePosition_closeWithoutLogic_stillSaves() async {
+        var savedFinal = false
+
+        let flush = await AudiobookSessionManager.settleRemotePosition(logic: nil, persistFinalPosition: true) {
+            savedFinal = true
+        }
+
+        XCTAssertNil(flush)
+        XCTAssertTrue(savedFinal)
+    }
+
+    /// Only the logic bound to the stopping book owns its queued write.
+    func testPositionLogic_matchesOnlyTheBoundBook() {
+        XCTAssertTrue(AudiobookSessionManager.positionLogic(sut, bookId: bookIdentifier) === sut)
+        XCTAssertNil(AudiobookSessionManager.positionLogic(sut, bookId: "another-book"))
+        XCTAssertNil(AudiobookSessionManager.positionLogic(sut, bookId: nil))
+        XCTAssertNil(AudiobookSessionManager.positionLogic(nil, bookId: bookIdentifier))
+    }
+
     // MARK: - 4b. Pending remote-write cancellation (3.2.3 Cause 2)
 
     /// `cancelPendingRemotePositionWrite()` MUST forward to the writer's
@@ -453,6 +548,7 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
             }
             func load(for bookID: String) async throws -> PositionSnapshot? { nil }
             func cancel(for bookID: String) async {}
+            func flush(for bookID: String) async {}
         }
         let raceWriter = TimeRaceWriter { [weak self] in
             // Simulate "user moved ahead" between snapshot capture and
@@ -537,6 +633,7 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
             }
             func load(for bookID: String) async throws -> PositionSnapshot? { nil }
             func cancel(for bookID: String) async {}
+            func flush(for bookID: String) async {}
         }
         let tieWriter = TieWriter { [weak self] in
             self?.mockRegistry.setLocation(tieLocation,
