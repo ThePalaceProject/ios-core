@@ -1,0 +1,76 @@
+[
+  {
+    "args" : {
+      "action" : "bearerTokenReceived",
+      "hasExpiration" : "false",
+      "token" : "oidc-token"
+    },
+    "method" : "dispatch"
+  },
+  {
+    "args" : {
+      "name" : "Olive"
+    },
+    "method" : "patronSet"
+  },
+  {
+    "args" : {
+      "action" : "credentialsValidationStarted"
+    },
+    "method" : "dispatch"
+  },
+  {
+    "args" : {
+      "accountId" : "urn:uuid:065c0c11-0d0f-42a3-82e4-277b18786949",
+      "bearer" : "oidc-token",
+      "enableTokenRefresh" : "false",
+      "hasBearer" : "true",
+      "path" : "\/NYNYPL\/patrons\/me"
+    },
+    "method" : "validationRequest"
+  },
+  {
+    "args" : {
+      "action" : "credentialsValidationSucceeded"
+    },
+    "method" : "dispatch"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "delegate.didReceiveCredentials"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "registry.sync"
+  },
+  {
+    "args" : {
+      "action" : "userAccountUpdated"
+    },
+    "method" : "dispatch"
+  },
+  {
+    "args" : {
+      "progress" : "finished"
+    },
+    "method" : "reportSignInProgress"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "delegate.didCompleteSignIn"
+  },
+  {
+    "args" : {
+      "authToken" : "oidc-token",
+      "cookieCount" : "0",
+      "patronName" : "Olive"
+    },
+    "method" : "storedAccount"
+  }
+]

@@ -31,9 +31,10 @@ class TPPLastReadPositionPoster {
     private let positionWriter: PositionWriter
     private let deviceID: String
 
-    /// In-flight server-post `Task`s, retained so tests can join them. Accessed
-    /// only on the owner's isolation domain.
-    private var pendingWriteTasks: [Task<Void, Never>] = []
+    /// Server-post `Task`s that are still running. Each one removes itself when
+    /// it finishes, so a long reading session does not keep a handle per page
+    /// turn (PP-5554), and tests can still join the live work.
+    private let writeTasks = OwnedTaskRegistry()
 
     init(book: TPPBook,
          publication: Publication,
@@ -64,9 +65,13 @@ class TPPLastReadPositionPoster {
 
         // PP-5138: post the SAME bytes we just stored. See `makeSnapshot`.
         guard let snapshot = makeSnapshot(from: location) else { return }
-        pendingWriteTasks.append(Task { [positionWriter] in
+        let token = UUID()
+        let registry = writeTasks
+        let task = Task { [positionWriter] in
+            defer { registry.complete(token) }
             _ = try? await positionWriter.save(snapshot)
-        })
+        }
+        registry.register(token, task)
     }
 
     /// Stores the reader's last locator and writes any position still waiting
@@ -78,13 +83,17 @@ class TPPLastReadPositionPoster {
         bookRegistryProvider.flushPendingPositions()
     }
 
-    /// Test seam: returns every server-post `Task` spawned since the last drain
-    /// so a test can await them. Synchronous on purpose: an `async` seam would
-    /// send this non-Sendable poster across an isolation boundary.
+    /// Test seam: returns the server-post `Task`s that are still running so a
+    /// test can await them. A post that already finished is not returned, and
+    /// needs no join. Synchronous on purpose: an `async` seam would send this
+    /// non-Sendable poster across an isolation boundary.
     func pendingWriteTasksForTesting() -> [Task<Void, Never>] {
-        let tasks = pendingWriteTasks
-        pendingWriteTasks.removeAll()
-        return tasks
+        writeTasks.snapshot().map { $0.1 }
+    }
+
+    /// Test seam: the number of server posts the poster still holds.
+    var liveWriteTaskCountForTesting: Int {
+        writeTasks.count
     }
 
     /// Determines if a locator should be stored and posted.

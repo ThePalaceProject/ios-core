@@ -1,0 +1,10 @@
+[
+  {
+    "args" : {
+      "authToken" : "nil",
+      "cookieCount" : "0",
+      "patronName" : "nil"
+    },
+    "method" : "storedAccount"
+  }
+]

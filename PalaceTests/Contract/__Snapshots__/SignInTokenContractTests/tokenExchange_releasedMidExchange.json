@@ -1,0 +1,16 @@
+[
+  {
+    "args" : {
+      "accountId" : "urn:uuid:065c0c11-0d0f-42a3-82e4-277b18786949",
+      "tokenURL" : "https:\/\/library.test\/token",
+      "username" : "barcode"
+    },
+    "method" : "executeTokenRefresh"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "getBearerTokenCompletion"
+  }
+]

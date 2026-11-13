@@ -1,0 +1,17 @@
+[
+  {
+    "args" : {
+      "error" : "set",
+      "title" : "Account Locked"
+    },
+    "method" : "redirectCompletion"
+  },
+  {
+    "args" : {
+      "authToken" : "nil",
+      "cookieCount" : "0",
+      "patronName" : "nil"
+    },
+    "method" : "storedAccount"
+  }
+]

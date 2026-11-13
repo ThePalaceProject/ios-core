@@ -28,6 +28,7 @@ where a new document belongs.
 | [`architectural-triad.md`](./architectural-triad.md) | The post-modernization "honesty epic": closing the gap between the refactor's claimed state and its actual state, across DI adoption, the Store reducer pattern, and the singleton/god-class purge. Plan, phases, exit criteria, decision log. |
 | [`state-management-doctrine.md`](./state-management-doctrine.md) | Accepted rules for where state lives and who may mutate it. Supersedes the ambient convention that preceded it. |
 | [`release-merge-policy.md`](./release-merge-policy.md) | Why merges into `main` use `--no-ff` and never squash — with the 296-conflict forensic that established the rule, and the recovery recipe. |
+| [`feature-branch-workflow.md`](./feature-branch-workflow.md) | Why multi-PR work lands on a `feature/**` branch, why only its PR into `develop` runs the macOS CI, what a sub-task PR is gated on, and why the feature PR merges with a merge commit. |
 
 ## Area verification checklists
 

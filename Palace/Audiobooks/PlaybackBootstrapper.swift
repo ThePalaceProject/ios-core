@@ -18,6 +18,19 @@ import PalaceLogging
 import PalaceBookRegistry
 import PalaceUtilities
 
+// MARK: - PlaybackAudioSessionPriming
+
+/// The part of `PlaybackBootstrapper` an audiobook session calls to get the
+/// audio session ready. The session takes it through a provider, so it uses
+/// the bootstrapper of the container that built it.
+@MainActor
+protocol PlaybackAudioSessionPriming: AnyObject {
+    func ensureInitialized()
+    func ensureAudioSessionActiveForPlayback()
+}
+
+extension PlaybackBootstrapper: PlaybackAudioSessionPriming {}
+
 // MARK: - PlaybackBootstrapper
 
 /// Singleton that bootstraps audio playback infrastructure for CarPlay cold starts.

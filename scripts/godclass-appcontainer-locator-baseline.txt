@@ -72,4 +72,6 @@
 #   setting from the composition root (13 sites).
 # 204 -> 202: PP-5545 drops the executor DI init's container default and
 #   routes the download center's two sign-in prompts through one bound closure.
-202
+# 202 -> 200: PP-5545 gives the audiobook session its container's playback
+#   bootstrapper through a provider instead of two AppContainer.production() reads.
+200

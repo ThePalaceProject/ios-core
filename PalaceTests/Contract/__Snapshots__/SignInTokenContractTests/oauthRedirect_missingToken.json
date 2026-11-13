@@ -1,0 +1,34 @@
+[
+  {
+    "args" : {
+      "progress" : "started"
+    },
+    "method" : "reportSignInProgress"
+  },
+  {
+    "args" : {
+      "action" : "credentialCaptureStarted"
+    },
+    "method" : "dispatch"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "delegate.willSignIn"
+  },
+  {
+    "args" : {
+      "host" : "circulation.example.com"
+    },
+    "method" : "openInBrowser"
+  },
+  {
+    "args" : {
+      "authToken" : "nil",
+      "cookieCount" : "0",
+      "patronName" : "nil"
+    },
+    "method" : "storedAccount"
+  }
+]

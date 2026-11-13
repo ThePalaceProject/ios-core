@@ -5,6 +5,7 @@ Library reading app supporting EPUB, PDF, and audiobooks with multiple DRM syste
 ## Contributing
 
 - Fork, branch from `develop` (never `main`), open the PR back to `develop`. Tests are mandatory for production changes.
+- **Multi-PR work goes through a feature branch.** An epic or a story with sub-tasks gets `feature/PP-XXXX-<slug>` from `develop`; each sub-task PR targets that branch and is squash-merged. Only the feature branch's PR into `develop` runs the macOS CI, so run `scripts/verify-pr.sh --quick` before a sub-task PR merges and on the feature tip before its PR into `develop`. Merge every sub-task PR into the feature branch before the feature PR merges; a PR retargeted onto `develop` gets no macOS run until it is pushed to or closed and reopened, so do one of those before merging it. Single-PR work goes straight to `develop`. Rationale: [`docs/architecture/feature-branch-workflow.md`](./docs/architecture/feature-branch-workflow.md).
 - Maintainer-only local tooling is wired through hooks that no-op when it is not installed. Nothing extra is needed to build, test, or open a PR.
 - **Pre-PR self-check:** `scripts/verify-pr.sh --quick` runs build, tests, lint, coverage and accessibility on the reference simulator (`scripts/reference-toolchain.ini`); the unit-test leg is a full-scheme single pass. `--report /tmp/v.json` writes JSON, with a build-input manifest; `python3 scripts/build_manifest.py check-stale /tmp/v.json` says whether a report (local, or a CI `shard-report.json`) still applies to the current tree.
 - `--quick` skips exactly one leg: **mutation testing**. Drop the flag to include it, or use `--mutation-only`. A leg reported `skip` names its reason; a leg that recorded nothing fails the run.
@@ -13,7 +14,8 @@ Library reading app supporting EPUB, PDF, and audiobooks with multiple DRM syste
 ## Release & hotfix merge policy
 
 - Merges into `main` use merge commits (`gh pr merge <num> --merge`), never squash. This covers `release/X.Y.Z` → `main`, `hotfix/X.Y.Z-*` → `main`, and forward-ports of those hotfixes into `develop`.
-- Squash-merge is fine for feature PRs into `develop`.
+- Squash-merge is fine for single PRs into `develop` and for sub-task PRs into a `feature/**` branch.
+- A `feature/**` branch merges into `develop` with a merge commit (`gh pr merge <num> --merge`). `scripts/check-release-fix-reconciliation.py` reconciles develop commits one by one, by patch and by their `(#N)` suffix; a squash would fold every sub-task PR into one commit.
 - `main` branch protection should allow only "Create a merge commit".
 - Why, and the recovery recipe: [`docs/architecture/release-merge-policy.md`](./docs/architecture/release-merge-policy.md).
 

@@ -217,6 +217,53 @@ final class TPPNetworkExecutorCancellationTests: XCTestCase {
         XCTAssertEqual(outcome, .cancelled, "DELETE must unblock on cancellation.")
     }
 
+    /// PP-5556: cancelling `GET(_:)` must stop the request, not only release the
+    /// waiter. The account crawl and LCP passphrase lookup await this overload.
+    func testGET_url_cancelledDuringRequest_stopsTheRequestAndThrowsCancellationError() async throws {
+        let url = hangingURL
+        let executor = self.executor!
+        let task = Task { () -> Error? in
+            do {
+                _ = try await executor.GET(url)
+                return nil
+            } catch {
+                return error
+            }
+        }
+        await server.awaitFirstConnection()
+        XCTAssertEqual(executor.liveTaskCount, 1, "the request must be in flight before the cancel")
+
+        task.cancel()
+        let thrown = await task.value
+
+        XCTAssertTrue(thrown is CancellationError,
+                      "a cancelled caller must see CancellationError; got \(String(describing: thrown))")
+        XCTAssertEqual(executor.liveTaskCount, 0,
+                       "the URLSession task must be cancelled with the waiter")
+    }
+
+    /// PP-5556: a caller that is already cancelled must not send a request.
+    func testGET_url_alreadyCancelled_sendsNoRequest() async throws {
+        let url = hangingURL
+        let executor = self.executor!
+        let task = Task { () -> Error? in
+            withUnsafeCurrentTask { $0?.cancel() }
+            do {
+                _ = try await executor.GET(url)
+                return nil
+            } catch {
+                return error
+            }
+        }
+
+        let thrown = await task.value
+
+        XCTAssertTrue(thrown is CancellationError,
+                      "an already-cancelled caller must see CancellationError; got \(String(describing: thrown))")
+        XCTAssertEqual(executor.registeredTaskCount, 0,
+                       "no request may be created for a caller that is already cancelled")
+    }
+
     /// Guards the fixture itself. If the local server ever answered, every test
     /// above would pass for the wrong reason — the call would simply complete
     /// before cancellation mattered.
