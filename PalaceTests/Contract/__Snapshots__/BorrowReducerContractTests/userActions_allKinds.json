@@ -64,5 +64,27 @@
       "output.showHalfSheet" : "true"
     },
     "method" : "signInCancelled"
+  },
+  {
+    "args" : {
+      "output.bookState" : "unregistered",
+      "output.downloadProgress" : "0.0",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "nil",
+      "output.processingButtons" : "download,get,reserve,retry",
+      "output.showHalfSheet" : "true"
+    },
+    "method" : "returnFinished.stillReturning"
+  },
+  {
+    "args" : {
+      "output.bookState" : "download-needed",
+      "output.downloadProgress" : "0.0",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "nil",
+      "output.processingButtons" : "download,get,reserve,retry",
+      "output.showHalfSheet" : "true"
+    },
+    "method" : "returnFinished.afterNewLoan"
   }
 ]

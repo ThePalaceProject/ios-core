@@ -155,5 +155,79 @@ final class BookDetailReborrowAfterReturnTests: XCTestCase {
         drainMainQueue()
 
         XCTAssertEqual(viewModel.bookState, .returning)
+
+        // Control: the same pipeline does deliver, so the hold above is the override's.
+        registry.setState(.unregistered, for: book.identifier)
+        drainMainQueue()
+        XCTAssertEqual(viewModel.bookState, .unregistered)
+    }
+
+    // MARK: - Through handleAction and the download center
+
+    private func makeViewModel(downloadCenter: HeldReturnDownloadCenter) -> BookDetailViewModel {
+        BookDetailViewModel(
+            book: book,
+            registry: registry,
+            downloadCenter: downloadCenter,
+            accountsManager: appContainer.accountsManager,
+            settings: TPPSettings(),
+            opdsFeedService: appContainer.opdsFeedService,
+            samplePreviewManager: appContainer.samplePreviewManager,
+            readerService: appContainer.readerService,
+            metadataHydrator: { _ in nil },
+            dependencies: .testDouble()
+        )
+    }
+
+    private func makeHeldReturnDownloadCenter() -> HeldReturnDownloadCenter {
+        HeldReturnDownloadCenter(
+            bookRegistry: registry,
+            accountsManager: appContainer.accountsManager,
+            networkExecutor: appContainer.networkExecutor,
+            reachability: appContainer.reachability,
+            settings: TPPSettings()
+        )
+    }
+
+    /// The completion `didSelectReturn` hands the download center, run after a
+    /// re-borrow, must leave the loan on the sheet.
+    func testHandleActionReturn_CompletionAfterReborrow_KeepsTheLoan() throws {
+        let downloadCenter = makeHeldReturnDownloadCenter()
+        let viewModel = makeViewModel(downloadCenter: downloadCenter)
+        viewModel.handleAction(for: .return)
+        registryCompletesReturn()
+        registryCompletesBorrow()
+
+        let completion = try XCTUnwrap(downloadCenter.heldCompletion)
+        completion()
+        // The caller's completion clears `.return` after the view model's own handling.
+        awaitCondition { !viewModel.processingButtons.contains(.return) }
+
+        XCTAssertEqual(viewModel.bookState, .downloadNeeded)
+    }
+
+    /// A return with no registry update (failed or queued) ends on `.unregistered`
+    /// through the same completion.
+    func testHandleActionReturn_CompletionWithoutRegistryUpdate_EndsTheReturn() throws {
+        let downloadCenter = makeHeldReturnDownloadCenter()
+        let viewModel = makeViewModel(downloadCenter: downloadCenter)
+        viewModel.handleAction(for: .return)
+        XCTAssertEqual(viewModel.bookState, .returning)
+
+        let completion = try XCTUnwrap(downloadCenter.heldCompletion)
+        completion()
+        awaitCondition { !viewModel.processingButtons.contains(.return) }
+
+        XCTAssertEqual(viewModel.bookState, .unregistered)
+        XCTAssertFalse(viewModel.processingButtons.contains(.returning))
+    }
+}
+
+/// Holds the return completion so a test decides when the return reports back.
+private final class HeldReturnDownloadCenter: MyBooksDownloadCenter, @unchecked Sendable {
+    private(set) var heldCompletion: (@Sendable () -> Void)?
+
+    override func returnBook(withIdentifier identifier: String, completion: (@Sendable () -> Void)? = nil) {
+        heldCompletion = completion
     }
 }

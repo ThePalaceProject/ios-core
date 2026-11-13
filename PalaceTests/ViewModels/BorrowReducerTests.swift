@@ -283,6 +283,18 @@ final class BorrowReducerTests: XCTestCase {
         XCTAssertEqual(state.bookState, .unregistered)
     }
 
+    /// With the override still armed, no registry state has ended the return,
+    /// so the completion ends it even over a loan state written outside the registry.
+    func testReturnFinished_withArmedOverrideOverALoanState_endsOnUnregistered() {
+        var state = makeState(bookState: .downloadNeeded, override: .returning, processing: [.returning])
+
+        _ = BorrowReducer.reduce(&state, .returnFinished)
+
+        XCTAssertEqual(state.bookState, .unregistered)
+        XCTAssertNil(state.localBookStateOverride)
+        XCTAssertFalse(state.processingButtons.contains(.returning))
+    }
+
     /// PP-5493: a completion held by the post-return sync arrives after a
     /// re-borrow and must leave the loan in place.
     func testReturnFinished_afterRegistryAlreadyShowsANewLoan_keepsTheLoan() {
