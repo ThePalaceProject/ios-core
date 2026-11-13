@@ -11,6 +11,7 @@
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
+import Combine
 import Foundation
 import PalaceLogging
 
@@ -48,6 +49,9 @@ final class AuthDocumentLoader: @unchecked Sendable {
     /// nor the async terminal), or a late drive pollutes the next test. Production binds
     /// `{ false }`.
     private let isTornDown: @Sendable () -> Bool
+
+    /// Holds the connectivity subscription from `driveAfterEachReconnect(on:)`.
+    private let reconnectSubscription = AccountsManagerSubscription()
 
     init(
         accountStateStore: AccountStateStore,
@@ -176,20 +180,61 @@ final class AuthDocumentLoader: @unchecked Sendable {
             // The setter writes this marker against the prior uuid on a library
             // switch. If this account is current again the marker is stale, so
             // re-drive; otherwise `awaitReady()` callers keep throwing `.evicted`.
-            // A genuine 404 is `.detailsFailed(.accountNotFound)` and does not redrive
-            // (PR #1021).
+            // A `.detailsFailed` terminal does not redrive here (PR #1021).
             //
             // No `default`: a new `AccountEvictionReason` must fail to compile here
             // so its author decides whether it re-drives on re-entry (add it to this
             // arm) or not (add an arm that returns).
             break
         case .detailsFailed:
-            return // genuine load failure — caller must retry explicitly
+            return // final here; an explicit retry or `driveCurrentAccountAuthDocAfterReconnect` refetches
         case .notLoaded, .basicInfoLoaded, .detailsLoading:
             break
         }
         fetchAuthDocumentWithStateMachine(for: account) { _ in }
     }
+
+    /// Drives the current account when the network comes back. Like
+    /// `driveCurrentAccountAuthDocIfNeeded`, and also refetches after
+    /// `.detailsFailed(.authDocumentFetchFailed)`. The fetch completion writes that
+    /// case for every unsuccessful fetch (no connection, bad URL, HTTP error, parse
+    /// failure), so a reconnect retries all of them. A launch made offline leaves
+    /// that state, which the launch drive treats as final and on which
+    /// `awaitReady()` throws (PP-5492).
+    /// On an online launch the first `true` after `startMonitoring` also lands here;
+    /// it finds the details loaded or is deduped against the launch fetch.
+    func driveCurrentAccountAuthDocAfterReconnect() {
+        guard let account = currentAccountProvider() else { return }
+        guard case .detailsFailed(.authDocumentFetchFailed) = accountStateStore.state(for: account.uuid) else {
+            driveCurrentAccountAuthDocIfNeeded()
+            return
+        }
+        fetchAuthDocumentWithStateMachine(for: account) { _ in }
+    }
+
+    /// Runs `driveCurrentAccountAuthDocAfterReconnect` each time `connectivity`
+    /// reports the network is back. Binds once: while a subscription is held, a
+    /// later call keeps the first, logs, and returns false.
+    @discardableResult
+    func driveAfterEachReconnect(on connectivity: AnyPublisher<Bool, Never>) -> Bool {
+        let bound = reconnectSubscription.holdIfEmpty(
+            connectivity
+                .filter { $0 }
+                .sink { [weak self] _ in self?.driveCurrentAccountAuthDocAfterReconnect() }
+        )
+        if !bound {
+            Log.error(#file, "Reconnect drive is already bound; keeping the first subscription")
+        }
+        return bound
+    }
+
+    /// Ends the subscription from `driveAfterEachReconnect(on:)`.
+    func cancelReconnectDrive() {
+        reconnectSubscription.cancel()
+    }
+
+    /// Whether `driveAfterEachReconnect(on:)` holds a subscription.
+    var isBoundToReconnect: Bool { reconnectSubscription.isHolding }
 
     #if DEBUG
     /// Test-only: seed the single-flight map so wedge/dedupe paths are exercised

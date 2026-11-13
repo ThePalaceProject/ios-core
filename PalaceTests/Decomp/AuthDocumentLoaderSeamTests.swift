@@ -112,6 +112,64 @@ final class AuthDocumentLoaderSeamTests: XCTestCase {
         XCTAssertTrue(spy.called, "a non-terminal (.notLoaded) current account must be driven")
     }
 
+    // MARK: - Reconnect routing (PP-5492)
+
+    /// A reconnect retries a fetch that failed to reach the server, the state an
+    /// offline launch leaves. Without it `awaitReady()` keeps throwing until relaunch.
+    func testDriveAfterReconnect_atFetchFailure_refetches() {
+        let (loader, account, spy, store) = makeLoaderWithStore()
+        store.setState(.detailsFailed(.authDocumentFetchFailed(underlyingDescription: "offline")), for: account.uuid)
+
+        loader.driveCurrentAccountAuthDocAfterReconnect()
+
+        XCTAssertTrue(spy.called, "a fetch that failed while offline must be retried on reconnect")
+    }
+
+    /// A reconnect does not retry a failure the connection cannot fix.
+    func testDriveAfterReconnect_atAccountNotFound_doesNotRefetch() {
+        let (loader, account, spy, store) = makeLoaderWithStore()
+        store.setState(.detailsFailed(.accountNotFound(uuid: account.uuid)), for: account.uuid)
+
+        loader.driveCurrentAccountAuthDocAfterReconnect()
+
+        XCTAssertFalse(spy.called, "an unknown account is not retried on reconnect")
+    }
+
+    /// A reconnect with no fetch started yet drives one, like the launch drive.
+    func testDriveAfterReconnect_atNonTerminal_fetches() {
+        let (loader, _, spy, _) = makeLoaderWithStore() // fresh store ⇒ .notLoaded
+
+        loader.driveCurrentAccountAuthDocAfterReconnect()
+
+        XCTAssertTrue(spy.called, "a non-terminal current account is driven on reconnect")
+    }
+
+    /// A stale eviction marker on the current account redrives on reconnect, as
+    /// the launch drive does.
+    func testDriveAfterReconnect_atStaleEvictionMarker_redrives() {
+        let (loader, account, spy, store) = makeLoaderWithStore()
+        store.setState(.detailsEvicted(.libraryDeselected(uuid: account.uuid)), for: account.uuid)
+
+        loader.driveCurrentAccountAuthDocAfterReconnect()
+
+        XCTAssertTrue(spy.called, "a stale eviction marker for the current account redrives on reconnect")
+    }
+
+    /// With no current account a reconnect does nothing.
+    func testDriveAfterReconnect_withNoCurrentAccount_doesNotFetch() {
+        let spy = ProviderSpy()
+        let loader = AuthDocumentLoader(
+            accountStateStore: AccountStateStore(),
+            currentAccountProvider: { nil },
+            signedInStateProvider: { spy.called = true; return nil },
+            isTornDown: { false }
+        )
+
+        loader.driveCurrentAccountAuthDocAfterReconnect()
+
+        XCTAssertFalse(spy.called)
+    }
+
     // MARK: - Helpers
 
     /// Loader with an isolated store, a spy `signedInStateProvider`, and a fixed current

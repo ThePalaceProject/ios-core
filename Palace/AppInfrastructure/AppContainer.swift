@@ -628,7 +628,9 @@ struct AppContainer: @unchecked Sendable {
         _cachedLock.withLock { $0 = _buildCachedAppContainer() }
     }
 
-    private static func _buildCachedAppContainer() -> AppContainer {
+    /// Internal so a test can build a graph through the production wiring
+    /// without replacing the cached one.
+    static func _buildCachedAppContainer() -> AppContainer {
         let executor = makeNetworkExecutor()
         let reachability = Reachability()
         // Every collaborator is constructed inline and passed explicitly: a
@@ -645,6 +647,9 @@ struct AppContainer: @unchecked Sendable {
             borrowReauthResetter: DownloadCenterBorrowReauthResetter(),
             switchDependencies: .production
         )
+        // A launch made offline leaves the current account unloaded; load it
+        // when the network comes back (PP-5492).
+        accountsManager.reloadCurrentAccountWhenConnected(reachability.connectivityPublisher)
         // Built before TPPBookRegistry, which takes ImageLoading as a required
         // init parameter (a default-arg resolution here would re-enter the lock).
         let imageCache = ImageCache.shared
@@ -734,6 +739,8 @@ struct AppContainer: @unchecked Sendable {
             opdsFeedService: OPDSFeedService(),
             readerService: ReaderService(
               isConnected: { reachability.isConnectedToNetwork() },
+              downloadCenter: { downloadCenter },
+              bookRegistry: { bookRegistry },
               imageCache: { imageCache }
             ),
             navigationCoordinatorHub: navigationCoordinatorHub,
