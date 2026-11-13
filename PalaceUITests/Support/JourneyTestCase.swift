@@ -74,31 +74,36 @@ class JourneyTestCase: XCTestCase {
     /// simulator is much slower than later ones: about 60 s before the
     /// automation session starts, then about 40 s with a busy main thread while
     /// the registry swaps in. A journey that pays that cost can fail its waits.
-    /// Nothing here asserts; a slow or failed warm-up leaves the journey's own
-    /// waits to report the problem.
+    /// A query that times out on the busy app is recorded as a test failure
+    /// even without an assertion, so the warm-up runs as a non-strict expected
+    /// failure; the journey's own waits report a real problem.
     private static func warmUpOnce(fixtures: String) {
         guard !didWarmUp else { return }
         didWarmUp = true
-        let warmUpTimeout: TimeInterval = 180
-        let app = XCUIApplication()
-        app.launchEnvironment["PALACE_MOCK_BACKEND_SCENARIO"] = FixtureLibrary.scenario
-        app.launchEnvironment["PALACE_MOCK_BACKEND_FIXTURES"] = fixtures
-        app.launchEnvironment["PALACE_MOCK_BACKEND_RESET"] = "1"
-        app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
-        app.launch()
-        let settingsTab = app.tabBars.buttons[AccessibilityID.TabBar.settingsTab]
-        if settingsTab.waitForExistence(timeout: warmUpTimeout), settingsTab.isHittable {
-            settingsTab.tap()
-            let libraries = app.descendants(matching: .any)[AccessibilityID.Settings.manageLibrariesButton]
-            if libraries.waitForExistence(timeout: warmUpTimeout), libraries.isHittable {
-                libraries.tap()
-                _ = app.descendants(matching: .any)
-                    .matching(identifier: "\(AccessibilityID.Libraries.row).\(FixtureLibrary.libraryID)")
-                    .firstMatch
-                    .waitForExistence(timeout: warmUpTimeout)
+        let options = XCTExpectedFailure.Options()
+        options.isStrict = false
+        XCTExpectFailure("warm-up launch on a cold simulator", options: options) {
+            let warmUpTimeout: TimeInterval = 180
+            let app = XCUIApplication()
+            app.launchEnvironment["PALACE_MOCK_BACKEND_SCENARIO"] = FixtureLibrary.scenario
+            app.launchEnvironment["PALACE_MOCK_BACKEND_FIXTURES"] = fixtures
+            app.launchEnvironment["PALACE_MOCK_BACKEND_RESET"] = "1"
+            app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+            app.launch()
+            let settingsTab = app.tabBars.buttons[AccessibilityID.TabBar.settingsTab]
+            if settingsTab.waitForExistence(timeout: warmUpTimeout), settingsTab.isHittable {
+                settingsTab.tap()
+                let libraries = app.descendants(matching: .any)[AccessibilityID.Settings.manageLibrariesButton]
+                if libraries.waitForExistence(timeout: warmUpTimeout), libraries.isHittable {
+                    libraries.tap()
+                    _ = app.descendants(matching: .any)
+                        .matching(identifier: "\(AccessibilityID.Libraries.row).\(FixtureLibrary.libraryID)")
+                        .firstMatch
+                        .waitForExistence(timeout: warmUpTimeout)
+                }
             }
+            app.terminate()
         }
-        app.terminate()
     }
 
     /// The fixtures are copied into this test bundle; the app reads them from
