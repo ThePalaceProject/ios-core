@@ -628,7 +628,9 @@ struct AppContainer: @unchecked Sendable {
         _cachedLock.withLock { $0 = _buildCachedAppContainer() }
     }
 
-    private static func _buildCachedAppContainer() -> AppContainer {
+    /// Internal so a test can build a graph through the production wiring
+    /// without replacing the cached one.
+    static func _buildCachedAppContainer() -> AppContainer {
         let executor = makeNetworkExecutor()
         let reachability = Reachability()
         // Every collaborator is constructed inline and passed explicitly: a

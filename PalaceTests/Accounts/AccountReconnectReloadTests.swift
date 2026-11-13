@@ -106,6 +106,69 @@ final class AccountReconnectReloadTests: PalaceWiringTestCase {
         XCTAssertEqual(getter.callCount, 3)
     }
 
+    /// Two reconnects while the retry fetch is still in flight start one fetch:
+    /// the second finds `.detailsLoading` and the single-flight guard dedupes it.
+    func testReconnect_TwiceWhileRetryInFlight_FetchesOnce() async throws {
+        launchOffline()
+        getter.holdsCompletion = true
+
+        connectivity.send(true)
+        connectivity.send(true)
+
+        XCTAssertEqual(getter.callCount, 2, "one launch fetch, one retry for two reconnect events")
+        getter.isOnline = true
+        getter.completeHeld()
+        _ = try await account.awaitReady(timeout: 2)
+    }
+
+    /// The first binding on a manager is accepted, so the composition root's
+    /// call takes effect.
+    func testBindOnce_OnUnboundManager_IsAccepted() {
+        let unbound = makeFreshAccountsManager(defaults: Self.testUserDefaults())
+
+        let bound = unbound.reloadCurrentAccountWhenConnected(PassthroughSubject<Bool, Never>().eraseToAnyPublisher())
+
+        XCTAssertTrue(bound)
+        XCTAssertTrue(unbound._hasReconnectSubscriptionForTesting)
+    }
+
+    /// A second binding keeps the first: events on the second publisher do not
+    /// fetch, and the first still drives the account.
+    func testBindTwice_KeepsFirstSubscription() {
+        let second = PassthroughSubject<Bool, Never>()
+
+        let rebound = manager.reloadCurrentAccountWhenConnected(second.eraseToAnyPublisher())
+
+        XCTAssertFalse(rebound, "a second binding is refused")
+        launchOffline()
+        getter.isOnline = true
+        second.send(true)
+        XCTAssertEqual(getter.callCount, 1, "the refused binding does not drive the account")
+        connectivity.send(true)
+        XCTAssertEqual(getter.callCount, 2, "the first binding still drives the account")
+    }
+
+    /// The test-boundary cancel also ends the reconnect subscription.
+    func testCancelBackgroundWork_EndsReconnectSubscription() {
+        XCTAssertTrue(manager._hasReconnectSubscriptionForTesting, "precondition: bound in setUp")
+
+        manager.cancelBackgroundWork()
+
+        XCTAssertFalse(manager._hasReconnectSubscriptionForTesting)
+    }
+
+    /// The composition root binds the manager's reconnect drive. Built through the
+    /// production builder rather than read from the cached graph.
+    func testProductionWiring_BindsAccountsManagerToReachability() {
+        let container = AppContainer._buildCachedAppContainer()
+        defer { container.accountsManager.cancelAndDrainBackgroundWork() }
+
+        XCTAssertTrue(container.accountsManager._hasReconnectSubscriptionForTesting,
+                      "the composition root binds the reconnect drive")
+        XCTAssertFalse(container.accountsManager.reloadCurrentAccountWhenConnected(Empty<Bool, Never>().eraseToAnyPublisher()),
+                       "the binding is already taken by the container's reachability")
+    }
+
     // MARK: - Helpers
 
     /// Runs the launch drive with no connection and checks it left `.detailsFailed`.
@@ -119,11 +182,21 @@ final class AccountReconnectReloadTests: PalaceWiringTestCase {
 }
 
 /// Completes synchronously: a not-connected error while offline, the auth
-/// document once online. Counts every request.
+/// document once online. With `holdsCompletion`, keeps the request in flight
+/// until `completeHeld()`. Counts every request.
 private final class SwitchableAuthDocGetter: AuthDocumentGetting, @unchecked Sendable {
     private let onlineData: Data
     var isOnline = false
+    var holdsCompletion = false
     private(set) var callCount = 0
+    private var held: [(NYPLResult<Data>) -> Void] = []
+
+    func completeHeld() {
+        let pending = held
+        held.removeAll()
+        holdsCompletion = false
+        pending.forEach { respond($0) }
+    }
 
     init(onlineData: Data) {
         self.onlineData = onlineData
@@ -131,6 +204,14 @@ private final class SwitchableAuthDocGetter: AuthDocumentGetting, @unchecked Sen
 
     func get(_ url: URL, completion: @escaping (NYPLResult<Data>) -> Void) {
         callCount += 1
+        if holdsCompletion {
+            held.append(completion)
+        } else {
+            respond(completion)
+        }
+    }
+
+    private func respond(_ completion: (NYPLResult<Data>) -> Void) {
         if isOnline {
             completion(.success(onlineData, nil))
         } else {
