@@ -31,7 +31,9 @@ enum MemoryReleaseStage: Int, CaseIterable, Comparable, Sendable {
 }
 
 /// `@unchecked Sendable`: `steps` and `nextIndex` are only touched under
-/// `lock`, which is never held while a step runs.
+/// `lock`, which is never held while a step runs. Weak owners are read under
+/// the lock, so an owner's last release can run its `deinit` there: an owner's
+/// `deinit` must not call `register` or `releaseAll`.
 final class MemoryReleaseCoordinator: @unchecked Sendable {
     static let shared = MemoryReleaseCoordinator()
 
@@ -62,9 +64,9 @@ final class MemoryReleaseCoordinator: @unchecked Sendable {
     }
 
     /// Adds a release step. `owner` is held weakly: once it is gone, its step
-    /// stops running. Steps run on the thread that posted the warning (main,
-    /// from UIKit) before `post` returns; a step that needs another queue
-    /// hops there itself.
+    /// stops running. Steps start on the thread that posted the warning (main,
+    /// from UIKit) before `post` returns, in stage order. A step that hops to
+    /// another queue only starts its work in that order.
     func register<Owner: AnyObject>(
         _ owner: Owner,
         stage: MemoryReleaseStage,
@@ -83,9 +85,20 @@ final class MemoryReleaseCoordinator: @unchecked Sendable {
         releaseAll()
     }
 
-    /// Adds the cover store's release step. `BookCoverStore` lives in a package
-    /// that cannot see this type, so the app registers it (PP-5583).
+    /// The stages `owner` registered, in registration order. Lets tests check
+    /// that each cache is wired to the warning.
+    func stages(registeredFor owner: AnyObject) -> [MemoryReleaseStage] {
+        lock.withLock {
+            steps.filter { $0.owner === owner }.map(\.stage)
+        }
+    }
+
+    /// Adds the cover store's release step once. `BookCoverStore` lives in a
+    /// package that cannot see this type, so the app registers it (PP-5583).
+    /// Every container registers its store; a store already registered is
+    /// skipped, so a shared store gets one step.
     func registerBookCovers(_ store: BookCoverStore) {
+        guard !stages(registeredFor: store).contains(.decodedImages) else { return }
         register(store, stage: .decodedImages) { store in
             store.releaseImages()
         }
