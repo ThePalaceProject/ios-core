@@ -719,7 +719,7 @@ final class SignInCredentialSideEffectCharacterizationTests: SignInFlowFixture {
     // `dispatch(.userAccountUpdated)`.
     func test_updateUserAccount_clearsInFlightTokenMirror() {
         businessLogic.selectedAuthentication = libraryMock.oauthAuthentication
-        businessLogic.dispatch(.bearerTokenReceived(token: "in-flight", expiration: Date()))
+        businessLogic.reduceAuthStateForTesting(.bearerTokenReceived(token: "in-flight", expiration: Date()))
         XCTAssertEqual(businessLogic.authToken, "in-flight", "precondition: mirror is populated")
 
         businessLogic.updateUserAccount(forDRMAuthorization: true,

@@ -207,7 +207,7 @@ final class SignInRequestServiceCharacterizationTests: XCTestCase {
     // A6 — makeRequest header contract: OAuth attaches "Bearer <in-flight token>".
     func test_makeRequest_signIn_oauth_attachesInFlightBearer() {
         businessLogic.selectedAuthentication = libraryMock.oauthAuthentication
-        businessLogic.dispatch(.bearerTokenReceived(token: "oauth-flight", expiration: nil))
+        businessLogic.reduceAuthStateForTesting(.bearerTokenReceived(token: "oauth-flight", expiration: nil))
         let req = businessLogic.makeRequest(for: .signIn, context: "oauth")
         XCTAssertEqual(req?.value(forHTTPHeaderField: "Authorization"), "Bearer oauth-flight")
     }
@@ -215,7 +215,7 @@ final class SignInRequestServiceCharacterizationTests: XCTestCase {
     // A7 — makeRequest header contract: SAML attaches a Bearer token.
     func test_makeRequest_signIn_saml_attachesInFlightBearer() {
         businessLogic.selectedAuthentication = libraryMock.samlAuthentication
-        businessLogic.dispatch(.bearerTokenReceived(token: "saml-flight", expiration: nil))
+        businessLogic.reduceAuthStateForTesting(.bearerTokenReceived(token: "saml-flight", expiration: nil))
         let req = businessLogic.makeRequest(for: .signIn, context: "saml")
         XCTAssertEqual(req?.value(forHTTPHeaderField: "Authorization"), "Bearer saml-flight")
     }
@@ -223,7 +223,7 @@ final class SignInRequestServiceCharacterizationTests: XCTestCase {
     // A8 — makeRequest header contract: OIDC attaches a Bearer token.
     func test_makeRequest_signIn_oidc_attachesInFlightBearer() {
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
-        businessLogic.dispatch(.bearerTokenReceived(token: "oidc-flight", expiration: nil))
+        businessLogic.reduceAuthStateForTesting(.bearerTokenReceived(token: "oidc-flight", expiration: nil))
         let req = businessLogic.makeRequest(for: .signIn, context: "oidc")
         XCTAssertEqual(req?.value(forHTTPHeaderField: "Authorization"), "Bearer oidc-flight")
     }
@@ -265,7 +265,7 @@ final class SignInRequestServiceCharacterizationTests: XCTestCase {
     // header on sign-in.
     func test_makeRequest_signOut_oauth_attachesBearer() {
         businessLogic.selectedAuthentication = libraryMock.oauthAuthentication
-        businessLogic.dispatch(.bearerTokenReceived(token: "signout-tok", expiration: nil))
+        businessLogic.reduceAuthStateForTesting(.bearerTokenReceived(token: "signout-tok", expiration: nil))
 
         let req = businessLogic.makeRequest(for: .signOut, context: "oauth-signout")
 
