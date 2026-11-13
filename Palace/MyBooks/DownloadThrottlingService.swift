@@ -5,7 +5,7 @@
 //  The active-download concurrency cap, suspend/resume, and the observer that
 //  re-applies the cap when the app becomes active. Audiobook tasks are never
 //  suspended, because the patron may be streaming. MyBooksDownloadCenter's
-//  `limitActiveDownloads(max:)` / `pauseAllDownloads()` /
+//  `limitActiveDownloads(max:)` / `pauseDownloadsForMemoryWarning()` /
 //  `resumeIntelligentDownloads()` delegate here.
 //
 
@@ -169,14 +169,7 @@ final class DownloadThrottlingService: @unchecked Sendable {
 
     /// Suspends every non-audiobook download task. Audiobook tasks survive
     /// because the user may be streaming — a suspend would tear the
-    /// connection mid-stream.
-    func pauseAllDownloads() {
-        Task { [weak self] in
-            await self?.pauseAllDownloadsAsync()
-        }
-    }
-
-    /// Async body of `pauseAllDownloads`. `internal` (not `private`) so
+    /// connection mid-stream. `internal` (not `private`) so
     /// callers already inside an `async` context — and tests — can `await` the
     /// suspend fan-out to completion deterministically instead of polling.
     /// Behavior is unchanged; only the access level widened.
