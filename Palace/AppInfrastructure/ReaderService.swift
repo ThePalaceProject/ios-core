@@ -40,6 +40,11 @@ final class ReaderService {
     ///   - presentAlert: shows a title and message to the patron.
     ///   - redownloadAndReopen: replaces the delete, re-download and reopen
     ///     step; nil runs the real one.
+    ///   - downloadCenter: deletes the local copy and downloads it again.
+    ///   - bookRegistry: resets the book's state and reports when the
+    ///     re-download ends.
+    ///   - reopenAfterRedownload: replaces the reopen once the re-download
+    ///     succeeds; nil opens the book in the given reader.
     ///   - imageCache: the cover cache released before an LCP PDF open.
     nonisolated init(
         rootViewController: @escaping @MainActor () -> UIViewController? = {
@@ -51,12 +56,22 @@ final class ReaderService {
             TPPAlertUtils.presentFromViewControllerOrNil(alertController: alert, viewController: nil, animated: true, completion: nil)
         },
         redownloadAndReopen: (@MainActor (TPPBook, LibraryServiceError) -> Void)? = nil,
+        downloadCenter: @escaping @MainActor () -> MyBooksDownloadCenterProviding = {
+            AppContainer.production().downloadCenter
+        },
+        bookRegistry: @escaping @MainActor () -> TPPBookRegistryProvider = {
+            AppContainer.production().bookRegistry
+        },
+        reopenAfterRedownload: (@MainActor (TPPBook, RedownloadReopen) -> Void)? = nil,
         imageCache: @escaping @MainActor () -> ImageCacheType
     ) {
         self.rootViewController = rootViewController
         self.isConnected = isConnected
         self.presentAlert = presentAlert
         self.redownloadAndReopenOverride = redownloadAndReopen
+        self.downloadCenter = downloadCenter
+        self.bookRegistry = bookRegistry
+        self.reopenAfterRedownloadOverride = reopenAfterRedownload
         self.imageCache = imageCache
     }
 
@@ -64,6 +79,9 @@ final class ReaderService {
     private let isConnected: @MainActor () -> Bool
     private let presentAlert: @MainActor (String, String?) -> Void
     private let redownloadAndReopenOverride: (@MainActor (TPPBook, LibraryServiceError) -> Void)?
+    private let downloadCenter: @MainActor () -> MyBooksDownloadCenterProviding
+    private let bookRegistry: @MainActor () -> TPPBookRegistryProvider
+    private let reopenAfterRedownloadOverride: (@MainActor (TPPBook, RedownloadReopen) -> Void)?
     private let imageCache: @MainActor () -> ImageCacheType
 
     private lazy var r3Owner: TPPR3Owner = TPPR3Owner()
@@ -197,7 +215,7 @@ final class ReaderService {
 
         switch Self.pdfOpenRoute(for: book) {
         case .lcp:
-            openLCPPDF(book, onFinish: onFinish)
+            openLCPPDF(book, isRetry: false, onFinish: onFinish)
         case .plain:
             openPlainPDF(book, onFinish: onFinish)
         }
@@ -267,7 +285,9 @@ final class ReaderService {
         imageCache().evictDecodedImages()
     }
 
-    private func openLCPPDF(_ book: TPPBook, onFinish: (() -> Void)? = nil) {
+    /// `isRetry` is true for the reopen after a re-download, so a second
+    /// failure shows the error instead of downloading again.
+    private func openLCPPDF(_ book: TPPBook, isRetry: Bool, onFinish: (() -> Void)? = nil) {
         guard let presenter = topPresenter() else { onFinish?(); return }
 
         // PP-5022 — resolve the destination stack BEFORE taking out any
@@ -420,7 +440,7 @@ final class ReaderService {
                     self.popRouteIfStillOwned(forBookIdentifier: book.identifier, on: coordinator)
                     self.openInFlightBookIds.remove(book.identifier)
                     self.openCoordinatorByBookId.removeValue(forKey: book.identifier)
-                    self.presentOpenFailureAlert(for: error, book: book, isRetry: false)
+                    self.presentOpenFailureAlert(for: error, book: book, isRetry: isRetry)
                     coordinator.clearLCPPDFExtractPending(forBookId: book.identifier)
                     LCPPDFOpenProgress.shared.finish()
                 }
@@ -774,8 +794,10 @@ final class ReaderService {
     /// download fails or takes longer than 120 seconds.
     @MainActor
     private func attemptRedownloadAndReopen(book: TPPBook, originalError: LibraryServiceError) {
-        AppContainer.production().downloadCenter.deleteLocalContent(for: book.identifier)
-        AppContainer.production().bookRegistry.setState(.downloadNeeded, for: book.identifier)
+        let downloadCenter = downloadCenter()
+        let bookRegistry = bookRegistry()
+        downloadCenter.deleteLocalContent(for: book.identifier, account: nil)
+        bookRegistry.setState(.downloadNeeded, for: book.identifier)
 
         let showFallback = { [weak self] in
             self?.cancelRedownload(for: book.identifier)
@@ -790,7 +812,7 @@ final class ReaderService {
             await MainActor.run { showFallback() }
         }
 
-        redownloadObservers[book.identifier] = AppContainer.production().bookRegistry.bookStatePublisher
+        redownloadObservers[book.identifier] = bookRegistry.bookStatePublisher
             .filter { identifier, _ in identifier == book.identifier }
             .sink { [weak self] _, state in
                 guard let self else { return }
@@ -803,7 +825,7 @@ final class ReaderService {
                 case .downloadSuccessful:
                     self.cancelRedownload(for: book.identifier)
                     Log.info(#file, "Re-download succeeded — retrying open for '\(book.title)'")
-                    self.openEPUBInternal(book, isRetry: true)
+                    self.reopenAfterRedownload(book)
                 case .downloadFailed:
                     Log.error(#file, "Re-download failed for '\(book.title)' — showing Content Protection Error")
                     showFallback()
@@ -813,7 +835,35 @@ final class ReaderService {
                 }
             }
 
-        AppContainer.production().downloadCenter.startDownload(for: book, withRequest: nil)
+        downloadCenter.startDownload(for: book, withRequest: nil)
+    }
+
+    /// The reader a re-downloaded book reopens in.
+    enum RedownloadReopen: Equatable {
+        case epub
+        case pdf
+    }
+
+    /// Only the EPUB open and the LCP PDF open start the re-download, so a
+    /// PDF reopens through the LCP PDF open and everything else through the
+    /// EPUB open (PP-5494).
+    nonisolated static func redownloadReopen(for book: TPPBook) -> RedownloadReopen {
+        book.defaultBookContentType == .pdf ? .pdf : .epub
+    }
+
+    @MainActor
+    private func reopenAfterRedownload(_ book: TPPBook) {
+        let reader = Self.redownloadReopen(for: book)
+        if let reopenAfterRedownloadOverride {
+            reopenAfterRedownloadOverride(book, reader)
+            return
+        }
+        switch reader {
+        case .epub:
+            openEPUBInternal(book, isRetry: true)
+        case .pdf:
+            openLCPPDF(book, isRetry: true)
+        }
     }
 
     @MainActor

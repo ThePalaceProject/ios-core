@@ -6,6 +6,9 @@
 //
 
 import XCTest
+import Combine
+import PalaceBookModel
+import PalaceCatalog
 @testable import Palace
 #if LCP
 import ReadiumLCP
@@ -18,6 +21,37 @@ private final class OpenFailureSpy {
     var connected = true
     var alerts: [(title: String, message: String?)] = []
     var redownloads: [String] = []
+}
+
+/// Records the delete and download the re-download recovery asks for. Every
+/// other member fails the test, since the recovery must not reach it.
+private final class RedownloadDownloadCenterSpy: MyBooksDownloadCenterProviding {
+    var deleted: [String] = []
+    var started: [String] = []
+
+    var downloadProgressPublisher = PassthroughSubject<(String, Double), Never>()
+    var downloadErrorPublisher = PassthroughSubject<DownloadErrorInfo, Never>()
+
+    func startBorrow(for book: TPPBook, attemptDownload: Bool, borrowCompletion: (() -> Void)?) {
+        XCTFail("The re-download must not borrow")
+    }
+    func startDownload(for book: TPPBook, withRequest initedRequest: URLRequest?) {
+        started.append(book.identifier)
+    }
+    func cancelDownload(for identifier: String) {
+        XCTFail("The re-download must not cancel a download")
+    }
+    func deleteLocalContent(for identifier: String, account: String?) {
+        deleted.append(identifier)
+    }
+    func returnBook(withIdentifier identifier: String, completion: (@Sendable () -> Void)?) {
+        XCTFail("The re-download must not return the book")
+    }
+    func downloadInfo(forBookIdentifier bookIdentifier: String) -> MyBooksDownloadInfo? { nil }
+    func downloadInfoAsync(forBookIdentifier bookIdentifier: String) async -> MyBooksDownloadInfo? { nil }
+    func fileUrl(for identifier: String) -> URL? { nil }
+    func fileUrl(for identifier: String, account: String?) -> URL? { nil }
+    func reset() {}
 }
 
 /// PP-5431 — what a failed book open does next. The first failure deletes the
@@ -133,4 +167,165 @@ final class ReaderServiceOpenFailureRecoveryTests: XCTestCase {
         XCTAssertEqual(spy.alerts.map(\.title), ["Content Protection Error"])
     }
     #endif
+}
+
+/// PP-5494 — after the delete and re-download, the book reopens in the reader
+/// it failed in. An LCP PDF reopened through the EPUB path does not open.
+@MainActor
+final class ReaderServiceRedownloadReopenTests: XCTestCase {
+
+    private var spy: OpenFailureSpy!
+    private var downloadCenter: RedownloadDownloadCenterSpy!
+    private var registry: TPPBookRegistryMock!
+    private var reopened: [(id: String, reader: ReaderService.RedownloadReopen)] = []
+    private var service: ReaderService!
+    private let openError = LibraryServiceError.openFailed(
+        NSError(domain: "Readium LCP open error", code: 1)
+    )
+
+    override func setUp() {
+        super.setUp()
+        let spy = OpenFailureSpy()
+        let downloadCenter = RedownloadDownloadCenterSpy()
+        let registry = TPPBookRegistryMock()
+        self.spy = spy
+        self.downloadCenter = downloadCenter
+        self.registry = registry
+        reopened = []
+        service = ReaderService(
+            rootViewController: { nil },
+            isConnected: { true },
+            presentAlert: { title, message in spy.alerts.append((title, message)) },
+            downloadCenter: { downloadCenter },
+            bookRegistry: { registry },
+            reopenAfterRedownload: { [weak self] book, reader in
+                self?.reopened.append((book.identifier, reader))
+            },
+            imageCache: { MockImageCache() }
+        )
+    }
+
+    override func tearDown() {
+        service = nil
+        registry = nil
+        downloadCenter = nil
+        spy = nil
+        reopened = []
+        super.tearDown()
+    }
+
+    /// An LCP-license-wrapped PDF, the shape that reaches the LCP PDF open.
+    private func makeLCPPDF() -> TPPBook {
+        let pdf = TPPOPDSIndirectAcquisition(type: "application/pdf", indirectAcquisitions: [])
+        let license = TPPOPDSAcquisition(
+            relation: .generic,
+            type: "application/vnd.readium.lcp.license.v1.0+json",
+            hrefURL: URL(string: "https://library.test/book.lcpl")!,
+            indirectAcquisitions: [pdf],
+            availability: TPPOPDSAcquisitionAvailabilityUnlimited()
+        )
+        return TPPBook(
+            acquisitions: [license],
+            authors: [],
+            categoryStrings: [],
+            distributor: "Test",
+            identifier: "lcp-pdf-redownload",
+            imageURL: nil,
+            imageThumbnailURL: nil,
+            published: Date(),
+            publisher: "Test",
+            subtitle: nil,
+            summary: nil,
+            title: "LCP PDF",
+            updated: Date(),
+            annotationsURL: nil,
+            analyticsURL: nil,
+            alternateURL: nil,
+            relatedWorksURL: nil,
+            previewLink: nil,
+            seriesURL: nil,
+            revokeURL: nil,
+            reportURL: nil,
+            timeTrackingURL: nil,
+            contributors: [:],
+            bookDuration: nil,
+            imageCache: MockImageCache()
+        )
+    }
+
+    /// The first LCP PDF open fails, the copy is deleted and downloaded again,
+    /// and the finished download reopens it in the PDF reader.
+    func testRedownloadOfLCPPDF_WhenDownloadSucceeds_ReopensInPDFReader() {
+        let book = makeLCPPDF()
+        XCTAssertEqual(book.defaultBookContentType, .pdf, "Pre-condition: the fixture is a PDF")
+
+        service.presentOpenFailureAlert(for: openError, book: book, isRetry: false)
+        XCTAssertEqual(downloadCenter.deleted, [book.identifier])
+        XCTAssertEqual(downloadCenter.started, [book.identifier])
+
+        registry.setState(.downloadSuccessful, for: book.identifier)
+
+        XCTAssertEqual(reopened.map(\.id), [book.identifier])
+        XCTAssertEqual(reopened.map(\.reader), [.pdf])
+        XCTAssertTrue(spy.alerts.isEmpty)
+    }
+
+    /// An EPUB keeps reopening in the EPUB reader after its re-download.
+    func testRedownloadOfEPUB_WhenDownloadSucceeds_ReopensInEPUBReader() {
+        let book = TPPBookMocker.snapshotEPUB()
+
+        service.presentOpenFailureAlert(for: openError, book: book, isRetry: false)
+        registry.setState(.downloadSuccessful, for: book.identifier)
+
+        XCTAssertEqual(reopened.map(\.id), [book.identifier])
+        XCTAssertEqual(reopened.map(\.reader), [.epub])
+    }
+
+    /// The re-download resets the book to download-needed, so the registry
+    /// does not show an opened copy that was just deleted.
+    func testRedownload_ResetsBookToDownloadNeeded() {
+        let book = makeLCPPDF()
+        var states: [TPPBookState] = []
+        let observation = registry.bookStatePublisher
+            .filter { $0.0 == book.identifier }
+            .sink { states.append($0.1) }
+
+        service.presentOpenFailureAlert(for: openError, book: book, isRetry: false)
+
+        XCTAssertEqual(states, [.downloadNeeded])
+        observation.cancel()
+    }
+
+    /// A failed re-download shows the Content Protection Error and does not
+    /// reopen the book.
+    func testRedownloadOfLCPPDF_WhenDownloadFails_ShowsContentProtectionErrorWithoutReopen() {
+        let book = makeLCPPDF()
+
+        service.presentOpenFailureAlert(for: openError, book: book, isRetry: false)
+        registry.setState(.downloadFailed, for: book.identifier)
+
+        XCTAssertTrue(reopened.isEmpty)
+        XCTAssertEqual(spy.alerts.map(\.title), ["Content Protection Error"])
+    }
+
+    /// Another book's finished download does not reopen this one, and a later
+    /// state change for this book does not reopen it a second time.
+    func testRedownload_ReopensOnceAndOnlyForItsOwnBook() {
+        let book = makeLCPPDF()
+
+        service.presentOpenFailureAlert(for: openError, book: book, isRetry: false)
+        registry.setState(.downloadSuccessful, for: "some-other-book")
+        XCTAssertTrue(reopened.isEmpty, "Another book's download must not reopen this one")
+
+        registry.setState(.downloadSuccessful, for: book.identifier)
+        registry.setState(.downloadSuccessful, for: book.identifier)
+
+        XCTAssertEqual(reopened.map(\.id), [book.identifier])
+    }
+
+    /// The reader choice for the two content types that reach the recovery.
+    func testRedownloadReopen_PDFReopensInPDFReaderAndEPUBInEPUBReader() {
+        XCTAssertEqual(ReaderService.redownloadReopen(for: makeLCPPDF()), .pdf)
+        XCTAssertEqual(ReaderService.redownloadReopen(for: TPPBookMocker.snapshotEPUB()), .epub)
+    }
 }
