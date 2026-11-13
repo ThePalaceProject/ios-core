@@ -80,6 +80,14 @@ public protocol TPPBookRegistryProvider: Sendable {
     /// that `setLocation` has just persisted (PP-5500). No default: a conformer
     /// that forwarded to `setLocation` would hide a second save from callers.
     func setLocationDeferringSave(_ location: TPPBookLocation?, forIdentifier identifier: String)
+    /// `setLocation(_:forIdentifier:)` for a book of the library `account`
+    /// names; nil means the selected library. An audiobook keeps playing after
+    /// the patron selects another library, and its position is kept in its own
+    /// library's registry file (PP-5578).
+    func setLocation(_ location: TPPBookLocation?, forIdentifier identifier: String, account: String?)
+    /// `setLocationDeferringSave(_:forIdentifier:)` for a book of `account`.
+    /// Does nothing when that library's shelf is not the one in memory.
+    func setLocationDeferringSave(_ location: TPPBookLocation?, forIdentifier identifier: String, account: String?)
     func location(forIdentifier identifier: String) -> TPPBookLocation?
     func add(_ bookmark: TPPReadiumBookmark, forIdentifier identifier: String)
     func delete(_ bookmark: TPPReadiumBookmark, forIdentifier identifier: String)
@@ -150,6 +158,16 @@ public extension TPPBookRegistryProvider {
     }
 
     func flushPendingPositions() {}
+
+    /// Registries without per-library files hold one shelf, so the library
+    /// changes nothing.
+    func setLocation(_ location: TPPBookLocation?, forIdentifier identifier: String, account: String?) {
+        setLocation(location, forIdentifier: identifier)
+    }
+
+    func setLocationDeferringSave(_ location: TPPBookLocation?, forIdentifier identifier: String, account: String?) {
+        setLocationDeferringSave(location, forIdentifier: identifier)
+    }
 }
 
 // TPPBookRegistryData and TPPBookRegistryKey defined in TPPBookRegistryRecord.swift
@@ -993,6 +1011,56 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
     public func setLocationSync(_ location: TPPBookLocation?, forIdentifier bookIdentifier: String) {
         bookmarks.setLocationSync(location, forIdentifier: bookIdentifier,
                                    account: accountScope.currentAccountID)
+    }
+
+    // PUBLIC_INTENT: witness for the public TPPBookRegistryProvider requirement the audiobook session calls.
+    public func setLocation(_ location: TPPBookLocation?, forIdentifier bookIdentifier: String, account: String?) {
+        switch positionShelf(for: account) {
+        case .inMemory(let shelfAccount):
+            bookmarks.setLocation(location, forIdentifier: bookIdentifier, account: shelfAccount, persistence: .immediate)
+        case .otherLibrary(let library):
+            syncEngine.writeLocation(location, forIdentifier: bookIdentifier, inRegistryOf: library)
+        }
+    }
+
+    // PUBLIC_INTENT: called by the audiobook session's termination save in the app target.
+    public func setLocationSync(_ location: TPPBookLocation?, forIdentifier bookIdentifier: String, account: String?) {
+        switch positionShelf(for: account) {
+        case .inMemory(let shelfAccount):
+            bookmarks.setLocationSync(location, forIdentifier: bookIdentifier, account: shelfAccount)
+        case .otherLibrary(let library):
+            syncEngine.writeLocation(location, forIdentifier: bookIdentifier, inRegistryOf: library)
+        }
+    }
+
+    // PUBLIC_INTENT: witness for the public TPPBookRegistryProvider requirement, which the app target calls across the package boundary.
+    public func setLocationDeferringSave(_ location: TPPBookLocation?, forIdentifier bookIdentifier: String, account: String?) {
+        // The refinement only adds the server annotation id, and the next
+        // position save replaces the location, so another library's file is
+        // not read and rewritten for it.
+        guard case .inMemory = positionShelf(for: account) else { return }
+        bookmarks.setLocationDeferringSave(location, forIdentifier: bookIdentifier)
+    }
+
+    private enum PositionShelf {
+        /// The store's shelf takes the change; saves go to this library's file.
+        case inMemory(String?)
+        /// That library's shelf is not in memory; only its file can take the change.
+        case otherLibrary(String)
+    }
+
+    /// Where a position of a book of `account` is written. The store holds
+    /// `loadedAccountID`'s shelf, which can differ from the selected library
+    /// until the switch has been handled. Callers are on the main thread, where
+    /// the switch is handled, so the answer holds until the change is queued.
+    private func positionShelf(for account: String?) -> PositionShelf {
+        guard let account else { return .inMemory(accountScope.currentAccountID) }
+        let loaded = loadedAccountID
+        if account == loaded { return .inMemory(account) }
+        // While the selected library's load is pending, a store change queued
+        // now runs after that load.
+        if loaded == nil, account == accountScope.currentAccountID { return .inMemory(account) }
+        return .otherLibrary(account)
     }
 
     public func location(forIdentifier bookIdentifier: String) -> TPPBookLocation? {

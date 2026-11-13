@@ -117,6 +117,33 @@ final class RegistryWriteRecorder: @unchecked Sendable {
     }
 }
 
+/// `NoContentDownloadService` that stops the next load in the middle of
+/// reading its records, after the registry file has been read, until released.
+final class LoadHoldingDownloadService: RegistryDownloadServicing, @unchecked Sendable {
+    private let lock = NSLock()
+    private var armed = true
+    let reached = DispatchSemaphore(value: 0)
+    let release = DispatchSemaphore(value: 0)
+
+    func contentPresence(for book: TPPBook, account: String) -> RegistryContentPresence {
+        let hold: Bool = lock.withLock { defer { armed = false }; return armed }
+        if hold {
+            reached.signal()
+            // The bound keeps a broken test from hanging the suite.
+            _ = release.wait(timeout: .now() + 20)
+        }
+        return .absent
+    }
+
+    func fileUrl(for book: TPPBook, account: String?) -> URL? { nil }
+    func startDownload(for book: TPPBook) {}
+    func deleteLocalContent(forBook book: TPPBook, account: String?) {}
+    func redownloadLCPContentFile(for book: TPPBook) {}
+    func contentFileSatisfied(for book: TPPBook, account: String) -> Bool { false }
+    func lcpContentFileMissing(for book: TPPBook, account: String) -> Bool { false }
+    func isDownloadInFlight(for book: TPPBook) -> Bool { false }
+}
+
 /// Nothing on disk and nothing in flight, so `.holding` records load unchanged.
 final class NoContentDownloadService: RegistryDownloadServicing, @unchecked Sendable {
     func fileUrl(for book: TPPBook, account: String?) -> URL? { nil }
@@ -143,8 +170,10 @@ struct PositionRegistryFixture: @unchecked Sendable {
     let scope: PositionTestAccountScope
     let registry: TPPBookRegistry
 
-    init(account: String) {
-        let root = FileManager.default.temporaryDirectory
+    /// Pass the `root` of another fixture to model a relaunch over its files.
+    init(account: String, root existingRoot: URL? = nil,
+         downloadService: any RegistryDownloadServicing = NoContentDownloadService()) {
+        let root = existingRoot ?? FileManager.default.temporaryDirectory
             .appendingPathComponent("RegistryPosition-\(UUID().uuidString)", isDirectory: true)
         let clock = self.clock
         let recorder = self.recorder
@@ -154,7 +183,7 @@ struct PositionRegistryFixture: @unchecked Sendable {
             accountScope: scope,
             imageLoader: MockImageLoader(),
             dependencies: RegistryExternalDependencies(
-                downloadService: { NoContentDownloadService() },
+                downloadService: { downloadService },
                 loansFeedFetcher: { UnreachableLoansFeed() },
                 sideloadedIdentifiers: { [] },
                 registryDirectory: { root.appendingPathComponent($0, isDirectory: true) },

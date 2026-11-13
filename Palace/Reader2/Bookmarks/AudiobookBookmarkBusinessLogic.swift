@@ -21,6 +21,9 @@ import PalaceUtilities
 @objc public class AudiobookBookmarkBusinessLogic: NSObject, @unchecked Sendable {
     public let book: TPPBook
     private let registry: TPPBookRegistryProvider
+    /// The library the book was opened from; nil means the selected library at
+    /// each write. Local position writes go to its shelf (PP-5578).
+    private let accountId: String?
     private let annotationsManager: AnnotationsManager
     private let positionWriter: PositionWriter
     private let queue = DispatchQueue(label: "com.palace.audiobookBookmarkBusinessLogic")
@@ -70,8 +73,8 @@ import PalaceUtilities
     }
 
     /// The book opens from the selected library. Pinning that library here
-    /// keeps its annotations there after the patron selects another library
-    /// while it plays (PP-5552).
+    /// keeps its annotations (PP-5552) and its local position (PP-5578) there
+    /// after the patron selects another library while it plays.
     convenience init(
         book: TPPBook,
         positionTrace: AudiobookPositionTraceRecorder?,
@@ -79,13 +82,15 @@ import PalaceUtilities
         accountsManager: TPPLibraryAccountsProvider,
         debounceInterval: TimeInterval? = 1.0
     ) {
+        let accountId = accountsManager.currentAccountId
         self.init(
             book: book,
             registry: registry,
-            annotationsManager: TPPAnnotationsWrapper(accountId: accountsManager.currentAccountId),
+            annotationsManager: TPPAnnotationsWrapper(accountId: accountId),
             positionWriter: nil,
             positionTrace: positionTrace,
-            debounceInterval: debounceInterval
+            debounceInterval: debounceInterval,
+            accountId: accountId
         )
     }
 
@@ -95,8 +100,10 @@ import PalaceUtilities
         annotationsManager: AnnotationsManager,
         positionWriter: PositionWriter? = nil,
         positionTrace: AudiobookPositionTraceRecorder? = nil,
-        debounceInterval: TimeInterval? = 1.0
+        debounceInterval: TimeInterval? = 1.0,
+        accountId: String? = nil
     ) {
+        self.accountId = accountId
         self.debounceInterval = debounceInterval
         self.positionTrace = positionTrace
         self.book = book
@@ -163,7 +170,7 @@ import PalaceUtilities
             completion?(nil)
             return
         }
-        registry.setLocation(tppLocation, forIdentifier: self.book.identifier)
+        registry.setLocation(tppLocation, forIdentifier: self.book.identifier, account: accountId)
         Log.debug(#file, "💾 Immediately saved position locally: track=\(position.track.key), time=\(position.timestamp)")
         // PP-4963: the LOCAL write is what decides whether the patron keeps
         // their place, so the trace is notified here rather than after the
@@ -257,7 +264,7 @@ import PalaceUtilities
                 // with the next save.
                 audioBookmark.annotationId = serverID
 
-                self.registry.setLocationDeferringSave(audioBookmark.toTPPBookLocation(), forIdentifier: self.book.identifier)
+                self.registry.setLocationDeferringSave(audioBookmark.toTPPBookLocation(), forIdentifier: self.book.identifier, account: self.accountId)
                 Log.debug(#file, "☁️ Synced position to server: track=\(sentTrackKey), annotationId=\(audioBookmark.annotationId)")
                 await complete(serverID)
             } catch {
@@ -805,10 +812,10 @@ import PalaceUtilities
         guard let tppLocation = audioBookmark.toTPPBookLocation() else { return }
 
         if let registryWithSync = registry as? TPPBookRegistry {
-            registryWithSync.setLocationSync(tppLocation, forIdentifier: self.book.identifier)
+            registryWithSync.setLocationSync(tppLocation, forIdentifier: self.book.identifier, account: accountId)
             Log.debug(#file, "🔒 SYNC: Saved position for termination: track=\(position.track.key), time=\(position.timestamp)")
         } else {
-            registry.setLocation(tppLocation, forIdentifier: self.book.identifier)
+            registry.setLocation(tppLocation, forIdentifier: self.book.identifier, account: accountId)
             Log.warn(#file, "⚠️ Registry doesn't support sync save, using async fallback")
         }
         // PP-4963: the termination path is a save like any other, and leaving

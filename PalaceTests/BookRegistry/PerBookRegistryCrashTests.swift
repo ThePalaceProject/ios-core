@@ -294,6 +294,33 @@ final class PerBookRegistryCrashTests: PerBookRegistryTestCase {
         XCTAssertEqual(try singleFileLocation(of: "\(second)-a", account: second), "second-a-2", "the switch flushed the second library")
     }
 
+    /// PP-5578: with per-book files in use, a position written to a library
+    /// after the patron switched away from it is the one that library loads,
+    /// and its other books keep their positions.
+    func testPositionWrittenAfterSwitchingAway_IsTheOneTheLibraryLoads() async throws {
+        let second = "second-\(UUID().uuidString)"
+        try await seedMigratedShelf()
+        try await seedMigratedShelf(account: second)
+        let scope = PositionTestAccountScope(account)
+        let registry = await launch(scope: scope)
+        registry.setLocation(location("a-2"), forIdentifier: "a", account: account)
+        await settle(registry)
+        scope.switchTo(second)
+        try await waitUntilLoaded(registry, second)
+
+        registry.setLocation(location("a-3"), forIdentifier: "a", account: account)
+        await settle(registry)
+        scope.switchTo(account)
+        try await waitUntilLoaded(registry, account)
+        await settle(registry)
+
+        XCTAssertEqual(shelf(registry)["a"]?.location, "a-3")
+        XCTAssertEqual(shelf(registry)["b"]?.location, "b-1")
+        let relaunched = await launch(scope: PositionTestAccountScope(account))
+        XCTAssertEqual(shelf(relaunched)["a"]?.location, "a-3", "the next launch reads the same position")
+        XCTAssertEqual(shelf(relaunched)["b"]?.location, "b-1")
+    }
+
     // MARK: - Attempts
 
     /// A successful move resets the try count: four flag on/off cycles in one
