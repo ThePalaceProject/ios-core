@@ -290,14 +290,9 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         // local position has no server id yet), so this is the real shape of
         // the bytes on the server.
         //
-        // Omitting the key made this fixture diverge from production and hid a
-        // shipped bug: with the key absent, `AudioBookmark.create`'s
-        // `locatorData["annotationId"] as? String ?? annotationId` fell through
-        // to the real server id and the return-cleanup DELETE was issued, so
-        // the test passed. In production the empty string won, the parsed
-        // bookmark had no server linkage, and the listening position was never
-        // deleted — resurrecting on re-borrow (HelpSpot #18468 / #18019 /
-        // #18449). Keep this key here so the fixture can fail.
+        // Keep the key so the fixture matches the bytes the app uploads; parsing
+        // and return cleanup are tested against that shape (HelpSpot #18468 /
+        // #18019 / #18449, PP-5577).
         let dict: [String: Any] = [
             "@type": "LocatorAudioBookTime",
             "@version": 2,
@@ -1021,18 +1016,13 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         XCTAssertTrue(remaining.contains { $0.motivation == TPPBookmarkSpec.Motivation.readingProgress.rawValue },
                       "The audiobook LISTENING POSITION must be PRESERVED on return — matching 3.1.0/3.2.0 and the ebook/PDF path. Deleting a patron's place is a product decision that has not been made; see deleteAllBookmarks for the tag-level evidence that it was never a 3.2.0 regression.")
 
-        // PRE-EXISTING GAP (documented, deliberately NOT changed here): an
-        // AUDIOBOOK user `.bookmark` is also not deleted. Every annotation
-        // Palace writes embeds `"annotationId": ""`, so an `AudioBookmark`
-        // parses with no server linkage and `serverAnnotationId` returns nil.
-        // 3.1.0/3.2.0 dropped these too (their `as? [TPPReadiumBookmark]` array
-        // cast failed wholesale for audiobooks), so this is long-standing
-        // behavior — NOT introduced or altered by 3.2.3. Pinned here so the
-        // real shipped behavior is visible rather than implied; fixing it means
-        // deleting patron data that is currently kept, so it needs the same
-        // product decision as the listening position.
+        // An audiobook user `.bookmark` this app wrote is also kept. Its
+        // selector carries `"annotationId": ""`, so shipped builds parsed it
+        // without its server ID and did not delete it; since PP-5577 it parses
+        // with the ID and `serverAnnotationId` keeps it explicitly. Deleting it
+        // needs the same product decision as the position.
         XCTAssertTrue(remaining.contains { $0.motivation == TPPBookmarkSpec.Motivation.bookmark.rawValue },
-                      "Pins the PRE-EXISTING audiobook user-bookmark gap (empty embedded annotationId ⇒ no server linkage ⇒ no DELETE). Unchanged since 3.1.0.")
+                      "An audiobook user bookmark written by this app is kept on return.")
 
         XCTAssertEqual(backend.allAnnotations(forBook: otherBookID).count, 1,
                        "The unrelated OTHER book's bookmark must be untouched (deletion is scoped to the returned book)")
