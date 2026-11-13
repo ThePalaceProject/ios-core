@@ -213,6 +213,90 @@ final class BorrowReducerTests: XCTestCase {
         XCTAssertFalse(state.showHalfSheet)
     }
 
+    /// The VM copies the override back after writing `bookState`, so the
+    /// reducer must clear it when the return lands or the next borrow is dropped.
+    func testRegistryStateChanged_whenReturningOverrideArmed_unregisteredClearsTheOverride() {
+        var state = makeState(bookState: .returning, override: .returning, processing: [.returning])
+
+        _ = BorrowReducer.reduce(&state, .registryStateChanged(.unregistered))
+
+        XCTAssertNil(state.localBookStateOverride)
+    }
+
+    /// PP-5493: a re-borrow after the registry finished the return reaches the sheet.
+    func testRegistryStateChanged_reborrowAfterRegistryFinishedReturn_isApplied() {
+        var state = makeState(bookState: .returning, override: .returning, processing: [.returning])
+        _ = BorrowReducer.reduce(&state, .registryStateChanged(.unregistered))
+
+        _ = BorrowReducer.reduce(&state, .registryStateChanged(.downloadNeeded))
+
+        XCTAssertEqual(state.bookState, .downloadNeeded)
+    }
+
+    /// Every cell of the armed override × registry state row: only
+    /// `.unregistered` is applied, and it is the only one that disarms.
+    func testRegistryStateChanged_whenReturningOverrideArmed_everyRegistryState() {
+        let all: [TPPBookState] = [.unregistered, .downloadNeeded, .downloading, .downloadFailed,
+                                   .downloadSuccessful, .used, .holding, .returning,
+                                   .unsupported, .SAMLStarted]
+        for registryState in all {
+            var state = makeState(bookState: .returning, override: .returning)
+            _ = BorrowReducer.reduce(&state, .registryStateChanged(registryState))
+            if registryState == .unregistered {
+                XCTAssertEqual(state.bookState, .unregistered)
+                XCTAssertNil(state.localBookStateOverride)
+            } else {
+                XCTAssertEqual(state.bookState, .returning, "\(registryState.stringValue()) must be suppressed")
+                XCTAssertEqual(state.localBookStateOverride, .returning, "\(registryState.stringValue()) must not disarm")
+            }
+        }
+    }
+
+    // MARK: - Return finished
+
+    func testReturnFinished_whileReturnStillShowing_endsOnUnregistered() {
+        var state = makeState(bookState: .returning, override: .returning, processing: [.returning, .return])
+
+        _ = BorrowReducer.reduce(&state, .returnFinished)
+
+        XCTAssertEqual(state.bookState, .unregistered)
+        XCTAssertNil(state.localBookStateOverride)
+        XCTAssertEqual(state.processingButtons, [.return],
+                       "only the returning spinner belongs to this completion")
+    }
+
+    /// The override can be armed while `bookState` already reads `.unregistered`.
+    func testReturnFinished_withArmedOverrideOnUnregistered_disarmsIt() {
+        var state = makeState(bookState: .unregistered, override: .returning)
+
+        _ = BorrowReducer.reduce(&state, .returnFinished)
+
+        XCTAssertEqual(state.bookState, .unregistered)
+        XCTAssertNil(state.localBookStateOverride)
+    }
+
+    func testReturnFinished_withReturningStateButNoOverride_endsOnUnregistered() {
+        var state = makeState(bookState: .returning, override: nil)
+
+        _ = BorrowReducer.reduce(&state, .returnFinished)
+
+        XCTAssertEqual(state.bookState, .unregistered)
+    }
+
+    /// PP-5493: a completion held by the post-return sync arrives after a
+    /// re-borrow and must leave the loan in place.
+    func testReturnFinished_afterRegistryAlreadyShowsANewLoan_keepsTheLoan() {
+        for loanState in [TPPBookState.downloadNeeded, .downloading, .downloadSuccessful, .holding] {
+            var state = makeState(bookState: loanState, override: nil, processing: [.returning])
+
+            _ = BorrowReducer.reduce(&state, .returnFinished)
+
+            XCTAssertEqual(state.bookState, loanState)
+            XCTAssertNil(state.localBookStateOverride)
+            XCTAssertFalse(state.processingButtons.contains(.returning))
+        }
+    }
+
     // MARK: - Direct bookState assignment (legacy didSet semantics)
 
     func testBookStateAssigned_toReturning_armsTheOverride() {
@@ -418,11 +502,8 @@ final class BorrowReducerTests: XCTestCase {
         }
     }
 
-    /// A stale `.returning` override must NOT stop Cancel resolving. The flag
-    /// is not reliably cleared — `applyBorrowState` mirrors a stale value back
-    /// over the `didSet` that nils it — so gating on it left Cancel dead on the
-    /// `.downloading` sheet this case exists to rescue: PP-5407 reintroduced by
-    /// its own fix.
+    /// An armed `.returning` override must not stop Cancel resolving, and a
+    /// cancel that lands on `.unregistered` disarms it (PP-5407, PP-5493).
     func testCancelTapped_withAStaleReturningOverride_stillResolves() {
         var state = makeState(
             bookState: .downloading,
@@ -441,6 +522,8 @@ final class BorrowReducerTests: XCTestCase {
         XCTAssertFalse(state.showHalfSheet,
                        "nothing left to show, so the sheet must close rather than keep a dead button")
         XCTAssertEqual(state.downloadProgress, 0.0, accuracy: 0.0001)
+        XCTAssertNil(state.localBookStateOverride,
+                     "the VM copies this back, so a value left armed would drop the next borrow")
     }
 
     /// The return-side flags must not outlive a cancel that closes the sheet,
