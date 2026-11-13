@@ -55,6 +55,10 @@ enum Group: Int {
     /// the registry's current state, so recomputing it from `allBooks` later
     /// would hide a state-only change.
     private var publishedSignature: [String]?
+    /// Bumped whenever `books` is set from a newer source. `filterBooks` filters
+    /// a copy off the main actor and drops its result if this moved meanwhile,
+    /// so a reload or a later search is not overwritten by an older filter.
+    private var booksGeneration = 0
 
     /// Decides whether `loadData()` may show the registry contents. Defaults
     /// to consulting the injected `accountsManager`: if the current account
@@ -159,6 +163,7 @@ enum Group: Int {
             Log.info(#file, "User not logged in - showing empty My Books")
             self.allBooks = []
             self.books = []
+            self.booksGeneration += 1
             self.publishedSignature = nil
             self.showInstructionsLabel = true
             self.isLoading = false
@@ -230,6 +235,7 @@ enum Group: Int {
         }
 
         // Update published properties
+        self.booksGeneration += 1
         self.allBooks = newBooks
         self.books = newBooks
         self.showInstructionsLabel = showInstructions
@@ -299,6 +305,8 @@ enum Group: Int {
         // title holds whichever form the catalogue used;
         // `localizedCaseInsensitiveContains` treats those as different characters
         // and the shelf came back empty for a correctly typed title.
+        booksGeneration += 1
+        let generation = booksGeneration
         let folded = FoldedSearchQuery(query)
         if folded.isEmpty {
             self.books = allBooks
@@ -309,6 +317,7 @@ enum Group: Int {
                 Self.books(in: allBooksCopy, matching: folded)
             }.value
 
+            guard generation == booksGeneration else { return }
             self.books = filteredBooks
         }
     }
@@ -318,6 +327,7 @@ enum Group: Int {
     }
 
     func resetFilter() {
+        booksGeneration += 1
         self.books = allBooks
         self.sortData()
     }
