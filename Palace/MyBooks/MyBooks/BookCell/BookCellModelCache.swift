@@ -111,21 +111,8 @@ final class BookCellModelCache: ObservableObject {
             setupRegistryObserver()
         }
 
-        setupMemoryWarningObserver()
         setupAccountChangeObserver()
         if let activityPolicy { scheduleCleanup(on: activityPolicy) }
-    }
-
-    private func setupMemoryWarningObserver() {
-        MemoryReleaseCoordinator.shared.register(self, stage: .bookCells) { cache in
-            // The models are main-actor state. UIKit posts the warning on main;
-            // from any other thread, clear on the next main-queue turn.
-            if Thread.isMainThread {
-                MainActor.assumeIsolated { cache.handleMemoryWarning() }
-            } else {
-                Task { @MainActor in cache.handleMemoryWarning() }
-            }
-        }
     }
 
     private func setupAccountChangeObserver() {
@@ -345,7 +332,7 @@ extension BookCellModelCache {
 
 extension BookCellModelCache {
 
-    /// Called automatically when receiving memory warning notification
+    /// Called on a memory warning; AppContainer registers it (PP-5580).
     public func handleMemoryWarning() {
         let previousCount = cache.count
 

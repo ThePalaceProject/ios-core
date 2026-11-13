@@ -90,7 +90,8 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
         cacheName: String,
         mode: CachingMode,
         writeData: @escaping @Sendable (Data, URL) throws -> Void,
-        byteCounter: CacheByteCounter = CacheByteCounter()
+        byteCounter: CacheByteCounter = CacheByteCounter(),
+        memoryRelease: MemoryReleaseCoordinator = .shared
     ) {
         memoryCache = CountedCache(counter: byteCounter)
         self.mode = mode
@@ -99,14 +100,14 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
             cacheDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(cacheName, isDirectory: true)
             try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
             configureCacheLimits()
-            registerMemoryRelease()
+            registerMemoryRelease(on: memoryRelease)
             return
         }
         cacheDirectory = cachesDir.appendingPathComponent(cacheName, isDirectory: true)
         try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
 
         configureCacheLimits()
-        registerMemoryRelease()
+        registerMemoryRelease(on: memoryRelease)
     }
 
     private func configureCacheLimits() {
@@ -132,8 +133,8 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
         memoryCache.countLimit = itemCountLimit
     }
 
-    private func registerMemoryRelease() {
-        MemoryReleaseCoordinator.shared.register(self, stage: .cachedData) { cache in
+    private func registerMemoryRelease(on memoryRelease: MemoryReleaseCoordinator) {
+        memoryRelease.register(self, stage: .cachedData) { cache in
             cache.handleMemoryWarning()
         }
     }

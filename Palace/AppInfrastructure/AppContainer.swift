@@ -45,6 +45,10 @@ struct AppContainer: @unchecked Sendable {
     let tabRouterHub: AppTabRouterHub
     /// Universal-link redirects that end a browser sign-in.
     let signInRedirects = SignInRedirectRelay()
+    /// Runs each registered cache's release step on a memory warning (PP-5580).
+    let memoryRelease: MemoryReleaseCoordinator
+    /// Decoded covers for book objects; released on a memory warning (PP-5583).
+    let bookCoverStore: BookCoverStore
     let drmAuthorizerProvider: () -> TPPDRMAuthorizing?
 
     /// Single auth-refresh dispatcher. Every network consumer that sees a
@@ -194,6 +198,15 @@ struct AppContainer: @unchecked Sendable {
             activityPolicy: activityPolicy,
             bookOpenDependencies: bookOpenDependencies
         )
+        memoryRelease.register(cache, stage: .bookCells) { cache in
+            // The models are main-actor state. UIKit posts the warning on main;
+            // from any other thread, clear on the next main-queue turn.
+            if Thread.isMainThread {
+                MainActor.assumeIsolated { cache.handleMemoryWarning() }
+            } else {
+                Task { @MainActor in cache.handleMemoryWarning() }
+            }
+        }
         storage.bookCellModelCache = cache
         return cache
     }
@@ -246,8 +259,8 @@ struct AppContainer: @unchecked Sendable {
         services.backgroundPlaybackTrimmer = BackgroundPlaybackMemoryTrimmer(
             isPlaying: session.$isPlaying.eraseToAnyPublisher(),
             startsInBackground: UIApplication.shared.applicationState == .background,
-            trim: { MemoryReleaseCoordinator.shared.releaseAll(stages: BackgroundPlaybackMemoryTrimmer.stages) },
-            restore: { BookCoverStore.shared.restoreReleasedImages() }
+            trim: { [memoryRelease] in memoryRelease.releaseAll(stages: BackgroundPlaybackMemoryTrimmer.stages) },
+            restore: { [bookCoverStore] in bookCoverStore.restoreReleasedImages() }
         )
         return session
     }
@@ -482,7 +495,7 @@ struct AppContainer: @unchecked Sendable {
         )
         // The repository's in-memory feeds go on a memory warning; its disk
         // cache stays. Held weakly, so the container still owns its lifetime.
-        MemoryReleaseCoordinator.shared.register(repository, stage: .catalogFeeds) { repository in
+        memoryRelease.register(repository, stage: .catalogFeeds) { repository in
             repository.releaseInMemoryCaches()
         }
         storage.catalogRepository = repository
@@ -510,8 +523,12 @@ struct AppContainer: @unchecked Sendable {
         drmAuthorizerProvider: @escaping () -> TPPDRMAuthorizing?,
         authCoordinator: AuthCoordinator,
         downloadNetworkLossMonitor: DownloadNetworkLossMonitor? = nil,
-        processServices: ProcessServices = ProcessServices()
+        processServices: ProcessServices = ProcessServices(),
+        memoryRelease: MemoryReleaseCoordinator = .shared,
+        bookCoverStore: BookCoverStore = .shared
     ) {
+        self.memoryRelease = memoryRelease
+        self.bookCoverStore = bookCoverStore
         self.bookRegistry = bookRegistry
         self.networkExecutor = networkExecutor
         self.networkQueue = networkQueue
@@ -539,6 +556,14 @@ struct AppContainer: @unchecked Sendable {
             on: accountsManager.accountSwitchPublisher,
             ownedServices: ownedServices
         )
+        // The playing audiobook's cover is never released (PP-5581). Steps run
+        // on the thread that posted; UIKit and the background trim post on main.
+        memoryRelease.registerBookCovers(bookCoverStore, keeping: { [processServices] in
+            guard Thread.isMainThread else { return [] }
+            return MainActor.assumeIsolated {
+                processServices.audiobookSession?.currentBook.map { [$0.identifier] } ?? []
+            }
+        })
     }
 
     /// Binds a network-loss monitor to `downloadCenter`'s reachability (the one
