@@ -80,7 +80,9 @@ final class AppCacheSizesTests: XCTestCase {
 
     // MARK: - ImageCache
 
-    func testImageCache_CountsDecodedAndCompressedBytesUntilRemoved() {
+    /// Compressed cover data is kept on disk only (PP-5583); the decoded image is
+    /// the one copy in memory.
+    func testImageCache_KeepsCompressedDataOnDiskOnly_andCountsDecodedBytesUntilRemoved() {
         let cache = ImageCache._makeIsolatedForTesting(cacheName: "AppCacheSizes-\(UUID().uuidString)")
         let image = Self.solidImage(width: 40, height: 60)
 
@@ -88,27 +90,48 @@ final class AppCacheSizesTests: XCTestCase {
         cache.processingQueue.waitUntilAllOperationsAreFinished()
 
         XCTAssertGreaterThanOrEqual(cache.decodedImageBytes, 40 * 60 * 4)
-        XCTAssertGreaterThan(cache.compressedDataMemoryBytes, 0)
+        XCTAssertEqual(cache.compressedDataMemoryBytes, 0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: cache._diskURLForTesting(for: "cover").path))
 
         cache.remove(for: "cover")
 
         XCTAssertEqual(cache.decodedImageBytes, 0)
-        XCTAssertEqual(cache.compressedDataMemoryBytes, 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: cache._diskURLForTesting(for: "cover").path))
         cache.clear()
     }
 
-    func testImageCache_EvictDecodedImages_ZeroesDecodedBytesOnly() {
+    /// Evicting decoded images keeps the disk copy, so the cover decodes again
+    /// from disk instead of the network.
+    func testImageCache_EvictDecodedImages_ZeroesDecodedBytesAndKeepsTheDiskCopy() async {
         let cache = ImageCache._makeIsolatedForTesting(cacheName: "AppCacheSizes-\(UUID().uuidString)")
         cache.set(Self.solidImage(width: 40, height: 60), for: "cover")
-        cache.processingQueue.waitUntilAllOperationsAreFinished()
-        let compressed = cache.compressedDataMemoryBytes
+        Self.drain(cache)
         XCTAssertGreaterThan(cache.decodedImageBytes, 0, "precondition: the image is held decoded")
 
         cache.evictDecodedImages()
 
         XCTAssertEqual(cache.decodedImageBytes, 0)
-        XCTAssertEqual(cache.compressedDataMemoryBytes, compressed)
+        let fromDisk = await cache.getAsync(for: "cover")
+        XCTAssertEqual(fromDisk?.cgImage?.width, 40)
         cache.clear()
+    }
+
+    /// `memoryImage(for:)` answers from memory only, so a getter can call it on
+    /// the main thread.
+    func testImageCache_MemoryImage_ReturnsDecodedCopyAndNotTheDiskCopy() {
+        let cache = ImageCache._makeIsolatedForTesting(cacheName: "AppCacheSizes-\(UUID().uuidString)")
+        cache.set(Self.solidImage(width: 40, height: 60), for: "cover")
+        Self.drain(cache)
+        XCTAssertNotNil(cache.memoryImage(for: "cover"))
+
+        cache.evictDecodedImages()
+
+        XCTAssertNil(cache.memoryImage(for: "cover"))
+        cache.clear()
+    }
+
+    private static func drain(_ cache: ImageCache) {
+        cache.processingQueue.waitUntilAllOperationsAreFinished()
     }
 
     // MARK: - LCP
@@ -221,13 +244,21 @@ final class AppCacheSizesTests: XCTestCase {
     }
 }
 
-/// The registry keeps the fetched source bytes so one cover decodes at several
-/// sizes without a second request; those bytes are on the memory event line.
+/// The registry keeps the fetched source bytes on disk so one cover decodes at
+/// several sizes without a second request.
 @MainActor
 final class TPPBookCoverRegistrySourceBytesTests: XCTestCase {
 
     private let host = "covers.source-bytes.example"
     private var jpeg = Data()
+    private var requests = RequestLog()
+
+    private final class RequestLog: @unchecked Sendable {
+        private let lock = NSLock()
+        private var urls: [URL?] = []
+        var count: Int { lock.withLock { urls.count } }
+        func append(_ url: URL?) { lock.withLock { urls.append(url) } }
+    }
 
     override func setUp() async throws {
         try await super.setUp()
@@ -235,8 +266,11 @@ final class TPPBookCoverRegistrySourceBytesTests: XCTestCase {
         let jpeg = try Self.coverJPEG()
         self.jpeg = jpeg
         let host = host
+        let requests = RequestLog()
+        self.requests = requests
         HTTPStubURLProtocol.register { request in
             guard request.url?.host == host else { return nil }
+            requests.append(request.url)
             return .init(statusCode: 200, headers: ["Content-Type": "image/jpeg"], body: jpeg)
         }
     }
@@ -246,19 +280,46 @@ final class TPPBookCoverRegistrySourceBytesTests: XCTestCase {
         try await super.tearDown()
     }
 
-    func testFetchedCover_CountsItsSourceBytes() async throws {
-        let counter = CacheByteCounter()
-        let cache = ImageCache._makeIsolatedForTesting(cacheName: "SourceBytes-\(UUID().uuidString)")
-        let registry = TPPBookCoverRegistry(imageCache: cache, urlSession: .stubbedSession(), sourceDataCounter: counter)
+    /// Source bytes live on disk (PP-5583): a registry that has lost everything in
+    /// memory decodes the cover at a new size without asking the network again.
+    func testFetchedCover_SourceBytesOnDisk_newSizeAfterMemoryLossMakesNoSecondRequest() async throws {
+        let sourceCache = GeneralCache<String, Data>(cacheName: "SourceBytes-\(UUID().uuidString)", mode: .diskOnly)
+        let firstCache = ImageCache._makeIsolatedForTesting(cacheName: "SourceBytes-\(UUID().uuidString)")
+        let first = TPPBookCoverRegistry(imageCache: firstCache, urlSession: .stubbedSession(), sourceCache: sourceCache)
         let book = makeBook()
-
-        let cover = await registry.coverImage(for: book, displayPoints: 280)
-        Self.drain(cache)
-
+        let cover = await first.coverImage(for: book, displayPoints: 280)
+        Self.drain(firstCache)
         XCTAssertNotNil(cover, "precondition: the stubbed cover was fetched")
-        XCTAssertEqual(counter.bytes, jpeg.count)
-        XCTAssertEqual(registry.sourceDataBytes, counter.bytes)
-        cache.clear()
+        XCTAssertEqual(requests.count, 1)
+
+        let secondCache = ImageCache._makeIsolatedForTesting(cacheName: "SourceBytes-\(UUID().uuidString)")
+        let second = TPPBookCoverRegistry(imageCache: secondCache, urlSession: .stubbedSession(), sourceCache: sourceCache)
+        let smaller = await second.coverImage(for: book, displayPoints: 120)
+        Self.drain(secondCache)
+
+        XCTAssertNotNil(smaller)
+        XCTAssertEqual(requests.count, 1, "the second size came from the disk copy")
+        firstCache.clear()
+        secondCache.clear()
+        sourceCache.clear()
+    }
+
+    /// Source bytes last for one launch, as the in-memory cache they replace did;
+    /// a launch removes the folders of earlier launches and keeps its own.
+    func testRemoveEarlierLaunches_deletesOtherLaunchFoldersAndKeepsTheCurrentOne() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("SourceLaunches-\(UUID().uuidString)")
+        let old = root.appendingPathComponent("old-launch")
+        let current = root.appendingPathComponent("this-launch")
+        for folder in [old, current] {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try Data([1]).write(to: folder.appendingPathComponent("bytes"))
+        }
+
+        TPPBookCoverRegistry.removeEarlierLaunches(in: root, keeping: "this-launch")
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: old.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: current.appendingPathComponent("bytes").path))
+        try? FileManager.default.removeItem(at: root)
     }
 
     private func makeBook() -> TPPBook {

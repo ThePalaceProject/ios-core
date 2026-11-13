@@ -45,14 +45,32 @@ public final class BookCoverStore: @unchecked Sendable {
 
     let colorQueue: DispatchQueue
     private let colorExtractor: @Sendable (UIImage) -> UIColor
+    let limits: Limits
 
     init(
         colorQueue: DispatchQueue = DispatchQueue(label: "org.thepalaceproject.dominantcolor", qos: .utility),
-        colorExtractor: @escaping @Sendable (UIImage) -> UIColor = { DominantCoverColor.extract(from: $0) }
+        colorExtractor: @escaping @Sendable (UIImage) -> UIColor = { DominantCoverColor.extract(from: $0) },
+        limits: Limits = .forDevice()
     ) {
         self.colorQueue = colorQueue
         self.colorExtractor = colorExtractor
+        self.limits = limits
     }
+
+    /// How many decoded image bytes the store keeps, and how many of the most
+    /// recently read covers it never releases.
+    struct Limits: Equatable, Sendable {
+        let byteLimit: Int
+        let keepRecent: Int
+
+        static func forDevice(memoryMB: UInt64 = ProcessInfo.processInfo.physicalMemory / (1024 * 1024)) -> Limits {
+            Limits(byteLimit: .max, keepRecent: .max)
+        }
+    }
+
+    /// Releases decoded images, for a memory warning.
+    // PUBLIC_INTENT: the app registers this as a memory warning release step.
+    public func releaseImages() {}
 
     // MARK: - Live objects
 

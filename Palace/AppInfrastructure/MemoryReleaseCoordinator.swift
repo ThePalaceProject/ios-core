@@ -11,6 +11,7 @@
 
 import Foundation
 import UIKit
+import PalaceBookModel
 
 /// The order a memory warning runs release steps in: the memory event record
 /// first, then what is cheapest to rebuild, then downloads and disk.
@@ -81,6 +82,9 @@ final class MemoryReleaseCoordinator: @unchecked Sendable {
     @objc private func handleMemoryWarning() {
         releaseAll()
     }
+
+    /// Adds the cover store's release step.
+    func registerBookCovers(_ store: BookCoverStore) {}
 
     /// Runs every live step once, in stage order and then registration order.
     func releaseAll() {

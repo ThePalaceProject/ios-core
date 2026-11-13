@@ -9,6 +9,7 @@
 import UIKit
 import XCTest
 @testable import Palace
+@testable import PalaceBookModel
 
 final class MemoryReleaseCoordinatorTests: XCTestCase {
 
@@ -51,6 +52,52 @@ final class MemoryReleaseCoordinatorTests: XCTestCase {
 
     private func postWarning() {
         center.post(name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
+    }
+
+    /// A memory warning releases the decoded covers that book objects hold
+    /// (PP-5583); before, the cover store ignored warnings.
+    func testRegisterBookCovers_warningReleasesTheCoverStoresImages() {
+        let store = BookCoverStore(limits: .init(byteLimit: .max, keepRecent: 0))
+        let book = Self.makeBook("warning-cover", store: store)
+        book.coverImage = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { _ in }
+        XCTAssertGreaterThan(store.imageByteCount, 0, "precondition: the store holds the cover")
+
+        sut.registerBookCovers(store)
+        postWarning()
+
+        XCTAssertEqual(store.imageByteCount, 0)
+        withExtendedLifetime(book) {}
+    }
+
+    private static func makeBook(_ identifier: String, store: BookCoverStore) -> TPPBook {
+        TPPBook(
+            acquisitions: [],
+            authors: [],
+            categoryStrings: [],
+            distributor: "",
+            identifier: identifier,
+            imageURL: nil,
+            imageThumbnailURL: nil,
+            published: nil,
+            publisher: "",
+            subtitle: "",
+            summary: "",
+            title: "Title",
+            updated: Date(),
+            annotationsURL: nil,
+            analyticsURL: nil,
+            alternateURL: nil,
+            relatedWorksURL: nil,
+            previewLink: nil,
+            seriesURL: nil,
+            revokeURL: nil,
+            reportURL: nil,
+            timeTrackingURL: nil,
+            contributors: [:],
+            bookDuration: nil,
+            imageCache: MockImageCache(),
+            coverStore: store
+        )
     }
 
     func testWarning_runsStepsInStageOrder_notRegistrationOrder() {

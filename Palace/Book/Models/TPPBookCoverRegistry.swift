@@ -187,7 +187,8 @@ actor TPPBookCoverRegistry {
         hostFailureTracker: HostFailureTracker = HostFailureTracker(),
         urlSession: URLSession = TPPBookCoverRegistry.imageSession,
         now: @escaping @Sendable () -> Date = Date.init,
-        sourceDataCounter: CacheByteCounter = CacheByteCounter()
+        sourceDataCounter: CacheByteCounter = CacheByteCounter(),
+        sourceCache: GeneralCache<String, Data>? = nil
     ) {
         self.imageCache = imageCache
         let sourceDataCache = CountedCache<String, NSData>(counter: sourceDataCounter)
@@ -217,6 +218,9 @@ actor TPPBookCoverRegistry {
         reachabilitySubscription = Reachability.connectivityChanges
             .sink { _ in Task { await tracker.reset() } }
     }
+
+    /// Deletes the source-byte folders of earlier launches under `root`.
+    nonisolated static func removeEarlierLaunches(in root: URL, keeping launchFolder: String) {}
 
     /// Clears the host circuit breaker (fire-and-forget). Call on an account
     /// switch so a host tripped under the prior library does not suppress covers
