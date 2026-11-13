@@ -474,6 +474,21 @@ jobs:
           fi
           bash scripts/check-doc-hygiene.sh --base "origin/${BASE}"
 
+      # Print the `// Known:` markers (tests that keep behavior suspected to be
+      # wrong) to the job summary: the PR's additions first, then the whole tree.
+      # Informational; a marker without a PP key is a warning here and fails the
+      # PR hygiene check when the PR adds it.
+      - name: Known behaviors kept (summary, non-blocking)
+        run: |
+          set -uo pipefail
+          for scope in "--diff-base origin/${BASE}" ""; do
+            # shellcheck disable=SC2086
+            if ! python3 scripts/list-known-behaviors.py --markdown $scope >> "$GITHUB_STEP_SUMMARY"; then
+              echo "::warning::list-known-behaviors.py ${scope:-(whole tree)} reported a marker without a PP key or failed; see the log."
+            fi
+            echo >> "$GITHUB_STEP_SUMMARY"
+          done
+
       # Flag NEW deadline-poll waits on lines this PR adds vs its base. The
       # linter's --changed mode is diff-scoped (added lines of PalaceTests/*.swift
       # only) and exits 1 on a hit. No Xcode/simulator needed.
