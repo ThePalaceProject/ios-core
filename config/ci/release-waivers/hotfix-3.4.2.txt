@@ -40,3 +40,5 @@ e892160da PP-5450 is on develop as 59c926524 (#1775)
 #1855   PP-5544 held for the next release from develop
 #1851   waiver list for this hotfix only; develop has no 3.4.2 waivers to receive
 #1871   waiver list for this hotfix only; develop has no 3.4.2 waivers to receive
+#1702   3.3.2-line copy of #1701, which develop and this hotfix already carry (same code lines)
+#1870   PP-5558 held for the next release from develop
