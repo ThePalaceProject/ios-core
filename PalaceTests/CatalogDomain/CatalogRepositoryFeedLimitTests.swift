@@ -146,6 +146,58 @@ final class CatalogRepositoryFeedLimitTests: XCTestCase {
         XCTAssertNotNil(repository.cachedFeed(for: url(1)))
     }
 
+    /// A stale feed shown while it refreshes counts as read, even when the
+    /// refresh fails, so the next feed past the limit drops the next oldest.
+    func testLoad_StaleButUsableFeed_IsMadeRecent() async throws {
+        let repository = makeRepository()
+        try await load(repository, 0..<readLimit)
+        testNow.value = testNow.value.addingTimeInterval(601)
+        api.fetchFeedError = URLError(.notConnectedToInternet)
+
+        _ = try await repository.loadTopLevelCatalog(at: url(0))
+        await repository._awaitAllBackgroundRefreshesForTesting()
+        api.fetchFeedError = nil
+        _ = try await repository.loadTopLevelCatalog(at: url(readLimit))
+
+        XCTAssertNotNil(repository.cachedFeed(for: url(0)))
+        XCTAssertNil(repository.cachedFeed(for: url(1)))
+    }
+
+    /// A too-old feed shown offline because the fetch failed keeps its place.
+    func testLoad_OfflineFallbackAfterAFetchError_IsMadeRecent() async throws {
+        let repository = makeRepository()
+        let start = testNow.value
+        try await load(repository, 0..<1)
+        testNow.value = start.addingTimeInterval(86_401)
+        try await load(repository, 1..<readLimit)
+        api.fetchFeedError = URLError(.notConnectedToInternet)
+
+        let shown = try await repository.loadTopLevelCatalog(at: url(0))
+        api.fetchFeedError = nil
+        _ = try await repository.loadTopLevelCatalog(at: url(readLimit))
+
+        XCTAssertNotNil(shown)
+        XCTAssertNil(repository.cachedFeed(for: url(1)), "url(1) is now the least recently read")
+    }
+
+    /// A too-old feed shown because the fetch returned nothing keeps its place.
+    func testLoad_OfflineFallbackAfterAnEmptyFetch_IsMadeRecent() async throws {
+        let repository = makeRepository()
+        let start = testNow.value
+        try await load(repository, 0..<1)
+        testNow.value = start.addingTimeInterval(86_401)
+        try await load(repository, 1..<readLimit)
+        let defaultFeed = api.defaultFeed
+        api.defaultFeed = nil
+
+        let shown = try await repository.loadTopLevelCatalog(at: url(0))
+        api.defaultFeed = defaultFeed
+        _ = try await repository.loadTopLevelCatalog(at: url(readLimit))
+
+        XCTAssertNotNil(shown)
+        XCTAssertNil(repository.cachedFeed(for: url(1)), "url(1) is now the least recently read")
+    }
+
     /// Refetching an expired feed replaces it in one place and makes it the
     /// most recent, so the next feed past the limit drops the next oldest.
     func testLoad_RefetchOfAnExpiredFeed_TakesOnePlaceAndBecomesMostRecent() async throws {

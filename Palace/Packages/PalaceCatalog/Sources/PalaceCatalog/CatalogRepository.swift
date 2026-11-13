@@ -32,14 +32,12 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
 
     /// How many feeds the patron has read, and how many format-entry lists,
     /// stay in memory; the least recently read is dropped first (PP-5585).
-    // PUBLIC_INTENT: read by PalaceTests, which imports PalaceCatalog without @testable.
-    public static let readFeedLimit = 100
+    static let readFeedLimit = 100
 
     /// How many preloaded facet feeds the patron has not opened stay in
     /// memory; the oldest is dropped first, and a preload never drops a read
     /// feed. Each load preloads up to five facets (PP-5585).
-    // PUBLIC_INTENT: read by PalaceTests, which imports PalaceCatalog without @testable.
-    public static let preloadedFeedLimit = 40
+    static let preloadedFeedLimit = 40
 
     private static let lastAppLaunchKey = "CatalogRepository.lastAppLaunch"
 
@@ -299,6 +297,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
             // If network fails and we have ANY cached content (even too old), use it as fallback
             if let entry = cachedEntry {
                 Log.warn(#file, "Network failed, using old cached feed as fallback: \(error.localizedDescription)")
+                cache.withLockUnchecked { $0.memoryCache.markRead(cacheKey) }
                 return entry.feed
             }
 
@@ -310,6 +309,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
         guard let feed = feed else {
             // Fallback to cached content if fetch returns nil
             if let entry = cachedEntry {
+                cache.withLockUnchecked { $0.memoryCache.markRead(cacheKey) }
                 return entry.feed
             }
             throw NSError(domain: "CatalogRepository", code: 0,
