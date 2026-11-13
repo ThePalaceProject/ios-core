@@ -28,6 +28,8 @@ import PalaceLogging
 ///   returns after that post's Task has ended. Other books are unaffected.
 /// - A post started by `save(_:)` runs in the caller's task, and only the
 ///   caller can cancel it; the save then throws `PositionWriterError.cancelled`.
+///   If that happens before the adapter is called, the save does not use up
+///   the throttle window, so the next save posts at once.
 /// - A cancelled post stops waiting for the adapter. If the adapter ignores
 ///   task cancellation (`EPUBPositionAdapter` does), its HTTP request can
 ///   still reach the server after `cancel(for:)` returns.
@@ -129,8 +131,14 @@ public final class RemotePositionWriter: PositionWriter, @unchecked Sendable {
 
     public func save(_ snapshot: PositionSnapshot) async throws -> ServerPositionID? {
         switch await onQueue({ self.decideOnQueue(for: snapshot) }) {
-        case .postNow(let snapshot):
-            return try await performPost(snapshot)
+        case .postNow(let snapshot, let window):
+            do {
+                return try await performPost(snapshot)
+            } catch is InFlightPost.NotStarted {
+                // Nothing reached the adapter, so the next save may post at once.
+                await onQueue { self.releaseWindow(window, for: snapshot.bookID) }
+                throw PositionWriterError.cancelled
+            }
         case .queueAndDefer:
             return nil
         }
@@ -155,8 +163,22 @@ public final class RemotePositionWriter: PositionWriter, @unchecked Sendable {
     // MARK: - Decision (serial-queue isolated)
 
     private enum SaveDecision: Sendable {
-        case postNow(PositionSnapshot)
+        case postNow(PositionSnapshot, Window)
         case queueAndDefer
+    }
+
+    /// The throttle stamp a post-now save took, and the stamp it replaced.
+    private struct Window: Sendable {
+        let opened: Date
+        let previous: Date
+    }
+
+    /// Restores the previous stamp unless a later post has taken the window.
+    /// Called from `queue`.
+    private func releaseWindow(_ window: Window, for bookID: String) {
+        guard var bookState = state[bookID], bookState.lastPostAttempt == window.opened else { return }
+        bookState.lastPostAttempt = window.previous
+        state[bookID] = bookState
     }
 
     /// Called from `queue`. Mutates `state`.
@@ -172,11 +194,12 @@ public final class RemotePositionWriter: PositionWriter, @unchecked Sendable {
         if elapsed >= throttle {
             // Window open — post now. Reserve the slot by stamping
             // `lastPostAttempt` so concurrent calls queue.
+            let window = Window(opened: now, previous: bookState.lastPostAttempt)
             bookState.lastPostAttempt = now
             // Posting now supersedes any queued snapshot.
             bookState.queued = nil
             state[snapshot.bookID] = bookState
-            return .postNow(snapshot)
+            return .postNow(snapshot, window)
         }
 
         // Inside window — queue the latest snapshot, scheduling a deferred
@@ -231,7 +254,7 @@ public final class RemotePositionWriter: PositionWriter, @unchecked Sendable {
         let task = Task {
             do {
                 _ = try await self.performPost(snapshot)
-            } catch PositionWriterError.cancelled {
+            } catch PositionWriterError.cancelled, is InFlightPost.NotStarted {
                 Log.info("PalaceReadingPosition", "Deferred flush for \(bookID) was cancelled")
             } catch {
                 Log.error("PalaceReadingPosition", "Deferred flush for \(bookID) failed: \(error)")
@@ -269,15 +292,9 @@ public final class RemotePositionWriter: PositionWriter, @unchecked Sendable {
         await onQueue {}
     }
 
-    /// Returns once the writer holds no deferred-flush Task.
-    func waitForOwnedFlushes() async {
-        while true {
-            let tasks = await onQueue { self.ownedFlushes.values.map(\.task) }
-            if tasks.isEmpty { return }
-            for task in tasks {
-                await task.value
-            }
-        }
+    /// The deferred-flush Tasks the writer holds now.
+    func ownedFlushTasks() async -> [Task<Void, Never>] {
+        await onQueue { self.ownedFlushes.values.map(\.task) }
     }
 }
 
@@ -286,10 +303,14 @@ public final class RemotePositionWriter: PositionWriter, @unchecked Sendable {
 ///
 /// Cancelling the waiting task, or the background task expiring, ends the
 /// wait with `PositionWriterError.cancelled` and cancels the adapter call
-/// without waiting for it to return.
+/// without waiting for it to return. Before the adapter is called, the wait
+/// ends with `NotStarted` instead.
 ///
 /// `@unchecked Sendable`: all mutable state is guarded by `lock`.
 private final class InFlightPost: @unchecked Sendable {
+    /// The post was cancelled before the adapter was called.
+    struct NotStarted: Error, Equatable {}
+
     private let lock = NSLock()
     private let backgroundTasks: PositionBackgroundTasks
     private var waiter: CheckedContinuation<ServerPositionID, Error>?
@@ -356,7 +377,7 @@ private final class InFlightPost: @unchecked Sendable {
                     return true
                 }
                 if !started {
-                    continuation.resume(throwing: PositionWriterError.cancelled)
+                    continuation.resume(throwing: NotStarted())
                 }
             }
         } onCancel: {

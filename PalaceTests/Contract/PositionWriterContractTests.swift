@@ -332,12 +332,8 @@ final class PositionWriterContractTests: XCTestCase {
     /// `UIApplication.beginBackgroundTask` / `endBackgroundTask` pair via
     /// `defer`. The pair is invisible to a pure spy adapter (it lives at
     /// the `RemotePositionWriter` level, above the network seam), but the
-    /// *observable* contract is that:
-    ///   (a) `network.post` runs to completion before the `save` call
-    ///       returns, AND
-    ///   (b) the writer is `nil`-safe under teardown — the `weak self`
-    ///       capture inside the iOS-only `endBackgroundTask` branch is
-    ///       reachable from this test surface, not from the SPM bundle.
+    /// *observable* contract is that `network.post` runs to completion
+    /// before the `save` call returns.
     ///
     /// The begin/end pairing and expiration are pinned with injected
     /// `PositionBackgroundTasks` in the package's
