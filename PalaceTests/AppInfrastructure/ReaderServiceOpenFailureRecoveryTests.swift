@@ -177,7 +177,7 @@ final class ReaderServiceRedownloadReopenTests: XCTestCase {
     private var spy: OpenFailureSpy!
     private var downloadCenter: RedownloadDownloadCenterSpy!
     private var registry: TPPBookRegistryMock!
-    private var reopened: [(id: String, reader: ReaderService.RedownloadReopen)] = []
+    private var reopened: [(id: String, reader: String, isRetry: Bool)] = []
     private var service: ReaderService!
     private let openError = LibraryServiceError.openFailed(
         NSError(domain: "Readium LCP open error", code: 1)
@@ -198,8 +198,11 @@ final class ReaderServiceRedownloadReopenTests: XCTestCase {
             presentAlert: { title, message in spy.alerts.append((title, message)) },
             downloadCenter: { downloadCenter },
             bookRegistry: { registry },
-            reopenAfterRedownload: { [weak self] book, reader in
-                self?.reopened.append((book.identifier, reader))
+            reopenEPUB: { [weak self] book, isRetry in
+                self?.reopened.append((book.identifier, "epub", isRetry))
+            },
+            reopenLCPPDF: { [weak self] book, isRetry in
+                self?.reopened.append((book.identifier, "lcpPDF", isRetry))
             },
             imageCache: { MockImageCache() }
         )
@@ -266,7 +269,8 @@ final class ReaderServiceRedownloadReopenTests: XCTestCase {
         registry.setState(.downloadSuccessful, for: book.identifier)
 
         XCTAssertEqual(reopened.map(\.id), [book.identifier])
-        XCTAssertEqual(reopened.map(\.reader), [.pdf])
+        XCTAssertEqual(reopened.map(\.reader), ["lcpPDF"])
+        XCTAssertEqual(reopened.map(\.isRetry), [true], "A failure after the re-download must not download again")
         XCTAssertTrue(spy.alerts.isEmpty)
     }
 
@@ -278,7 +282,8 @@ final class ReaderServiceRedownloadReopenTests: XCTestCase {
         registry.setState(.downloadSuccessful, for: book.identifier)
 
         XCTAssertEqual(reopened.map(\.id), [book.identifier])
-        XCTAssertEqual(reopened.map(\.reader), [.epub])
+        XCTAssertEqual(reopened.map(\.reader), ["epub"])
+        XCTAssertEqual(reopened.map(\.isRetry), [true], "A failure after the re-download must not download again")
     }
 
     /// The re-download resets the book to download-needed, so the registry
@@ -321,11 +326,5 @@ final class ReaderServiceRedownloadReopenTests: XCTestCase {
         registry.setState(.downloadSuccessful, for: book.identifier)
 
         XCTAssertEqual(reopened.map(\.id), [book.identifier])
-    }
-
-    /// The reader choice for the two content types that reach the recovery.
-    func testRedownloadReopen_PDFReopensInPDFReaderAndEPUBInEPUBReader() {
-        XCTAssertEqual(ReaderService.redownloadReopen(for: makeLCPPDF()), .pdf)
-        XCTAssertEqual(ReaderService.redownloadReopen(for: TPPBookMocker.snapshotEPUB()), .epub)
     }
 }
