@@ -210,6 +210,7 @@
 		1A56C0193C73A18FEA78111B /* ForeignPayloadCanary.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC58D5B347FB1F73567DFFBE /* ForeignPayloadCanary.swift */; };
 		1A639A7AA014F3D19452722C /* AdobeActivationWriteLintTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81721F5725878C10B7FE17F9 /* AdobeActivationWriteLintTests.swift */; };
 		1A770BFF15E884A436EEB0F0 /* TaskProvenanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C96B8000E1A281B3F9F0C4EF /* TaskProvenanceTests.swift */; };
+		1AB6518022651755FA01E393 /* BackgroundPlaybackMemoryTrimmer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA9426EBD2141B09365CAD01 /* BackgroundPlaybackMemoryTrimmer.swift */; };
 		1B00FAD6670057494A2B6282 /* AdobeClientTokenSplitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDBAA7AB5CB432436428B214 /* AdobeClientTokenSplitTests.swift */; };
 		1B189F5EF7A67CAB57EA66BA /* ManagedLibraryPreconfigurator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 207F541DD8CE9A1C00C61327 /* ManagedLibraryPreconfigurator.swift */; };
 		1B2874DE5CEEBAA07923067A /* TPPSettings+AccountsList.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECB5EFDCFE78A87CFDA31A37 /* TPPSettings+AccountsList.swift */; };
@@ -692,6 +693,7 @@
 		5BC5CECCF20A561F61CB8CEE /* TypographySettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05A876C0044C35648AE92BD7 /* TypographySettingsView.swift */; };
 		5BCEAC8C8D29E0CE661E127D /* PresetCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20B293519F9B55B6F4F17CC7 /* PresetCard.swift */; };
 		5BF461D820B15576F9CBE189 /* AdobeDRMErrorMappingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0957B08E999BB01710A4D4B /* AdobeDRMErrorMappingTests.swift */; };
+		5C3D3B78D8296247FCAE375E /* BackgroundPlaybackMemoryTrimmer.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA9426EBD2141B09365CAD01 /* BackgroundPlaybackMemoryTrimmer.swift */; };
 		5C5CFDA86E67C6186A24EFF9 /* BackgroundDownloadHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FDB637C01812EEB10919A6E /* BackgroundDownloadHandler.swift */; };
 		5C89F2830C766E791E48CE21 /* LCPKeychainMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A303E282D7EFD80AED446401 /* LCPKeychainMigration.swift */; };
 		5CD40DBE898E0C7AE14CB1F0 /* AccountsManagerIsolationLintTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A399B178C9ECF3F62C62172 /* AccountsManagerIsolationLintTests.swift */; };
@@ -1043,6 +1045,7 @@
 		7AC5FDAD39D1B398EC0EABDF /* BookDetailErrorAdmission.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40C544448A0E987E50A60D60 /* BookDetailErrorAdmission.swift */; };
 		7ADF7BA0A643C90784810439 /* DirectionalNavigationAdapterOwnershipTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 706597D90105F91EC5B57071 /* DirectionalNavigationAdapterOwnershipTests.swift */; };
 		7B121B8D0C0E39FCB2FE0D9F /* AudiobookTOCTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58876626DF4EE60D219F05ED /* AudiobookTOCTests.swift */; };
+		7B1B9CC6FB11A8D7C5585452 /* BackgroundPlaybackMemoryTrimmerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F8286D44C145AE46710B37B /* BackgroundPlaybackMemoryTrimmerTests.swift */; };
 		7B8192A3B4C5D6E7F8091A2B /* BookReturnService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A7081A2B3C4D5E6F7081929 /* BookReturnService.swift */; };
 		7B8D9E0F102132435465A1B2 /* BookSignInRedirectHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9E0F102132435465A1B2C3 /* BookSignInRedirectHandler.swift */; };
 		7BAD9E66404EC74E86FF4FA9 /* KeyboardNavigationHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 144BB5C0F2D1B2C0C398BD98 /* KeyboardNavigationHandler.swift */; };
@@ -2764,6 +2767,7 @@
 		1E45ABDAD5DEC345C87749C2 /* CallLog.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CallLog.swift; sourceTree = "<group>"; };
 		1E936EE46D4F42F2992222A9 /* TPPUserFriendlyErrorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TPPUserFriendlyErrorTests.swift; sourceTree = "<group>"; };
 		1F425BCC097ADCE6FADB3DA1 /* TPPBookCoverRegistrySizedFallbackTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPBookCoverRegistrySizedFallbackTests.swift; sourceTree = "<group>"; };
+		1F8286D44C145AE46710B37B /* BackgroundPlaybackMemoryTrimmerTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BackgroundPlaybackMemoryTrimmerTests.swift; sourceTree = "<group>"; };
 		1FDB637C01812EEB10919A6E /* BackgroundDownloadHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundDownloadHandler.swift; sourceTree = "<group>"; };
 		1FFBDD2A1333CAF4E0F850AB /* ParserFuzzTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ParserFuzzTests.swift; sourceTree = "<group>"; };
 		202E845D4B3F447D90A0EF9B /* AdobeActivationLicensorGraceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AdobeActivationLicensorGraceTests.swift; sourceTree = "<group>"; };
@@ -3581,6 +3585,7 @@
 		AA2602091CD4843C2674C6A1 /* AudiobookPlaybackFailureRecord.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = AudiobookPlaybackFailureRecord.swift; sourceTree = "<group>"; };
 		AA3C44FFE90B7C54E0D99025 /* RegistryDownloadServicingSeamTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RegistryDownloadServicingSeamTests.swift; sourceTree = "<group>"; };
 		AA77F783B3A9A9C55E9B366D /* CurrentLibraryChange.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CurrentLibraryChange.swift; sourceTree = "<group>"; };
+		AA9426EBD2141B09365CAD01 /* BackgroundPlaybackMemoryTrimmer.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BackgroundPlaybackMemoryTrimmer.swift; sourceTree = "<group>"; };
 		AAACEA8A946FA577A9C52380 /* TPPBookRegistryMutationContractTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TPPBookRegistryMutationContractTests.swift; sourceTree = "<group>"; };
 		AB77E14C5DCBF063BB3690BA /* SupportReportContextTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SupportReportContextTests.swift; sourceTree = "<group>"; };
 		AB910D1F15E3A3C24D3E3247 /* ButtonStateMonotonicClampTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ButtonStateMonotonicClampTests.swift; sourceTree = "<group>"; };
@@ -5385,6 +5390,7 @@
 				814AF54C36BC7DEEC453A767 /* BookOpenDependencies.swift */,
 				B57170DDBC6DDFA1544206B0 /* ProcessServices.swift */,
 				F537817E69EEAF08950A5FA5 /* MemoryReleaseCoordinator.swift */,
+				AA9426EBD2141B09365CAD01 /* BackgroundPlaybackMemoryTrimmer.swift */,
 			);
 			path = AppInfrastructure;
 			sourceTree = "<group>";
@@ -6856,6 +6862,7 @@
 				20585CCE8387C89D8A1C97A6 /* ProcessServicesTests.swift */,
 				56C892F3FBD2512703EC31B2 /* AccountScopedResetTests.swift */,
 				B7233ECB4311222A8E394605 /* MemoryReleaseCoordinatorTests.swift */,
+				1F8286D44C145AE46710B37B /* BackgroundPlaybackMemoryTrimmerTests.swift */,
 			);
 			path = AppInfrastructure;
 			sourceTree = "<group>";
@@ -9504,6 +9511,7 @@
 				24563F9E48B4AD61529AA42E /* AudiobookLoaderTimeTrackerTests.swift in Sources */,
 				7049EEA2AA9C3CF1498DAE57 /* SignInTokenContractTests.swift in Sources */,
 				FF653CA25994A1ABC18E50B0 /* MemoryReleaseCoordinatorTests.swift in Sources */,
+				7B1B9CC6FB11A8D7C5585452 /* BackgroundPlaybackMemoryTrimmerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -10150,6 +10158,7 @@
 				3E327861B8B1A694ADEE5EAF /* OwnedTaskRegistry.swift in Sources */,
 				5D6060E4ADEACDD0FA471CC4 /* AudiobookSessionManager+ForegroundRecovery.swift in Sources */,
 				62607F208BF8B28E8B3DAFA1 /* MemoryReleaseCoordinator.swift in Sources */,
+				1AB6518022651755FA01E393 /* BackgroundPlaybackMemoryTrimmer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -10786,6 +10795,7 @@
 				77818D9F9AAC2A3FB7EE5543 /* OwnedTaskRegistry.swift in Sources */,
 				8E3EDAEFCB92A8428332679D /* AudiobookSessionManager+ForegroundRecovery.swift in Sources */,
 				F3E6CD4C65792951D71D37D1 /* MemoryReleaseCoordinator.swift in Sources */,
+				5C3D3B78D8296247FCAE375E /* BackgroundPlaybackMemoryTrimmer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

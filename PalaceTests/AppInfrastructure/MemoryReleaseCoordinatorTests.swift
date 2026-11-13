@@ -69,6 +69,36 @@ final class MemoryReleaseCoordinatorTests: XCTestCase {
         withExtendedLifetime(book) {}
     }
 
+    /// A background trim runs only the stages it names, still in stage order (PP-5581).
+    func testReleaseAllStages_RunsOnlyNamedStages_InStageOrder() {
+        register(Owner("downloads"), .downloads)
+        register(Owner("images"), .decodedImages)
+        register(Owner("lcp"), .lcpDecrypt)
+        register(Owner("cells"), .bookCells)
+        register(Owner("record"), .record)
+
+        sut.releaseAll(stages: [.decodedImages, .bookCells])
+
+        XCTAssertEqual(log.all, ["cells", "images"])
+    }
+
+    /// The playing book's cover is kept when the store's step runs (PP-5581).
+    func testRegisterBookCovers_KeepsTheIdentifiersTheProviderNames() {
+        let store = BookCoverStore(limits: .init(byteLimit: .max, keepRecent: 0))
+        let playing = Self.makeBook("playing-cover", store: store)
+        let other = Self.makeBook("other-cover", store: store)
+        let cover = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { _ in }
+        playing.coverImage = cover
+        other.coverImage = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { _ in }
+
+        sut.registerBookCovers(store, keeping: { ["playing-cover"] })
+        postWarning()
+
+        XCTAssertIdentical(store.state(for: "playing-cover").coverImage, cover)
+        XCTAssertNil(store.state(for: "other-cover").coverImage)
+        withExtendedLifetime([playing, other]) {}
+    }
+
     private static func makeBook(_ identifier: String, store: BookCoverStore) -> TPPBook {
         TPPBook(
             acquisitions: [],

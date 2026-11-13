@@ -95,6 +95,14 @@ public final class BookCoverStore: @unchecked Sendable {
     /// Releases every decoded image outside the `keepRecent` most recently read
     /// covers, for a memory warning. Loading flags and colors stay.
     // PUBLIC_INTENT: the app registers this as a memory warning release step.
+    public func releaseImages(keeping: Set<String>) {
+        releaseImages()
+    }
+
+    /// Makes released images that something else still holds strong again.
+    // PUBLIC_INTENT: the app calls this when it returns to the foreground.
+    public func restoreReleasedImages() {}
+
     public func releaseImages() {
         lock.withLock {
             for identifier in releasableIdentifiersLocked() {

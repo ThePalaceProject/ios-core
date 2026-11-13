@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 import Combine
 import PalaceCatalog
@@ -402,6 +403,47 @@ final class CatalogViewModelStateMachineTests: PalaceTestCase {
         guard case .loaded = vm.state else {
             return XCTFail("Expected .loaded after account change, got \(vm.state)")
         }
+    }
+
+    /// Coming back to the foreground after a background trim keeps the catalog
+    /// screen and asks the repository for nothing (PP-5581).
+    func testForegroundAfterBackgroundTrim_keepsTheScreen_withoutAFetch() async {
+        mockRepository.loadTopLevelCatalogResult = Self.makeGroupedCatalogFeed()
+        let vm = createViewModel()
+        await vm.load()
+        await waitUntilLoaded(vm, at: testURL)
+        let fetches = mockRepository.loadTopLevelCatalogCallCount
+        let center = NotificationCenter()
+        let coordinator = MemoryReleaseCoordinator(center: center)
+        let feedsOwner = NSObject()
+        let released = Counter()
+        coordinator.register(feedsOwner, stage: .catalogFeeds) { _ in released.increment() }
+        let trimmer = BackgroundPlaybackMemoryTrimmer(
+            center: center,
+            isPlaying: Just(true).eraseToAnyPublisher(),
+            startsInBackground: false,
+            trim: { coordinator.releaseAll(stages: BackgroundPlaybackMemoryTrimmer.stages) },
+            restore: {}
+        )
+
+        center.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
+        center.post(name: UIApplication.willEnterForegroundNotification, object: nil)
+        await drainMainQueueAsync()
+
+        XCTAssertEqual(released.value, 1, "precondition: the trim released the feeds")
+        guard case .loaded(let content) = vm.state else {
+            return XCTFail("Expected the loaded screen after returning, got \(vm.state)")
+        }
+        XCTAssertEqual(content.title, "Library")
+        XCTAssertEqual(mockRepository.loadTopLevelCatalogCallCount, fetches)
+        withExtendedLifetime((trimmer, feedsOwner)) {}
+    }
+
+    private final class Counter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+        var value: Int { lock.withLock { count } }
+        func increment() { lock.withLock { count += 1 } }
     }
 
     /// Pull-to-refresh is the ONE path that invalidates: it drops the current
