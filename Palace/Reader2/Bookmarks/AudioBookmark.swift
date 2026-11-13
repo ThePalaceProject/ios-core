@@ -108,10 +108,9 @@ enum BookmarkType: String, Codable {
 
         let version = locatorData["@version"] as? Int ?? 1
         let lastSavedTimeStamp = (locatorData["timeStamp"] as? String)?.isEmpty == false ? locatorData["timeStamp"] as? String : timeStamp
-        // A given ID is the server's annotation ID and wins. The selector this
-        // app uploads carries `"annotationId": ""`, so reading the selector
-        // first left every fetched bookmark unsynced, and the next sync
-        // uploaded it again (PP-5577). Stored records pass no ID and keep theirs.
+        // A given ID is the server's annotation ID and wins: the selector this
+        // app uploads carries `"annotationId": ""`, and a fetched bookmark must
+        // read as synced (PP-5577). Stored records pass no ID and keep theirs.
         let id = annotationId.isEmpty ? (locatorData["annotationId"] as? String ?? "") : annotationId
 
         let readingOrderItem = locatorData["readingOrderItem"] as? String

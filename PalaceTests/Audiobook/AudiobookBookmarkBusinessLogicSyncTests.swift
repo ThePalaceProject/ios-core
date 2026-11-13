@@ -561,6 +561,19 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
         XCTAssertEqual(Set(localBookmarks.map(\.annotationId)), ["srv-new", "srv-v2"])
     }
 
+    /// A server bookmark without an ID is not a synced copy: the stored
+    /// bookmark at its position is still uploaded.
+    func testSync_ServerBookmarkWithoutID_DoesNotBlockUploadOfStoredCopy() async {
+        storeLocally(bookmark("", trackIndex: 2, offsetMs: 7_000))
+        server.serverAnnotations = [serverAnnotation(id: "", selector: v2Selector(trackIndex: 2, offsetMs: 7_000))]
+        server.postOutcome = .success(AnnotationResponse(serverId: "srv-new", timeStamp: nil))
+
+        _ = await sync()
+
+        XCTAssertEqual(server.postedSelectors.count, 1)
+        XCTAssertEqual(localBookmarks.map(\.annotationId), ["srv-new"])
+    }
+
     /// With sync off, a stored unsynced copy does not take the ID of a server
     /// bookmark: nothing from the server is applied.
     func testSync_SyncNotPermitted_StoredCopyDoesNotTakeServerID() async {
@@ -573,9 +586,9 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
         XCTAssertEqual(localBookmarks.map(\.annotationId), [""])
     }
 
-    /// A bookmark the patron deleted is not revived when the server still
-    /// lists it and a stale unsynced copy of it is stored.
-    func testSync_DeletedServerBookmarkWithStaleUnsyncedCopy_IsNotAdopted() async {
+    /// A deleted bookmark's stale stored copy is hidden before uploads, so the
+    /// server copy is not merged back.
+    func testSync_DeletedBookmarkWithStaleStoredCopy_DoesNotReturn() async {
         let synced = bookmark("srv-v2", trackIndex: 2, offsetMs: 7_000)
         storeLocally(synced)
         let deleted = await delete(synced)
@@ -614,6 +627,18 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
         await addBookmark(at: TrackPosition(track: tracks.tracks[1], timestamp: 7.0, tracks: tracks))
         server.postOutcome = .success(AnnotationResponse(serverId: "srv-9", timeStamp: "2026-02-02T00:00:00Z"))
         _ = await fetch()
+    }
+
+    /// A bookmark added at a restored position does not take the listening
+    /// position's annotation ID when its own post fails.
+    func testSaveBookmark_AtPositionWithAnnotationID_PostFails_StaysUnsynced() async {
+        server.postOutcome = .failure(NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet))
+        var restored = TrackPosition(track: tracks.tracks[1], timestamp: 7.0, tracks: tracks)
+        restored.annotationId = "srv-listening-position"
+
+        await addBookmark(at: restored)
+
+        XCTAssertEqual(localBookmarks.map(\.annotationId), [""])
     }
 
     /// A bookmark added offline and synced once is stored once, as the synced record.

@@ -720,10 +720,10 @@ protocol AnnotationsManager {
     /// annotation. Returns `nil` for an `AudioBookmark`, a PDF page bookmark
     /// and any other type.
     ///
-    /// Audiobook bookmarks are kept on return, as in every shipped build:
-    /// until PP-5577 they parsed without their server ID, so none was ever
-    /// deleted. Deleting them is a product decision, like the listening
-    /// position above.
+    /// Audiobook bookmarks are kept on return. Bookmarks this app wrote carry
+    /// `"annotationId": ""` in their selector and parsed without a server ID
+    /// until PP-5577, so shipped builds kept them. Deleting them is a product
+    /// decision, like the listening position above.
     private static func serverAnnotationId(of bookmark: Bookmark) -> String? {
         if let readium = bookmark as? TPPReadiumBookmark {
             return readium.annotationId

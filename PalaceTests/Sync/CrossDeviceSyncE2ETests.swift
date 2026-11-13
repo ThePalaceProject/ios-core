@@ -290,14 +290,9 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         // local position has no server id yet), so this is the real shape of
         // the bytes on the server.
         //
-        // Omitting the key made this fixture diverge from production and hid a
-        // shipped bug: with the key absent, `AudioBookmark.create`'s
-        // `locatorData["annotationId"] as? String ?? annotationId` fell through
-        // to the real server id and the return-cleanup DELETE was issued, so
-        // the test passed. In production the empty string won, the parsed
-        // bookmark had no server linkage, and the listening position was never
-        // deleted — resurrecting on re-borrow (HelpSpot #18468 / #18019 /
-        // #18449). Keep this key here so the fixture can fail.
+        // Keep the key so the fixture matches the bytes the app uploads; parsing
+        // and return cleanup are tested against that shape (HelpSpot #18468 /
+        // #18019 / #18449, PP-5577).
         let dict: [String: Any] = [
             "@type": "LocatorAudioBookTime",
             "@version": 2,
@@ -1021,7 +1016,7 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         XCTAssertTrue(remaining.contains { $0.motivation == TPPBookmarkSpec.Motivation.readingProgress.rawValue },
                       "The audiobook LISTENING POSITION must be PRESERVED on return — matching 3.1.0/3.2.0 and the ebook/PDF path. Deleting a patron's place is a product decision that has not been made; see deleteAllBookmarks for the tag-level evidence that it was never a 3.2.0 regression.")
 
-        // An AUDIOBOOK user `.bookmark` is also kept, as in every shipped
+        // An audiobook user `.bookmark` is also kept, as in every shipped
         // build. Those builds parsed it without its server ID, so nothing was
         // deleted; since PP-5577 it parses with the ID and `serverAnnotationId`
         // keeps it explicitly. Deleting it means deleting patron data that is

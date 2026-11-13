@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import os
 import PalaceLogging
 import PalaceReadingPosition
 import PalaceBookRegistry
@@ -288,6 +289,10 @@ import PalaceUtilities
             let writeTask = Task { [weak self] in
                 guard let self else { return }
                 let location = position.toAudioBookmark()
+                // A position restored from the server carries the listening
+                // position's annotation ID. A new bookmark has none until its
+                // own post succeeds.
+                location.annotationId = ""
                 var updatedPosition = position
 
                 defer {
@@ -528,7 +533,15 @@ import PalaceUtilities
 
     private func fetchServerBookmarks() async -> [AudioBookmark] {
         let box: AudioBookmarkListBox = await withCheckedContinuation { continuation in
-            fetchServerBookmarks { continuation.resume(returning: AudioBookmarkListBox($0)) }
+            let resumed = OSAllocatedUnfairLock(initialState: false)
+            fetchServerBookmarks { bookmarks in
+                // A second completion is ignored; a continuation resumes once.
+                guard resumed.withLock({ wasResumed in
+                    defer { wasResumed = true }
+                    return !wasResumed
+                }) else { return }
+                continuation.resume(returning: AudioBookmarkListBox(bookmarks))
+            }
         }
         return box.bookmarks
     }
