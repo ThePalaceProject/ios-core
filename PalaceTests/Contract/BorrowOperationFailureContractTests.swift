@@ -370,6 +370,7 @@ final class BorrowOperationFailureContractTests: XCTestCase {
         log.record("test.cancelBorrowTask")
         task.cancel()
         await task.value
+        // Known: PP-5565 a cancelled borrow shows the "Borrow failed" alert with Retry.
         finish(named: name)
     }
 

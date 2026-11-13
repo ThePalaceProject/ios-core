@@ -8,11 +8,14 @@
 //      Loan→Hold race error.
 //    - `postResponseEffects`: the ordered post-borrow success plan.
 //    - `alreadyHasActiveLoan`: the SQ-007 suppression predicate.
+//    - `authErrorReason` / `failureEffects`: the ordered failure-routing plan.
 //  No singletons, `Task`, `Date`, network, or feature flags.
 //
 
 import Foundation
+import PalaceAuth
 import PalaceBookModel
+import PalaceCatalog
 
 enum BorrowReducerCore {
 
@@ -133,5 +136,174 @@ enum BorrowReducerCore {
         @unknown default:
             return false
         }
+    }
+
+    // MARK: - Phase 4: failure classification
+
+    /// The shape of the `PalaceError` a borrow failed with, as auth routing
+    /// reads it.
+    enum FailureErrorCase: Equatable, Sendable {
+        case authentication
+        case networkUnauthorized
+        case networkForbidden
+        case other
+    }
+
+    /// The problem-document fields auth routing reads.
+    struct FailureProblemDocument: Equatable, Sendable {
+        let type: String?
+        let isRecoverableAuthError: Bool
+    }
+
+    /// Why a failure counts as an auth error. `authErrorReason` returns `nil`
+    /// when it does not.
+    enum AuthErrorReason: Equatable, Sendable {
+        case authenticationError
+        case credentialsProblemType
+        /// PP-3716.
+        case recoverableProblemDocument
+        /// PP-3716: browser sign-in with credentials gets `no-active-loan`.
+        case browserNoActiveLoan
+        case networkUnauthorized
+        case networkForbidden
+        case invalidCredentialsCode
+    }
+
+    /// Problem documents that mean the stored credentials were refused, so
+    /// signing in again can fix the borrow. The Circulation Manager sends the
+    /// `auth/unrecoverable/credentials/invalid` form with a 401; the other two
+    /// are older spellings still in use. An expired, suspended or blocked card
+    /// is not here: signing in cannot fix it, so its text is shown instead.
+    static let credentialsProblemTypes: Set<String> = [
+        TPPProblemDocument.TypeInvalidCredentials,
+        "http://librarysimplified.org/terms/problem/invalid-credentials",
+        "http://palaceproject.io/terms/problem/auth/unrecoverable/credentials/invalid",
+    ]
+
+    /// Classifies a borrow failure. An `.authentication` error is always one.
+    /// Otherwise a problem document decides on its own: one
+    /// that is not about credentials (a loan limit arrives as 403 with one) is
+    /// not an auth error, since signing in cannot fix it (PP-5359). Without a
+    /// document, a bare 401/403 or the invalid-credentials code is one; a
+    /// timeout or server error is not.
+    static func authErrorReason(
+        errorCase: FailureErrorCase,
+        problemDocument: FailureProblemDocument?,
+        isBrowserBased: Bool,
+        hasCredentials: Bool,
+        nsErrorCode: Int
+    ) -> AuthErrorReason? {
+        if errorCase == .authentication { return .authenticationError }
+
+        if let doc = problemDocument {
+            if credentialsProblemTypes.contains(doc.type ?? "") { return .credentialsProblemType }
+            if doc.isRecoverableAuthError { return .recoverableProblemDocument }
+            if doc.type == TPPProblemDocument.TypeNoActiveLoan, isBrowserBased, hasCredentials {
+                return .browserNoActiveLoan
+            }
+            return nil
+        }
+
+        // An OPDS path can strip the problem document from a 401.
+        if errorCase == .networkUnauthorized { return .networkUnauthorized }
+        if errorCase == .networkForbidden { return .networkForbidden }
+        if nsErrorCode == TPPErrorCode.invalidCredentials.rawValue { return .invalidCredentialsCode }
+        return nil
+    }
+
+    // MARK: - Phase 5: failure route
+
+    /// The account's authentication type as failure routing reads it.
+    /// `.noAuthentication` covers a missing definition and the types that need
+    /// no sign-in (anonymous, COPPA).
+    enum FailureAuthKind: Equatable, Sendable {
+        case noAuthentication
+        case basic
+        case token
+        case saml
+        case oidc
+        case oauthIntermediary
+
+        /// SAML, OIDC and OAuth-intermediary (Clever) re-authenticate in a browser.
+        var isBrowserBased: Bool { self == .saml || self == .oidc || self == .oauthIntermediary }
+    }
+
+    indirect enum FailureEffect: Equatable, Sendable {
+        /// SQ-007: no alert; clear processing again in case a notification set it.
+        case suppressAndReclearProcessing
+        /// `showBorrowError`. `includesOriginalError` passes the thrown error
+        /// and its problem document, which only a non-`PalaceError` throw carries.
+        case showBorrowError(includesOriginalError: Bool)
+        /// Log only: the per-book breaker is already armed.
+        case reauthBreakerTripped
+        case markReauthAttempted
+        case markCredentialsStale
+        /// OIDC silent reauth. On success the borrow is retried once with the
+        /// breaker still armed (PP-5359); on failure `fallback` runs.
+        case oidcSilentReauth(fallback: FailureEffect)
+        case coordinatorRefresh(reason: ReauthReason, authLabel: String)
+        /// The sign-in sheet. Its completion retries the borrow when the
+        /// account has credentials (and, if `requiresSignedIn`, is logged in).
+        case presentSignInModal(authLabel: String, requiresSignedIn: Bool)
+        /// Log only: an auth error this auth type has no recovery for.
+        case noAutomaticRecovery
+    }
+
+    /// The ordered failure plan. The runner executes it in order, returns the
+    /// book if a retry borrowed it, and otherwise rethrows the failure.
+    static func failureEffects(
+        authError: AuthErrorReason?,
+        problemDocumentType: String?,
+        registeredState: TPPBookState,
+        hasCredentials: Bool,
+        reauthAlreadyAttempted: Bool,
+        authKind: FailureAuthKind,
+        hasAuthCoordinator: Bool,
+        includesOriginalError: Bool
+    ) -> [FailureEffect] {
+        let isAuthError = authError != nil
+        let showError = FailureEffect.showBorrowError(includesOriginalError: includesOriginalError)
+
+        // SQ-007: the auto-re-borrow can fail with a 401 for a loan that
+        // exists. A loan-already-exists document is not an auth error, so it is
+        // checked before the auth guard.
+        let isLoanAlreadyExists = problemDocumentType == TPPProblemDocument.TypeLoanAlreadyExists
+        if (isAuthError || isLoanAlreadyExists) && alreadyHasActiveLoan(state: registeredState) && hasCredentials {
+            return [.suppressAndReclearProcessing]
+        }
+
+        guard isAuthError else { return [showError] }
+        guard !reauthAlreadyAttempted else { return [.reauthBreakerTripped, showError] }
+
+        var effects: [FailureEffect] = [.markReauthAttempted]
+        if hasCredentials {
+            effects.append(.markCredentialsStale)
+        }
+
+        if authKind.isBrowserBased && hasCredentials {
+            if authKind == .oidc {
+                let fallback: FailureEffect = hasAuthCoordinator
+                    ? .coordinatorRefresh(reason: .oidcRefreshFailed, authLabel: "OIDC")
+                    : .presentSignInModal(authLabel: "OIDC", requiresSignedIn: false)
+                effects.append(.oidcSilentReauth(fallback: fallback))
+            } else if hasAuthCoordinator {
+                let isSaml = authKind == .saml
+                effects.append(.coordinatorRefresh(
+                    reason: isSaml ? .samlSessionExpired : .invalidCredentials,
+                    authLabel: isSaml ? "SAML" : "OAuth-intermediary"
+                ))
+            } else {
+                effects.append(.presentSignInModal(authLabel: "SAML", requiresSignedIn: false))
+            }
+        } else if hasCredentials && authKind == .basic {
+            // PP-5449: the sheet offers empty fields; cancelling leaves the
+            // refused barcode/PIN stored, so retry only after a real sign-in.
+            effects.append(.presentSignInModal(authLabel: "Basic", requiresSignedIn: true))
+        } else if !hasCredentials && authKind != .noAuthentication {
+            effects.append(.presentSignInModal(authLabel: "Sign-in", requiresSignedIn: false))
+        } else {
+            effects.append(contentsOf: [.noAutomaticRecovery, showError])
+        }
+        return effects
     }
 }

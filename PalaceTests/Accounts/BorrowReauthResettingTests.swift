@@ -256,7 +256,7 @@ final class BorrowReauthResettingTests: PalaceWiringTestCase {
     }
 
     /// Drive one borrow and swallow the expected rethrow (auth-error borrows
-    /// always rethrow — both `.routeToReauth` and `.showGenericError` throw).
+    /// always rethrow — every failure plan rethrows).
     private static func borrowExpectingThrow(_ op: BorrowOperation, _ book: TPPBook) async {
         do {
             _ = try await op.borrowAsync(book, attemptDownload: false)
