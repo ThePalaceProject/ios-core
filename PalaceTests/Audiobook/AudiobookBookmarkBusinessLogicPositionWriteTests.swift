@@ -318,6 +318,58 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
         XCTAssertTrue(spyWriter.cancelledBookIDs.isEmpty, "close must not cancel the queued position")
     }
 
+    // MARK: - 4a-2. What stopPlayback does to the remote position (PP-5595)
+
+    /// Close keeps the final position: it is saved, then flushed, and never cancelled.
+    func testSettleRemotePosition_close_savesThenFlushesWithoutCancelling() async {
+        spyWriter.saveResult = .throttled
+        var savedFinal = false
+
+        let flush = await AudiobookSessionManager.settleRemotePosition(logic: sut, persistFinalPosition: true) {
+            savedFinal = true
+            sut.saveListeningPosition(at: position(trackIndex: 1, time: 90.0), completion: nil)
+        }
+        await flush?.value
+
+        XCTAssertTrue(savedFinal)
+        XCTAssertEqual(spyWriter.events, ["save", "flush:\(bookIdentifier)"])
+        XCTAssertTrue(spyWriter.cancelledBookIDs.isEmpty, "a close must not drop the queued position")
+    }
+
+    /// A return drops the queued position (3.2.3 Cause 2): cancel, no final save, no flush.
+    func testSettleRemotePosition_return_cancelsWithoutSavingOrFlushing() async {
+        var savedFinal = false
+
+        let flush = await AudiobookSessionManager.settleRemotePosition(logic: sut, persistFinalPosition: false) {
+            savedFinal = true
+        }
+
+        XCTAssertNil(flush)
+        XCTAssertFalse(savedFinal)
+        XCTAssertEqual(spyWriter.cancelledBookIDs, [bookIdentifier])
+        XCTAssertTrue(spyWriter.flushedBookIDs.isEmpty, "a return must not post the position")
+    }
+
+    /// With no bookmark logic bound, a close still saves the final position.
+    func testSettleRemotePosition_closeWithoutLogic_stillSaves() async {
+        var savedFinal = false
+
+        let flush = await AudiobookSessionManager.settleRemotePosition(logic: nil, persistFinalPosition: true) {
+            savedFinal = true
+        }
+
+        XCTAssertNil(flush)
+        XCTAssertTrue(savedFinal)
+    }
+
+    /// Only the logic bound to the stopping book owns its queued write.
+    func testPositionLogic_matchesOnlyTheBoundBook() {
+        XCTAssertTrue(AudiobookSessionManager.positionLogic(sut, bookId: bookIdentifier) === sut)
+        XCTAssertNil(AudiobookSessionManager.positionLogic(sut, bookId: "another-book"))
+        XCTAssertNil(AudiobookSessionManager.positionLogic(sut, bookId: nil))
+        XCTAssertNil(AudiobookSessionManager.positionLogic(nil, bookId: bookIdentifier))
+    }
+
     // MARK: - 4b. Pending remote-write cancellation (3.2.3 Cause 2)
 
     /// `cancelPendingRemotePositionWrite()` MUST forward to the writer's

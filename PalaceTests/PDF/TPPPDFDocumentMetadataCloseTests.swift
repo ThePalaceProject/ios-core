@@ -66,6 +66,23 @@ final class TPPPDFDocumentMetadataCloseTests: XCTestCase {
         XCTAssertEqual(events, ["flush:\(book.identifier)"])
     }
 
+    /// A page the debounce already saved is not posted again on close.
+    func testStoreFinalPositionAndFlush_pageSavedByDebounce_onlyFlushes() async {
+        let metadata = makeMetadata()
+        sync.isOn = true
+        metadata.currentPage = 9
+        metadata.setCurrentPage(9)
+        // The debounced save posts from its own task; wait until it reached the writer.
+        for _ in 0..<200 where await !writer.events.contains("save") {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        await metadata.storeFinalPositionAndFlush().value
+
+        let events = await writer.events
+        XCTAssertEqual(events, ["save", "flush:\(book.identifier)"], "close must not post the debounced page again")
+    }
+
     /// With sync off the page is saved on the device only, and the flush finds nothing to send.
     func testStoreFinalPositionAndFlush_syncOff_savesLocallyAndPostsNothing() async {
         let metadata = makeMetadata()

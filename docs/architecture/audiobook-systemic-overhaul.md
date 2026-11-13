@@ -131,7 +131,7 @@ Four concrete adapters: `LCPAdapter` (priority 0), `OpenAccessAdapter`, `BearerT
 
 Extract a new local SPM module `Palace/Packages/PalaceReadingPosition/` containing:
 
-- `PositionWriter` protocol (`save(_:) async throws -> ServerPositionID?`, `load(for:) async throws -> PositionSnapshot?`, `cancel(for:) async`)
+- `PositionWriter` protocol (`save(_:) async throws -> ServerPositionID?`, `load(for:) async throws -> PositionSnapshot?`, `cancel(for:) async`; `flush(for:) async` was added later so a closing reader posts its queued position at once, PP-5595)
 - `RemotePositionWriter` — single canonical implementation; 15.0s per-book throttle window; 1 POST per active-playback window
 - `PositionSnapshot` — neutral value type carrying `bookID`, `format`, `payload: Data`, `timestamp`
 - `PositionWriterError` enum

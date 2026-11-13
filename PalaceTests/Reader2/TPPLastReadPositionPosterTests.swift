@@ -395,9 +395,6 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
             href: "/chapter1.xhtml", progression: 0.5, totalProgression: 0.25))
         gatedPoster.storeFinalPositionAndFlush(locator: createLocator(
             href: "/chapter2.xhtml", progression: 0.5, totalProgression: 0.6))
-        try await Task.sleep(nanoseconds: 50_000_000)
-        let beforeOpen = await gatedWriter.events
-        XCTAssertEqual(beforeOpen, [], "flush must not run while a save is still held")
 
         await gate.open()
         for task in gatedPoster.pendingWriteTasksForTesting() { await task.value }

@@ -57,8 +57,9 @@ final class RemotePositionWriterFlushTests: XCTestCase {
     private func postThenQueue(_ bookID: String = "book-A", queued: String = "queued") async throws {
         let writer = self.writer!
         let first = snapshot(bookID, "first")
+        let before = adapter.postCount
         let firstSave = Task { try await writer.save(first) }
-        try await waitPosts(adapter.postCount + 1)
+        try await waitPosts(before + 1)
         adapter.releaseNext("first-id")
         _ = try await bounded("the first save") { try await firstSave.value }
         clock.advance(by: 2)
