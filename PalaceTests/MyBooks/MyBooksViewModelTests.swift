@@ -2395,3 +2395,87 @@ final class MyBooksViewModelUnchangedSyncTests: XCTestCase {
         XCTAssertTrue(viewModel.showInstructionsLabel)
     }
 }
+
+// MARK: - Search Across Sync Tests
+
+/// A sync replaces the shelf while the search field still holds text, so the
+/// reload has to apply that text again (PP-5491).
+@MainActor
+final class MyBooksViewModelSearchAfterSyncTests: XCTestCase {
+
+    private var mock: TPPBookRegistryMock!
+    private var viewModel: MyBooksViewModel!
+
+    override func setUp() async throws {
+        try await super.setUp()
+        mock = TPPBookRegistryMock()
+        mock.myBooks = []
+        let appContainer = makeTestAppContainer()
+        viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
+        viewModel.isVisible = true
+        await awaitPublishedAsync(viewModel.$isLoading.dropFirst()) { !$0 }
+    }
+
+    override func tearDown() async throws {
+        viewModel = nil
+        mock = nil
+        try await super.tearDown()
+    }
+
+    private func completeSync(with books: [TPPBook]) async {
+        mock.myBooks = books
+        mock.sendSyncEvent(.ended)
+        await awaitPublishedAsync(viewModel.$isLoading.dropFirst()) { !$0 }
+    }
+
+    private func search(_ query: String) async {
+        viewModel.searchQuery = query
+        await viewModel.filterBooks(query: query)
+    }
+
+    private let harry = { TPPBookMocker.mockBook(identifier: "s1", title: "Harry Potter", authors: "Rowling") }
+    private let moby = { TPPBookMocker.mockBook(identifier: "s2", title: "Moby Dick", authors: "Melville") }
+    private let emma = { TPPBookMocker.mockBook(identifier: "s3", title: "Emma", authors: "Austen") }
+
+    func testSync_AfterReturnWhileSearching_ShowsOnlyMatchingBooks() async {
+        await completeSync(with: [harry(), moby(), emma()])
+        await search("Harry")
+        XCTAssertEqual(viewModel.books.map(\.identifier), ["s1"], "Precondition: the search narrows the shelf")
+
+        await completeSync(with: [harry(), moby()])
+
+        XCTAssertEqual(viewModel.books.map(\.identifier), ["s1"],
+            "a sync during a search must keep the search applied")
+    }
+
+    func testSync_WhileSearchMatchesNothingNew_ShowsNoBooks() async {
+        await completeSync(with: [harry(), moby()])
+        await search("Emma")
+        XCTAssertTrue(viewModel.books.isEmpty, "Precondition: no book matches yet")
+
+        await completeSync(with: [harry()])
+
+        XCTAssertTrue(viewModel.books.isEmpty,
+            "a sync must not show unmatched loans under a search that matches none")
+    }
+
+    func testSync_AddingMatchingLoanWhileSearching_ShowsIt() async {
+        await completeSync(with: [harry(), moby()])
+        await search("Austen")
+
+        await completeSync(with: [harry(), moby(), emma()])
+
+        XCTAssertEqual(viewModel.books.map(\.identifier), ["s3"])
+    }
+
+    func testSync_AfterSearchCleared_ShowsEveryLoanSorted() async {
+        await completeSync(with: [harry(), moby(), emma()])
+        await search("Harry")
+        await search("")
+
+        await completeSync(with: [harry(), emma()])
+
+        XCTAssertEqual(viewModel.books.map(\.identifier), ["s3", "s1"],
+            "with no search text a sync shows every loan in author order")
+    }
+}

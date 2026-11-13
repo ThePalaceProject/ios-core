@@ -234,6 +234,12 @@ enum Group: Int {
         self.books = newBooks
         self.showInstructionsLabel = showInstructions
         self.sortData()
+        // A sync can land while the search field still holds text; show only
+        // the loans that match it, not the whole shelf (PP-5491).
+        let query = FoldedSearchQuery(searchQuery)
+        if !query.isEmpty {
+            self.books = Self.books(in: allBooks, matching: query)
+        }
         self.publishedSignature = signature
         self.isLoading = false
     }
@@ -300,13 +306,15 @@ enum Group: Int {
         } else {
             let allBooksCopy = self.allBooks
             let filteredBooks = await Task.detached(priority: .userInitiated) {
-                allBooksCopy.filter {
-                    folded.matches($0.title) || folded.matches($0.authors)
-                }
+                Self.books(in: allBooksCopy, matching: folded)
             }.value
 
             self.books = filteredBooks
         }
+    }
+
+    nonisolated private static func books(in books: [TPPBook], matching query: FoldedSearchQuery) -> [TPPBook] {
+        books.filter { query.matches($0.title) || query.matches($0.authors) }
     }
 
     func resetFilter() {
