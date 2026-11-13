@@ -5,8 +5,9 @@
 > **Superseded for the authored layer.** PR bodies and commit messages now follow
 > the short What / Why / How verified format in `.github/PULL_REQUEST_TEMPLATE.md`
 > and the "Writing conventions" section of `CLAUDE.md`, enforced by
-> `scripts/check-pr-hygiene.py`. The Evidence / Repro / Class / Obligations sections
-> described below are no longer part of the template. The principles still apply to
+> `scripts/check-pr-hygiene.py`. The Repro / Class / Obligations sections described
+> below are no longer part of the template; the template's Evidence section is a short
+> one-line-per-key form, not the one described here. The principles still apply to
 > the CI-generated comments (test report, ledger).
 
 > The pull request is not a formality on the way to a merge. For a codebase whose

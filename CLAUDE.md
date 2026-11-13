@@ -69,9 +69,10 @@ Write for a colleague opening the repo cold, not for tooling. These are enforced
 
 **PR titles and commit subjects.** Imperative, 72 characters max. A Jira key is fine as prefix or suffix. No internal run or campaign identifiers (swarm/wave/phase IDs, `rev_<hex>`, changeset IDs).
 
-**PR bodies.** Use the template: What (1-3 sentences), Why (1-3 sentences, Jira link), How verified (one line per test and what it asserts, 4 bullets max, plus manual checks), optional Not done. About 20 lines, hard limit ~1,500 characters; screenshots and HTML comments do not count.
-- Keep Jira links, `Closes #N`, related PRs, screenshots. One line of mutation results is fine.
-- Leave out AI footers and `Co-Authored-By` trailers, reviewer transcripts and verdicts, score tables, command transcripts, red-before-green logs, retro prose, and internal tooling vocabulary.
+**PR bodies.** Use the template: What (1-3 sentences), Why (1-3 sentences, Jira link), How verified (one line per test and what it asserts, 4 bullets max, plus manual checks), Evidence, optional Not done. About 20 lines, hard limit ~1,500 characters; screenshots, HTML comments and the Evidence section do not count.
+- **Evidence** (required when the PR changes `Palace/` or `PalaceTests/`, ~600 characters): one line each for `Red first:`, `Mutation:`, `Simulator:`, `Reviews:`, `Known behavior kept:`, in the template's format. `not run: <reason>`, `not applicable: <reason>` or `none; <reason>` is fine when you lack the tools; the reason is required.
+- Keep Jira links, `Closes #N`, related PRs, screenshots.
+- Leave out AI footers and `Co-Authored-By` trailers, reviewer transcripts and role names, score tables, command transcripts and logs, retro prose, and internal tooling vocabulary. The one-line Evidence keys are the place for results and review counts.
 
 **Commit bodies.** Optional; at most ~10 lines with the same content as What/Why. No AI trailer. A single `Scope: ...` or `Not done: ...` line is allowed where a local hook asks for it.
 
@@ -143,6 +144,8 @@ Every test must:
 - **Be named as a behavior spec:** `testBorrow_WhenNotSignedIn_ShowsAuthPrompt`.
 
 Banned: set-then-assert, asserting enum raw values, `XCTAssertNotNil(MyClass())`, toggle-and-check, asserting initial state with no action, tautologies (`x == true || x == false`, `XCTAssertNotNil(Singleton.shared)`, `x is SomeType`, `XCTAssertEqual(x, x)`), and coverage-only tests. Replace fluff 1:1 with a test that could fail if the code regressed.
+
+**Known behavior kept.** When a test or snapshot keeps behavior you suspect is wrong (to change it later, not now), put `// Known: PP-1234 <what is kept and why it may be wrong>` on or right above the assertion, and list the key on the PR's `Known behavior kept:` line. `scripts/list-known-behaviors.py` lists them; without the marker a passing test reads as an endorsement.
 
 **Critical paths** (sign-in, borrow, download, DRM fulfillment, payment): every branch and error path has a test, and every test kills at least one mutant.
 
