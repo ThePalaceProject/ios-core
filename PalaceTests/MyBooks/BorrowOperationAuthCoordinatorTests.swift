@@ -6,7 +6,7 @@
 //  `BorrowOperation` when wired with an `AuthCoordinator`.
 //
 //  When the coordinator is injected, the SAML / OAuth-intermediary
-//  browser branch inside `handleBorrowAuthErrorIfNeeded` routes through
+//  browser branch inside `BorrowReducerCore.failureEffects` routes through
 //  `coordinator.refreshCredentialsIfNeeded(reason:)` instead of the
 //  closure-injected `presentSignInModal`. The OIDC silent-reauth path
 //  retains its `attemptOIDCSilentReauth` body — only the failure
@@ -251,8 +251,8 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
     ///    Breaker stays armed (post-fix contract: `.userCancelled` does
     ///    NOT clear the breaker — user explicitly declined, re-prompting
     ///    on the next tap is the loop this breaker exists to prevent).
-    ///  - Attempt 2: SAML 401 → `handleBorrowAuthErrorIfNeeded` sees the
-    ///    breaker armed and returns `.showGenericError` → coordinator is
+    ///  - Attempt 2: SAML 401 → `BorrowReducerCore.failureEffects` sees the
+    ///    breaker armed and plans `.showBorrowError` → coordinator is
     ///    NOT called again, fall-through alert fires instead.
     func testCoordinator_perBookCircuitBreaker_isStillHonored_acrossTwoSeparateAttempts() async throws {
         let (coordinator, _, modal, _, _) = SpyAuthCoordinatorFactory.make(
@@ -279,8 +279,8 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
                       "First attempt routes to coordinator, NOT showBorrowError — alert must not fire while reauth is in flight")
 
         // Attempt 2 — same book, same auth-error response. Breaker is
-        // armed from attempt 1; `handleBorrowAuthErrorIfNeeded` must
-        // return `.showGenericError` and NOT call the coordinator again.
+        // armed from attempt 1; `BorrowReducerCore.failureEffects` must
+        // plan `.showBorrowError` and NOT call the coordinator again.
         do { _ = try await operation.borrowAsync(book, attemptDownload: false) } catch {}
 
         XCTAssertEqual(modal.presentCallCount, 1,
@@ -326,7 +326,7 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
         XCTAssertEqual(modal.presentCallCount, 1,
                        "First attempt must dispatch coordinator → modal once and arm the breaker")
 
-        // Drive a SECOND attempt — must hit the breaker `.showGenericError`
+        // Drive a SECOND attempt — must hit the breaker `.showBorrowError`
         // path (no further modal). Coordinator stays at 1.
         do { _ = try await operation.borrowAsync(book, attemptDownload: false) } catch {}
         XCTAssertEqual(modal.presentCallCount, 1,
@@ -344,7 +344,7 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
         // what this test pins.
         //
         // The state-observable assertion is: alert was NOT generated for
-        // the second attempt yet (the `.showGenericError` path schedules
+        // the second attempt yet (the `.showBorrowError` path schedules
         // showBorrowError on MainActor). We assert the alert WAS fired
         // for attempt 2 — proving the breaker DID gate attempt 2's
         // coordinator dispatch (not the coordinator's own cooldown).
