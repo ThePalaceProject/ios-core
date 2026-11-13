@@ -138,7 +138,9 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
         compressedDataBytes: CacheByteCounter = CacheByteCounter()
     ) {
         memoryImages = CountedCache(counter: decodedImageBytes)
-        dataCache = GeneralCache<String, Data>(cacheName: cacheName, mode: .memoryAndDisk, byteCounter: compressedDataBytes)
+        // Compressed data stays on disk only (PP-5583): `memoryImages` already
+        // holds the decoded copy, and a disk read is what a miss costs anyway.
+        dataCache = GeneralCache<String, Data>(cacheName: cacheName, mode: .diskOnly, byteCounter: compressedDataBytes)
         self.encode = encode
         limits = Self.limits(forDeviceMemoryMB: deviceMemoryMB)
         memoryImages.countLimit = limits.countLimit
@@ -160,7 +162,6 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
         processingQueue.maxConcurrentOperationCount = 1
 
         memoryImages.removeAllObjects()
-        dataCache.clearMemory()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 60) { [weak self] in
             guard let self = self else { return }
@@ -405,6 +406,13 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
         let operation = ImageDecodeOperation()
         operation.addExecutionBlock(work)
         processingQueue.addOperation(operation)
+    }
+
+    /// The decoded image for `key` if it is in memory now. Never reads disk, so
+    /// a getter can call it on the main thread.
+    // PUBLIC_INTENT: witness for the public ImageCacheType requirement.
+    public func memoryImage(for key: String) -> UIImage? {
+        memoryImages.object(forKey: key)
     }
 
     public func remove(for key: String) {

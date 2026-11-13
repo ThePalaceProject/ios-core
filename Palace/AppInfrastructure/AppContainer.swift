@@ -653,7 +653,10 @@ struct AppContainer: @unchecked Sendable {
         // Built before TPPBookRegistry, which takes ImageLoading as a required
         // init parameter (a default-arg resolution here would re-enter the lock).
         let imageCache = ImageCache.shared
-        let imageLoader: ImageLoading = ImageLoader(imageCache: imageCache)
+        let imageLoader: ImageLoading = ImageLoader(
+            imageCache: imageCache,
+            sourceCache: TPPBookCoverRegistry.launchSourceCache
+        )
         // Must be configured before the first TPPBook is constructed (the
         // registry construction below parses records).
         TPPBookImageContext.imageCacheProvider = { imageCache }

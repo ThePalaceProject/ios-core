@@ -51,9 +51,16 @@ public nonisolated class ImageLoader: ImageLoading, @unchecked Sendable {
 
     // MARK: - Init
 
-    public init(imageCache: ImageCacheType) {
+    /// `sourceCache` holds downloaded cover bytes on disk. The app passes the
+    /// launch-wide cache it shares with `TPPBookCoverRegistry.shared`; other
+    /// callers get a folder of their own.
+    // PUBLIC_INTENT: the existing public init with one defaulted parameter added.
+    public init(imageCache: ImageCacheType, sourceCache: GeneralCache<String, Data>? = nil) {
         self.cache = imageCache
-        self.registry = TPPBookCoverRegistry(imageCache: imageCache)
+        self.registry = TPPBookCoverRegistry(
+            imageCache: imageCache,
+            sourceCache: sourceCache ?? TPPBookCoverRegistry.makeInstanceSourceCache()
+        )
     }
 
     // MARK: - Book-level fetch

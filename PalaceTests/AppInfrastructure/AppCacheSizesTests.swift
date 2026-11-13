@@ -37,7 +37,6 @@ final class AppCacheSizesTests: XCTestCase {
             networkResponses: { 1 * mb },
             decodedImages: { 2 * mb },
             imageData: { 3 * mb },
-            coverSourceData: { 4 * mb },
             bookCovers: { 5 * mb },
             opdsFeedData: { 6 * mb },
             pdfPreviews: { 7 * mb },
@@ -50,7 +49,7 @@ final class AppCacheSizesTests: XCTestCase {
 
         let line = try XCTUnwrap(lines.all.first)
         var expected = [
-            "networkResponses": 1, "decodedImages": 2, "imageData": 3, "coverSourceData": 4,
+            "networkResponses": 1, "decodedImages": 2, "imageData": 3,
             "bookCovers": 5, "opdsFeedData": 6, "pdfPreviews": 7, "pdfThumbnails": 8
         ]
         #if LCP
@@ -294,7 +293,8 @@ final class TPPBookCoverRegistrySourceBytesTests: XCTestCase {
 
         let secondCache = ImageCache._makeIsolatedForTesting(cacheName: "SourceBytes-\(UUID().uuidString)")
         let second = TPPBookCoverRegistry(imageCache: secondCache, urlSession: .stubbedSession(), sourceCache: sourceCache)
-        let smaller = await second.coverImage(for: book, displayPoints: 120)
+        // Above `smallDisplayThreshold`, so this size asks for the same full-size URL.
+        let smaller = await second.coverImage(for: book, displayPoints: 240)
         Self.drain(secondCache)
 
         XCTAssertNotNil(smaller)

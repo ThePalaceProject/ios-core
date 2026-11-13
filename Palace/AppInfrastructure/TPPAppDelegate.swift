@@ -5,6 +5,7 @@ import FirebaseCore
 import FirebaseAnalytics
 import FirebaseCrashlytics
 import PalaceBookRegistry
+import PalaceBookModel
 // `@preconcurrency`: FirebaseDynamicLinks is not Sendable-audited upstream; its
 // `DynamicLink` crosses into a `@MainActor` Task when routing a universal link.
 // Honest ceiling until Firebase annotates its concurrency (see fix vocabulary).
@@ -171,6 +172,7 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
             on: memoryMonitor.memoryEvents,
             sources: .production(networkResponses: { networkExecutor.cacheMemoryUsage })
         )
+        MemoryReleaseCoordinator.shared.registerBookCovers(BookCoverStore.shared)
 
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }

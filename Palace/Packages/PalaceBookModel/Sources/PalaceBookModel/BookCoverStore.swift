@@ -3,7 +3,8 @@
 //  Cover, thumbnail, loading flags and cover color for each book, keyed by
 //  book ID (PP-5502). A loans sync builds a new TPPBook for every book; with
 //  this state kept by ID the new objects reuse the decoded covers and colors
-//  instead of reading the cache and computing the color again.
+//  instead of reading the cache and computing the color again. The decoded
+//  images are limited by bytes and released on a memory warning (PP-5583).
 
 import Foundation
 import UIKit
@@ -17,12 +18,23 @@ struct BookCoverState {
     var dominantColor: UIColor = .gray
     /// The image `dominantColor` was (or is being) computed from.
     var colorSource: UIImage?
+    /// Set when the store released the cover or thumbnail. A getter then reads
+    /// the image cache's memory copy, and the next cover keeps the color.
+    var coverReleased = false
+    var thumbnailReleased = false
+    var colorKeptFromReleasedImage = false
 }
 
 /// An entry lives while at least one TPPBook object for its ID is alive.
 /// A sync creates the replacement object before the registry releases the
 /// old one, so the count does not reach zero and the cover is kept; once the
 /// last object goes, the entry and its images are released.
+///
+/// Decoded images are also released while the entry lives: over
+/// `Limits.byteLimit`, and on a memory warning. Neither touches the
+/// `Limits.keepRecent` most recently read covers, because a view that drew a
+/// cover reads it again on its next redraw and fetches only when it appears.
+/// A release sends no change notice, so a drawn view keeps its frame.
 // PUBLIC_INTENT: TPPBook's public init takes the store, so callers and tests can inject one.
 public final class BookCoverStore: @unchecked Sendable {
     // PUBLIC_INTENT: default store for TPPBook's public init.
@@ -35,6 +47,8 @@ public final class BookCoverStore: @unchecked Sendable {
     private struct Entry {
         var state = BookCoverState()
         var books: [ObjectIdentifier: WeakBook] = [:]
+        /// `readClock` value of the last getter read or new image.
+        var lastUsed: UInt64 = 0
     }
 
     /// Recursive: a TPPBook's deinit unregisters, and the last strong
@@ -42,6 +56,7 @@ public final class BookCoverStore: @unchecked Sendable {
     /// already holds this lock.
     private let lock = NSRecursiveLock()
     private var entries: [String: Entry] = [:]
+    private var readClock: UInt64 = 0
 
     let colorQueue: DispatchQueue
     private let colorExtractor: @Sendable (UIImage) -> UIColor
@@ -63,14 +78,47 @@ public final class BookCoverStore: @unchecked Sendable {
         let byteLimit: Int
         let keepRecent: Int
 
+        /// Byte limits match `ImageCache`'s decoded-image tiers. `keepRecent` is
+        /// about two screens of covers: a phone catalog or My Books screen, or
+        /// an iPad catalog with several lanes.
         static func forDevice(memoryMB: UInt64 = ProcessInfo.processInfo.physicalMemory / (1024 * 1024)) -> Limits {
-            Limits(byteLimit: .max, keepRecent: .max)
+            let mb = 1024 * 1024
+            if memoryMB < 2048 {
+                return Limits(byteLimit: 15 * mb, keepRecent: 40)
+            } else if memoryMB < 4096 {
+                return Limits(byteLimit: 25 * mb, keepRecent: 40)
+            }
+            return Limits(byteLimit: 40 * mb, keepRecent: 80)
         }
     }
 
-    /// Releases decoded images, for a memory warning.
+    /// Releases every decoded image outside the `keepRecent` most recently read
+    /// covers, for a memory warning. Loading flags and colors stay.
     // PUBLIC_INTENT: the app registers this as a memory warning release step.
-    public func releaseImages() {}
+    public func releaseImages() {
+        lock.withLock {
+            for identifier in releasableIdentifiersLocked() {
+                releaseImagesLocked(for: identifier)
+            }
+        }
+    }
+
+    /// The cover for a getter: marks the entry as read, and says whether the
+    /// store released the cover.
+    func readCover(for identifier: String) -> (image: UIImage?, released: Bool) {
+        lock.withLock {
+            guard let state = markUsedLocked(identifier) else { return (nil, false) }
+            return (state.coverImage, state.coverReleased)
+        }
+    }
+
+    /// The thumbnail for a getter; see `readCover(for:)`.
+    func readThumbnail(for identifier: String) -> (image: UIImage?, released: Bool) {
+        lock.withLock {
+            guard let state = markUsedLocked(identifier) else { return (nil, false) }
+            return (state.thumbnailImage, state.thumbnailReleased)
+        }
+    }
 
     // MARK: - Live objects
 
@@ -99,17 +147,7 @@ public final class BookCoverStore: @unchecked Sendable {
     /// the memory event line, not a hot path.
     // PUBLIC_INTENT: read by the app's memory event line.
     public var imageByteCount: Int {
-        lock.withLock {
-            var seen = Set<ObjectIdentifier>()
-            var bytes = 0
-            for entry in entries.values {
-                for image in [entry.state.coverImage, entry.state.thumbnailImage, entry.state.colorSource] {
-                    guard let image, seen.insert(ObjectIdentifier(image)).inserted, let cgImage = image.cgImage else { continue }
-                    bytes += cgImage.bytesPerRow * cgImage.height
-                }
-            }
-            return bytes
-        }
+        lock.withLock { imageByteCountLocked() }
     }
 
     /// `imageByteCount` of the default store that TPPBook uses.
@@ -182,10 +220,16 @@ public final class BookCoverStore: @unchecked Sendable {
 
     /// Computes the cover color from `image` unless the stored color already
     /// came from this image object, then stores it.
+    /// After a release the color stays: the cover that comes back is the same
+    /// cover, so it takes the color over without computing it again.
     func updateDominantColor(for identifier: String, using image: UIImage) {
         let claimed = lock.withLock { () -> Bool in
             guard let entry = entries[identifier], entry.state.colorSource !== image else { return false }
             entries[identifier]?.state.colorSource = image
+            if entry.state.colorKeptFromReleasedImage {
+                entries[identifier]?.state.colorKeptFromReleasedImage = false
+                return false
+            }
             return true
         }
         guard claimed else { return }
@@ -205,10 +249,79 @@ public final class BookCoverStore: @unchecked Sendable {
     private func apply(_ change: (inout BookCoverState) -> Void, to identifier: String) -> Bool {
         lock.withLock {
             guard var entry = entries.removeValue(forKey: identifier) else { return false }
+            let before = (cover: entry.state.coverImage, thumbnail: entry.state.thumbnailImage)
             change(&entry.state)
+            let newCover = entry.state.coverImage.map { $0 !== before.cover } ?? false
+            let newThumbnail = entry.state.thumbnailImage.map { $0 !== before.thumbnail } ?? false
+            if newCover { entry.state.coverReleased = false }
+            if newThumbnail { entry.state.thumbnailReleased = false }
+            if newCover || newThumbnail {
+                // A new image is about to be drawn: count it as read so the
+                // byte limit does not release it first.
+                readClock += 1
+                entry.lastUsed = readClock
+            }
             entries[identifier] = entry
+            if newCover || newThumbnail {
+                enforceByteLimitLocked()
+            }
             return true
         }
+    }
+
+    private func markUsedLocked(_ identifier: String) -> BookCoverState? {
+        guard entries[identifier] != nil else { return nil }
+        readClock += 1
+        entries[identifier]?.lastUsed = readClock
+        return entries[identifier]?.state
+    }
+
+    /// Entries holding an image, least recently used first, without the
+    /// `keepRecent` most recently used ones.
+    private func releasableIdentifiersLocked() -> [String] {
+        let holding = entries
+            .filter { $0.value.state.coverImage != nil || $0.value.state.thumbnailImage != nil || $0.value.state.colorSource != nil }
+            .sorted { $0.value.lastUsed > $1.value.lastUsed }
+        return holding.dropFirst(max(0, limits.keepRecent)).reversed().map(\.key)
+    }
+
+    private func enforceByteLimitLocked() {
+        var bytes = imageByteCountLocked()
+        guard bytes > limits.byteLimit else { return }
+        for identifier in releasableIdentifiersLocked() {
+            bytes -= releaseImagesLocked(for: identifier)
+            if bytes <= limits.byteLimit { return }
+        }
+    }
+
+    /// Returns the bytes of the images it released.
+    @discardableResult
+    private func releaseImagesLocked(for identifier: String) -> Int {
+        guard var state = entries[identifier]?.state else { return 0 }
+        let released = Self.byteCount(of: [state.coverImage, state.thumbnailImage, state.colorSource])
+        if state.coverImage != nil { state.coverReleased = true }
+        if state.thumbnailImage != nil { state.thumbnailReleased = true }
+        if state.colorSource != nil { state.colorKeptFromReleasedImage = true }
+        state.coverImage = nil
+        state.thumbnailImage = nil
+        state.colorSource = nil
+        entries[identifier]?.state = state
+        return released
+    }
+
+    private func imageByteCountLocked() -> Int {
+        Self.byteCount(of: entries.values.flatMap { [$0.state.coverImage, $0.state.thumbnailImage, $0.state.colorSource] })
+    }
+
+    /// Decoded bytes of `images`, each image object counted once.
+    private static func byteCount(of images: [UIImage?]) -> Int {
+        var seen = Set<ObjectIdentifier>()
+        var bytes = 0
+        for image in images {
+            guard let image, seen.insert(ObjectIdentifier(image)).inserted, let cgImage = image.cgImage else { continue }
+            bytes += cgImage.bytesPerRow * cgImage.height
+        }
+        return bytes
     }
 
     private func liveBooks(for identifier: String) -> [TPPBook] {

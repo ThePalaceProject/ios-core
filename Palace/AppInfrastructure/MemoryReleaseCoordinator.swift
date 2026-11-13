@@ -83,8 +83,13 @@ final class MemoryReleaseCoordinator: @unchecked Sendable {
         releaseAll()
     }
 
-    /// Adds the cover store's release step.
-    func registerBookCovers(_ store: BookCoverStore) {}
+    /// Adds the cover store's release step. `BookCoverStore` lives in a package
+    /// that cannot see this type, so the app registers it (PP-5583).
+    func registerBookCovers(_ store: BookCoverStore) {
+        register(store, stage: .decodedImages) { store in
+            store.releaseImages()
+        }
+    }
 
     /// Runs every live step once, in stage order and then registration order.
     func releaseAll() {

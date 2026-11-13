@@ -1,4 +1,5 @@
 import Combine
+import CryptoKit
 import Foundation
 import UIKit
 import ImageIO
@@ -78,16 +79,23 @@ actor TPPBookCoverRegistry {
     /// `nonisolated let` (no `(unsafe)`) because `ImageCacheType` is `Sendable`.
     nonisolated let imageCache: ImageCacheType
 
-    static let shared = TPPBookCoverRegistry(imageCache: ImageCache.shared, sourceDataCounter: AppCacheCounters.coverSourceData)
+    static let shared = TPPBookCoverRegistry(imageCache: ImageCache.shared, sourceCache: launchSourceCache)
 
-    /// URL-keyed cache of raw image bytes, so one source decoded at several sizes
-    /// (cell, detail, player) costs one network round-trip.
+    /// Raw image bytes by URL, so one source decoded at several sizes (cell,
+    /// detail, player) costs one network round-trip. On disk only (PP-5583):
+    /// a memory warning does not cost a second download.
     ///
-    /// `CountedCache` is `Sendable`, so it needs no `nonisolated(unsafe)`.
-    nonisolated private let sourceDataCache: CountedCache<String, NSData>
+    /// `nonisolated let`: `GeneralCache` serializes its own access, and the
+    /// fetch writes it from a detached `Task`.
+    nonisolated private let sourceCache: GeneralCache<String, Data>
 
-    /// Bytes of source image data held now (PP-5509).
-    nonisolated var sourceDataBytes: Int { sourceDataCache.byteCount }
+    /// Caches folder that holds one source-byte folder per launch.
+    nonisolated static let sourceCacheRootName = "CoverSourceData"
+
+    /// Source bytes last for one launch, as the in-memory cache they replace
+    /// did. The folder name bounds their life, so entries get a long expiry:
+    /// `GeneralCache` reads a file with no expiry as already expired.
+    static let sourceEntryLifetime: TimeInterval = 365 * 24 * 60 * 60
 
     /// Dedup concurrent callers that want the same URL's bytes. A swimlane
     /// rendering 10 cells at once must only hit the network once per URL.
@@ -187,14 +195,10 @@ actor TPPBookCoverRegistry {
         hostFailureTracker: HostFailureTracker = HostFailureTracker(),
         urlSession: URLSession = TPPBookCoverRegistry.imageSession,
         now: @escaping @Sendable () -> Date = Date.init,
-        sourceDataCounter: CacheByteCounter = CacheByteCounter(),
-        sourceCache: GeneralCache<String, Data>? = nil
+        sourceCache: GeneralCache<String, Data> = TPPBookCoverRegistry.makeInstanceSourceCache()
     ) {
         self.imageCache = imageCache
-        let sourceDataCache = CountedCache<String, NSData>(counter: sourceDataCounter)
-        sourceDataCache.totalCostLimit = 40 * 1024 * 1024 // 40MB of source bytes
-        sourceDataCache.name = "TPPBookCoverRegistry.sourceData"
-        self.sourceDataCache = sourceDataCache
+        self.sourceCache = sourceCache
         self.hostFailureTracker = hostFailureTracker
         self.urlSession = urlSession
         self.now = now
@@ -219,8 +223,47 @@ actor TPPBookCoverRegistry {
             .sink { _ in Task { await tracker.reset() } }
     }
 
+    /// This launch's folder name under `sourceCacheRootName`.
+    nonisolated static let launchFolder = UUID().uuidString
+
+    /// The source-byte cache the app's registries share for this launch, so a
+    /// cover fetched for the player is not fetched again for a list. Folders
+    /// from earlier launches are deleted in the background on first use.
+    nonisolated static let launchSourceCache: GeneralCache<String, Data> = {
+        let rootName = TPPBookCoverRegistry.sourceCacheRootName
+        let launchFolder = TPPBookCoverRegistry.launchFolder
+        let cache = GeneralCache<String, Data>(cacheName: "\(rootName)/\(launchFolder)", mode: .diskOnly)
+        if let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first {
+            let root = caches.appendingPathComponent(rootName, isDirectory: true)
+            DispatchQueue.global(qos: .utility).async {
+                TPPBookCoverRegistry.removeEarlierLaunches(in: root, keeping: launchFolder)
+            }
+        }
+        return cache
+    }()
+
+    /// A source-byte cache of its own, inside this launch's folder so the next
+    /// launch deletes it. The default for registries other than the app's.
+    nonisolated static func makeInstanceSourceCache() -> GeneralCache<String, Data> {
+        _ = launchSourceCache
+        return GeneralCache(cacheName: "\(sourceCacheRootName)/\(launchFolder)/instances/\(UUID().uuidString)", mode: .diskOnly)
+    }
+
     /// Deletes the source-byte folders of earlier launches under `root`.
-    nonisolated static func removeEarlierLaunches(in root: URL, keeping launchFolder: String) {}
+    nonisolated static func removeEarlierLaunches(in root: URL, keeping launchFolder: String) {
+        let fileManager = FileManager.default
+        let folders = (try? fileManager.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? []
+        for folder in folders where folder.lastPathComponent != launchFolder {
+            try? fileManager.removeItem(at: folder)
+        }
+    }
+
+    /// File-safe key for a URL. `GeneralCache` strips non-alphanumerics from a
+    /// key, so two URLs could otherwise share a file, and long URLs pass the
+    /// file name limit.
+    nonisolated static func sourceKey(for url: URL) -> String {
+        SHA256.hash(data: Data(url.absoluteString.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
 
     /// Clears the host circuit breaker (fire-and-forget). Call on an account
     /// switch so a host tripped under the prior library does not suppress covers
@@ -449,10 +492,10 @@ actor TPPBookCoverRegistry {
     /// strikes into some later, unrelated failure.
     ///
     /// Not directly covered by a test, and the reason is a seam rather than an
-    /// oversight: a successful fetch also stores the bytes in `sourceDataCache`,
+    /// oversight: a successful fetch also stores the bytes in `sourceCache`,
     /// so every later request for that URL is served from cache and never
-    /// reaches this path again. The reset only becomes observable once NSCache
-    /// evicts under memory pressure, which a unit test cannot force. A test
+    /// reaches this path again. The reset only becomes observable once that
+    /// entry is gone. A test
     /// scripting a later failure would measure the positive cache and pass with
     /// this line deleted — see the note on
     /// `testRecoveryAfterTwoStrikes_isNotSuppressedByTheWidenedWindow`.
@@ -461,9 +504,9 @@ actor TPPBookCoverRegistry {
     }
 
     private func sourceData(for url: URL) async -> Data? {
-        let key = url.absoluteString
-        if let cached = sourceDataCache.object(forKey: key) {
-            return cached as Data
+        let key = Self.sourceKey(for: url)
+        if let cached = sourceCache.get(for: key) {
+            return cached
         }
 
         if await hostFailureTracker.isHostFailing(url.host) {
@@ -514,7 +557,7 @@ actor TPPBookCoverRegistry {
                 }
                 await self.clearBadResponse(for: url)
                 await self.hostFailureTracker.recordSuccess(for: url.host)
-                self.sourceDataCache.setObject(data as NSData, forKey: key, cost: data.count)
+                self.sourceCache.set(data, for: key, expiresIn: Self.sourceEntryLifetime)
                 return data
             } catch {
                 if Self.isHostLevelError(error) {
