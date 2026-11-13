@@ -41,6 +41,28 @@ extension BorrowOperation {
         BorrowReducerCore.responseState(for: postBorrowBook, preBorrowBook: preBorrowBook)
     }
 
+    /// The account's authentication type as `BorrowReducerCore.failureEffects`
+    /// reads it.
+    static func failureAuthKind(_ authDefinition: AccountDetails.Authentication?) -> BorrowReducerCore.FailureAuthKind {
+        guard let authDefinition else { return .noAuthentication }
+        if authDefinition.isOidc { return .oidc }
+        if authDefinition.isSaml { return .saml }
+        if authDefinition.isOauth { return .oauthIntermediary }
+        if authDefinition.isBasic { return .basic }
+        if authDefinition.isToken { return .token }
+        return .noAuthentication
+    }
+
+    /// The `PalaceError` cases `BorrowReducerCore.authErrorReason` reads.
+    static func failureErrorCase(_ error: PalaceError) -> BorrowReducerCore.FailureErrorCase {
+        switch error {
+        case .authentication: return .authentication
+        case .network(.unauthorized): return .networkUnauthorized
+        case .network(.forbidden): return .networkForbidden
+        default: return .other
+        }
+    }
+
     /// Builds a user-friendly borrow error message that always uses
     /// the localized "Borrowing [title] could not be completed." base
     /// instead of raw `PalaceError.localizedDescription` (which can

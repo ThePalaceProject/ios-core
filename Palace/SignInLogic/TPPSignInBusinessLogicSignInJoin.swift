@@ -57,6 +57,11 @@ extension TPPSignInBusinessLogic {
         inFlightSignInTasks[key, default: [:]][id] = task
     }
 
+    /// Test-only count of this instance's unfinished sign-in tasks.
+    var _pendingSignInTaskCountForTesting: Int {
+        inFlightSignInTasks[ObjectIdentifier(self)]?.count ?? 0
+    }
+
     /// Test-only deterministic join. Awaits every sign-in task this instance
     /// started, including ones started while an earlier one was being awaited —
     /// the token-refresh arm starts validation from inside its own task.

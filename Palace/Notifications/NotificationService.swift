@@ -948,15 +948,38 @@ class NotificationService: NSObject, UNUserNotificationCenterDelegate, Messaging
 
     // MARK: - Debug Logging
 
+    /// Push payload keys that may be logged. The payload also carries patron
+    /// identifiers such as `authorization_identifier`, and the device log is
+    /// attached to support emails, so only listed keys are written (PP-5576).
+    static let loggableUserInfoKeys = ["event_type", "type", "identifier", "library", "days_to_expiry"]
+
+    static func notificationLogMessage(
+        title: String,
+        body: String,
+        userInfo: [AnyHashable: Any],
+        context: String,
+        timestamp: String
+    ) -> String {
+        let fields = loggableUserInfoKeys.compactMap { key in
+            userInfo[key].map { "\(key): \($0)" }
+        }
+        return """
+      [Notification] Received (\(context)) at \(timestamp)
+        Title: \(title)
+        Body: \(body)
+        UserInfo: \(fields.joined(separator: ", "))
+      """
+    }
+
     /// Logs notification details for debugging
     private func logNotificationReceived(_ content: UNNotificationContent, context: String) {
-        let timestamp = ISO8601DateFormatter().string(from: Date())
-        Log.info(#file, """
-      [Notification] Received (\(context)) at \(timestamp)
-        Title: \(content.title)
-        Body: \(content.body)
-        UserInfo: \(content.userInfo)
-      """)
+        Log.info(#file, Self.notificationLogMessage(
+            title: content.title,
+            body: content.body,
+            userInfo: content.userInfo,
+            context: context,
+            timestamp: ISO8601DateFormatter().string(from: Date())
+        ))
     }
 
     /// Logs current held books state for debugging availability sync issues

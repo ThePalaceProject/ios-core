@@ -220,15 +220,13 @@ extension TPPSignInBusinessLogic {
         Log.info(#file, "🔐 [REDIRECT]   Auth token length: \(authToken.count) characters")
         Log.info(#file, "🔐 [REDIRECT]   Patron keys: \(parsedPatron.keys.sorted().joined(separator: ", "))")
 
+        // The reducer's effect starts credential validation on a sign-in task.
+        // That task runs after this synchronous handler returns, so the patron
+        // set below is in place before validation reads it.
         self.dispatch(.bearerTokenReceived(token: authToken, expiration: nil))
         self.patron = parsedPatron
         Log.info(#file, "🔐 [REDIRECT] Stored authToken and patron in businessLogic")
         Log.info(#file, "🔐 [REDIRECT] Calling validateCredentials()...")
-
-        // OAuth redirect handler is synchronous; the log below already said
-        // this was initiated asynchronously, and now it is.
-        startSignInTask { await self.validateCredentials() }
-
         Log.info(#file, "🔐 [REDIRECT] validateCredentials() initiated (async)")
         completion?(nil, nil, nil)
     }

@@ -113,27 +113,35 @@ public enum AuthAction: Equatable {
     case loggingInAfterSignUpFlagSet(Bool)
 }
 
-/// No async effects yet. The environment placeholder keeps the signature
-/// compatible with `Store<AuthState, AuthAction, AuthEnvironment>` for a
-/// future Phase that wires the network/keychain side effects through the
-/// store. Today every transition is synchronous.
+/// What the reducer's effects need from the business logic. Today that is
+/// only credential validation, the one effect the reducer plans (after
+/// `.bearerTokenReceived`); every other transition is synchronous.
 ///
 /// `Sendable`: required by `Effect<Action, Environment: Sendable>` (the
-/// canonical bound this package mirrors — see `Effect.swift`). The `Store`
-/// hands the environment to an effect's `run` closure across an actor-isolation
-/// boundary, so the environment must be `Sendable`. This is a public type, so
-/// the conformance is explicit (the compiler does not synthesize `Sendable`
-/// for public types); it is trivially safe — the struct carries no state.
-public struct AuthEnvironment: Equatable, Sendable {
-    public init() {}
+/// canonical bound this package mirrors — see `Effect.swift`). The runner
+/// hands the environment to an effect's `run` closure across an
+/// actor-isolation boundary, so the environment must be `Sendable`. This is a
+/// public type, so the conformance is explicit (the compiler does not
+/// synthesize `Sendable` for public types).
+// PUBLIC_INTENT: the app's TPPSignInBusinessLogic builds this to run the reducer's effects.
+public struct AuthEnvironment: Sendable {
+    /// Validates the stored credentials against the circulation manager and
+    /// reports the outcome through the business logic's own callbacks.
+    let validateCredentials: @MainActor @Sendable () async -> Void
+
+    // PUBLIC_INTENT: the app supplies the validation closure across the package boundary.
+    public init(validateCredentials: @escaping @MainActor @Sendable () async -> Void) {
+        self.validateCredentials = validateCredentials
+    }
 }
 
 /// Namespace holder for the auth state-machine reducer. See
 /// `TPPSignInBusinessLogic` for the side-effect surface (network calls,
 /// keychain writes, DRM authorization, UI delegate callbacks) — those
-/// stay in the business logic. The reducer captures only the
-/// state-transition rules so they can be exercised with literal state in
-/// `AuthReducerTests` without spinning up a network executor.
+/// stay in the business logic. The reducer captures the state-transition
+/// rules and plans the credential validation that follows a bearer token, so
+/// both can be exercised with literal state in `AuthReducerTests` without
+/// spinning up a network executor.
 public enum AuthReducer {
 
     public static func reduce(
@@ -178,7 +186,13 @@ public enum AuthReducer {
         case .bearerTokenReceived(let token, let expiration):
             state.authToken = token
             state.authTokenExpiration = expiration
-            return .none
+            // A new token is only usable once the circulation manager accepts
+            // it. Validation reports through the business logic, so the chain
+            // ends here.
+            return .task { env in
+                await env.validateCredentials()
+                return nil
+            }
 
         case .refreshAuthStarted(let authType, let usingExistingCredentials):
             // Browser flows on a non-cached refresh need to surface the

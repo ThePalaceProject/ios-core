@@ -149,7 +149,7 @@ final class AccountSwitchBorrowReauthCouplingContractTests: XCTestCase {
     /// Builds a `BorrowOperation` whose closure seams record into `log`. The
     /// no-credentials + needs-auth account + a `fetchBook` that throws
     /// `.network(.unauthorized)` route every borrow into
-    /// `handleBorrowAuthErrorIfNeeded`'s "no creds → sign-in modal" arm
+    /// the failure plan's "no creds → sign-in modal" route
     /// (BorrowOperation.swift:699), gated by the per-book circuit breaker.
     ///
     /// `presentSignInModal` receives no book argument, so the book identifier is
@@ -191,7 +191,7 @@ final class AccountSwitchBorrowReauthCouplingContractTests: XCTestCase {
     }
 
     /// Drive one borrow and swallow the expected rethrow. Every auth-error
-    /// borrow rethrows (`.routeToReauth` / `.showGenericError` both throw).
+    /// borrow rethrows (every failure plan rethrows).
     private func borrowExpectingThrow(_ op: BorrowOperation, _ book: TPPBook) async {
         do {
             _ = try await op.borrowAsync(book, attemptDownload: false)

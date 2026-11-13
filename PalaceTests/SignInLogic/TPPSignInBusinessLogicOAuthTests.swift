@@ -257,7 +257,7 @@ final class TPPSignInBusinessLogicOAuthTests: XCTestCase {
         // Pins line ~336: authorization header is "Bearer <token>" verbatim.
         // Mutating the formatter to "Token " / leaving off the trailing space
         // would change this header string.
-        businessLogic.dispatch(.bearerTokenReceived(token: "in-flight-tok", expiration: nil))
+        businessLogic.reduceAuthStateForTesting(.bearerTokenReceived(token: "in-flight-tok", expiration: nil))
 
         let req = businessLogic.makeRequest(for: .signIn, context: "oauth-test")
 

@@ -3,9 +3,9 @@
 //  Palace
 //
 //  The borrow lifecycle: Adobe activation, the borrow fetch, response
-//  evaluation (PP-4178 Loan→Hold race), registry update, and auth-error
-//  handling (circuit break, OIDC silent reauth, sign-in modal retry, the
-//  SQ-007 already-has-loan suppression, PP-3707 retry gating).
+//  evaluation (PP-4178 Loan→Hold race), registry update, and the failure
+//  tail. `BorrowReducerCore` decides the success and failure plans; this
+//  type runs them (retries, OIDC silent reauth, coordinator, sign-in modal).
 //
 //  The side-effecting seams (fetchBook, presentBorrowErrorAlert,
 //  presentSignInModal, attemptOIDCReauth) are injected closures so tests
@@ -29,30 +29,6 @@ import PalaceDownloads
 protocol BorrowOperationDelegate: AnyObject {
     @MainActor func startDownload(for book: TPPBook, withRequest initedRequest: URLRequest?)
     func startBorrow(for book: TPPBook, attemptDownload: Bool, borrowCompletion: (() -> Void)?)
-}
-
-// MARK: - BorrowAuthErrorDecision
-
-/// Decision returned by `handleBorrowAuthErrorIfNeeded` so the caller in
-/// `borrowAsync` can correctly route the post-decision UI side effects.
-///
-/// - `routeToReauth`: an auth-recovery path (OIDC silent reauth or sign-in
-///   modal) was kicked off. Caller MUST NOT also surface a borrow-error
-///   alert — that would race the re-auth UI and confuse the patron.
-/// - `suppressAndClearSpinner`: SQ-007 case — the book is already in the
-///   patron's loans with active credentials, so the auth-flavored borrow
-///   error is benign (the auto-re-borrow ran but wasn't needed). Caller
-///   must not show the alert and must clear the cell spinner.
-/// - `showGenericError`: not an auth error, or auth recovery isn't
-///   available — caller reports the failure through `showBorrowError`.
-/// - `retrySucceeded`: re-authentication ran and the awaited retry borrowed
-///   the book; the caller returns it so the borrow reports success (and the
-///   download slot the retry handed on is not released as a failure).
-private enum BorrowAuthErrorDecision {
-    case routeToReauth
-    case suppressAndClearSpinner
-    case showGenericError
-    case retrySucceeded(TPPBook)
 }
 
 // MARK: - BorrowOperation
@@ -115,7 +91,7 @@ final class BorrowOperation: @unchecked Sendable {
     private let attemptOIDCReauth: () async -> Bool
 
     /// Auth-refresh coordinator. When non-nil, the SAML / generic browser
-    /// sign-in in `handleBorrowAuthErrorIfNeeded` routes through it instead of
+    /// sign-in in the failure plan routes through it instead of
     /// `presentSignInModal`. The per-book circuit breaker still applies: the
     /// coordinator is single-flight process-wide, not per book.
     private let authCoordinator: AuthCoordinator?
@@ -343,253 +319,161 @@ final class BorrowOperation: @unchecked Sendable {
 
             return borrowedBook
 
-        } catch let error as PalaceError {
-            await clearProcessingState()
-
-            // Pass the PalaceError as `originalError` so a 401 with no problem
-            // doc (`.network(.unauthorized)` / `.forbidden`) still routes to reauth.
-            let decision = await handleBorrowAuthErrorIfNeeded(
-                error,
-                originalError: error,
-                for: book,
-                attemptDownload: attemptDownload
-            )
-
-            switch decision {
-            case .retrySucceeded(let borrowedBook):
-                return borrowedBook
-            case .routeToReauth:
-                throw error
-            case .suppressAndClearSpinner:
-                // SQ-007: the book is already registered with active
-                // credentials. Skip the alert, and re-clear processing in case
-                // a notification flipped it back since `clearProcessingState`.
-                await MainActor.run {
-                    self.bookRegistry.setProcessing(false, for: book.identifier)
-                }
-                throw error
-            case .showGenericError:
-                await MainActor.run {
-                    self.showBorrowError(error, originalError: nil, for: book)
-                }
-                throw error
-            }
         } catch {
             await clearProcessingState()
-
-            let nsError = error as NSError
-            let problemDoc = nsError.problemDocument
-
-            let palaceError = PalaceError.from(error)
-
-            let decision = await handleBorrowAuthErrorIfNeeded(
-                palaceError,
-                originalError: error,
-                for: book,
-                attemptDownload: attemptDownload,
-                problemDocument: problemDoc
-            )
-
-            switch decision {
-            case .retrySucceeded(let borrowedBook):
-                return borrowedBook
-            case .routeToReauth:
-                throw palaceError
-            case .suppressAndClearSpinner:
-                await MainActor.run {
-                    self.bookRegistry.setProcessing(false, for: book.identifier)
-                }
-                throw palaceError
-            case .showGenericError:
-                await MainActor.run {
-                    self.showBorrowError(palaceError, originalError: error, for: book, problemDocument: problemDoc)
-                }
-                throw palaceError
-            }
+            return try await routeBorrowFailure(error, for: book, attemptDownload: attemptDownload)
         }
     }
 
-    // MARK: - Auth-Error Handling
+    // MARK: - Failure Routing
 
-    /// Inspects a borrow failure and returns the routing decision the
-    /// caller should follow. See `BorrowAuthErrorDecision`: the SQ-007
-    /// suppression is distinct from "not an auth error" so a benign
-    /// auto-re-borrow failure shows no credentials alert.
-    private func handleBorrowAuthErrorIfNeeded(
-        _ error: PalaceError,
-        originalError: Error?,
-        for book: TPPBook,
-        attemptDownload: Bool,
-        problemDocument: TPPProblemDocument? = nil
-    ) async -> BorrowAuthErrorDecision {
+    /// What a failure effect needs from the failed borrow.
+    private struct BorrowFailure {
+        let error: PalaceError
+        let originalError: Error
+        let problemDocument: TPPProblemDocument?
+        let userAccount: TPPUserAccount
+        let registeredState: TPPBookState
+        let authTypeName: String
+    }
+
+    /// Runs the plan `BorrowReducerCore.failureEffects` decides, in order.
+    /// Returns the book when a reauth retry borrowed it; otherwise throws the
+    /// failure as a `PalaceError`.
+    private func routeBorrowFailure(_ thrown: Error, for book: TPPBook, attemptDownload: Bool) async throws -> TPPBook {
+        // A `PalaceError` reaches the alert without the thrown error or a
+        // problem document. Classification still reads its NSError code, so a
+        // 401 with no problem document still routes to reauth.
+        let error: PalaceError
+        let problemDocument: TPPProblemDocument?
+        let includesOriginalError: Bool
+        if let palaceError = thrown as? PalaceError {
+            error = palaceError
+            problemDocument = nil
+            includesOriginalError = false
+        } else {
+            problemDocument = (thrown as NSError).problemDocument
+            error = PalaceError.from(thrown)
+            includesOriginalError = true
+        }
+
         let userAccount = userAccountProvider()
         let authDef = userAccount.authDefinition
         let hasCredentials = userAccount.hasCredentials()
+        let authKind = Self.failureAuthKind(authDef)
 
-        let isAuthError: Bool = {
-            if case .authentication = error { return true }
-
-            if let problemDoc = problemDocument {
-                if Self.credentialsProblemTypes.contains(problemDoc.type ?? "") { return true }
-
-                if problemDoc.isRecoverableAuthError {
-                    Log.info(#file, "Recoverable auth error detected: \(problemDoc.type ?? "unknown") — triggering re-auth (PP-3716)")
-                    return true
-                }
-
-                if problemDoc.type == TPPProblemDocument.TypeNoActiveLoan,
-                   authDef?.isBrowserBased == true,
-                   hasCredentials {
-                    Log.info(#file, "Browser-based auth (SAML/OIDC/OAuth): 'no-active-loan' with active credentials — treating as auth error (PP-3716)")
-                    return true
-                }
-
-                // The server explained the failure and it is not about
-                // credentials (a loan limit arrives as 403 with this
-                // document). Re-authenticating cannot fix it (PP-5359).
-                return false
-            }
-
-            // A 401 surfacing as `.network(.unauthorized)` / `.forbidden`
-            // (an OPDS path can strip the problem doc) must route to reauth
-            // rather than a generic "Network request failed (912)" alert.
-            if case .network(.unauthorized) = error { return true }
-            if case .network(.forbidden) = error { return true }
-
-            if let nsError = originalError as NSError?, nsError.code == TPPErrorCode.invalidCredentials.rawValue {
-                return true
-            }
-
-            // Anything else (timeout, server error) is not a credentials
-            // problem; treating it as one marked valid accounts stale and,
-            // for browser sign-in, re-prompted on every retry (PP-5359).
-            return false
-        }()
-
-        // SQ-007: suppress the error if the user already has an active
-        // loan for this book. The auto-re-borrow path can fire 401
-        // (loan-already-exists) which the network responder codes as
-        // invalidCredentials — but credentials are valid, the borrow
-        // simply isn't needed. A loan-already-exists document is not an
-        // auth error, so it is checked here, before the auth guard.
-        let isLoanAlreadyExists = problemDocument?.type == TPPProblemDocument.TypeLoanAlreadyExists
-        let registeredState = self.bookRegistry.state(for: book.identifier)
-        let alreadyHasLoan = BorrowReducerCore.alreadyHasActiveLoan(state: registeredState)
-        if (isAuthError || isLoanAlreadyExists) && alreadyHasLoan && hasCredentials {
-            Log.warn(#file, "[SQ-007] Borrow auth-error suppressed for '\(book.title)' — book is already in registry with state \(registeredState) and credentials are present. Treating as benign auto-re-borrow failure, not a credentials problem.")
-            return .suppressAndClearSpinner
+        let authError = BorrowReducerCore.authErrorReason(
+            errorCase: Self.failureErrorCase(error),
+            problemDocument: problemDocument.map {
+                BorrowReducerCore.FailureProblemDocument(type: $0.type, isRecoverableAuthError: $0.isRecoverableAuthError)
+            },
+            isBrowserBased: authKind.isBrowserBased,
+            hasCredentials: hasCredentials,
+            nsErrorCode: (thrown as NSError).code
+        )
+        switch authError {
+        case .recoverableProblemDocument:
+            Log.info(#file, "Recoverable auth error detected: \(problemDocument?.type ?? "unknown") — triggering re-auth (PP-3716)")
+        case .browserNoActiveLoan:
+            Log.info(#file, "Browser-based auth (SAML/OIDC/OAuth): 'no-active-loan' with active credentials — treating as auth error (PP-3716)")
+        default:
+            break
         }
 
-        guard isAuthError else { return .showGenericError }
+        let registeredState = bookRegistry.state(for: book.identifier)
+        let plan = BorrowReducerCore.failureEffects(
+            authError: authError,
+            problemDocumentType: problemDocument?.type,
+            registeredState: registeredState,
+            hasCredentials: hasCredentials,
+            reauthAlreadyAttempted: Self.hasBorrowReauthBeenAttempted(for: book.identifier),
+            authKind: authKind,
+            hasAuthCoordinator: authCoordinator != nil,
+            includesOriginalError: includesOriginalError
+        )
 
-        // Circuit breaker: don't re-auth if we already tried for this book.
-        guard !Self.hasBorrowReauthBeenAttempted(for: book.identifier) else {
+        let failure = BorrowFailure(
+            error: error,
+            originalError: thrown,
+            problemDocument: problemDocument,
+            userAccount: userAccount,
+            registeredState: registeredState,
+            authTypeName: authDef?.authType.rawValue ?? "unknown"
+        )
+        for effect in plan {
+            if let borrowed = await runFailureEffect(effect, failure: failure, book: book, attemptDownload: attemptDownload) {
+                return borrowed
+            }
+        }
+        throw error
+    }
+
+    /// Runs one failure effect. Returns the book when a retry borrowed it.
+    private func runFailureEffect(
+        _ effect: BorrowReducerCore.FailureEffect,
+        failure: BorrowFailure,
+        book: TPPBook,
+        attemptDownload: Bool
+    ) async -> TPPBook? {
+        switch effect {
+        case .suppressAndReclearProcessing:
+            Log.warn(#file, "[SQ-007] Borrow auth-error suppressed for '\(book.title)' — book is already in registry with state \(failure.registeredState) and credentials are present. Treating as benign auto-re-borrow failure, not a credentials problem.")
+            await MainActor.run {
+                self.bookRegistry.setProcessing(false, for: book.identifier)
+            }
+
+        case .showBorrowError(let includesOriginalError):
+            let error = failure.error
+            let originalError = includesOriginalError ? failure.originalError : nil
+            let problemDocument = includesOriginalError ? failure.problemDocument : nil
+            await MainActor.run {
+                self.showBorrowError(error, originalError: originalError, for: book, problemDocument: problemDocument)
+            }
+
+        case .reauthBreakerTripped:
             Log.warn(#file, "Borrow re-auth already attempted for '\(book.title)' - showing error instead")
-            return .showGenericError
-        }
 
-        Log.info(#file, "Borrow failed with auth error for '\(book.title)' - attempting re-authentication")
-        Self.markBorrowReauthAttempted(for: book.identifier)
+        case .markReauthAttempted:
+            Log.info(#file, "Borrow failed with auth error for '\(book.title)' - attempting re-authentication")
+            Self.markBorrowReauthAttempted(for: book.identifier)
 
-        if hasCredentials {
-            userAccount.markCredentialsStale()
-        }
+        case .markCredentialsStale:
+            failure.userAccount.markCredentialsStale()
 
-        // `isBrowserBased` includes OAuth-intermediary (Clever), which needs
-        // the same browser-reauth recovery as SAML/OIDC.
-        let needsBrowserReauth = (authDef?.isBrowserBased == true) && hasCredentials
-        if needsBrowserReauth {
-            if authDef?.isOidc == true {
-                Log.info(#file, "OIDC session expired during borrow - attempting silent re-auth via ASWebAuthenticationSession")
-                let oidcSuccess = await attemptOIDCReauth()
-                if oidcSuccess {
-                    Log.info(#file, "OIDC silent re-auth succeeded, retrying borrow for '\(book.title)'")
-                    // One awaited retry with the breaker still armed: a second
-                    // failure shows an error rather than re-authenticating
-                    // again, which no patron action would stop (PP-5359).
-                    do {
-                        return .retrySucceeded(try await borrowAsync(book, attemptDownload: attemptDownload))
-                    } catch {
-                        Log.error(#file, "Retry borrow failed after OIDC re-auth: \(error.localizedDescription)")
-                    }
-                } else {
-                    // Silent reauth failed, so the IdP session needs an
-                    // interactive sign-in, same as SAML.
-                    Log.info(#file, "OIDC silent re-auth failed/cancelled - falling back to sign-in modal")
-                    if let coordinator = self.authCoordinator {
-                        if let borrowed = await coordinatorRetryBorrow(
-                            book: book,
-                            attemptDownload: attemptDownload,
-                            coordinator: coordinator,
-                            reason: .oidcRefreshFailed,
-                            authLabel: "OIDC"
-                        ) {
-                            return .retrySucceeded(borrowed)
-                        }
-                    } else {
-                        await presentSignInModalAndRetryBorrow(book: book, attemptDownload: attemptDownload, authLabel: "OIDC")
-                    }
-                }
-            } else {
-                Log.info(#file, "SAML/OAuth-intermediary session expired during borrow - credentials marked stale, triggering re-auth flow")
-                if let coordinator = self.authCoordinator {
-                    let reason: ReauthReason = (authDef?.isSaml == true)
-                        ? .samlSessionExpired
-                        : .invalidCredentials
-                    if let borrowed = await coordinatorRetryBorrow(
-                        book: book,
-                        attemptDownload: attemptDownload,
-                        coordinator: coordinator,
-                        reason: reason,
-                        authLabel: (authDef?.isSaml == true) ? "SAML" : "OAuth-intermediary"
-                    ) {
-                        return .retrySucceeded(borrowed)
-                    }
-                } else {
-                    await presentSignInModalAndRetryBorrow(book: book, attemptDownload: attemptDownload, authLabel: "SAML")
-                }
+        case .oidcSilentReauth(let fallback):
+            Log.info(#file, "OIDC session expired during borrow - attempting silent re-auth via ASWebAuthenticationSession")
+            guard await attemptOIDCReauth() else {
+                // The IdP session needs an interactive sign-in, same as SAML.
+                Log.info(#file, "OIDC silent re-auth failed/cancelled - falling back to sign-in modal")
+                return await runFailureEffect(fallback, failure: failure, book: book, attemptDownload: attemptDownload)
             }
-            return .routeToReauth
+            Log.info(#file, "OIDC silent re-auth succeeded, retrying borrow for '\(book.title)'")
+            // One awaited retry with the breaker still armed: a second failure
+            // shows an error rather than re-authenticating again (PP-5359).
+            do {
+                return try await borrowAsync(book, attemptDownload: attemptDownload)
+            } catch {
+                Log.error(#file, "Retry borrow failed after OIDC re-auth: \(error.localizedDescription)")
+            }
 
-        } else if hasCredentials && authDef?.isBasic == true {
-            // The server refused the stored barcode/PIN. The sheet offers
-            // empty fields for new ones; the borrow runs again only after a
-            // real sign-in, since cancelling leaves the refused ones stored
-            // (PP-5449).
+        case .coordinatorRefresh(let reason, let authLabel):
+            guard let coordinator = authCoordinator else { return nil }
+            return await coordinatorRetryBorrow(
+                book: book,
+                attemptDownload: attemptDownload,
+                coordinator: coordinator,
+                reason: reason,
+                authLabel: authLabel
+            )
+
+        case .presentSignInModal(let authLabel, let requiresSignedIn):
             await presentSignInModalAndRetryBorrow(book: book, attemptDownload: attemptDownload,
-                                                   authLabel: "Basic", requiresSignedIn: true)
-            return .routeToReauth
+                                                   authLabel: authLabel, requiresSignedIn: requiresSignedIn)
 
-        } else if !hasCredentials && (authDef?.needsAuth ?? false) {
-            Log.info(#file, "No credentials for borrow - showing sign-in modal")
-
-            await MainActor.run { [weak self] in
-                guard let self = self else { return }
-                self.presentSignInModal { [weak self] in
-                    guard let self else { return }
-
-                    guard self.userAccountProvider().hasCredentials() else {
-                        Log.info(#file, "Sign-in cancelled or failed, not retrying borrow for '\(book.title)'")
-                        Self.clearBorrowReauthAttempted(for: book.identifier)
-                        return
-                    }
-
-                    Log.info(#file, "Sign-in completed, retrying borrow for '\(book.title)'")
-                    // Breaker stays armed for the retry (PP-5359).
-                    self.retainRetryForTesting(Task { [weak self] in
-                        do {
-                            _ = try await self?.borrowAsync(book, attemptDownload: attemptDownload)
-                        } catch {
-                            Log.error(#file, "Retry borrow failed after sign-in: \(error.localizedDescription)")
-                        }
-                    })
-                }
-            }
-            return .routeToReauth
+        case .noAutomaticRecovery:
+            Log.warn(#file, "Auth error for \(failure.authTypeName) auth type - no automatic recovery")
         }
-
-        Log.warn(#file, "Auth error for \(authDef?.authType.rawValue ?? "unknown") auth type - no automatic recovery")
-        return .showGenericError
+        return nil
     }
 
     // MARK: - Error Presentation

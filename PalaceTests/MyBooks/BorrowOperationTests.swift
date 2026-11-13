@@ -6,7 +6,7 @@
 //  Closure injection (fetchBook / present-alert / present-sign-in /
 //  OIDC reauth) lets these tests verify the state machine without the
 //  OPDS network stack or UIKit. The auth-error retry paths
-//  (handleBorrowAuthErrorIfNeeded + the OIDC + sign-in-modal hops) are
+//  (the failure plan + the OIDC + sign-in-modal hops) are
 //  tightly coupled to live AccountDetails.Authentication construction
 //  that no existing test helper provides — those branches are exercised
 //  via integration tests, not here.
@@ -216,7 +216,7 @@ final class BorrowOperationTests: XCTestCase {
 
     /// Item #7 fix: when a 401 surfaces as `PalaceError.network(.unauthorized)`
     /// (e.g. an OPDS path that stripped the problem doc + we have no
-    /// originalError NSError code to lean on), `handleBorrowAuthErrorIfNeeded`
+    /// originalError NSError code to lean on), `routeBorrowFailure`
     /// MUST treat it as auth error and present the sign-in modal — not fall
     /// through to a generic alert. Closes the 35k+ "Network request failed
     /// (912)" non-fatal regression.
@@ -238,7 +238,7 @@ final class BorrowOperationTests: XCTestCase {
             // expected
         }
 
-        // handleBorrowAuthErrorIfNeeded is awaited inside borrowAsync and the
+        // routeBorrowFailure is awaited inside borrowAsync and the
         // sign-in modal is presented inside `await MainActor.run { ... }`, so the
         // completion has been recorded once the catch returns — assert directly.
 
@@ -291,13 +291,13 @@ final class BorrowOperationTests: XCTestCase {
                                     "Non-auth network errors must surface the borrow-error alert")
     }
 
-    // MARK: - Item #8 — SQ-007 spinner cleanup via BorrowAuthErrorDecision
+    // MARK: - Item #8 — SQ-007 spinner cleanup via the failure plan
 
     /// Item #8: SQ-007 fires when the book is already in the registry
     /// with a loan-class state AND credentials are present. The
     /// pre-fix behavior was to suppress re-auth but still call
     /// `showBorrowError` (a misleading credentials toast). Post-fix:
-    /// `BorrowAuthErrorDecision.suppressAndClearSpinner` keeps the
+    /// `FailureEffect.suppressAndReclearProcessing` keeps the
     /// alert suppressed AND idempotently re-clears the cell spinner.
     func testBorrow_SQ007AlreadyHasLoanWithCredentials_doesNotShowAlert() async {
         // Seed registry to "already has loan" state.
@@ -420,7 +420,7 @@ final class BorrowOperationTests: XCTestCase {
     // `needsBrowserReauth = (authDef?.isBrowserBased == true) && hasCredentials`
     // at BorrowOperation.swift:636 decides whether an authenticated 401
     // routes to the browser re-auth flow (SAML/OIDC/OAuth → sign-in modal,
-    // NO error alert) or falls through to `.showGenericError` (alert, no
+    // NO error alert) or falls through to `.showBorrowError` (alert, no
     // modal). The two tests below are a discriminating pair: SAME pre-state
     // (creds present, .unregistered registry state, invalid-credentials
     // problem doc) differing ONLY in the auth-def's browser-ness — and they
@@ -437,7 +437,7 @@ final class BorrowOperationTests: XCTestCase {
     ///
     /// Inverting the `isBrowserBased == true` check would make
     /// `needsBrowserReauth` false; with credentials present that falls through
-    /// to `.showGenericError`, so an alert fires instead of the modal.
+    /// to `.showBorrowError`, so an alert fires instead of the modal.
     func testBorrow_SAMLBrowserAuth_withCredentials_routesToReauthModalNotAlert() async {
         userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
         userAccount.setAuthState(.loggedIn)
@@ -464,7 +464,7 @@ final class BorrowOperationTests: XCTestCase {
                        "(needsBrowserReauth branch at :636). A `!= true` mutant would skip this and alert instead.")
         XCTAssertEqual(alertCalls.count, 0,
                        "Browser re-auth path must NOT surface a borrow-error alert. A `!= true` mutant at " +
-                       ":636 would fall through to .showGenericError and fire the alert.")
+                       "the route would fall through to .showBorrowError and fire the alert.")
     }
 
     // MARK: - PP-5449: stored barcode/PIN refused by the server
@@ -582,7 +582,7 @@ final class BorrowOperationTests: XCTestCase {
     }
 
     /// Test fixture for the `needsAuth` predicate. The
-    /// `handleBorrowAuthErrorIfNeeded` predicate gates on
+    /// `BorrowReducerCore.authErrorReason` gates on
     /// `authDef?.needsAuth ?? false` for the "no creds + needs auth →
     /// sign-in-modal" arm. `.basic` qualifies; `.saml` / `.oidc` would
     /// route through the browser-reauth arm which other tests cover.
