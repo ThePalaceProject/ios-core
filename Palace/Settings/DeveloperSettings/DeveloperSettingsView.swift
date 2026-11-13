@@ -4,13 +4,10 @@
 //
 //  Copyright © 2025 The Palace Project. All rights reserved.
 //
-//  SwiftUI reimplementation of `TPPDeveloperSettingsTableViewController` (the
-//  "Testing" screen). Feature-for-feature, pixel-for-pixel port. Only the
-//  ENGINEERING-tier sections live here; the SUPPORT-tier content (Send Error
-//  Logs + Data & Reset) moved to `AppAdvancedSettingsView` per PP-4788.
-//
-//  All state + actions live on the shared `DeveloperSettingsViewModel`, so the
-//  Advanced screen reuses the exact same action code.
+//  The "Testing" screen: engineering-tier sections, plus the hidden-libraries
+//  toggle that App Store builds also show (PP-5382). Support-tier content
+//  (Send Error Logs, Data & Reset) is in `AppAdvancedSettingsView` (PP-4788);
+//  both share `DeveloperSettingsViewModel`.
 //
 
 import SwiftUI
@@ -27,20 +24,16 @@ struct DeveloperSettingsView: View {
 
     var body: some View {
         List {
-            // Engineering-tier runtime gate — MUST match the retired UIKit VC's
-            // `visibleSections` filter (audience == .support || showEngineeringTools).
-            // On a production App Store build (showEngineeringTools == false) these
-            // sections are hidden, so a patron who trips the version long-press does
-            // NOT see production-behavior-changing feature-flag toggles. The patron
-            // functions (Send Error Logs, Data & Reset) live in the always-visible
-            // Advanced menu, so nothing patron-facing is lost — the Testing screen
-            // is simply empty on production. On DEBUG / simulator / TestFlight
-            // (showEngineeringTools == true) all sections render.
+            // App Store builds show only the hidden-libraries toggle
+            // (PP-5382), so a patron who trips the version long-press cannot
+            // flip behavior-changing flags. Patron functions live in the
+            // always-visible Advanced screen.
+            librarySettingsSection
             if viewModel.showEngineeringTools {
-                librarySettingsSection
                 triageBotSection
                 featureFlagsSection
                 libraryRegistryDebuggingSection
+                managedAppConfigurationSection
                 developerToolsSection
                 pushNotificationTestingSection
                 #if DEBUG
@@ -66,12 +59,45 @@ struct DeveloperSettingsView: View {
         action(vc)
     }
 
+    // MARK: - MDM Managed App Configuration (PP-5070)
+
+    /// Stands in for an MDM by writing the REAL `com.apple.configuration.managed`
+    /// key, so everything downstream is the production path. Gated by
+    /// `showEngineeringTools` (DEBUG + simulator + TestFlight) rather than
+    /// `#if DEBUG`, which would remove it from the build QA uses on hardware.
+    @ViewBuilder private var managedAppConfigurationSection: some View {
+        Section(
+            header: Text("MDM Managed App Configuration"),
+            footer: Text("Writes the same UserDefaults key an MDM writes, so this exercises the real pre-selection path. Apply runs it now; relaunch to exercise cold-start ordering.")
+        ) {
+            DevManagedLibraryRow(
+                input: $viewModel.managedLibraryInput,
+                status: viewModel.managedLibraryStatus,
+                onApply: { present { viewModel.applyManagedLibraryConfiguration(from: $0) } },
+                onForget: { present { viewModel.forgetManagedLibraryFingerprint(from: $0) } },
+                onClear: { present { viewModel.clearManagedLibraryConfiguration(from: $0) } }
+            )
+            NavigationLink {
+                ManagedLibraryTestingInfoView()
+            } label: {
+                Text("How this works")
+                    .palaceFont(.body)
+            }
+        }
+    }
+
     // MARK: - Library Settings
 
     @ViewBuilder private var librarySettingsSection: some View {
         Section(header: Text("Library Settings")) {
-            DevToggleRow(title: "Enable Hidden Libraries", isOn: $viewModel.useBetaLibraries)
-            DevToggleRow(title: "Enter LCP Passphrase Manually", isOn: $viewModel.enterLCPPassphraseManually)
+            ForEach(viewModel.librarySettingsRows, id: \.self) { row in
+                switch row {
+                case .hiddenLibraries:
+                    DevToggleRow(title: "Enable Hidden Libraries", isOn: $viewModel.useBetaLibraries)
+                case .lcpPassphraseManually:
+                    DevToggleRow(title: "Enter LCP Passphrase Manually", isOn: $viewModel.enterLCPPassphraseManually)
+                }
+            }
         }
     }
 
@@ -96,12 +122,12 @@ struct DeveloperSettingsView: View {
 
     // MARK: - Developer Tools (engineering)
 
-    /// Engineering-tier Developer Tools. Only "Email Audiobook Logs" remains here;
-    /// the patron-facing "Send Error Logs" moved to the always-visible Advanced
-    /// screen (PP-4788). Preserves the original DEVELOPER TOOLS section so the
-    /// audiobook-logs export isn't lost in the migration.
+    /// Engineering-tier Developer Tools ("Email Audiobook Logs"); the patron-facing
+    /// "Send Error Logs" is on the Advanced screen (PP-4788).
     @ViewBuilder private var developerToolsSection: some View {
         Section(header: Text("Developer Tools")) {
+            DevToggleRow(title: "Show Format and DRM on Covers",
+                         isOn: $viewModel.coverFormatAndDRMLabelsEnabled)
             DevDisclosureValueRow(title: "Email Audiobook Logs", value: "") {
                 present { viewModel.emailAudiobookLogs(from: $0) }
             }
@@ -117,6 +143,8 @@ struct DeveloperSettingsView: View {
             DevToggleRow(title: "LCP Audiobook Streaming", isOn: $viewModel.lcpAudiobookStreamingEnabled)
             DevToggleRow(title: "EPUB Chapter Scrubber", isOn: $viewModel.chapterScrubberEnabled)
             DevToggleRow(title: "Side Loading", isOn: $viewModel.sideLoadingEnabled)
+            DevToggleRow(title: "MDM Library Pre-selection",
+                         isOn: $viewModel.managedLibraryConfigurationEnabled)
             DevToggleRow(title: "Force Rating Prompt Eligible", isOn: $viewModel.appRatingForceEligible)
             DevActionRow(title: "Trigger Rating Prompt Now", color: .blue) {
                 viewModel.triggerRatingPromptNow()
@@ -144,8 +172,7 @@ struct DeveloperSettingsView: View {
     @ViewBuilder private var pushNotificationTestingSection: some View {
         Section(header: Text("Push Notification Testing")) {
             DevMonospaceValueRow(title: "FCM Token", value: viewModel.fcmToken)
-                // Tapping the FCM row copies the token (verbatim from the UIKit
-                // `.pushNotificationTesting` row-0 handler).
+                // Tapping the FCM row copies the token.
                 .contentShape(Rectangle())
                 .onTapGesture { present { viewModel.copyFCMToken(from: $0) } }
             DevSubtitleDisclosureRow(
@@ -169,6 +196,7 @@ struct DeveloperSettingsView: View {
     @ViewBuilder private var badgeTestingSection: some View {
         Section(header: Text("Badge Testing")) {
             DevToggleRow(title: "Enable Badge Logging", isOn: $viewModel.badgeLoggingEnabled)
+            DevToggleRow(title: "Audiobook Position Trace (PP-4963)", isOn: $viewModel.audiobookPositionTraceEnabled)
             DevDisclosureValueRow(
                 title: "Test Holds Configuration",
                 value: viewModel.testHoldsConfiguration.displayName,
@@ -249,8 +277,7 @@ struct DeveloperSettingsView: View {
 #if DEBUG
 /// The Mock Backend disclosure row. Observes `MockBackendService.shared` so the
 /// title/subtitle reflect the active scenario (green title when active), then
-/// pushes `MockBackendPickerView` via a NavigationLink. Verbatim rendering of
-/// `cellForMockBackend`.
+/// pushes `MockBackendPickerView` via a NavigationLink.
 private struct MockBackendRow: View {
     @ObservedObject private var service = MockBackendService.shared
 

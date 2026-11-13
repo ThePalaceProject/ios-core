@@ -2,32 +2,12 @@
 //  RightsManagementDispatchContractTests.swift
 //  PalaceTests
 //
-//  PRE-WAVE test pack for the god-class decomposition campaign
-//  (docs/architecture/god-class-decomposition-plan.md §5 row
-//  "MyBooksDownloadCenter": "DRM dispatch contract (spy FulfillmentHandling
-//  recording call order per format)").
-//
-//  The post-download DRM/format dispatch that §5 calls "FulfillmentHandling"
-//  lives in `Palace/MyBooks/RightsManagementDispatcher.swift`. It is the
-//  second half of MBDC's `handleDownloadCompletion` — given the parsed
-//  rights-management kind it routes each format to exactly one collaborator:
-//
-//    .lcp                     → delegate.fulfillLCPLicense       (LCP)
-//    .adobe (#if DRM)         → logBookDownloadFailure / Adobe fulfillment
-//    .overdriveManifestJSON   → fileOps.replaceBook              (Overdrive)
-//    .none                    → fileOps.moveFile                 (open access)
-//    .simplifiedBearerTokenJSON → re-issue bearer-auth'd task    (bearer)
-//    .unknown                 → logBookDownloadFailure + alert
-//
-//  A silent decomposition that swapped two arms, dropped an arm, or inverted
-//  the `failureRequiringAlert = !fileOps.…` guard would mis-route a paid loan
-//  to the wrong DRM handler with no compile error — precisely the money-path
-//  regression class this contract pins. Each test locks WHICH collaborator
-//  fires for a format AND the alert/error the switch returns.
-//
-//  Tested through the real seam (RightsManagementDispatcher + its
-//  RightsManagementDispatcherDelegate / BackgroundDownloadFileOps spies), so
-//  the pins survive the move into PalaceDownloads unchanged.
+//  Pins the post-download DRM/format dispatch in `RightsManagementDispatcher`:
+//  each rights-management kind (.lcp, .adobe, .overdriveManifestJSON, .none,
+//  .simplifiedBearerTokenJSON, .unknown) routes to exactly one collaborator and
+//  returns the expected alert/error. A swapped or dropped arm would send a loan to
+//  the wrong DRM handler with no compile error
+//  (docs/architecture/god-class-decomposition-plan.md §5 "MyBooksDownloadCenter").
 //
 
 import XCTest
@@ -89,7 +69,7 @@ final class RightsManagementDispatchContractTests: XCTestCase {
     // MARK: - LCP → fulfillLCPLicense
 
     /// `.lcp` routes to `delegate.fulfillLCPLicense` and reports NO alert (the
-    /// LCP handler owns its own error path). A mutant routing LCP through the
+    /// LCP handler owns its own error path). A regression routing LCP through the
     /// file-move / overdrive arm would drop the license fulfillment entirely,
     /// leaving the patron with an un-decryptable file.
     func test_lcp_routesToFulfillLCPLicense_noAlert() async {
@@ -127,8 +107,8 @@ final class RightsManagementDispatchContractTests: XCTestCase {
         XCTAssertFalse(result.failureRequiringAlert)
     }
 
-    /// Overdrive replace FAILURE (replaceBook == false) → alert required. Kills
-    /// the `failureRequiringAlert = !fileOps.replaceBook(…)` negation mutant: a
+    /// Overdrive replace FAILURE (replaceBook == false) → alert required. Catches
+    /// the `failureRequiringAlert = !fileOps.replaceBook(…)` negation regression: a
     /// flipped `!` would silently swallow a failed Overdrive fulfillment.
     func test_overdriveManifest_replaceFails_requiresAlert() async {
         fileOps.replaceBookResult = false
@@ -163,7 +143,7 @@ final class RightsManagementDispatchContractTests: XCTestCase {
         XCTAssertFalse(result.failureRequiringAlert)
     }
 
-    /// Open-access move FAILURE → alert required. Kills the negation mutant on
+    /// Open-access move FAILURE → alert required. Catches the negation regression on
     /// the `.none` arm.
     func test_openAccess_moveFails_requiresAlert() async {
         fileOps.moveFileResult = false
@@ -183,8 +163,8 @@ final class RightsManagementDispatchContractTests: XCTestCase {
 
     /// `.unknown` logs a download failure and requires an alert — and it must
     /// NOT mutate the incoming `failureError` (the caller's original error is
-    /// surfaced). Kills both the "drop the log call" mutant and a
-    /// `failureRequiringAlert = false` mutant that would strand the patron on a
+    /// surfaced). Catches both the "drop the log call" regression and a
+    /// `failureRequiringAlert = false` regression that would strand the patron on a
     /// spinner with no error.
     func test_unknownRights_logsFailure_requiresAlert_preservesError() async {
         let sentinel = NSError(domain: "caller", code: 99)
@@ -206,7 +186,7 @@ final class RightsManagementDispatchContractTests: XCTestCase {
 
     /// `.simplifiedBearerTokenJSON` whose payload is absent on disk logs a
     /// failure AND alerts — in that order. Pins the two-call sequence on the
-    /// bearer-token error guard (a mutant dropping either call would leave the
+    /// bearer-token error guard (a regression dropping either call would leave the
     /// re-fulfillment silently stuck). `failureRequiringAlert` stays false
     /// because the bearer arm alerts directly via the delegate rather than
     /// through the shared tail flag.
@@ -233,7 +213,7 @@ final class RightsManagementDispatchContractTests: XCTestCase {
     /// `.adobe` payload that is actually an Adobe PDF (`application/pdf` in the
     /// ACSM) is rejected as unsupported — synchronously, before any DRM
     /// fulfillment Task is spawned: it logs a failure, requires an alert, and
-    /// surfaces an "Adobe PDF … not supported" error. Kills a mutant that
+    /// surfaces an "Adobe PDF … not supported" error. Catches a change that
     /// dropped the PDF guard and shipped the unsupported payload to fulfillment.
     ///
     /// SEAM: the non-PDF `.adobe` branch spawns a fire-and-forget Task on the

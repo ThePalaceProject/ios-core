@@ -65,11 +65,8 @@ final class DownloadReconciliationTests: XCTestCase {
     /// routes that download's progress and its finished file to the wrong title,
     /// silently: no error, no alert, no log line. The record already carries the
     /// download URL, which distinguishes them.
-    /// Collides on identifier, different book. Asserted as the EXACT decision
-    /// rather than "not adopt" — an earlier version used XCTAssertNotEqual, which
-    /// passes for any non-adopt outcome including a wrong one, and the QA review
-    /// showed it died on exactly the same mutants as this one. One test, stronger
-    /// assertion.
+    /// Collides on identifier, different book. Asserted as the exact decision
+    /// rather than "not adopt", which a wrong non-adopt outcome would also pass.
     func testCollidingTaskIdentifier_differentURL_restartsWhenStillWanted() {
         let rec = record("book-A", task: 1)
         let decision = decide(rec, liveTasks: [1: URL(string: "https://example.org/book-B")!],

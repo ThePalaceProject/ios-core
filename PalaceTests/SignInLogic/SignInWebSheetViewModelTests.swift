@@ -7,8 +7,8 @@
 //  inline WKNavigationDelegate logic. No WKWebView, no UIKit; tests
 //  exercise the model in isolation using value-type inputs.
 //
-//  Critical-path sign-in coverage per CLAUDE.md mandate. Each test is
-//  designed to kill at least one mutant under palace_mutate.py.
+//  Critical-path sign-in coverage: each test is designed to fail on a
+//  specific regression in the decision logic.
 //
 
 import XCTest
@@ -58,7 +58,7 @@ final class SignInWebSheetViewModelTests: XCTestCase {
 
     func test_decideAction_navigationToUniversalLinksURL_returnsCompleteLogin() {
         // The terminal match returns .completeLogin(target) with the exact URL.
-        // Pair-assert previousRequest is also recorded so a mutation that
+        // Pair-assert previousRequest is also recorded so a regression that
         // returns the decision without updating previousRequest is caught.
         let vm = makeViewModel()
         let target = universalLinks.appendingPathComponent("token=abc")
@@ -75,7 +75,7 @@ final class SignInWebSheetViewModelTests: XCTestCase {
         // login completion — otherwise we'd hand cookies to the wrong destination.
         // Negative pair-assertion: a same-host URL with a path that intersects
         // with the universal-links prefix on bytes but not on the path component
-        // must also miss — locks the contract against a substring-match mutation.
+        // must also miss — locks the contract against a substring-match regression.
         let vm = makeViewModel()
         let target = URL(string: "https://librarysimplified.org/about")!
         let decision = vm.decideAction(for: URLRequest(url: target))
@@ -89,7 +89,7 @@ final class SignInWebSheetViewModelTests: XCTestCase {
 
     func test_decideAction_navigationToOtherURL_returnsAllow() {
         // Pair-assertion: two distinct off-host URLs must both pass through
-        // as .allow so a mutation that hard-codes a specific URL is caught.
+        // as .allow so a regression that hard-codes a specific URL is caught.
         let vm = makeViewModel()
         let target = URL(string: "https://idp.example.com/saml/sso")!
         let other = URL(string: "https://login.openathens.net/")!
@@ -121,7 +121,7 @@ final class SignInWebSheetViewModelTests: XCTestCase {
         // future "skip recording on terminal action" optimization from breaking
         // a downstream caller that reads previousRequest in a completion handler.
         // Pair-assert that a subsequent non-terminal request also rolls
-        // previousRequest forward — so a mutation that latches previousRequest
+        // previousRequest forward — so a regression that latches previousRequest
         // on the first terminal call is caught.
         let vm = makeViewModel()
         let target = universalLinks.appendingPathComponent("?token=x")
@@ -158,7 +158,7 @@ final class SignInWebSheetViewModelTests: XCTestCase {
     func test_decideResponse_nilMime_returnsAllow() {
         // Nil MIME (some HEAD-only responses, redirects) must default to .allow
         // so the WebView can keep navigating. Pair-assert that an empty-string
-        // MIME also defaults to .allow — mutation that special-cased `nil`
+        // MIME also defaults to .allow — a regression that special-cased `nil`
         // versus `""` would survive a single-branch assertion.
         let vm = makeViewModel()
         XCTAssertEqual(vm.decideResponse(mimeType: nil), .allow,
@@ -169,7 +169,7 @@ final class SignInWebSheetViewModelTests: XCTestCase {
 
     func test_decideResponse_unsupportedTypeNotInBookList_returnsAllow() {
         // Negate the supportedBookTypes list to ensure the contains check is
-        // actually checked (mutation: changing `contains` to `!contains` would
+        // actually checked (changing `contains` to `!contains` would
         // pass a permissive test that only checked positive cases). Pair-assert
         // against a second unsupported MIME, and confirm a supported MIME
         // still returns .bookFound — pinning the inclusion+exclusion contract
@@ -308,7 +308,7 @@ final class SignInWebSheetViewModelTests: XCTestCase {
     func test_wasBookFound_falseInitially() {
         // wasBookFound must start false AND must NOT spuriously flip after
         // non-terminal decisions like a plain decideAction call. Pair-assert
-        // so a mutation that initializes wasBookFound from a side-effect is caught.
+        // so a regression that initializes wasBookFound from a side-effect is caught.
         let vm = makeViewModel()
         XCTAssertFalse(vm.wasBookFound,
                        "wasBookFound must start false — initial state has no book")
@@ -319,7 +319,7 @@ final class SignInWebSheetViewModelTests: XCTestCase {
 
     func test_wasBookFound_trueAfterRecordBookFound() {
         // wasBookFound must flip on recordBookFound, AND remain true through
-        // subsequent operations (idempotency). Pair-assert so a mutation that
+        // subsequent operations (idempotency). Pair-assert so a regression that
         // resets the flag after the first read is caught.
         let vm = makeViewModel()
         vm.recordBookFound(cookies: [])
@@ -354,7 +354,7 @@ final class SignInWebSheetViewModelTests: XCTestCase {
     func test_isLoading_trueByDefault() {
         // Default-true isLoading drives the overlay-on-show behavior. Pair-assert
         // that a non-navigation decideAction call does NOT flip isLoading — a
-        // mutation that conflates "user action" with "navigation finished" is caught.
+        // regression that conflates "user action" with "navigation finished" is caught.
         let vm = makeViewModel()
         XCTAssertTrue(vm.isLoading,
                       "Overlay should be visible until first navigation finishes")
@@ -365,7 +365,7 @@ final class SignInWebSheetViewModelTests: XCTestCase {
 
     func test_didFinishNavigation_setsLoadingFalse() {
         // Pair-assert that isLoading WAS true before the navigation finished —
-        // so a mutation that initializes isLoading to false would fail the
+        // so a regression that initializes isLoading to false would fail the
         // precondition AND the post-condition would assert nothing.
         let vm = makeViewModel()
         XCTAssertTrue(vm.isLoading, "Precondition: overlay visible before nav finishes")
@@ -426,7 +426,7 @@ final class SignInWebSheetViewModelTests: XCTestCase {
     func test_autoPresentIfNeeded_defaultsToFalse() {
         // The default-false contract — explicit so a future ABI break that
         // flips the default doesn't slip through. Pair-assert by explicitly
-        // requesting false so a mutation that ignores the parameter and
+        // requesting false so a regression that ignores the parameter and
         // always returns the same default is caught.
         XCTAssertFalse(makeViewModel().autoPresentIfNeeded,
                        "autoPresentIfNeeded must default to false (caller opts in explicitly)")

@@ -1,38 +1,11 @@
-//
 //  BookDetailMetadataMergeContractTests.swift
-//  PalaceTests
 //
-//  God-class decomposition — pin-before-extract pack for
-//  `Palace/Book/UI/BookDetail/BookDetailViewModel.swift`, MOVING cluster
-//  "Metadata hydration" (plan §3a-4 / §5). Per the plan, the metadata-hydration
-//  service work (`BookMetadataService`) leaves the VM; these tests lock the
-//  field-by-field MERGE PRECEDENCE and the post-fetch decision logic so the
-//  extraction cannot silently change which side (current vs freshly-fetched)
-//  wins for any book field.
-//
-//  ADDITIVE — does NOT overlap `PalaceTests/ViewModels/BookDetailMetadataHydrationTests`,
-//  which already pins publisher/distributor/category/published/audience/language
-//  fill-from-fresh + the trigger guards. This file pins the SEVEN merge fields
-//  those tests never assert (summary, subtitle, seriesName, seriesURL,
-//  bookDuration) in BOTH directions (empty→take fresh, non-empty→preserve
-//  current), the identity-preservation invariant (title/identifier are NEVER
-//  taken from fresh), and the two post-fetch branches (hydrator returns nil /
-//  throws) that the existing guard-tests never reach because they short-circuit
-//  before the fetch.
-//
-//  SEAM: the DEFAULT hydrator in BookDetailViewModel.init (lines ~216-224) —
-//  `opdsFeedService.fetchFeed(...) -> first TPPOPDSEntry -> TPPBook(entry:)` — is
-//  the actual network service work being extracted. It captures the CONCRETE
-//  `OPDSFeedService` actor + `accountsManager` inside a closure and is not
-//  independently unit-pinnable (HTTPStubURLProtocol cannot reliably intercept
-//  `TPPOPDSFeed.withURL`'s Obj-C bridge). The `BookMetadataService` extraction
-//  should take an `OPDSFeedFetching` protocol so fetch→parse→first-entry→TPPBook
-//  is stubbable. These tests pin the deterministic merge/decision core reached
-//  via the injectable `metadataHydrator` seam; the raw fetch stays behind the
-//  seam.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Pins BookDetailViewModel's metadata merge before `BookMetadataService` is
+//  extracted: fields not covered by BookDetailMetadataHydrationTests (summary,
+//  subtitle, series, duration) in both directions, title/identifier never taken
+//  from the fresh copy, and the hydrator-nil and hydrator-throws branches. Driven
+//  through the `metadataHydrator` seam; the default hydrator captures a concrete
+//  `OPDSFeedService` that HTTPStubURLProtocol cannot reliably intercept.
 
 import XCTest
 import PalacePreferences
@@ -166,7 +139,7 @@ final class BookDetailMetadataMergeContractTests: XCTestCase {
     /// mergeHydratedMetadata always keeps `current.identifier` and `current.title`
     /// regardless of what the fetched entry carries. A silent extraction that
     /// takes `fresh.identifier` here would corrupt the registry key and mis-route
-    /// every subsequent state read — the highest-cost mutation on this path.
+    /// every subsequent state read — the highest-cost regression on this path.
     func testMerge_identityFields_neverTakenFromFresh() async {
         let sparse = makeBook(identifier: "keep-this-id", title: "Keep This Title")
         let fresh = makeBook(

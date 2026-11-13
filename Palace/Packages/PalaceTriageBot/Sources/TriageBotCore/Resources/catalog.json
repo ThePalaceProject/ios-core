@@ -943,7 +943,7 @@
       "trust_level": "authoritative",
       "visibility": "user_facing",
       "ui_surface": "my-books",
-      "reviewed_at": "2026-07-20"
+      "reviewed_at": "2026-09-28"
     },
     {
       "id": "HT-2026-003-switch-library",
@@ -1062,8 +1062,8 @@
       "helpspot_tag": "how-to-hold-pickup-window",
       "trust_level": "authoritative",
       "visibility": "user_facing",
-      "ui_surface": "my-books",
-      "reviewed_at": "2026-07-21"
+      "ui_surface": "holds",
+      "reviewed_at": "2026-09-28"
     },
     {
       "id": "HT-2026-006-borrow-limit",
@@ -1099,7 +1099,7 @@
       "trust_level": "authoritative",
       "visibility": "user_facing",
       "ui_surface": "my-books",
-      "reviewed_at": "2026-07-21"
+      "reviewed_at": "2026-09-28"
     },
     {
       "id": "HT-2026-007-loan-length",
@@ -1135,7 +1135,7 @@
       "trust_level": "authoritative",
       "visibility": "user_facing",
       "ui_surface": "my-books",
-      "reviewed_at": "2026-07-21"
+      "reviewed_at": "2026-09-28"
     },
     {
       "id": "HT-2026-008-add-library-card",
@@ -1209,7 +1209,7 @@
       "trust_level": "authoritative",
       "visibility": "user_facing",
       "ui_surface": "my-books",
-      "reviewed_at": "2026-07-22"
+      "reviewed_at": "2026-09-28"
     },
     {
       "id": "GF-audiobook",

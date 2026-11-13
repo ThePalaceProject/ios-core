@@ -70,13 +70,18 @@ final class BorrowReducerContractTests: XCTestCase {
 
     /// User-action transitions (download confirmed / return confirmed /
     /// cancel-tapped / manage-hold-tapped). Same shape as above — for each
-    /// action, record the resulting state slice.
+    /// action, record the resulting state slice. `cancelTapped` appears twice
+    /// because its outcome now depends on the registry state it carries.
     func test_userActions_transitionContract() {
         let log = CallLog()
         let actions: [(String, BorrowAction)] = [
             ("downloadStartConfirmed", .downloadStartConfirmed),
             ("returnStartConfirmed", .returnStartConfirmed),
-            ("cancelTapped", .cancelTapped),
+            // Both arms of the declined-cancel recovery: `.unregistered` means
+            // nothing was in flight, so the sheet closes; any other state has
+            // something to render, so it stays open (PP-5407).
+            ("cancelTapped.unregistered", .cancelTapped(registryState: .unregistered, registryProcessing: false)),
+            ("cancelTapped.downloading", .cancelTapped(registryState: .downloading, registryProcessing: false)),
             ("manageHoldTapped", .manageHoldTapped),
             ("signInCancelled", .signInCancelled),
         ]

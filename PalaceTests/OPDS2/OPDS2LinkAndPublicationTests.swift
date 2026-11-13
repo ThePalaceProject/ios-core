@@ -417,8 +417,8 @@ final class OPDS2PublicationNarratorTests: XCTestCase {
                        "Multiple narrators must join with '; ' the way TPPBook.narrators expects")
     }
 
-    /// Negative: a publication with no narrator must NOT invent one. Catches
-    /// mutations that hardcode a fallback narrator string.
+    /// Negative: a publication with no narrator must NOT invent one (no
+    /// hardcoded fallback narrator string).
     func testToBook_WithoutNarrator_BookHasNilNarrators() throws {
         let json = """
         {

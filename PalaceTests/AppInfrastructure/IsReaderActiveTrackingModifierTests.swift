@@ -2,18 +2,10 @@
 //  IsReaderActiveTrackingModifierTests.swift
 //  PalaceTests
 //
-//  Module D (swarm_0b7616e7) — view modifier that flips
-//  `presenter.isReaderActive` on view appear / disappear.
-//
-//  No SwiftUI lifecycle harness available (verified by architect re-pass:
-//  no ViewInspector, no UIHostingController patterns in PalaceTests).
-//  Tests therefore invoke the modifier's onAppear/onDisappear semantics
-//  through the production seam (`tracksReaderActive(_:)` extension) and
-//  assert on `presenter.isReaderActive` directly.
-//
-//  The test names embed "OnAppear" / "OnDisappear" — both nouns are
-//  exercised in the bodies (calling the same closure the production
-//  modifier registers via `.onAppear { presenter.isReaderActive = true }`).
+//  View modifier that flips `presenter.isReaderActive` on view appear /
+//  disappear. No SwiftUI lifecycle harness is available, so tests invoke
+//  the modifier's onAppear/onDisappear semantics through the production
+//  seam (`tracksReaderActive(_:)`) and assert on `presenter.isReaderActive`.
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //

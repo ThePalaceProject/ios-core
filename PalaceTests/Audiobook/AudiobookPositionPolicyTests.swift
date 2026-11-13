@@ -3,8 +3,7 @@
 //  PalaceTests
 //
 //  Boundary + behavior tests for the pure-function policies that drive
-//  the audiobook position state machine. Critical-path file — mutation
-//  kill goal ≥75% per swarm_f3b9b087 contract.
+//  the audiobook position state machine (critical path).
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //
@@ -35,9 +34,8 @@ final class BeginningPositionPolicyTests: XCTestCase {
 
     func testIsAtBeginning_track0_smallestPositiveTime_isNotBeginning() {
         // Boundary: any positive time, however tiny, is real progress.
-        // Locks the strict-equality semantics — a mutation `==` → `<=` would
-        // pass on this case but a mutation `==` → `>=` would fail (only
-        // exactly-zero hits).
+        // Locks the strict-equality semantics — `==` → `<=` would pass on
+        // this case but `==` → `>=` would fail (only exactly-zero hits).
         XCTAssertFalse(BeginningPositionPolicy.isAtBeginning(trackIndex: 0, playbackTime: 0.001))
     }
 
@@ -372,7 +370,7 @@ final class PlaybackOpenPolicyTests: XCTestCase {
     // "no bypass" (gate stays in place for Findaway / OpenAccess /
     // Overdrive — that's where F-011 originally fired). Pins the
     // `decryptor != nil` predicate inside the adapter so a call-site
-    // mutation (`!= nil` → `== nil`) at production line 732 fails the test.
+    // flip (`!= nil` → `== nil`) at production line 732 fails the test.
     func testDecideForLoad_nilDecryptor_keepsGate() {
         let decision = PlaybackOpenPolicy.decideForLoad(decryptor: nil)
         XCTAssertFalse(decision.bypassReadinessGate,
@@ -409,8 +407,7 @@ final class PlaybackOpenPolicyTests: XCTestCase {
 // MARK: - Spy logger
 
 /// Test spy for `AudiobookPositionLogging`. Records every call so tests
-/// can assert reason + context. Pattern mirrors the
-/// `feedback_test_patterns_phase7` spy convention.
+/// can assert reason + context.
 final class AudiobookPositionLoggerSpy: AudiobookPositionLogging {
     struct Entry: Equatable {
         let kind: String  // "FAIL" or "FALLBACK"
@@ -430,8 +427,7 @@ final class AudiobookPositionLoggerSpy: AudiobookPositionLogging {
 
 // DefaultAudiobookPositionLogger formats via Log.warn (Crashlytics-bridged).
 // We intentionally don't unit-test it without an injected sink — coverage-only
-// "doesn't crash" tests have no failure mode and were removed per CLAUDE.md
-// (Banned test patterns / Coverage-only tests are banned). If we ever need to
+// "doesn't crash" tests have no failure mode. If we ever need to
 // pin the formatter, add a sink protocol to DefaultAudiobookPositionLogger and
 // test that protocol directly.
 

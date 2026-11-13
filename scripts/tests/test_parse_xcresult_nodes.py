@@ -201,3 +201,67 @@ def test_repetitionsAreRecognisedByNAME_evenWhenTheNodeTypeIsUnknown():
     assert methods(tests) == {"testResponder_401"}
     assert tests[0]["iterations"] == ["Success", "Success", "Failure"]
     assert tests[0]["flaky"] is True
+
+
+# ------------------------------------------- runner failures are not test failures
+#
+# Verbatim from run 36797084975 (PR #1562): a test runner that never connected
+# is filed under a "System Failures" pseudo-suite. The PR comment listed it as
+# the run's one failed test, which hid the cause: the runner, not a test.
+
+SYSTEM_FAILURES = {
+    "nodeType": "Test Suite", "name": "System Failures", "children": [
+        {"name": "Palace (36741) encountered an error",
+         "nodeIdentifier": "Palace (36741) encountered an error",
+         "nodeType": "Test Case", "result": "Failed",
+         "children": [{"name": "The test runner hung before establishing connection.",
+                       "nodeType": "Failure Message"}]}]}
+
+
+def _with_runner_failure():
+    t = tree(case("testReal()", "Passed"))
+    t["children"][0]["children"].append(SYSTEM_FAILURES)
+    return t
+
+
+def test_aRunnerFailure_isSeparatedFromTheTests():
+    tests, runner = pxr.split_runner_failures(pxr.parse_test_node_new_api(_with_runner_failure()))
+    assert methods(tests) == {"testReal"}
+    assert runner == [{"name": "Palace (36741) encountered an error",
+                       "message": "The test runner hung before establishing connection."}]
+    assert pxr.count_by_status(tests)["failed"] == 0
+
+
+def test_runnerFailures_areWrittenToTheirOwnOutput_notToFailedTests(tmp_path):
+    tests, runner = pxr.split_runner_failures(pxr.parse_test_node_new_api(_with_runner_failure()))
+    report = {"summary": {"tests": 1, "passed": 1, "failed": 0, "skipped": 0},
+              "failed_tests": [t for t in tests if t["status"] == "Failure"],
+              "runner_failures": runner, "classes": {}, "build": {}}
+    out = tmp_path / "gh_output"
+    pxr.output_github_actions(report, str(out))
+    text = out.read_text()
+    assert "failed_tests<<" not in text
+    assert ("runner_failures<<ENDOFRUNNERFAILURES\n"
+            "Palace (36741) encountered an error: The test runner hung before establishing connection.\n"
+            "ENDOFRUNNERFAILURES\n") in text
+
+
+def test_aRunWithoutRunnerFailures_writesNoRunnerFailureOutput(tmp_path):
+    tests, runner = pxr.split_runner_failures(pxr.parse_test_node_new_api(tree(case("testA()", "Failed"))))
+    assert runner == [] and methods(tests) == {"testA"}
+    report = {"summary": {"tests": 1, "passed": 0, "failed": 1, "skipped": 0},
+              "failed_tests": tests, "runner_failures": runner, "classes": {}, "build": {}}
+    out = tmp_path / "gh_output"
+    pxr.output_github_actions(report, str(out))
+    assert "runner_failures" not in out.read_text()
+
+
+def test_aRunnerFailure_isNotAlsoReportedAsABuildError(monkeypatch):
+    """`xcresulttool get build-results` repeats the runner failure as an error
+    issue on run 36797084975; it belongs under runner failures, once."""
+    import json as _json
+    payload = {"status": "succeeded", "warnings": [], "errors": [
+        {"message": "Palace (36741) encountered an error (The test runner hung before establishing connection.)"},
+        {"message": "Foo.swift:3: cannot find 'bar' in scope"}]}
+    monkeypatch.setattr(pxr, "run_command", lambda cmd, timeout=120: (True, _json.dumps(payload), ""))
+    assert pxr.get_build_status("x.xcresult")["errors"] == ["Foo.swift:3: cannot find 'bar' in scope"]

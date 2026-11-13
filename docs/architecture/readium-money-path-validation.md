@@ -2,7 +2,15 @@
 
 One entry per Readium pin. Added in the same change that moves the pin in
 `Package.resolved`. `scripts/check-dependency-money-paths.sh` matches on the
-version string, so it must appear literally in the heading.
+version string, so it must appear literally in the heading — and only in the
+heading: as of PP-5091 the gate reads `## ` lines rather than the whole file,
+because an unanchored match let one entry's prose satisfy a later pin move.
+
+A fork has no upstream version number, so its heading names whatever
+`Package.resolved` records for it: the revision when it is pinned by bare
+revision, and the tag *and* the revision when it is pinned by tag. Naming both
+is the safe default — the gate demands the version when one is present and the
+revision when one is not, and a heading carrying both satisfies either.
 
 See [readium-upgrade-validation.md](./readium-upgrade-validation.md) for the
 paths to exercise and why this ledger exists.
@@ -90,20 +98,148 @@ Note the LCP device-ID moved to the Keychain in 3.10: that changes behaviour
 across delete/reinstall, so validation should include a reinstall cycle rather
 than a single install.
 
-## ThePalaceProject/swift-toolkit @ 58413f8680a310ed6d98278687ab711e6be639c8
+## 3.11.0-palace.1 — ThePalaceProject/swift-toolkit @ 58413f8680a310ed6d98278687ab711e6be639c8
 
 - Validated against: Palace 3.3.0 (494), iPhone Air simulator (iOS 26.1), A1QA Test Library
 - Validated by: engineering (agent-assisted), SoD-reviewed (architect + qa_test + blast_radius)
-- Date: 2026-08-14
-- Pin: `ThePalaceProject/swift-toolkit` fork = Readium 3.11.0 + the upstream `fix-issue-579` series (restores LCP audiobook chunked streaming-from-license). Pinned by **revision** (a fork branch, no semver version), gated behind `lcp_audiobook_streaming_enabled` (default OFF).
+- Date: 2026-08-14 (pin re-expressed as a tag 2026-09-08, PP-5091 — **no new validation**)
+- Pin: `ThePalaceProject/swift-toolkit` fork = Readium 3.11.0 + the upstream `fix-issue-579` series (restores LCP audiobook chunked streaming-from-license). Gated behind `lcp_audiobook_streaming_enabled` (default OFF).
+
+**Pin form.** Originally taken by bare revision. PP-5091 tagged that exact commit
+`3.11.0-palace.1` in the fork and moved `Palace.xcodeproj` to
+`exact: "3.11.0-palace.1"`. `Package.resolved` still records
+`58413f8680a310ed6d98278687ab711e6be639c8` — the resolved revision did not move,
+so **no code changed and the rows below carry forward unaltered**.
+<!-- audit-verified -->
+
+`Package.resolved` records the revision **and no `version` key**, even though the
+project now states a version requirement. That is not an oversight. The
+`ios-audiobooktoolkit` subproject is part of the same SwiftPM graph and still
+pins this package by bare revision; SwiftPM unifies the two requirements and
+resolves by revision, and a revision-resolved pin carries no version. Observed
+directly: with both projects on the tag the resolve reports
+`Readium … @ 3.11.0-palace.1` and writes the version; with the toolkit on a bare
+revision it reports `@ 58413f8` and writes none. **The `version` key appears here
+only once the `ios-audiobooktoolkit` pin moves too** (PP-5106) — committing it
+before then would commit a state the repository cannot reproduce, since every
+developer's and CI's next resolve would strip it straight back out.
+<!-- audit-verified -->
+
+Both open items below are tracked, not just described: PP-5106 for the toolkit
+repin, PP-5107 for the EPUB/PDF/Adobe exercise.
+
+The heading names the tag *and* the SHA for that reason: the gate demands the
+version when `Package.resolved` carries one and the revision when it does not,
+and today it does not.
+
+> `3.11.0-palace.1` is a SemVer *prerelease*, which sorts **below** upstream
+> `3.11.0`. It is safe only under an `exact:` requirement. Relaxing either
+> project to a range would silently resolve to un-fixed upstream code, and the
+> build would stay green. The non-SemVer alternative (`palace-3.11.0-issue-579.1`)
+> was rejected for the opposite reason: SwiftPM would not parse it as a version,
+> so the pin would have stayed revision-only and the tag would have bought
+> nothing but a name.
 
 | Path | Result | Notes |
 |---|---|---|
 | Audiobook, LCP (streaming) | pass, **amended by PP-5135** | Flag ON: fresh borrow → instant Listen → plays via on-demand chunked decryption. Verified live on the A1QA "Reign of Terror" (Palace Marketplace LCP audiobook). Relaunch durability pinned (reconcile keeps `.downloadSuccessful`).<br><br>**The original entry recorded "`.lcpa`: 0 bytes on disk" as the validated end state. That is no longer the intended behaviour.** The validation exercised playback while ONLINE and did not test the offline case, where 0 bytes on disk means the book cannot be opened at all — while the shelf reports it as Downloaded. Measured on device for PP-5135 (build 502): every borrowed LCP audiobook held its 2–3 KB `.lcpl` and no `.lcpa`, and the offline open dead-ended in `ReadiumStreamer.PublicationOpenError`. Streaming is now a fast START, not a replacement for the download: the archive also lands in the background (subject to connectivity and `downloadOnlyOnWiFi`), so "Downloaded" is true. Expect a non-zero `.lcpa` shortly after borrow. |
 | Audiobook, LCP (local / download-first) | pass | Flag OFF preserves today's download-first path byte-for-byte (unit + reconcile-table + fulfillment tests; full `.lcpa` lands, then Listen). |
-| EPUB, LCP | not validated | Not exercised by this change (streaming is audiobook-only); carries forward from the 3.11.0 base entry. |
-| EPUB, Adobe DRM | not validated | Unchanged by this fork (3.11.0 + audiobook streaming only). |
-| PDF, LCP | not validated | Unchanged. |
-| Audiobook, OverDrive / Findaway | not validated | Unaffected (non-LCP paths). |
+| EPUB, LCP | not validated | **Justification corrected (PP-5091).** This row previously read "not exercised by this change (streaming is audiobook-only)". That is not the whole picture. The fork is 8 commits ahead of, and 0 behind, upstream `3.11.0`, and four of the files it edits are *not* audiobook-specific: `Shared/Toolkit/Data/Resource/BufferingResource.swift`, `Shared/Toolkit/ZIP/ZIPFoundation/ZIPFoundationContainer.swift`, `Shared/Toolkit/Data/ReadError.swift`, and `LCP/Content Protection/LCPDecryptor.swift`. Every LCP EPUB read traverses all four. The row stays `not validated` — nobody has opened an LCP EPUB against this pin — but the reason is "unvalidated shared-code change", not "unrelated code". |
+| EPUB, Adobe DRM | not validated | Same correction: Adobe EPUBs are still ZIP containers read through `ZIPFoundationContainer` and buffered through `BufferingResource`, both of which the fork edits. Not exercised against this pin. |
+| PDF, LCP | not validated | Same correction, and it also traverses `LCPDecryptor`. Not exercised against this pin. |
+| Audiobook, OverDrive / Findaway | not validated | Unaffected (non-LCP fulfillment), but likewise never exercised against this pin. |
 
 Known follow-up: the LCP resource-loader over-fetches (prefetches most of the book); time-to-first-audio win realized, storage win pending a read-ahead cap. Orthogonal to the flag; flag ships OFF.
+
+Known follow-up (PP-5091): the shared-code exposure above is in neither PP-5091's
+scope nor its out-of-scope list. Someone has to open an LCP EPUB, an Adobe EPUB
+and an LCP PDF against a build carrying this pin before 3.3.0 ships, and record
+the outcome here. Until then the four `not validated` rows are the honest state.
+
+---
+
+## 3.11.0-palace.2 — ThePalaceProject/swift-toolkit @ 45fe8966382192486df226b24b6c1706684c1e2d
+
+- Validated against: not yet exercised in-app
+- Validated by: not yet exercised in-app
+- Date: —
+- Pin: `3.11.0-palace.1` plus the PP-5353 series. A streamed HTTP read that ends
+  before its declared `Content-Length` is asked once for the missing bytes and
+  then fails with `HTTPTruncatedResponseError`; `ResourceDataSource` refuses a
+  short ZIP read that did not reach the end of the file; `LCPDecryptor` returns
+  `truncatedCipherText` rather than slicing past the end of a partial block.
+
+Three reads move from "deliver what arrived" to "fail with a named error", so a
+request that was being served short data now surfaces an error at the caller.
+That is the point of the change — an LCP audiobook track that ends early, or a
+player that closes mid-download, came from short data being passed on — and it
+is also what makes the pin worth exercising: any caller that tolerated a short
+read now sees a failure instead.
+
+What this change did exercise: the `swift-toolkit` pin is the only pin that
+moved in `Package.resolved`, and the app's LCP and audiobook test classes pass
+against it. Those classes drive Palace's own types with test doubles; none of
+them reads a real HTTP body, ZIP entry or LCP block, so they do not reach the
+stricter code.
+
+| Path | Result | Notes |
+|---|---|---|
+| Audiobook, LCP (streaming) | not validated | The path the pin is for. Needs a borrow and a listen with `lcp_audiobook_streaming_enabled` ON, including an interrupted download, which is the case the new errors are built for. |
+| Audiobook, LCP (local / download-first) | not validated | Reads the `.lcpa` through the ZIP data source that now refuses a short read. Needs a full download and a listen. |
+| EPUB, LCP | not validated | Every LCP EPUB read traverses `LCPDecryptor` and the ZIP data source. Not exercised against this pin. |
+| EPUB, Adobe DRM | not validated | Adobe EPUBs are ZIP containers read through the same data source. Not exercised against this pin. |
+| PDF, LCP | not validated | Traverses both the ZIP data source and `LCPDecryptor`. Not exercised against this pin. |
+| Audiobook, OverDrive / Findaway | not validated | Non-LCP fulfillment, and neither reads through `HTTPResource`. Not exercised against this pin. |
+| Open-access EPUB | not validated | Not exercised against this pin. |
+
+The `3.11.0-palace.1` rows carry forward: the four paths left `not validated`
+there are still unexercised, and this pin does not change that. The open item is
+the same one, now with a second reason to close it.
+
+## 3.11.0-palace.3 — ThePalaceProject/swift-toolkit @ 6c8baddf38d135cb2d5ba24c9c7eb0d7d3fb2108
+
+- Validated against: 3.4.0 (516), iPhone 17 Pro Max, iOS 26.6.1
+- Validated by: maintainer, in-app device session, A1QA staging library
+- Date: 2026-10-26
+- Pin: `3.11.0-palace.2` plus one change, "Let a caller supply a CBC resource's
+  plaintext length". `CBCLCPResource` gains an optional `knownPlainTextSize`,
+  and a new `KnownLengthAcceptingResource` protocol lets a caller hand it over
+  rather than have it computed.
+
+Why the length matters: computing a CBC resource's plaintext length reads its
+last two encrypted blocks, and in a remote publication those blocks sit far from
+the bytes being read. Measured on device, that 32-byte tail read cost 17.8 MB to
+35.5 MB of origin traffic for zero bytes of audio.
+
+**What bounds this pin's blast radius.** The shared change in `Resource.swift`
+is purely additive: a new protocol declaration, with no change to `Resource`
+itself. In `LCPDecryptor`, `knownPlainTextSize` defaults to nil and the size
+task short-circuits only when it is non-nil; with nil it runs the same
+`resource.estimatedLength()` path as `palace.2`. The `init` parameter is
+defaulted, so existing construction sites are untouched. A caller that does not
+opt in therefore reads through byte-identical code. That is why the EPUB and PDF
+rows below are "not validated" rather than "at risk": they do not supply a
+length, so they take the unchanged branch.
+
+The residual risk is confined to callers that DO supply one. The protocol states
+it must be exact — too large exposes padding at the end of the content, too
+small truncates it — so a wrong length from the audiobook toolkit would corrupt
+playback rather than fail loudly. That lands on the audiobook LCP path, which is
+the path exercised below.
+
+| Path | Result | Notes |
+|---|---|---|
+| Audiobook, LCP (streaming) | exercised | Borrowed and played from the A1QA staging library with streaming on. 97 chapter serves, none from a local package, 0.0-28.3s. Audio played and decrypted correctly: one chapter start was clean at 0.1s with 7,077,890 bytes served. Seeks across track boundaries exercised heavily, forward and backward. No sign of exposed padding or truncated content. |
+| Audiobook, LCP (defects found) | — | The session reproduced PP-5401: during the download window a skip burst cancelled one range request per tap and 18 of 21 backward taps delivered 0 bytes. Four chapter starts never became audible and one failed with -1001. These are cancellation and latency failures, not decryption failures, and the fetch-level cause is fixed in ios-audiobooktoolkit #254. PP-5398's slow-origin stall stays open. |
+| Audiobook, LCP (resume after backgrounding) | not validated | Not exercised in this session. |
+| Audiobook, LCP (local / download-first) | not validated | Not exercised against this pin. |
+| EPUB, LCP | not validated | Traverses `LCPDecryptor`, but supplies no known length, so it reads through the unchanged branch. Not exercised. |
+| EPUB, Adobe DRM | not validated | Does not traverse `LCPDecryptor` at all. Not exercised. |
+| PDF, LCP | not validated | Traverses `LCPDecryptor` on the unchanged branch. Not exercised. |
+| Audiobook, OverDrive / Findaway | not validated | Non-LCP fulfillment; does not reach this code. Not exercised. |
+| Open-access EPUB | not validated | No LCP decryption. Not exercised. |
+
+The `palace.1` and `palace.2` rows carry forward: the paths left `not validated`
+there are still unexercised. This pin narrows the open item rather than closing
+it — the audiobook LCP streaming path, which both earlier entries named as the
+one that mattered most and neither exercised, is now exercised on device.

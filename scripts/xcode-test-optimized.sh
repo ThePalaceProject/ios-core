@@ -29,6 +29,14 @@ maybe_clean() {
         xcodebuild clean -project Palace.xcodeproj -scheme Palace > /dev/null 2>&1
     fi
 }
+# $1 = what ran, $2 = xcodebuild's exit code. A check mark only for 0.
+exit_status_line() {
+    if [ "$2" -eq 0 ]; then
+        echo "✅ $1 (exit code: $2)"
+    else
+        echo "🔴 $1 failed (exit code: $2)"
+    fi
+}
 
 # Clean up any previous test results
 rm -rf TestResults.xcresult
@@ -81,6 +89,20 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     export SIMCTL_CHILD_CI="${CI:-true}"
     export SIMCTL_CHILD_BUILD_CONTEXT="ci"
 
+    # PP-5273: turn off os_log in the app under test. While tests run, os_log
+    # copies every message to the app's stderr with a blocking write into a pipe
+    # the test tooling reads. When that pipe stops draining, every thread that
+    # logs stalls, the main thread included, and XCTest kills whichever test is
+    # running at the 120 s allowance. The spindump of run 36596835929 showed two
+    # clones blocked in that write at the same moment. OS_ACTIVITY_DT_MODE=NO
+    # does NOT stop the copy (measured: 54 vs 56 mirrored lines); disabling
+    # os_log does (0), and the full suite passes with it off (9152, 0 failed),
+    # so no test depends on the app's log. The cost is the app's log lines in
+    # the CI output. Set PALACE_CI_APP_LOGS=1 to keep them when debugging.
+    if [ "${PALACE_CI_APP_LOGS:-0}" != "1" ]; then
+        export TEST_RUNNER_OS_ACTIVITY_MODE=disable
+    fi
+
     # Execution isolation — test-pollution fix (docs/Testing/test-pollution-investigation-handoff.md).
     # CI previously ran serial single-process (all ~7k tests in ONE process/singleton-set), which
     # AMPLIFIES cross-test pollution: an early polluter that aborts mid-teardown leaves a process-global
@@ -105,69 +127,24 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         xcodebuild clean -project Palace.xcodeproj -scheme Palace > /dev/null 2>&1 || true
     fi
 
-    # Scheduling-sensitive infra tests that must run OUTSIDE the 4-clone parallel
-    # run. Under parallel-sim-clone oversubscription (workers > runner cores) the
-    # cooperative pool starves so badly that these tests' OWN internal wait
-    # timeouts starve too, and they hang to the 120s executionTimeAllowance —
-    # even though they pass deterministically when not oversubscribed (they can't
-    # be reproduced on a single local clone that owns its pool). They are NOT
-    # skipped/weakened: the parallel run below `-skip-testing`s them, then a
-    # dedicated SERIAL pass (`-parallel-testing-enabled NO`) runs them FULLY and
-    # the results are MERGED back into TestResults.xcresult so the downstream
-    # fail-gate counts them. Owner decision after CI runs 29805821296 / 29810471358.
-    #
-    # De-flake convergence (DEFLAKE-PLAN, 2026-07-23): the god-class decomposition
-    # campaign needs a green board to land the keystone waves. The recurring red is
-    # "clone-wedge collateral" — a leaked cross-test job wedges a per-clone global
-    # (cooperative pool / main run loop / the AppContainer.production() singleton
-    # graph); a wandering victim then hangs to the 120s executionTimeAllowance and
-    # fails all retries because retries rerun in the SAME wedged clone process. Two
-    # named classes below are PERMANENT isolations (real WKWebView/WebContent process
-    # contention that can't be seam-fixed); the rest are TEMPORARY quarantine until
-    # their per-test hermetic-DI/bounded-await fixes land (P1/P2 in DEFLAKE-PLAN),
-    # then remove them here. This is the owner-approved serial-isolation mechanism —
-    # tests still RUN and still GATE (merged into TestResults.xcresult), so this is
-    # not a skip-allowlist and does not violate the green-board "no flake memos" rule.
-    ISOLATED_SERIAL_TESTS=(
-        "PalaceTests/ImageCacheContinuationTests"
-        "PalaceTests/PoolResponsivenessProbeTests"
-        # Permanent — real WKWebView + WebContent process spawn under clone contention.
-        "PalaceTests/SignInWebSheetIntegrationTests"
-        # Temporary — remove each as its per-test fix lands (DEFLAKE-PLAN §3 / P1-P2):
-        "PalaceTests/AccountAwareNetworkTests"
-        "PalaceTests/AccountsManagerTests"
-        "PalaceTests/BookmarkDeletionLogTests"
-        "PalaceTests/MultiLibraryTokenIsolationTests"
-        # Signing the test host (PP-5058) surfaced this one. `measure {}`
-        # re-establishes the test-runner connection for its iterations, and a
-        # signed app installs more slowly than an unsigned one; under 4 parallel
-        # clones the reconnect exceeded its timeout and the runner "hung before
-        # establishing connection". Measured: the class's other 6 tests ran and
-        # passed in that same run, and only `testRFC1123Performance` was absent
-        # from the bundle — 8621 distinct tests against 8622 on the unsigned
-        # baseline. Running it serially keeps it gating rather than skipping it.
-        "PalaceTests/Date_NYPLAdditionsTests"
-        # Temporary — added 2026-09-02 from run 33669583217, where each of these
-        # failed exactly ONE of three iterations. Under `-test-iterations 3` a
-        # single stumble relaunches the WHOLE plan, so that run sampled the
-        # parallel leg at 2.94x (25,094 executions of 8,531 distinct tests):
-        # ~23 of its 35 test-minutes were re-runs, which is what pushed the step
-        # past its 60-minute budget. On a 10x-billed macOS runner that is roughly
-        # 230 wasted billable minutes per affected run.
-        #
-        # Load-sensitive, not broken: `ci-test-history.py BookRegistrySyncTests`
-        # shows it passing across a dozen runs at 0.01-0.5s, its one failure
-        # taking 2.501s — a 100x slowdown, i.e. measuring the machine rather than
-        # the code. That is exactly the class this list exists for.
-        #
-        # Evidence is a SINGLE run for three of these four classes, so this is a
-        # quarantine to stop the credit bleed, not a verdict on them. Remove each
-        # as its per-test fix lands.
-        "PalaceTests/BookRegistrySyncTests"
-        "PalaceTests/LCPFulfillmentHandlerTests"
-        "PalaceTests/BookSignInRedirectHandlerTests"
-        "PalaceTests/PalacePreferencesSettingsRoundTripTests"
-    )
+    # Scheduling-sensitive classes that run in a SERIAL pass outside the 4-clone
+    # parallel run. The list and the reasons for each entry live in
+    # scripts/ci-isolated-serial-tests.txt, which the sharded CI workflow reads
+    # too, so both paths isolate the same classes. An empty or missing list is
+    # an error: it would move every one of them into the parallel run silently.
+    ISOLATED_LIST="$(cd "$(dirname "$0")" && pwd)/ci-isolated-serial-tests.txt"
+    ISOLATED_SERIAL_TESTS=()
+    if [ -f "$ISOLATED_LIST" ]; then
+        while IFS= read -r _line || [ -n "$_line" ]; do
+            _line="${_line%%#*}"
+            _line="$(printf '%s' "$_line" | tr -d '[:space:]')"
+            if [ -n "$_line" ]; then ISOLATED_SERIAL_TESTS+=("$_line"); fi
+        done < "$ISOLATED_LIST"
+    fi
+    if [ ${#ISOLATED_SERIAL_TESTS[@]} -eq 0 ]; then
+        echo "🔴 ERROR: no isolated-serial classes read from $ISOLATED_LIST"
+        exit 1
+    fi
     ISOLATED_SKIP_ARGS=()
     ISOLATED_ONLY_ARGS=()
     for _t in "${ISOLATED_SERIAL_TESTS[@]}"; do
@@ -182,18 +159,41 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
     # iteration"), so at 1 we OMIT both flags (a bare `xcodebuild test` runs each
     # test once). Only >1 gets the retry+iterations pair.
     #
-    # -test-repetition-relaunch-enabled YES (DEFLAKE-PLAN, highest-leverage): a
-    # retry reruns each failed test in a FRESH process instead of the same wedged
-    # clone. Class-A "clone-wedge collateral" (a victim hung to 120s by leaked work
-    # wedging a per-clone global) then passes on retry — the wedge is gone in the
-    # new process — so the run stays green under the existing retry-as-safety-net
-    # contract (summary.failed still gates REAL failures that fail all attempts).
-    # This papers over wedges rather than fixing them; the per-test wedge-source
-    # fixes continue in parallel (DEFLAKE-PLAN P1/P2) and the watchdog still names
-    # culprits in the logs. Only applied alongside the retry pair (>1 iteration).
+    # NO -test-repetition-relaunch-enabled. It was added (DEFLAKE-PLAN) to make a
+    # retry re-run in a FRESH process so a victim wedged by a leaked per-clone
+    # global would pass on the retry. It does do that — and it also silently
+    # converts the per-test retry into a repetition of the WHOLE plan.
+    #
+    # MEASURED 2026-09-15, four configurations against one prebuilt bundle, a
+    # plan of one always-failing and three always-passing tests:
+    #
+    #     flags                                              failing  passing
+    #     retry + iterations 3 + relaunch YES                   3x       3x
+    #     retry + relaunch YES                                  3x       3x
+    #     retry + iterations 3                                  3x       1x
+    #     retry                                                 3x       1x
+    #
+    # The retry CAP is 3 in all four; only the passing-test count moves. So
+    # `relaunch` is the multiplier and `-test-iterations` is not — the opposite
+    # of what the first reading of the flags suggests. In CI that was 30 minutes
+    # against 53, one flaky test re-running all ~9,100, and a 60-minute step
+    # bound that PR #1472 timed out against twice on tests that each PASSED on
+    # retry. On a 10x-billed macOS runner it is ~230 wasted billable minutes per
+    # affected run.
+    #
+    # What this costs: a retry now re-enters the SAME process, so a victim of a
+    # genuine clone wedge fails its retries too and the board goes red. That is
+    # the condition the per-test fixes (DEFLAKE-PLAN P1/P2) exist to remove, and
+    # ISOLATED_SERIAL_TESTS below already quarantines the known wedge-prone
+    # classes out of the oversubscribed parallel leg. Both failures seen on
+    # 2026-09-15 are one of each kind: a 120.000s wedge (would have needed the
+    # relaunch) and a 0.031s assertion flake (would not).
+    #
+    # Trade accepted deliberately: pay in occasional red on a wedge rather than
+    # in 23-30 minutes on EVERY run that stumbles once. Revisit when P1/P2 land.
     RETRY_ITER_ARGS=()
     if [ "${CI_TEST_ITERATIONS:-3}" -gt 1 ]; then
-        RETRY_ITER_ARGS=(-retry-tests-on-failure -test-iterations "${CI_TEST_ITERATIONS:-3}" -test-repetition-relaunch-enabled YES)
+        RETRY_ITER_ARGS=(-retry-tests-on-failure -test-iterations "${CI_TEST_ITERATIONS:-3}")
     fi
 
     # Capture xcodebuild output so we can detect a COMPILE failure that
@@ -268,7 +268,7 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         exit 1
     fi
 
-    echo "✅ Parallel tests executed on: $SIMULATOR_NAME (exit code: $TEST_EXIT_CODE)"
+    exit_status_line "Parallel tests executed on: $SIMULATOR_NAME" "$TEST_EXIT_CODE"
 
     # --- Serial isolated pass for the scheduling-sensitive infra tests ---
     # Runs the `-skip-testing`'d tests NOT under parallel oversubscription, then
@@ -299,7 +299,7 @@ if [ "${BUILD_CONTEXT:-}" == "ci" ]; then
         ENABLE_TESTABILITY=YES
     SERIAL_EXIT_CODE=$?
     set -e
-    echo "✅ Serial isolated tests executed (exit code: $SERIAL_EXIT_CODE)"
+    exit_status_line "Serial isolated tests executed" "$SERIAL_EXIT_CODE"
 
     # Merge serial results into TestResults.xcresult so the downstream
     # Parse-Test-Results fail-gate counts the isolated tests (not un-gated).
@@ -408,7 +408,7 @@ else
             TEST_EXIT_CODE=$?
             
             if [ -d "TestResults.xcresult" ]; then
-                echo "✅ Tests executed with: $SIM (exit code: $TEST_EXIT_CODE)"
+                exit_status_line "Tests executed with: $SIM" "$TEST_EXIT_CODE"
                 break
             else
                 echo "❌ Simulator $SIM unavailable, trying next..."

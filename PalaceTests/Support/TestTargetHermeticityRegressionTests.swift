@@ -1,35 +1,13 @@
-//
 //  TestTargetHermeticityRegressionTests.swift
-//  PalaceTests
 //
-//  Regression pins for the three systemic test-pollution mechanisms found in
-//  CI run 29802862487 (PR #1305, fix/swift6-test-target-repair):
-//
-//  1. The PalaceTests target compiled WITHOUT the `DEBUG` condition, so every
-//     `#if DEBUG` block in TEST-target code was silently dead — including the
-//     body of the registered "AppContainer._resetForTesting" resetter in
-//     `PalaceTestSetup.registerBuiltInResetters()` and the bootstrap pin of
-//     `AccountsManager.deferInitialLoadCatalogsForTesting`. The per-test
-//     AppContainer reset + live-manager drain therefore NEVER ran, which is
-//     why months of individually-correct isolation fixes "did not converge"
-//     (docs/Testing/test-pollution-investigation-handoff.md): they were all
-//     wired behind a dead conditional at the test boundary.
-//
+//  Pins three test-pollution mechanisms found in CI run 29802862487 (#1305):
+//  1. PalaceTests compiled without `DEBUG`, so `#if DEBUG` blocks in test code
+//     (the AppContainer reset, the loadCatalogs deferral pin) never ran.
 //  2. `TPPBookRegistryMock.addBook` posted `.TPPBookRegistryDidChange` on the
-//     CALLER's thread, violating the production registry's main-queue posting
-//     contract. NotificationCenter invokes selector observers synchronously on
-//     the posting thread, so a live `@MainActor` observer from an earlier test
-//     (BookDetailViewModel.handleBookRegistryChange) tripped Swift 6's
-//     executor-isolation precondition and killed the whole runner process.
-//
-//  3. `XCTestCase.awaitCondition` evaluated its predicate once more on the
-//     leaked resumption AFTER cancellation, i.e. potentially after tearDown
-//     nil'd the test's implicitly-unwrapped fixtures — a force-unwrap
-//     fatalError that also killed the runner process (the retry-crash
-//     signature).
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//     caller's thread; a leftover `@MainActor` observer then tripped Swift 6's
+//     isolation check and killed the runner.
+//  3. `awaitCondition` re-evaluated its predicate after cancellation, possibly
+//     after tearDown nil'd fixtures, crashing on a force-unwrap.
 
 import XCTest
 @testable import Palace
@@ -118,6 +96,28 @@ final class TestTargetHermeticityRegressionTests: XCTestCase {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
 
         let delivered = expectation(description: "registry-change notification delivered")
+        // The observer below is registered with `object: nil`, so it receives
+        // `.TPPBookRegistryDidChange` from ANY poster in the process — another
+        // suite's registry, a background AccountsManager load, the real
+        // registry. A second delivery therefore over-fulfills this expectation,
+        // and `assertForOverFulfill` defaults to true, so XCTest raises
+        // `NSInternalInconsistencyException` and takes the whole test HOST down
+        // — which then reports as an unrelated test "exceeding its execution
+        // time allowance" while the tally still reads 0 failures.
+        //
+        // Scoping the observer to a sender is NOT an option: every poster of this
+        // notification passes `object: nil` (TPPBookRegistryMock.addBook,
+        // BookRegistryStore, BookRegistrySync), so an `object:`-filtered observer
+        // would never fire at all.
+        //
+        // `deliveredOnMain` below already guards against multiple deliveries
+        // (`if current == nil`), so tolerating them here matches the intent that
+        // was already expressed; what this test asserts is that a delivery
+        // happens and that the FIRST one is on the main queue, not that exactly
+        // one ever arrives. Observed in CI run 35885402298 — and note it does NOT
+        // reproduce in isolation, because no foreign poster exists in a run of
+        // this class alone. Only a full-suite run exercises it.
+        delivered.assertForOverFulfill = false
         let deliveredOnMain = LockIsolated<Bool?>(nil)
         let observer = NotificationCenter.default.addObserver(
             forName: .TPPBookRegistryDidChange,

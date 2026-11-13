@@ -6,16 +6,15 @@ created: 2026-05-28
 last_refresh: 2026-05-28
 freshness_window: 180d
 owners: [accounts]
-description: Per-area verification reference; refresh before next swarm/rigorous-fix
+description: Per-area verification reference; refresh before changing this area
 ---
 
-<!-- audit-verified: All file:line citations below were re-confirmed against current HEAD on chore/swarm-rigor-meta-improvement (2026-05-28) by reading the cited source files and grepping for the cited symbols (e.g. `awaitReady`, `currentAccount =`, `_setState`, `.accountNotFound`, `noAccountSentinelUUID`). Recent commit history (14100c62a redrive fix, dce81974e currentAccount setter driver, 49c591b24 wiring-suite isolation flag, 222137d3a state machine PoC, e8cc87d26 develop merge) was verified via `git log --oneline origin/develop -- Palace/Accounts/`. Memories referenced (enum_conflation_account_not_found, phase1_account_state_machine_2026_05_19, reference_tpp_user_account_migration_retro, feedback_wiring_suite_test_isolation) were read in full and their claims cross-checked against current code. Sections marked UNKNOWN are explicitly flagged as unverified at refresh time. -->
 
 # Accounts area — verification checklist
 
 **Owner area:** `Palace/Accounts/` — `Account.swift`, `Account+State.swift`, `Account+profileDocument.swift`, `Account+TPPLibraryAccountReadable.swift`, `AccountsManager.swift`, `AccountStateStore.swift`, `BundledRegistrySnapshot.swift`, `CatalogPreloader.swift`, `CrawlableFeedAnalysis.swift`, `CrawlState.swift`, `LibraryCatalogMerger.swift`, `LibraryRegistryCrawler.swift`, the User subtree (`TPPUserAccount.swift`, `TPPCredentials.swift`, `TPPAccountAuthState.swift`, `UserAccountAuthState.swift`, `UserAccountPublisher.swift` + extension, `UserProfileDocument.swift` + `+Links.swift`, `NYPLADEPT+TPPDRMAuthorizing.swift`), and `AgeCheck/` (`TPPAgeCheck.swift`, `TPPAgeCheckViewController.swift`).
 
-**Purpose:** the architect's first deliverable on ANY swarm or /rigorous-fix in this area is *update this file*. Verify what's still true, add what's changed, mark what's UNKNOWN. Accounts is the spine — `AccountsManager` is the single source of truth for which library is current; `TPPUserAccount` is per-library credential storage; the state machine (`Account.LoadState`) is the readiness gate every cross-area consumer (Audiobooks, MyBooks, Reader2 bookmark sync, CarPlay, OPDS feed service) waits on before it can issue an authenticated request. A regression here is silent until a user's audiobook hangs, a sign-in modal pops on a signed-in user, or credentials from Library A leak into a Library B request.
+**Purpose:** the first deliverable of any non-trivial change in this area is *update this file*. Verify what's still true, add what's changed, mark what's UNKNOWN. Accounts is the spine — `AccountsManager` is the single source of truth for which library is current; `TPPUserAccount` is per-library credential storage; the state machine (`Account.LoadState`) is the readiness gate every cross-area consumer (Audiobooks, MyBooks, Reader2 bookmark sync, CarPlay, OPDS feed service) waits on before it can issue an authenticated request. A regression here is silent until a user's audiobook hangs, a sign-in modal pops on a signed-in user, or credentials from Library A leak into a Library B request.
 
 **Last refresh:** 2026-05-28 (initial baseline; derived from the 2026-05-19 Phase 1 state-machine PoC PR #961, the 2026-05-20 Phase 2 PR #967, the 2026-05-26 swap-back redrive PR #996, and the dce81974e `currentAccount` setter driver fix).
 **Refreshing architect:** sign and date the next-refresh row at the bottom of this file.
@@ -38,7 +37,7 @@ description: Per-area verification reference; refresh before next swarm/rigorous
 | `Palace/Accounts/Library/AccountsManager.swift` | 391-411 | `_seedAccountForTesting(_:)` — DEBUG-only seam for Bucket A integration tests (PR #985 follow-up). NOT compiled into release. | Test-only. |
 | `Palace/Accounts/User/TPPUserAccount.swift` | 51-... | `@objcMembers class TPPUserAccount: NSObject, TPPUserAccountProvider` — per-library credential store. Keychain keys derived from `libraryUUID`. | **CANONICAL**. |
 | `Palace/Accounts/User/TPPUserAccount.swift` | 154-186 | `credentials` getter+setter — atomic under `accountInfoQueue`. | Atomic; never read from `sharedAccount()` in new code. |
-| `Palace/Accounts/User/TPPUserAccount.swift` | 196-214 | `sharedAccount()` / `sharedAccount(libraryUUID:)` — class-level delegate kept for legacy/Obj-C test call sites; routes through `AppContainer.production().accountsManager.userAccount(for:)`. | **DO NOT extend** — per migration retro (PR #822 lesson, memory `reference_tpp_user_account_migration_retro.md`). |
+| `Palace/Accounts/User/TPPUserAccount.swift` | 196-214 | `sharedAccount()` / `sharedAccount(libraryUUID:)` — class-level delegate kept for legacy/Obj-C test call sites; routes through `AppContainer.production().accountsManager.userAccount(for:)`. | **DO NOT extend** — per migration retro (PR #822 lesson). |
 | `Palace/Accounts/User/TPPUserAccount.swift` | 505-572 | `CredentialSnapshot` struct + `credentialSnapshot()` instance method + `credentialSnapshot(for:)` class method. Atomic snapshot under `accountInfoQueue.sync`; invalidates all keychain caches on bound instances (line 529). | **CANONICAL** — read sites at Section 5. |
 | `Palace/Accounts/User/UserAccountAuthState.swift` | 29-176 | `UserAccountAuthHelper` — pure static helpers for token/credential predicates (`isTokenExpired`, `isTokenNearExpiry`, `hasCredentials`, `resolveAuthState`, `needsAuth`, etc.). | Pure; safe to extend. |
 | `Palace/Accounts/User/UserAccountPublisher.swift` | 79-127 | `UserAccountPublisher.shared` — Combine bridge for SwiftUI auth-state observation. Has `updateState(from:)`, `markCredentialsStale()`, `markLoggedIn()`, `signOut()`. Read by SwiftUI extensions at `UserAccountPublisher+Extensions.swift:67,76,89`. | Singleton; observer-only — does NOT own state. |
@@ -121,7 +120,7 @@ description: Per-area verification reference; refresh before next swarm/rigorous
 - Test 7 (`testLibraryReselect_reentry_resetsState_andRedrives`, line 769) — pins the round-trip through the production seam.
 - `testDriveCurrentAccountAuthDoc_staleAccountNotFoundMarker_redrives` (line 852) — pins consumer-side disambiguation.
 
-**Backlog refactor** (memory `enum_conflation_account_not_found`): split into `.accountUnknown(uuid:)` (real failure) + `.accountEvicted(uuid:)` (transient marker). Scope ~50-80 LOC; touch points are `Account+State.swift:140`, `AccountsManager.swift:299-304` and `:953-973`, and the 3 wiring tests above. Not urgent — the 121246f85 / PR #996 fix is correct — but worth doing before a third `awaitReady()` consumer lands.
+**Backlog refactor**: split into `.accountUnknown(uuid:)` (real failure) + `.accountEvicted(uuid:)` (transient marker). Scope ~50-80 LOC; touch points are `Account+State.swift:140`, `AccountsManager.swift:299-304` and `:953-973`, and the 3 wiring tests above. Not urgent — the 121246f85 / PR #996 fix is correct — but worth doing before a third `awaitReady()` consumer lands.
 
 **Reviewer checklist:** any new `AccountStateStore.shared.setState(.detailsFailed(.accountNotFound(...)), ...)` write site needs a disambiguation pin test. Any new `awaitReady()` consumer that catches `AccountLoadError` needs to decide whether `.accountNotFound` is a hard fail or a soft re-drive trigger — and a test for that decision.
 
@@ -171,15 +170,15 @@ description: Per-area verification reference; refresh before next swarm/rigorous
 **Tests that test IMPLEMENTATION (can be rewritten when underlying changes):**
 - Direct `_setState(...)` assertions in non-round-trip tests — those prove storage works, not wiring.
 - Assertions on specific call orders inside the legacy `sharedAccount()` delegate (relevant only until the singleton delegate is removed).
-- AgeCheck `.notLoaded/.basicInfoLoaded` Task branch may be unreachable post-wiring per memory `phase1_account_state_machine_2026_05_19.md` — re-verify before deleting.
+- AgeCheck `.notLoaded/.basicInfoLoaded` Task branch may be unreachable post-wiring after the Phase 1 state machine (PR #961) — re-verify before deleting.
 
 ---
 
 ## 7. Known traps / anti-patterns (lessons from prior work)
 
-- **`.accountNotFound` enum case is overloaded** (Section 4 + memory `enum_conflation_account_not_found.md`) — currently both "real failure" and "eviction marker." Disambiguation lives in `driveCurrentAccountAuthDocIfNeeded()` lines 958-966. Any new `.accountNotFound` write site needs a disambiguation pin test. Split into `.accountUnknown` + `.accountEvicted` is in backlog (~50-80 LOC).
-- **AccountsManager wiring-suite has a known test-isolation flake** (memory `feedback_wiring_suite_test_isolation.md`). `AccountsManager.init()` spawns `DispatchQueue.global(qos: .background).async { loadCatalogs(...) }` (line 213) that outlives the test. In the full suite, lingering background work writes through to `AccountStateStore.shared` mid-test of the next case. Mitigation: DEBUG-only `deferInitialLoadCatalogsForTesting` flag (line 170) — suite-level `setUp` flips it on. Always re-run failing wiring tests in isolation (`-only-testing:PalaceTests/AccountsManagerStateMachineWiringTests/testFooBar`) before assuming a regression.
-- **`TPPUserAccount.sharedAccount()` is a legacy delegate, not a singleton to extend** (memory `reference_tpp_user_account_migration_retro.md`). PR #822 was an incomplete migration; the safety-net fallback caused spurious sign-in modals (PR #822 retro). Rule: never read credential state from `sharedAccount()` in new code — always go through `accountsManager.userAccount(for: capturedId).credentialSnapshot()`.
+- **`.accountNotFound` enum case is overloaded** (Section 4) — currently both "real failure" and "eviction marker." Disambiguation lives in `driveCurrentAccountAuthDocIfNeeded()` lines 958-966. Any new `.accountNotFound` write site needs a disambiguation pin test. Split into `.accountUnknown` + `.accountEvicted` is in backlog (~50-80 LOC).
+- **AccountsManager wiring-suite has a known test-isolation flake**. `AccountsManager.init()` spawns `DispatchQueue.global(qos: .background).async { loadCatalogs(...) }` (line 213) that outlives the test. In the full suite, lingering background work writes through to `AccountStateStore.shared` mid-test of the next case. Mitigation: DEBUG-only `deferInitialLoadCatalogsForTesting` flag (line 170) — suite-level `setUp` flips it on. Always re-run failing wiring tests in isolation (`-only-testing:PalaceTests/AccountsManagerStateMachineWiringTests/testFooBar`) before assuming a regression.
+- **`TPPUserAccount.sharedAccount()` is a legacy delegate, not a singleton to extend**. PR #822 was an incomplete migration; the safety-net fallback caused spurious sign-in modals (PR #822 retro). Rule: never read credential state from `sharedAccount()` in new code — always go through `accountsManager.userAccount(for: capturedId).credentialSnapshot()`.
 - **Per-account `TPPUserAccount` instances are isolated via immutable keys**. The TOCTOU race comes back the moment a caller flips `libraryUUID` on a shared instance. Covered by `TPPCredentialIsolationE2ETests` (F-034 6-year-old race, fixed in PP-4020) — these tests are the contract; do not weaken them.
 - **`currentUserAccount` ride-out window** (`AccountsManager.swift:469-481`): during a library switch, `currentAccountId` is transiently nil between the old-id clear and the new-id assignment. `lastKnownCurrentUserAccount` returns the last-resolved instance to prevent consumers (`MyBooksDownloadCenter`, etc.) from observing `hasCredentials == false` on a signed-in account. Removing this fallback re-introduces the spurious sign-in modal.
 - **Library swap-back leaves a stale `.accountNotFound` marker** unless the driver disambiguates it (PR #996 / `14100c62a`). Any refactor of `driveCurrentAccountAuthDocIfNeeded()` MUST preserve lines 958-966 or split the enum first.
@@ -190,9 +189,9 @@ description: Per-area verification reference; refresh before next swarm/rigorous
 
 ---
 
-## 8. Architect's pre-swarm checklist (what to verify before writing a new contract)
+## 8. Pre-change checklist
 
-Before any new swarm or /rigorous-fix in this area, the architect should:
+Before any non-trivial change in this area:
 
 1. **Refresh this file's sections 1-3** — confirm the call-site map, state-machine driver list, and dispatch matrix are still accurate. Add new `currentAccount` setter sites or `awaitReady()` consumers.
 2. **Re-run scattered-predicate grep** — `grep -rn "accountsManager.currentAccount\s*=" Palace/` (5 known sites today). New matches need triage.
@@ -201,7 +200,7 @@ Before any new swarm or /rigorous-fix in this area, the architect should:
 5. **Verify credential-isolation tests cover the TOCTOU surface** — `TPPCredentialIsolationE2ETests` (5 tests) + `TPPPerAccountIsolationTests` (8 tests). The 500-iteration rapid-switch test is the chaos gate.
 6. **Check for any new `.accountNotFound` write sites without disambiguation pin tests** — `grep -rn "\.accountNotFound" Palace/`. Today: 1 write site (`AccountsManager.swift:301`), 1 read site (`:958`), 1 enum-def site (`Account+State.swift:140`). Any addition is a Section 4 violation.
 7. **Confirm `sharedAccount()` call sites haven't multiplied** — `grep -rn "TPPUserAccount.sharedAccount" Palace/`. Should remain test-only / Obj-C legacy.
-8. **Re-check must-survive-behavior tests pass against current `develop`** BEFORE the swarm starts, so post-swarm regressions are attributable.
+8. **Re-check must-survive-behavior tests pass against current `develop`** BEFORE the change starts, so later regressions are attributable.
 9. **Update Section 9 (refresh history)** with date + your initials.
 
 ---
@@ -211,7 +210,7 @@ Before any new swarm or /rigorous-fix in this area, the architect should:
 | Date | Refreshed by | Notes |
 |------|-------------|-------|
 | 2026-07-30 | feat/pp-decomp-3a-account-networking | Wave 3 / 3a seam: `AccountsManager.networkExecutor` retyped to `any AccountNetworking` (new `AccountNetworking.swift`; app-side `TPPNetworkExecutor+AccountNetworking.swift` conformance) — the hub no longer names `Palace/Network` app-target types, unblocking the `PalaceAccounts` package move. Behavior-identical. Sections 1–7 content NOT re-audited this pass (seam-scoped touch); the `.detailsEvicted` enum rename vs the doc's `.accountNotFound` prose remains a pending content refresh. |
-| 2026-05-28 | chore/swarm-rigor-meta-improvement (initial baseline) | Derived from Phase 1 state-machine PoC (PR #961 / `222137d3a`), Phase 2 migration (PR #967 / `2f5b4339f`), warm-path driver gap (PR #975 / `1fdd59c73`), currentAccount setter driver (PR #985 / `dce81974e`), library swap-back redrive (PR #996 / `14100c62a`), wiring-suite isolation flag (PR #995 / `49c581b24`). Memories consulted: `enum_conflation_account_not_found`, `phase1_account_state_machine_2026_05_19`, `reference_tpp_user_account_migration_retro`, `feedback_wiring_suite_test_isolation`, `singleton_audit_2026_04_24`, `saml_two_surface_auth_model`, `debug_protocol_auth_regressions`, `investigation_icarus_oidc_auth_loss_2026_05_14`. |
+| 2026-05-28 | PR #1019 (initial baseline) | Derived from Phase 1 state-machine PoC (PR #961 / `222137d3a`), Phase 2 migration (PR #967 / `2f5b4339f`), warm-path driver gap (PR #975 / `1fdd59c73`), currentAccount setter driver (PR #985 / `dce81974e`), library swap-back redrive (PR #996 / `14100c62a`), wiring-suite isolation flag (PR #995 / `49c581b24`). |
 
 ---
 

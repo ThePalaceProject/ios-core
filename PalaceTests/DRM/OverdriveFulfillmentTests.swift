@@ -1,32 +1,9 @@
 //
-//  OverdriveFulfillmentTests.swift
-//  PalaceTests
-//
-//  Coverage for Overdrive-specific fulfillment branches: the
-//  x-overdrive-scope / x-overdrive-patron-authorization header carving on
-//  manifest builds, the deferred-fulfillment path when the loans feed is
-//  out of sync (F-081 territory), and the token-vs-basic auth selection
-//  driven by TPPUserAccount credentials.
-//
-//  The OverdriveDownloadHandler (the post-Phase-7 decomposition) already
-//  has thorough branch coverage in
-//  PalaceTests/MyBooks/OverdriveDownloadHandlerTests.swift. This file
-//  focuses on the DRM-side surface that hadn't been explicitly tested:
-//
-//    * The header-mapping CONTRACT: scope + patron-authorization must be
-//      carved out of the redirect response and threaded into the manifest
-//      request. The handler uses lowercased keys, but Overdrive's servers
-//      historically used mixed case — verify case-normalization works.
-//    * Token-refresh-before-open: the morning Adobe log (2026-05-14) noted
-//      Overdrive token refresh is required before some opens. Verify the
-//      credential precedence (token > basic) and that token presence skips
-//      the basic-auth header construction.
-//    * Deferred fulfillment when the post-borrow OPDS entry's defaultAcquisition
-//      is still a borrow URL — F-081, the "audiobook routed to fulfillment
-//      before loans feed refresh" race.
-//
-//  Build gate: OverdriveDownloadHandler lives behind `#if FEATURE_OVERDRIVE`.
-//  Tests inherit the gate.
+//  Overdrive DRM-side fulfillment: x-overdrive-scope / patron-authorization header
+//  carving (case-normalized) into the manifest request, token-over-basic credential
+//  precedence, and deferred fulfillment when the post-borrow entry still has a
+//  borrow URL (F-081). Handler branches: MyBooks/OverdriveDownloadHandlerTests.swift.
+//  Gated on `#if FEATURE_OVERDRIVE`.
 //
 
 #if FEATURE_OVERDRIVE
@@ -311,38 +288,38 @@ final class OverdriveFulfillmentTests: XCTestCase {
     }
 
     func testOverdriveRefulfill_410OnOverdriveBook_returnsTrue() {
-        XCTAssertTrue(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+        XCTAssertTrue(AudiobookPlaybackRecoveryReducer.shouldTriggerOverdriveRefulfillForPlaybackFailure(
             error: playbackError(httpStatus: 410), book: makeOverdriveBook(), alreadyAttempted: false),
             "HTTP 410 (Gone) on an OverDrive book is a clean signed-URL expiry → re-fulfill")
     }
 
     func testOverdriveRefulfill_403_returnsFalse_ambiguousEntitlement() {
-        XCTAssertFalse(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.shouldTriggerOverdriveRefulfillForPlaybackFailure(
             error: playbackError(httpStatus: 403), book: makeOverdriveBook(), alreadyAttempted: false),
             "403 is ambiguous (expiry vs entitlement denial) — must NOT re-fulfill into a possibly-revoked loan")
     }
 
     func testOverdriveRefulfill_401_returnsFalse_authNotExpiry() {
-        XCTAssertFalse(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.shouldTriggerOverdriveRefulfillForPlaybackFailure(
             error: playbackError(httpStatus: 401), book: makeOverdriveBook(), alreadyAttempted: false),
             "401 is auth-required (handled by toolkit bearer refresh / SAML) — not a signed-URL expiry")
     }
 
     func testOverdriveRefulfill_410ButAlreadyAttempted_returnsFalse_bounded() {
-        XCTAssertFalse(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.shouldTriggerOverdriveRefulfillForPlaybackFailure(
             error: playbackError(httpStatus: 410), book: makeOverdriveBook(), alreadyAttempted: true),
             "Bounded: a second expiry in the same session must NOT re-fulfill again (no loop)")
     }
 
     func testOverdriveRefulfill_410ButNotOverdrive_returnsFalse() {
         let nonOverdrive = TPPBookMocker.mockBook(title: "Not OverDrive") // distributor != "Overdrive"
-        XCTAssertFalse(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.shouldTriggerOverdriveRefulfillForPlaybackFailure(
             error: playbackError(httpStatus: 410), book: nonOverdrive, alreadyAttempted: false),
             "Re-fulfill is OverDrive-only — other distributors must not enter this path")
     }
 
     func testOverdriveRefulfill_noHttpStatus_returnsFalse_conservative() {
-        XCTAssertFalse(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.shouldTriggerOverdriveRefulfillForPlaybackFailure(
             error: playbackError(httpStatus: nil), book: makeOverdriveBook(), alreadyAttempted: false),
             "No extractable HTTP status (e.g. a bare AVFoundation error) → conservatively do NOT re-fulfill")
     }
@@ -350,17 +327,17 @@ final class OverdriveFulfillmentTests: XCTestCase {
     func testOverdriveRefulfill_410InUnderlyingError_returnsTrue() {
         let underlying = NSError(domain: "url", code: 1, userInfo: ["httpStatusCode": 410])
         let wrapped = NSError(domain: "av", code: -11800, userInfo: [NSUnderlyingErrorKey: underlying])
-        XCTAssertTrue(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+        XCTAssertTrue(AudiobookPlaybackRecoveryReducer.shouldTriggerOverdriveRefulfillForPlaybackFailure(
             error: wrapped, book: makeOverdriveBook(), alreadyAttempted: false),
             "The status may be one level down the NSUnderlyingError chain (AVFoundation wraps it)")
     }
 
     func testHttpStatusCode_extractsFromUserInfo_underlyingChain_andNil() {
-        XCTAssertEqual(AudiobookSessionManager.httpStatusCode(from: playbackError(httpStatus: 410)), 410)
+        XCTAssertEqual(AudiobookPlaybackRecoveryReducer.httpStatusCode(from: playbackError(httpStatus: 410)), 410)
         let underlying = NSError(domain: "url", code: 1, userInfo: ["httpStatusCode": 503])
         let wrapped = NSError(domain: "av", code: -1, userInfo: [NSUnderlyingErrorKey: underlying])
-        XCTAssertEqual(AudiobookSessionManager.httpStatusCode(from: wrapped), 503)
-        XCTAssertNil(AudiobookSessionManager.httpStatusCode(from: playbackError(httpStatus: nil)))
+        XCTAssertEqual(AudiobookPlaybackRecoveryReducer.httpStatusCode(from: wrapped), 503)
+        XCTAssertNil(AudiobookPlaybackRecoveryReducer.httpStatusCode(from: playbackError(httpStatus: nil)))
     }
 
     // MARK: - WS-3b: -1008 resource-unavailable is the REAL field shape of the expiry
@@ -378,7 +355,7 @@ final class OverdriveFulfillmentTests: XCTestCase {
     }
 
     func testOverdriveRefulfill_resourceUnavailable1008_topLevel_returnsTrue() {
-        XCTAssertTrue(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+        XCTAssertTrue(AudiobookPlaybackRecoveryReducer.shouldTriggerOverdriveRefulfillForPlaybackFailure(
             error: resourceUnavailableTopLevel(), book: makeOverdriveBook(), alreadyAttempted: false),
             "AVPlayer surfaces an expired signed-URL 410 as NSURLErrorDomain -1008 — the real field shape must re-fulfill")
     }
@@ -387,7 +364,7 @@ final class OverdriveFulfillmentTests: XCTestCase {
         // The shape buildPlaybackFailureRecord produces: wrapper domain + flattened scalars.
         let err = NSError(domain: "org.thepalaceproject.palace.audiobookPlayback", code: -1008,
                           userInfo: ["underlyingCode": NSURLErrorResourceUnavailable, "underlyingDomain": NSURLErrorDomain])
-        XCTAssertTrue(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+        XCTAssertTrue(AudiobookPlaybackRecoveryReducer.shouldTriggerOverdriveRefulfillForPlaybackFailure(
             error: err, book: makeOverdriveBook(), alreadyAttempted: false),
             "The flattened underlyingCode/underlyingDomain -1008 shape must also re-fulfill")
     }
@@ -395,34 +372,34 @@ final class OverdriveFulfillmentTests: XCTestCase {
     func testOverdriveRefulfill_resourceUnavailable1008_nestedUnderlying_returnsTrue() {
         let underlying = NSError(domain: NSURLErrorDomain, code: NSURLErrorResourceUnavailable, userInfo: [:])
         let wrapped = NSError(domain: "av", code: -11800, userInfo: [NSUnderlyingErrorKey: underlying])
-        XCTAssertTrue(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+        XCTAssertTrue(AudiobookPlaybackRecoveryReducer.shouldTriggerOverdriveRefulfillForPlaybackFailure(
             error: wrapped, book: makeOverdriveBook(), alreadyAttempted: false),
             "A -1008 one level down the NSUnderlyingError chain must re-fulfill")
     }
 
     func testOverdriveRefulfill_notConnected1009_returnsFalse_offlineIsNotExpiry() {
         let err = NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet, userInfo: [:])
-        XCTAssertFalse(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.shouldTriggerOverdriveRefulfillForPlaybackFailure(
             error: err, book: makeOverdriveBook(), alreadyAttempted: false),
             "No network (-1009) is not a signed-URL expiry — re-fulfilling would just fail again offline")
     }
 
     func testOverdriveRefulfill_timedOut1001_returnsFalse_transientNotExpiry() {
         let err = NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut, userInfo: [:])
-        XCTAssertFalse(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.shouldTriggerOverdriveRefulfillForPlaybackFailure(
             error: err, book: makeOverdriveBook(), alreadyAttempted: false),
             "A timeout (-1001) is transient, not an expiry — must NOT re-fulfill")
     }
 
     func testOverdriveRefulfill_resourceUnavailable1008_alreadyAttempted_returnsFalse_bounded() {
-        XCTAssertFalse(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.shouldTriggerOverdriveRefulfillForPlaybackFailure(
             error: resourceUnavailableTopLevel(), book: makeOverdriveBook(), alreadyAttempted: true),
             "Bounded: a second -1008 in the same session must NOT re-fulfill again (no loop)")
     }
 
     func testOverdriveRefulfill_resourceUnavailable1008_notOverdrive_returnsFalse() {
         let nonOverdrive = TPPBookMocker.mockBook(title: "Not OverDrive")
-        XCTAssertFalse(AudiobookSessionManager.shouldTriggerOverdriveRefulfillForPlaybackFailure(
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.shouldTriggerOverdriveRefulfillForPlaybackFailure(
             error: resourceUnavailableTopLevel(), book: nonOverdrive, alreadyAttempted: false),
             "Re-fulfill is OverDrive-only — a -1008 on another distributor must not enter this path")
     }
@@ -433,11 +410,11 @@ final class OverdriveFulfillmentTests: XCTestCase {
         // Guards the shared `matches` conjunction on the flattened branch specifically.
         let wrongDomain = NSError(domain: "org.thepalaceproject.palace.audiobookPlayback", code: -1008,
                                   userInfo: ["underlyingCode": NSURLErrorResourceUnavailable, "underlyingDomain": "not-a-url-domain"])
-        XCTAssertFalse(AudiobookSessionManager.isResourceUnavailable(from: wrongDomain),
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.isResourceUnavailable(from: wrongDomain),
             "Flattened -1008 with a non-NSURLErrorDomain underlyingDomain must NOT match")
         let wrongCode = NSError(domain: "org.thepalaceproject.palace.audiobookPlayback", code: -1001,
                                 userInfo: ["underlyingCode": NSURLErrorTimedOut, "underlyingDomain": NSURLErrorDomain])
-        XCTAssertFalse(AudiobookSessionManager.isResourceUnavailable(from: wrongCode),
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.isResourceUnavailable(from: wrongCode),
             "Flattened underlyingCode -1001 (timeout) must NOT match even on NSURLErrorDomain")
     }
 
@@ -448,20 +425,20 @@ final class OverdriveFulfillmentTests: XCTestCase {
         // recovery would silently stop matching the record shape — this catches that drift.
         let raw = NSError(domain: NSURLErrorDomain, code: NSURLErrorResourceUnavailable, userInfo: [:])
         let record = AudiobookSessionManager.buildPlaybackFailureRecord(error: raw, position: nil, bookId: "b")
-        XCTAssertTrue(AudiobookSessionManager.isResourceUnavailable(from: record),
+        XCTAssertTrue(AudiobookPlaybackRecoveryReducer.isResourceUnavailable(from: record),
             "The NSError buildPlaybackFailureRecord produces for a -1008 must still be recognized as resource-unavailable")
     }
 
     func testIsResourceUnavailable_matchesMinus1008_rejectsOffline_timeout_andNil() {
-        XCTAssertTrue(AudiobookSessionManager.isResourceUnavailable(from: resourceUnavailableTopLevel()))
-        XCTAssertFalse(AudiobookSessionManager.isResourceUnavailable(
+        XCTAssertTrue(AudiobookPlaybackRecoveryReducer.isResourceUnavailable(from: resourceUnavailableTopLevel()))
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.isResourceUnavailable(
             from: NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet, userInfo: [:])))
-        XCTAssertFalse(AudiobookSessionManager.isResourceUnavailable(
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.isResourceUnavailable(
             from: NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut, userInfo: [:])))
-        XCTAssertFalse(AudiobookSessionManager.isResourceUnavailable(
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.isResourceUnavailable(
             from: NSError(domain: "test.playback", code: -1008, userInfo: [:])),
             "-1008 must be scoped to NSURLErrorDomain, not any domain that happens to use code -1008")
-        XCTAssertFalse(AudiobookSessionManager.isResourceUnavailable(from: nil))
+        XCTAssertFalse(AudiobookPlaybackRecoveryReducer.isResourceUnavailable(from: nil))
     }
 
     // MARK: - PP-4800: re-fulfill poll state classification (drives re-open vs unavailable)
@@ -497,7 +474,7 @@ final class OverdriveFulfillmentTests: XCTestCase {
     // audiobook's first track — i.e. the player is handed the FRESH url, not a
     // stale cached-manifest replay. The session wiring (handleManagerState ->
     // openAudiobook(forceRefulfill:true) -> makeLoader) is auth-gated and is
-    // covered by architect SoD review + device validation.
+    // verified on a device.
 
     /// Spy adapter — returns a caller-supplied manifest so the test controls the
     /// track href the loader builds from.
@@ -506,10 +483,9 @@ final class OverdriveFulfillmentTests: XCTestCase {
         init(manifestJSON: [String: Any]) { self.manifestJSON = manifestJSON }
         func canHandle(_ book: TPPBook) -> Bool { true }
         func resolveManifest(
-            for book: TPPBook,
-            completion: @escaping (Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError>) -> Void
-        ) {
-            completion(.success((json: manifestJSON, decryptor: nil)))
+            for book: TPPBook
+        ) async -> Result<(json: [String: Any], decryptor: DRMDecryptor?), AudiobookLoadError> {
+            .success((json: manifestJSON, decryptor: nil))
         }
     }
 
@@ -527,32 +503,27 @@ final class OverdriveFulfillmentTests: XCTestCase {
         ]
     }
 
-    private func firstTrackURL(loadingManifestWithHref href: String) throws -> String? {
+    private func firstTrackURL(loadingManifestWithHref href: String) async throws -> String? {
         let spy = ManifestSpyAdapter(manifestJSON: openAccessManifest(firstTrackHref: href))
         let loader = AudiobookLoader(adapters: [spy])
-        let done = expectation(description: "load completes")
         var url: String?
-        loader.load(makeOverdriveBook()) { result in
-            if case .success(let loaded) = result {
-                url = loaded.audiobook.tableOfContents.allTracks.first?.urls?.first?.absoluteString
-            }
-            done.fulfill()
+        if case .success(let loaded) = await loader.load(makeOverdriveBook()) {
+            url = loaded.audiobook.tableOfContents.allTracks.first?.urls?.first?.absoluteString
         }
-        wait(for: [done], timeout: 5.0)
         return url
     }
 
-    func testRefulfill_freshManifestURL_isConsumedIntoBuiltAudiobook() throws {
+    func testRefulfill_freshManifestURL_isConsumedIntoBuiltAudiobook() async throws {
         try KeychainAvailability.skipIfUnavailable()
         // The loader's refreshTokenIfNeeded reads the production shared account
         // BEFORE the adapter chain; clear it so a leftover expired token doesn't
         // fail the load before the spy resolves.
-        AppContainer.production().accountsManager.currentUserAccount.removeAll() // MIGRATED-DEFERRED: swarm_47883816 — hermetic reset must target the production shared currentUserAccount the loader's token gate reads
+        AppContainer.production().accountsManager.currentUserAccount.removeAll() // MIGRATED-DEFERRED: hermetic reset must target the production shared currentUserAccount the loader's token gate reads
 
         let freshURL = "https://od.test/FRESH/track-1.mp3"
         let staleURL = "https://od.test/STALE/track-1.mp3"
 
-        let builtFromFresh = try firstTrackURL(loadingManifestWithHref: freshURL)
+        let builtFromFresh = try await firstTrackURL(loadingManifestWithHref: freshURL)
         XCTAssertEqual(builtFromFresh, freshURL,
                        "The re-fulfilled (fresh) manifest URL must be CONSUMED into the built audiobook's first track — proves recovery yields fresh signed URLs, not a cached-manifest replay (PP-4553 sibling / WS-3)")
         XCTAssertNotEqual(builtFromFresh, staleURL, "Built track URL must be the FRESH one, not stale")
@@ -560,7 +531,7 @@ final class OverdriveFulfillmentTests: XCTestCase {
         // Control: a stale-href manifest builds a stale track — proves the loader
         // faithfully carries whichever URL the (re-)fulfill resolved, so the FRESH
         // assertion above is meaningful (not a constant).
-        let builtFromStale = try firstTrackURL(loadingManifestWithHref: staleURL)
+        let builtFromStale = try await firstTrackURL(loadingManifestWithHref: staleURL)
         XCTAssertEqual(builtFromStale, staleURL, "Loader must carry the resolved manifest's URL into the built audiobook")
         XCTAssertNotEqual(builtFromStale, freshURL, "Stale-manifest build must NOT yield the fresh URL")
     }

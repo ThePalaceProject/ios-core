@@ -11,21 +11,14 @@ import PalaceAudiobookToolkit
 import PalaceBookModel
 import PalaceBookRegistry
 
-/// Sendable carrier for `syncLocation`'s non-Sendable captures so the `@Sendable`
-/// `Task` closure (Swift 6 `complete`) captures a Sendable box rather than the raw
-/// `TPPBook` (a mutable `NSObject`, genuinely non-Sendable) and the raw completion
-/// closure. The box is constructed synchronously in `syncLocation`, before the
-/// `Task` is created, and only READ inside the Task (the book is forwarded to a
-/// nonisolated async call; the completion is invoked once with the result). That
-/// construct-then-read-once confinement is exactly what `@unchecked Sendable`
-/// documents here — mirrors `ReadiumBookmarkBox` / `SyncCallbacks`.
+/// Sendable carrier for `syncLocation`'s non-Sendable captures (`TPPBook` and the
+/// completion). Built before the `Task` starts and only read inside it, which is
+/// the confinement `@unchecked Sendable` relies on.
 private struct SyncLocationBox: @unchecked Sendable {
     let book: TPPBook
     let completion: (AudioBookmark?) -> Void
 }
 
-// De-objc (god-class decomp Wave 2b prep): was `@objc extension` — no ObjC callers
-// of `syncLocation` (verified zero `.m`/`.h`/selector references).
 extension TPPBookRegistry {
     func syncLocation(for book: TPPBook, completion: @escaping (AudioBookmark?) -> Void) {
         let box = SyncLocationBox(book: book, completion: completion)

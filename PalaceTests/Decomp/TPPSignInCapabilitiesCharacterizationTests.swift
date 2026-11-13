@@ -2,22 +2,12 @@
 //  TPPSignInCapabilitiesCharacterizationTests.swift
 //  PalaceTests
 //
-//  CHARACTERIZATION PACK (part 2 of 2) — blocking prerequisite for the
-//  decomposition of `TPPSignInBusinessLogic` (see
-//  docs/architecture/god-class-decomposition-plan.md §5).
-//
-//  Clusters pinned here:
-//    - AuthCapabilities derivation  (barcode-display gating, registration
-//      gating, SAML/OIDC preferred-auth + sole-IdP selection, password-reset
-//      availability) → pure derivation extracted to PalaceAuth
-//    - Adobe-DRM-activation SKIP decision (stays app-target) — the POSITIVE
-//      decision + the device-not-authorized branch that the existing suite
-//      never exercised (it only covers the false early-returns)
-//    - refreshAuthIfNeeded basic auto-reauth path
-//    - logIn() routing per auth method (safe branches only)
-//
-//  Companion file: TPPSignInBusinessLogicCharacterizationTests.swift
-//  (SignInRequestService + CredentialStore clusters).
+//  Characterization tests for `TPPSignInBusinessLogic` ahead of its decomposition
+//  (docs/architecture/god-class-decomposition-plan.md §5): AuthCapabilities
+//  derivation (barcode display, registration, SAML/OIDC preferred auth, sole-IdP,
+//  password reset), the Adobe activation SKIP decision including the
+//  device-not-authorized branch, the basic auto-reauth path, and logIn() routing.
+//  Companion: TPPSignInBusinessLogicCharacterizationTests.swift.
 //
 
 import XCTest
@@ -89,8 +79,8 @@ final class TPPSignInCapabilitiesCharacterizationTests: XCTestCase {
 
     // B2 — GAP: FALSE when the selected auth does NOT support barcode display,
     // even with credentials + authorizationIdentifier present. OAuth in the
-    // fixture has no Codabar input → supportsBarcodeDisplay == false. Kills the
-    // `supportsBarcodeDisplay` conjunct mutant.
+    // fixture has no Codabar input → supportsBarcodeDisplay == false. Catches the
+    // `supportsBarcodeDisplay` conjunct regression.
     func test_librarySupportsBarcodeDisplay_false_whenSelectedAuthLacksDisplaySupport() {
         // Persist barcode/pin via the OAuth-family no-token fallback so
         // hasBarcodeAndPIN is satisfied while OAuth is the selected auth.
@@ -138,7 +128,7 @@ final class TPPSignInCapabilitiesCharacterizationTests: XCTestCase {
     // MARK: - AuthCapabilities: preferred-auth + sole-IdP selection
 
     // B5 — GAP: selectPreferredAuthIfNeeded auto-selects the SOLE SAML IdP once a
-    // SAML auth is chosen. Kills the `idps.count == 1` guard.
+    // SAML auth is chosen. Catches the `idps.count == 1` guard.
     // VERIFY: the fixture SAML auth advertises exactly one `authenticate` link.
     func test_selectPreferredAuthIfNeeded_autoSelectsSoleSamlIDP() {
         businessLogic.selectedAuthentication = libraryMock.samlAuthentication
@@ -153,7 +143,7 @@ final class TPPSignInCapabilitiesCharacterizationTests: XCTestCase {
     }
 
     // B6 — selectPreferredAuthIfNeeded must NOT set an IdP for a non-SAML auth.
-    // Kills the `samlAuth.isSaml` guard on the IdP-selection branch.
+    // Catches the `samlAuth.isSaml` guard on the IdP-selection branch.
     func test_selectPreferredAuthIfNeeded_doesNotSelectIDP_forNonSamlAuth() {
         businessLogic.selectedAuthentication = libraryMock.oauthAuthentication
 
@@ -170,8 +160,9 @@ final class TPPSignInCapabilitiesCharacterizationTests: XCTestCase {
     // The existing suite only covers the FALSE early-returns.
     func test_shouldSkipAdobeActivation_true_whenStaleWithAdobeCredsAndAuthorizedDevice() {
         let acct = businessLogic.userAccount as! TPPUserAccountMock
-        acct.setUserID("adobe-user")
-        acct.setDeviceID("adobe-device")
+        acct.setAdobeActivation(userID: "adobe-user",
+                                deviceID: "adobe-device",
+                                generation: AdobeConnectorGeneration.current)
         acct.setAuthState(.credentialsStale)
         drmAuthorizer.isUserAuthorizedReturnValue = true   // default, made explicit
 
@@ -185,8 +176,9 @@ final class TPPSignInCapabilitiesCharacterizationTests: XCTestCase {
     #if FEATURE_DRM_CONNECTOR
     func test_shouldSkipAdobeActivation_false_whenDeviceNoLongerAuthorized() {
         let acct = businessLogic.userAccount as! TPPUserAccountMock
-        acct.setUserID("adobe-user")
-        acct.setDeviceID("adobe-device")
+        acct.setAdobeActivation(userID: "adobe-user",
+                                deviceID: "adobe-device",
+                                generation: AdobeConnectorGeneration.current)
         acct.setAuthState(.credentialsStale)
         drmAuthorizer.isUserAuthorizedReturnValue = false
 
@@ -211,8 +203,9 @@ final class TPPSignInCapabilitiesCharacterizationTests: XCTestCase {
     // guard). A fresh sign-in must re-activate.
     func test_shouldSkipAdobeActivation_false_whenAuthorizedButNotStale() {
         let acct = businessLogic.userAccount as! TPPUserAccountMock
-        acct.setUserID("adobe-user")
-        acct.setDeviceID("adobe-device")
+        acct.setAdobeActivation(userID: "adobe-user",
+                                deviceID: "adobe-device",
+                                generation: AdobeConnectorGeneration.current)
         acct.setAuthState(.loggedIn)
         drmAuthorizer.isUserAuthorizedReturnValue = true
 
@@ -237,34 +230,60 @@ final class TPPSignInCapabilitiesCharacterizationTests: XCTestCase {
     // B11 — GAP: basic auth WITH saved credentials + usingExistingCredentials
     // returns false (no sign-in UI needed) and drives logIn() directly. The
     // existing suite covers the WITHOUT-creds → true complement.
-    func test_refreshAuthIfNeeded_basicWithSavedCredentials_returnsFalse_andLogsIn() {
+    func test_refreshAuthIfNeeded_basicWithSavedCredentials_returnsFalse_andLogsIn() async {
         signInBasic(barcode: "saved-bc", pin: "saved-pin")
 
         let result = businessLogic.refreshAuthIfNeeded(usingExistingCredentials: true, completion: nil)
 
         XCTAssertFalse(result,
                        "basic auth with saved credentials must NOT require a sign-in UI (returns false)")
-        XCTAssertTrue(businessLogic.isValidatingCredentials,
-                      "refreshAuthIfNeeded must drive logIn() → validateCredentials for the saved-creds path")
+
+        // The hand-off happens in a task, so it is observed by joining that
+        // task and checking the request it fired. The validating flag is
+        // in-flight state an awaited validation has already cleared.
+        await businessLogic._awaitSignInWorkForTesting()
+        XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
+                       "refreshAuthIfNeeded must drive logIn() → validateCredentials for the saved-creds path")
     }
 
     // MARK: - logIn() routing per auth method (safe branches)
 
     // B12 — logIn(basic) captures creds, enters validating, and fires the
     // credential-validation request.
-    func test_logIn_basicAuth_capturesCredentials_entersValidating_andFiresRequest() {
+    func test_logIn_basicAuth_capturesCredentials_entersValidating_andFiresRequest() async {
         uiDelegate.username = "login-bc"
         uiDelegate.pin = "login-pin"
         businessLogic.selectedAuthentication = libraryMock.barcodeAuthentication
 
-        businessLogic.logIn()
+        // Rewrite the delegate the moment the request is dispatched, which is
+        // after `logIn()` captures the credentials and before the success path
+        // persists them. `TPPSignInBusinessLogic+UI` persists
+        // `capturedBarcode ?? uiDelegate?.username`, so a delegate still
+        // holding the typed values lets the fallback satisfy the assertions
+        // below even if the capture never happened. Changing it here is what
+        // makes them discriminate: only the captured value can still be
+        // "login-bc" afterwards. The mock is `@unchecked Sendable` with
+        // lock-guarded properties, and this fires inline on the calling thread.
+        networkExecutor.onExecuteRequest = { [uiDelegate] _ in
+            uiDelegate?.username = "not-the-captured-barcode"
+            uiDelegate?.pin = "not-the-captured-pin"
+        }
 
-        XCTAssertEqual(businessLogic.capturedBarcode, "login-bc")
-        XCTAssertEqual(businessLogic.capturedPin, "login-pin")
-        XCTAssertTrue(businessLogic.isValidatingCredentials,
-                      "basic logIn routes straight to validateCredentials")
+        await businessLogic.logIn()
+
+        // `capturedBarcode`, `capturedPin` and `isValidatingCredentials` are
+        // in-flight reducer state that a completed validation clears, so they
+        // say nothing once `logIn()` has returned. Basic auth also sends no
+        // Authorization header — credentials go via URLAuthenticationChallenge
+        // — so the request itself cannot carry them either. What survives is
+        // the account the validation persisted.
         XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
                        "basic logIn must fire exactly one validation request")
+        XCTAssertEqual(businessLogic.userAccount.barcode, "login-bc",
+                       "the persisted barcode must be the one logIn captured, "
+                       + "not whatever the delegate holds at persist time")
+        XCTAssertEqual(businessLogic.userAccount.PIN, "login-pin",
+                       "the persisted PIN must be the one logIn captured")
     }
 
     // SEAM: logIn()'s OAuth (`oauthLogIn`) and SAML (`samlHelper.logIn`) arms
@@ -278,13 +297,13 @@ final class TPPSignInCapabilitiesCharacterizationTests: XCTestCase {
 
     // B13 — logIn(OIDC) captures the barcode and notifies willSignIn but does
     // NOT validate directly (it hands off to the external web-auth session).
-    func test_logIn_oidc_capturesBarcode_notifiesWillSignIn_doesNotValidateDirectly() {
+    func test_logIn_oidc_capturesBarcode_notifiesWillSignIn_doesNotValidateDirectly() async {
         uiDelegate.username = "oidc-u"
         uiDelegate.pin = nil
         businessLogic.selectedAuthentication = libraryMock.oidcAuthentication
 
-        businessLogic.logIn()
-        drainMainQueue()   // willSignIn is dispatched async
+        await businessLogic.logIn()
+        await drainMainQueueAsync()   // willSignIn is dispatched async
 
         XCTAssertEqual(businessLogic.capturedBarcode, "oidc-u")
         XCTAssertFalse(businessLogic.isValidatingCredentials,

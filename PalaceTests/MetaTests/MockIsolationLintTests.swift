@@ -1,43 +1,10 @@
 //
-//  MockIsolationLintTests.swift
-//  PalaceTests
-//
-//  Meta-tests that enforce mock-isolation hygiene rules across
-//  PalaceTests/. They prevent the class of test-pollution bugs surfaced
-//  by F-008 (regression 2026-05-14), where a mock retained `_credentials`
-//  state between tests because its shared singleton had no
-//  `resetShared()` and was never zeroed in tearDown.
-//
-//  Rules (one XCTest per rule, so failures stay readable):
-//
-//   1. Shared-singleton rule — any file declaring `static var shared`
-//      or `static let shared` MUST also declare `static func resetShared()`.
-//   2. Cancellables rule — any file storing
-//      `var cancellables: Set<AnyCancellable>` MUST tear them down via
-//      one of: `func reset()`, `func removeAll()`, or `tearDown` that
-//      contains `cancellables.removeAll()`. Inheritance from a
-//      `*TestCase` base class (e.g. `PalaceWiringTestCase`) is treated
-//      as compliant — the base class drains the bag in its own tearDown.
-//   3. Observer rule — any file calling
-//      `NotificationCenter.default.addObserver` MUST also call
-//      `removeObserver` somewhere in the same file (typically in
-//      `deinit` or `cleanup()`).
-//
-//  Implementation deliberately uses plain substring/regex matching on
-//  raw file text — no SwiftSyntax. The rules are narrow, and a missed
-//  edge case here is a much smaller cost than a swift-syntax dependency.
-//
-//  Scope (swarm_47883816 work package E): walks ALL of `PalaceTests/`
-//  recursively, minus:
-//   - The `MetaTests/` directory itself (lint files contain banned
-//     substrings as fixtures — would self-trigger).
-//   - The `Support/` files that ARE the reset infrastructure
-//     (`SingletonResetRegistry`, `TPPUserAccountTestFactory`'s
-//     nested `Tracker`) — they implement the reset surface they would
-//     otherwise be linted for.
-//
-//  The PalaceAudiobookToolkit submodule is a separate project and
-//  intentionally out of scope.
+//  Mock-isolation lints over PalaceTests/ (F-008: a mock kept `_credentials`
+//  between tests because its singleton had no reset). One test per rule:
+//  `static shared` needs `resetShared()`; stored cancellables need a teardown
+//  (a `*TestCase` base counts); `addObserver` needs a `removeObserver`.
+//  Plain substring/regex matching, no SwiftSyntax. Skips MetaTests/ (fixtures),
+//  the Support/ reset infrastructure, and the audiobook toolkit submodule.
 //
 
 import Foundation
@@ -51,8 +18,7 @@ final class MockIsolationLintTests: XCTestCase {
   /// `PalaceTests/` resolved relative to this file's location so the test
   /// works in every checkout (no env vars, no CI-specific paths).
   ///
-  /// **swarm_47883816 work package E** broadened this from `Mocks/` to
-  /// the entire `PalaceTests/` tree. The 3 hygiene rules apply equally
+  /// Covers the entire `PalaceTests/` tree, not just `Mocks/`. The 3 hygiene rules apply equally
   /// to mocks AND to test classes — the F-008 leak class was rooted in
   /// a mock, but the same pattern (stateful Combine sinks, observer
   /// retention, shared singletons without reset) exists in test classes

@@ -2,11 +2,9 @@
 //  PalaceFeatureFlag.swift
 //  PalaceFeatureFlags
 //
-//  The typed feature-flag surface (god-class decomposition Wave 1b).
-//  Raw values are Firebase Remote Config WIRE KEYS — never change them.
-//  The Firebase-backed reader (RemoteFeatureFlags) and the key→
-//  FirebaseManager.RemoteConfigKey mapping stay in the app target; this
-//  package knows only the names and their in-app defaults.
+//  Typed feature flags. Raw values are Firebase Remote Config wire keys:
+//  never change them. The Firebase reader and key mapping stay in the app
+//  target; this package knows only the names and their defaults.
 //
 
 import Foundation
@@ -18,33 +16,24 @@ public enum PalaceFeatureFlag: String, Sendable {
     case circuitBreakerEnabled = "circuit_breaker_enabled"
     case carPlayEnabled = "carplay_enabled"
     case opds2Enabled = "opds2_enabled"
-    case readingStatsEnabled = "reading_stats_enabled"
     case advancedTypographyEnabled = "advanced_typography_enabled"
     case triageBotEnabled = "triage_bot_enabled"
     case triageBotTicketSubmissionEnabled = "triage_bot_ticket_submission_enabled"
     case triageBotAIFallbackEnabled = "triage_bot_ai_fallback_enabled"
-    /// Gates the in-app playback-navigation feature (swarm_0b7616e7 +
-    /// polish 2026-06-02): Continue Reading/Listening hero rows on
-    /// the Catalog top, the persistent mini-player chrome above the
-    /// tab bar, and the tap-to-resume routing that wires both to
-    /// `AudiobookSessionPresenter`. **Default OFF — Firebase-gated.**
-    /// Production users get the legacy toolkit player until Firebase
-    /// Remote Config sets `in_app_playback_nav_enabled = true` (a global
-    /// or staged/condition-based rollout the team controls without
-    /// shipping a build). Precedence is UserDefaults local override
-    /// (dev-menu toggle / QA) > Firebase remote (default false) — see
-    /// `isInAppPlaybackNavEnabled`.
+    /// Gates in-app playback navigation: the Continue Reading/Listening
+    /// rows, the mini-player above the tab bar, and tap-to-resume through
+    /// `AudiobookSessionPresenter`. Default off; without it users get the
+    /// toolkit player. Precedence: UserDefaults local override (dev menu) >
+    /// Firebase remote (default false). See `isInAppPlaybackNavEnabled`.
     case inAppPlaybackNavEnabled = "in_app_playback_nav_enabled"
     /// Gates ONLY the Continue Reading / Continue Listening hero rows at the
     /// top of the Catalog (the "continuation" cards). Split out from
     /// `inAppPlaybackNavEnabled` so the cards and the in-app player can be
-    /// rolled out independently — e.g. ship the in-app mini-player without
-    /// the continuation cards, or vice versa. **Default OFF — Firebase-gated**
-    /// (same posture as `inAppPlaybackNavEnabled`); see
+    /// rolled out independently. Default off, Firebase-gated; see
     /// `isContinuationCardsEnabled`.
     case continuationCardsEnabled = "continuation_cards_enabled"
-    /// Gates every side-loading surface (swarm_495a88d9 — PP-2677 /
-    /// PP-2678 / PP-2679): the Settings "Side Loading" import screen and
+    /// Gates every side-loading surface (PP-2677 / PP-2678 / PP-2679): the
+    /// Settings "Side Loading" import screen and
     /// the catalog side-loaded lane. Test-only capability for exercising
     /// the real reader + DRM stack against local files with no OPDS feed.
     /// Default OFF; enabled via `isSideLoadingEnabled` whose precedence is
@@ -53,6 +42,18 @@ public enum PalaceFeatureFlag: String, Sendable {
     /// non-DEBUG, so the feature is turned on explicitly by the dev-menu
     /// toggle rather than by build configuration.
     case sideLoadingEnabled = "side_loading_enabled"
+    /// Gates deploy-time library pre-selection from an MDM's Managed App
+    /// Configuration (PP-5070 / PP-5217): reading
+    /// `com.apple.configuration.managed` at launch, watching it for changes,
+    /// and selecting the library a school configured.
+    ///
+    /// Default off. It only acts when an MDM supplied a configuration, but it
+    /// changes the first-run path every new install takes, and that path has
+    /// not yet been exercised on a real cold launch.
+    ///
+    /// Precedence: UserDefaults local override (dev-menu toggle) > Firebase
+    /// remote (default false).
+    case managedLibraryConfigurationEnabled = "managed_library_configuration_enabled"
     /// Master kill-switch for the app-rating prompt feature (Epic PP-4086).
     /// Default ON; set to false in Remote Config to suppress the prompt
     /// entirely regardless of engagement state.
@@ -61,10 +62,11 @@ public enum PalaceFeatureFlag: String, Sendable {
     /// audiobook becomes playable on the `.lcpl` license alone and the player
     /// streams the encrypted audio on demand via the pinned swift-toolkit fork
     /// (3.11.0 + fix-issue-579); when OFF, the app downloads the full `.lcpa`
-    /// before playback (today's behavior). **Default OFF — Firebase-gated;**
-    /// the default flip to streaming is a product decision. Precedence is
-    /// UserDefaults local override (dev-menu toggle / QA) > Firebase remote
-    /// (default false) — see `isLCPAudiobookStreamingEnabled`.
+    /// before playback. **Default ON**, matching the 100% Remote Config
+    /// rollout: an environment Firebase does not reach must not take the
+    /// opposite path from production. Precedence is UserDefaults local
+    /// override (dev-menu toggle / QA) > Firebase remote > this default —
+    /// see `isLCPAudiobookStreamingEnabled`.
     case lcpAudiobookStreamingEnabled = "lcp_audiobook_streaming_enabled"
 
     /// In-app fallback when Remote Config has no value. Kept in the package:
@@ -81,6 +83,14 @@ public enum PalaceFeatureFlag: String, Sendable {
         case .opds2Enabled:
             return true
         case .appRatingPromptEnabled:
+            return true
+        case .lcpAudiobookStreamingEnabled:
+            // Remote Config has this at 100% in production, so the in-app
+            // fallback matched the rollout only where Firebase answered.
+            // Everywhere it does not — a simulator, CI, a unit test, the first
+            // launch before Remote Config returns — the app took the opposite
+            // path from every patron. Defaulting ON makes the unconfigured
+            // case agree with the configured one.
             return true
         default:
             // Includes `.inAppPlaybackNavEnabled`: default OFF in-app —

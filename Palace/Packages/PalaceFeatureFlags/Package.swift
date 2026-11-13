@@ -1,16 +1,11 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
-// Layer-0 leaf package (god-class decomposition Wave 1b): the typed
-// feature-flag names (PalaceFeatureFlag — raw values are Firebase Remote
-// Config wire keys) and the consolidated read protocol (FeatureFlagProviding).
-// Depends on NOTHING and must stay that way — the Firebase-backed
-// implementation (RemoteFeatureFlags) lives in the app target; NO package
-// may ever import Firebase (plan §2.3 "Nothing below Application knows
-// Firebase").
-// No in-package test target: behavior tests live in the app's PalaceTests
-// bundle (RemoteFeatureFlagsTests etc. — PalaceNetwork/PalaceCatalog
-// precedent, and a phantom test target breaks standalone `swift build`, #1133).
+// Layer-0 leaf package: typed feature-flag names (raw values are Firebase
+// Remote Config wire keys) and the read protocol `FeatureFlagProviding`.
+// Has no dependencies: the Firebase-backed `RemoteFeatureFlags` lives in the
+// app target, and no package imports Firebase.
+// Tests live in PalaceTests; an empty test target breaks `swift build` (#1133).
 let package = Package(
     name: "PalaceFeatureFlags",
     platforms: [

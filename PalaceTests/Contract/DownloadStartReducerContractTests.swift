@@ -2,18 +2,12 @@
 //  DownloadStartReducerContractTests.swift
 //  PalaceTests
 //
-//  E2 (WS7) coverage for the pure `DownloadStartReducer` extracted from
-//  `DownloadStartDispatcher`. Two complementary layers:
-//
-//  1. Direct `Equatable` assertions on the emitted plan (`reduceUnregistered`,
-//     `routeWithCredentials`, `reduceRegular`) — these kill mutants: a flipped
-//     guard, dropped case, or swapped effect order produces an unequal value.
-//  2. A `ContractSnapshot` layer that interprets each emitted plan into a
-//     `CallLog` using the SAME collaborator labels as
-//     `DownloadStartDispatcherContractTests`. The resulting JSON is shape-equal
-//     to the E1 dispatcher service snapshot — the behavior-preservation proof
-//     Contract E requires (the reducer decides the same ordered sequence the
-//     dispatcher used to emit inline).
+//  Covers the pure `DownloadStartReducer` extracted from `DownloadStartDispatcher`:
+//  1. Direct `Equatable` assertions on `reduceUnregistered`, `routeWithCredentials`
+//     and `reduceRegular` catch a flipped guard, dropped case, or swapped effect order.
+//  2. A snapshot layer records each plan with the collaborator labels
+//     `DownloadStartDispatcherContractTests` uses, so the reducer's sequence matches
+//     what the dispatcher emitted inline.
 //
 
 import XCTest
@@ -139,8 +133,8 @@ final class DownloadStartReducerContractTests: XCTestCase {
     func test_regular_downloadNeededButNoBorrowLink_fallsToNormalDownload() {
         // Guards the line-150 `state == .downloadNeeded && hasBorrowLink` AND:
         // an open-access `.downloadNeeded` book (no borrow link) must NOT
-        // auto-borrow — it goes straight to the normal download path. (Kills the
-        // `&&`→`||` mutant, which would auto-borrow any downloadNeeded book.)
+        // auto-borrow — it goes straight to the normal download path. (Catches the
+        // `&&`→`||` regression, which would auto-borrow any downloadNeeded book.)
         let plan = DownloadStartReducer.reduceRegular(regularInput(state: .downloadNeeded, hasBorrowLink: false))
         XCTAssertEqual(plan, [.reclaimDiskSpace, .clearAndSetCookies, .addDownloadTask])
     }

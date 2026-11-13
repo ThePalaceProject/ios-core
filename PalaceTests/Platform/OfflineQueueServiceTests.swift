@@ -30,14 +30,15 @@ final class OfflineQueueServiceTests: XCTestCase {
         // disconnected region to be `sending`-passed into the actor init (the
         // test also retains self.userDefaults for cleanup). Shares backing store.
         //
-        // S8 seam (swarm_ad0b4c65 Wave-3): inject a no-op retry backoff so the
+        // Inject a no-op retry backoff so the
         // retry state machine runs with zero wall-clock delay. Because
         // enqueue/retry/networkStatusChanged all `await processQueue()` to full
         // drain, every action reaches its terminal state before the call
         // returns — no post-call settle-sleep is needed to observe it.
         service = OfflineQueueService(
             userDefaults: UserDefaults(suiteName: "OfflineQueueServiceTests")!,
-            backoffSleep: { _ in }
+            backoffSleep: { _ in },
+            currentLibraryID: { OfflineAction.testLibraryID }
         )
         cancellables = Set<AnyCancellable>()
         executedActions.value = []
@@ -93,6 +94,67 @@ final class OfflineQueueServiceTests: XCTestCase {
         XCTAssertEqual(status.pendingCount, 2)
     }
 
+    /// A second copy of a queued action adds nothing, so a return re-enqueued
+    /// while the server is unreachable cannot pile up copies.
+    func testEnqueue_sameLibraryTypeAndBookAlreadyPending_keepsOneAction() async {
+        let first = OfflineAction(type: .return, bookID: "book1", bookTitle: "Book 1")
+        await service.enqueue(first)
+
+        await service.enqueue(OfflineAction(type: .return, bookID: "book1", bookTitle: "Book 1"))
+
+        let pending = await service.actions(withState: .pending)
+        XCTAssertEqual(pending.map(\.id), [first.id])
+    }
+
+    /// Only an exact library+type+book match is a duplicate.
+    func testEnqueue_differentTypeBookOrLibrary_addsEachAction() async {
+        await service.enqueue(OfflineAction(type: .return, bookID: "book1", bookTitle: "Book 1"))
+
+        await service.enqueue(OfflineAction(type: .borrow, bookID: "book1", bookTitle: "Book 1"))
+        await service.enqueue(OfflineAction(type: .return, bookID: "book2", bookTitle: "Book 2"))
+        await service.enqueue(OfflineAction(type: .return, bookID: "book1", bookTitle: "Book 1",
+                                            libraryID: "other-library"))
+
+        let pending = await service.actions(withState: .pending)
+        XCTAssertEqual(pending.count, 4)
+    }
+
+    /// An action that exhausted its retries is no longer queued work, so the
+    /// patron can queue the same action again.
+    func testEnqueue_sameActionAfterItFailed_isQueuedAgain() async {
+        await setupFailureExecutor()
+        await service.enqueue(OfflineAction(type: .return, bookID: "book1", bookTitle: "Book 1", maxRetries: 1))
+        await service.networkStatusChanged(isAvailable: false)
+
+        await service.enqueue(OfflineAction(type: .return, bookID: "book1", bookTitle: "Book 1"))
+
+        let status = await service.currentStatus()
+        XCTAssertEqual(status.failedCount, 1)
+        XCTAssertEqual(status.pendingCount, 1)
+    }
+
+    /// A copy enqueued while the original is being run adds nothing.
+    func testEnqueue_duringTheOriginalsRun_addsNoCopy() async {
+        let service = self.service!
+        let copiesAtRun = LockIsolated<[Int]>([])
+        await service.setExecutor { action in
+            // Only the first run enqueues, so a missing check cannot loop forever.
+            if copiesAtRun.value.isEmpty {
+                await service.enqueue(OfflineAction(type: action.type, bookID: action.bookID,
+                                                    bookTitle: action.bookTitle))
+            }
+            let status = await service.currentStatus()
+            copiesAtRun.withValue { $0.append(status.pendingCount + status.processingCount) }
+            return true
+        }
+
+        await service.enqueue(OfflineAction(type: .return, bookID: "book1", bookTitle: "Book 1"))
+
+        XCTAssertEqual(copiesAtRun.value, [1])
+        let status = await service.currentStatus()
+        XCTAssertEqual(status.pendingCount + status.processingCount + status.failedCount, 0)
+    }
+
     // MARK: - Processing
 
     func testProcessQueueSuccess() async {
@@ -123,6 +185,25 @@ final class OfflineQueueServiceTests: XCTestCase {
         XCTAssertEqual(executedActions.value.count, 2)
         XCTAssertEqual(executedActions.value[0].bookID, "book1")
         XCTAssertEqual(executedActions.value[1].bookID, "book2")
+    }
+
+    /// An action whose server is unreachable keeps its place and its retries,
+    /// and the drain stops before later actions, which would hit the same server.
+    func testProcessQueue_deferredAction_staysPendingAndStopsTheDrain() async {
+        await service.enqueue(OfflineAction(type: .return, bookID: "first", bookTitle: "First"))
+        await service.enqueue(OfflineAction(type: .return, bookID: "second", bookTitle: "Second"))
+        let ran = LockIsolated<[String]>([])
+        await service.setExecutor({ action in
+            ran.withValue { $0.append(action.bookID) }
+            return .deferred
+        }, currentLibraryID: { OfflineAction.testLibraryID })
+
+        await service.processQueue()
+
+        XCTAssertEqual(ran.value, ["first"])
+        let pending = await service.actions(withState: .pending)
+        XCTAssertEqual(pending.map(\.bookID), ["first", "second"])
+        XCTAssertEqual(pending.map(\.retryCount), [0, 0])
     }
 
     // MARK: - Retry
@@ -242,7 +323,8 @@ final class OfflineQueueServiceTests: XCTestCase {
         let action = OfflineAction(type: .borrow, bookID: "book1", bookTitle: "Test Book")
         await service.enqueue(action)
 
-        let newService = OfflineQueueService(userDefaults: UserDefaults(suiteName: "OfflineQueueServiceTests")!)
+        let newService = OfflineQueueService(userDefaults: UserDefaults(suiteName: "OfflineQueueServiceTests")!,
+                                             currentLibraryID: { OfflineAction.testLibraryID })
         let status = await newService.currentStatus()
         XCTAssertEqual(status.pendingCount, 1)
     }
@@ -253,7 +335,8 @@ final class OfflineQueueServiceTests: XCTestCase {
         let action = OfflineAction(type: .hold, bookID: "book1", bookTitle: "Test Book")
         await service.enqueue(action)
 
-        let newService = OfflineQueueService(userDefaults: UserDefaults(suiteName: "OfflineQueueServiceTests")!)
+        let newService = OfflineQueueService(userDefaults: UserDefaults(suiteName: "OfflineQueueServiceTests")!,
+                                             currentLibraryID: { OfflineAction.testLibraryID })
         let pending = await newService.actions(withState: .pending)
         let processing = await newService.actions(withState: .processing)
 

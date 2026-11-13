@@ -1,24 +1,10 @@
-//
 //  PalaceWiringTestCaseTests.swift
-//  PalaceTests
 //
-//  Verifies the `PalaceWiringTestCase` base-class contract — the test
-//  fixture itself must (1) invoke `SingletonResetRegistry` on every
-//  `setUp`, (2) drain its own `cancellables` set on every `tearDown`,
-//  (3) cancel background work on any `AccountsManager` minted via the
-//  base helper, and (4) honor the `deferInitialLoadCatalogsForTesting`
-//  opt-out when constructing those managers.
-//
-//  These tests use a `Probe` subclass that exposes a hook into setUp /
-//  tearDown timing so we can drive a single fixture lifecycle and assert
-//  against the observed effects rather than relying on subsequent
-//  test-method timing (which is at the mercy of XCTest's bundle
-//  ordering).
-//
-//  Test-target-only. swarm_4b64e4e0 Wave 1c.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Pins the `PalaceWiringTestCase` contract: setUp invokes
+//  `SingletonResetRegistry`, tearDown drains `cancellables`, managers minted by
+//  the helper get background work cancelled and honor
+//  `deferInitialLoadCatalogsForTesting`. A `Probe` subclass hooks setUp/tearDown
+//  so one fixture lifecycle is asserted directly, independent of test ordering.
 
 import XCTest
 import Combine
@@ -121,7 +107,7 @@ final class PalaceWiringTestCaseTests: XCTestCase {
     /// hook list and calls `cancelBackgroundWork()` on each.
     ///
     /// We use the `_backgroundFetchTaskWasExplicitlyCancelled` observation
-    /// surface (introduced by swarm_4b64e4e0 Fix 2) to distinguish "we
+    /// surface to distinguish "we
     /// called cancel" from "the task handle was nilled by some other path."
     func testTearDown_cancelsBackgroundWorkOnRegisteredManagers() throws {
         let probe = Probe()

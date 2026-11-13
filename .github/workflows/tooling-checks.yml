@@ -7,8 +7,9 @@ name: Tooling Checks
 #   1. bash -n on every committed shell script  (catches syntax breaks)
 #   2. pytest on the detector suite              (catches detector logic regressions)
 #   3. the pre-commit hook fixture test          (catches hook-wiring regressions)
-# A second job (flake-lint) diff-scopes the STARVE-001 test-flakiness gate against
-# the PR's base branch — blocks NEW parallel-clone-starvation deadline-polls.
+# A second job (flake-lint) fetches the PR's base branch and runs the diff-scoped
+# gates against it: STARVE-001 (no NEW parallel-clone-starvation deadline-polls),
+# the Readium money-path gate, and doc-hygiene over the PR's added files.
 on: [ pull_request, workflow_dispatch ]
 concurrency:
   group: tooling-checks-${{ github.event.pull_request.number || github.ref }}
@@ -61,6 +62,18 @@ jobs:
       - name: bash -n verify-pr.sh (explicit)
         run: bash -n scripts/verify-pr.sh
 
+      # pbxproj_add_swift.rb is Ruby, and its pytest drives the real script
+      # against throwaway fixture projects. Without the gem the script exits 1
+      # before parsing an argument, so the test asserts the gem is present
+      # rather than skipping — a skipped test here reads exactly like a pass.
+      # --user-install needs no sudo and lands on the default require path.
+      - name: Install the xcodeproj gem (pbxproj_add_swift.rb and its test)
+        run: |
+          set -euo pipefail
+          gem install --no-document xcodeproj \
+            || gem install --no-document --user-install xcodeproj
+          ruby -e "require 'xcodeproj'; puts \"xcodeproj #{Xcodeproj::VERSION}\""
+
       # 2. Detector logic suite. These are the Phase 3.5 class-detectable
       #    detectors + the M1 checks that have pytest coverage.
       - name: pytest detector suite
@@ -71,6 +84,34 @@ jobs:
             exit 1
           fi
           python3 -m pytest scripts/tests/ -q
+
+      # 2b. Localization drift. Deterministic on purpose: detection is a set
+      #     difference, so it needs no translation engine and runs on ubuntu in
+      #     seconds. PRODUCING the translations is a developer-side step
+      #     (`export` -> fill -> `import`); CI only refuses to let an
+      #     untranslated string reach a release.
+      # The inventory spans BOTH repos: the audiobook player's strings resolve
+      # against the app bundle and are translated in `Palace/*.lproj`. This job
+      # checks out with `submodules: false` for speed, so the one public
+      # submodule the gate needs is fetched here — no token required. Deliberately
+      # NOT `--depth 1`: a shallow clone carries the default branch's tip, and the
+      # recorded pin is frequently not the tip (a stacked cross-repo change points
+      # it at a PR branch), which fails in a way that reads like a missing repo.
+      - name: Check out the audiobook toolkit (the gate reads its strings)
+        run: git submodule update --init ios-audiobooktoolkit
+
+      - name: localization tables complete and consistent
+        run: |
+          # TRACKED file: its absence is a deleted gate, not an opt-out.
+          if [ ! -f scripts/palace_strings.py ]; then
+            echo "::error::scripts/palace_strings.py is missing — the localization gate cannot run."
+            exit 1
+          fi
+          # No `--source`: the tool refuses to run on a partial checkout rather
+          # than quietly grading a subset, so this command is only correct
+          # BECAUSE the submodule step above ran.
+          python3 scripts/palace_strings.py check \
+            --lproj-root Palace --langs de,es,fr,it --require-complete
 
       # 3. Hook-wiring fixture test. Proves the pre-commit detector hook
       #    correctly blocks on a violation, identifies the detector, and honors
@@ -86,8 +127,45 @@ jobs:
           fi
           bash scripts/tests/test_pre_commit_phase35_detectors.sh
 
-      # 3b. verify-pr detector wiring test. The three decomposition ratchets
-      #     (locator count, god-class LOC, .shared reads) each shipped with a
+      # 3a2. The two Phase-A gates, run whole-tree as NAMED steps.
+      #      They are also exercised by their pytests, but a pytest asserts the
+      #      gate's logic; this asserts the CURRENT TREE is clean. Relying on
+      #      test_live_repo_passes for that made a unit test load-bearing for
+      #      enforcement — if it ever goes inert (four arms in this very PR did,
+      #      on first write) the whole-tree check disappears with it, silently.
+      - name: file-size ceiling (whole tree)
+        run: |
+          # TRACKED file: absence means the gate was deleted, not that it is
+          # optional. Skipping here turns a removed gate into a green check.
+          if [ ! -f scripts/check-file-size-ceiling.sh ]; then
+            echo "::error::scripts/check-file-size-ceiling.sh is missing — the gate cannot run."
+            exit 1
+          fi
+          bash scripts/check-file-size-ceiling.sh
+
+      - name: package tests are wired (whole tree)
+        run: |
+          if [ ! -f scripts/check-package-tests-wired.sh ]; then
+            echo "::error::scripts/check-package-tests-wired.sh is missing — the gate cannot run."
+            exit 1
+          fi
+          bash scripts/check-package-tests-wired.sh
+
+      # Every tracked Swift file under Palace/, PalaceTests/ and PalaceUITests/
+      # (outside Swift packages) is compiled by a target, and every Swift
+      # reference in Palace.xcodeproj resolves to a tracked file. Test files
+      # that exist but never compile read as coverage that does not run.
+      - name: Swift sources compiled (whole tree)
+        run: |
+          if [ ! -f scripts/check-swift-sources-compiled.py ]; then
+            echo "::error::scripts/check-swift-sources-compiled.py is missing — the gate cannot run."
+            exit 1
+          fi
+          python3 scripts/check-swift-sources-compiled.py
+
+      # 3b. verify-pr detector wiring test. The decomposition ratchets
+      #     (locator count, file-size ceiling, .shared reads, package-test
+      #     wiring) each shipped with a
       #     baseline and a passing pytest while being invoked by NOTHING
       #     (audited 2026-08-20). A detector's own unit tests are silent about
       #     whether anything calls it, so this asserts the CALL SITE — and
@@ -300,6 +378,43 @@ jobs:
             exit 1
           fi
           bash scripts/tests/test_check_doc_hygiene.sh
+
+      # 5c. noDRM build inputs: build-carthage.sh must fetch AudioEngine on the
+      #     --no-private path (the toolkit weak-links it and cannot link without
+      #     it) and fetch-audioengine.sh must fail loudly on a bad download.
+      #     Runs the real scripts in a sandbox with curl/carthage/swift stubbed.
+      - name: noDRM build-inputs test
+        run: |
+          # TRACKED file: absence means the gate was deleted, not that it is
+          # optional. Skipping here turns a removed test into a green check.
+          if [ ! -f scripts/tests/test_nodrm_build_inputs.sh ]; then
+            echo "::error::scripts/tests/test_nodrm_build_inputs.sh is missing — the gate cannot be verified."
+            exit 1
+          fi
+          bash scripts/tests/test_nodrm_build_inputs.sh
+
+      # 5d. noDRM product detector: Palace-noDRM.app must not embed Findaway's
+      #     AudioEngine.framework and the toolkit's AudioEngine link must be
+      #     weak. Asserts the clean path, each violation, and that "no product"
+      #     is exit 2 rather than a pass. Guards the NonDRM Build workflow gate.
+      - name: noDRM product detector test
+        run: |
+          # TRACKED file: see above. Absence is a deleted gate.
+          if [ ! -f scripts/tests/test_check_nodrm_app_excludes_audioengine.sh ]; then
+            echo "::error::scripts/tests/test_check_nodrm_app_excludes_audioengine.sh is missing — the gate cannot be verified."
+            exit 1
+          fi
+          bash scripts/tests/test_check_nodrm_app_excludes_audioengine.sh
+      # Source comments in Palace/ and PalaceTests/ follow the writing
+      # conventions in CLAUDE.md. Whole tree, no baseline.
+      - name: comment hygiene (whole tree)
+        run: |
+          if [ ! -f scripts/check-comment-hygiene.py ]; then
+            echo "::error::scripts/check-comment-hygiene.py is missing — the gate cannot run."
+            exit 1
+          fi
+          python3 scripts/check-comment-hygiene.py
+
       - name: contributor-surface gate
         run: |
           # TRACKED file: see above. Absence is a deleted gate.
@@ -337,6 +452,27 @@ jobs:
 
       - name: Fetch PR base branch
         run: git fetch --no-tags origin "+refs/heads/${BASE}:refs/remotes/origin/${BASE}"
+
+      # Doc-hygiene over the files this PR adds. The tooling-integrity job runs
+      # only the checker's fixture test; this runs the checker itself against
+      # the PR. `--base` is required: with no flags it reads staged files, and a
+      # CI checkout has none, so it would always pass. The ref checks fail the
+      # step when the base is missing, because the checker discards git errors
+      # and an unresolvable base reads as "nothing added". Keep this step before
+      # the money-path step: its --depth=1 base fetch marks a base tip newer than
+      # the merge commit as shallow, after which merge-base finds nothing.
+      - name: doc-hygiene on the PR's added files
+        run: |
+          set -euo pipefail
+          if ! git rev-parse --verify --quiet "origin/${BASE}^{commit}" >/dev/null; then
+            echo "::error::origin/${BASE} is not fetched; doc-hygiene cannot diff against it."
+            exit 1
+          fi
+          if ! git merge-base "origin/${BASE}" HEAD >/dev/null; then
+            echo "::error::HEAD shares no history with origin/${BASE}; doc-hygiene cannot diff against it."
+            exit 1
+          fi
+          bash scripts/check-doc-hygiene.sh --base "origin/${BASE}"
 
       # Flag NEW deadline-poll waits on lines this PR adds vs its base. The
       # linter's --changed mode is diff-scoped (added lines of PalaceTests/*.swift

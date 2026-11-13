@@ -1,26 +1,183 @@
 //
 //  AudiobookMorphingPlayerViewTests.swift
-//  PalaceTests
 //
-//  Unit coverage for the pure, mutation-testable seams of the custom morphing
-//  audiobook player: the bookmark-error → localized-toast mapping (restores the
-//  toolkit's `BookmarkError.localizedDescription`, which is module-internal and
-//  unreachable from the app), the toast error/success classifier, the adaptive
-//  control metrics (toolkit `controlPanelView` / `playbackControlsView` tiers),
-//  and the rubber-band resistance curve for the interactive pull-down.
-//
-//  The SwiftUI body itself is opaque to XCTest; these static helpers carry the
-//  logic that would otherwise hide inside it, so they are asserted directly.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
+//  Pure seams of the morphing audiobook player: bookmark-error → localized toast
+//  (the toolkit's `BookmarkError.localizedDescription` is module-internal), the
+//  toast error/success classifier, adaptive control metrics, and the pull-down
+//  rubber-band curve. The SwiftUI body is opaque to XCTest, so the logic lives
+//  in these static helpers and is asserted directly.
 //
 
 import XCTest
+import SwiftUI
 import PalaceAudiobookToolkit
 @testable import Palace
 
 @MainActor
 final class AudiobookMorphingPlayerViewTests: XCTestCase {
+
+    // MARK: - Holding the shimmer until audio is audible
+
+    /// The gap the patron watches transport controls through. `isLoaded` has
+    /// several writers in the streaming player that release the UI without
+    /// audio, so it means "stop waiting", not "audio is coming out".
+    /// `isWaitingForData` is AVFoundation's own answer.
+    func testFirstOpen_loadedButTransportIsWaiting_holdsTheShimmer() {
+        XCTAssertEqual(
+            AudiobookMorphingPlayerView.loadingOverlayState(
+                isLoaded: true,
+                isDownloading: false,
+                loadingTimedOut: false,
+                hasStartedPlayback: false,
+                expectsSlowStart: false,
+                hasSeenDownloading: true,
+                transportIsWaitingForData: true,
+                forceSkeletons: false
+            ),
+            .skeleton,
+            "hiding here shows transport controls over silence"
+        )
+    }
+
+    /// Audio is coming out, so the player is usable and the overlay goes.
+    func testFirstOpen_loadedAndNotWaiting_hidesTheOverlay() {
+        XCTAssertEqual(
+            AudiobookMorphingPlayerView.loadingOverlayState(
+                isLoaded: true,
+                isDownloading: false,
+                loadingTimedOut: false,
+                hasStartedPlayback: false,
+                expectsSlowStart: false,
+                hasSeenDownloading: true,
+                transportIsWaitingForData: false,
+                forceSkeletons: false
+            ),
+            .hidden
+        )
+    }
+
+    /// A load that never becomes audible still reaches the error. Holding the
+    /// shimmer must not make `.loadError` unreachable, which is the failure
+    /// this file already records once.
+    func testFirstOpen_waitingAndTimedOut_reachesTheError() {
+        XCTAssertEqual(
+            AudiobookMorphingPlayerView.loadingOverlayState(
+                isLoaded: true,
+                isDownloading: false,
+                loadingTimedOut: true,
+                hasStartedPlayback: false,
+                expectsSlowStart: false,
+                hasSeenDownloading: true,
+                transportIsWaitingForData: true,
+                forceSkeletons: false
+            ),
+            .loadError
+        )
+    }
+
+    /// MID-SESSION the gate must not apply: a buffering stall during playback
+    /// would take the screen back from a book the patron is listening to, which
+    /// is the takeover `.awaitingReload` exists to prevent.
+    func testMidSession_loadedButTransportIsWaiting_doesNotTakeOverTheScreen() {
+        XCTAssertEqual(
+            AudiobookMorphingPlayerView.loadingOverlayState(
+                isLoaded: true,
+                isDownloading: false,
+                loadingTimedOut: false,
+                hasStartedPlayback: true,
+                expectsSlowStart: false,
+                hasSeenDownloading: true,
+                transportIsWaitingForData: true,
+                forceSkeletons: false
+            ),
+            .hidden,
+            "a stall mid-playback must not replace the player with a shimmer"
+        )
+    }
+
+    // MARK: - The download-seen latch
+
+    /// One-way is the whole point. A live value would re-open the pre-download
+    /// window every time progress briefly reports nothing, taking the screen
+    /// back from the shimmer — the flicker the window exists to avoid.
+    func testHasSeenDownloading_staysTrueWhenDownloadingFallsBack() {
+        XCTAssertTrue(
+            AudiobookMorphingPlayerView.hasSeenDownloading(previous: true, isDownloading: false),
+            "a latch that follows isDownloading down re-summons the explanation"
+        )
+    }
+
+    /// The rising edge sets it.
+    func testHasSeenDownloading_isSetByTheFirstDownload() {
+        XCTAssertTrue(
+            AudiobookMorphingPlayerView.hasSeenDownloading(previous: false, isDownloading: true)
+        )
+    }
+
+    /// Before any download has been seen it stays false, or the pre-download
+    /// window would never open at all.
+    func testHasSeenDownloading_beforeAnyDownload_isFalse() {
+        XCTAssertFalse(
+            AudiobookMorphingPlayerView.hasSeenDownloading(previous: false, isDownloading: false)
+        )
+    }
+
+    // MARK: - Which progress channel the loading panel shows
+
+    /// An LCP archive fetch drives `archiveProgress`; no track download is
+    /// running, so `overallDownloadProgress` reads 0. The panel must show the
+    /// archive's number, or a streamed open reports 0% for the whole fetch —
+    /// the defect `AudiobookDownloadProgressPolicy` exists to fix, which this
+    /// panel reintroduced by reading the toolkit channel directly.
+    func testLoadingPanel_duringAnArchiveFetch_showsTheArchiveProgress() {
+        let shown = AudiobookDownloadProgressPolicy.barProgress(
+            archiveProgress: 0.42,
+            overallDownloadProgress: 0
+        )
+
+        XCTAssertEqual(shown, 0.42, accuracy: 0.0001)
+        XCTAssertTrue(
+            AudiobookMorphingPlayerView.downloadBarIsDeterminate(progress: shown),
+            "a 42% archive fetch must draw a determinate bar, not a spinner"
+        )
+    }
+
+    // MARK: - Download bar determinacy
+
+    /// A streamed open sits at 0% for about a second before the first fraction
+    /// arrives (measured on device 2026-10-19: 1.3 s). A determinate bar pinned
+    /// at zero reads as stuck, so the bar shows motion until there is a real
+    /// fraction to draw.
+    func testDownloadBar_beforeAnyProgress_isIndeterminate() {
+        XCTAssertFalse(
+            AudiobookMorphingPlayerView.downloadBarIsDeterminate(progress: 0),
+            "a determinate bar at 0% reads as a stalled download"
+        )
+    }
+
+    /// Once a real fraction exists the bar becomes determinate, which is the
+    /// whole point of reporting a percentage.
+    func testDownloadBar_onceProgressArrives_isDeterminate() {
+        XCTAssertTrue(
+            AudiobookMorphingPlayerView.downloadBarIsDeterminate(progress: 0.04)
+        )
+    }
+
+    /// A negative fraction is not progress. The download center's
+    /// `downloadProgress(for:)` is the source and nothing promises it is
+    /// non-negative, so the bar must not read a bogus value as "started".
+    func testDownloadBar_withNegativeProgress_isIndeterminate() {
+        XCTAssertFalse(
+            AudiobookMorphingPlayerView.downloadBarIsDeterminate(progress: -0.1)
+        )
+    }
+
+    /// A complete download is determinate — the boundary opposite zero.
+    func testDownloadBar_atCompletion_isDeterminate() {
+        XCTAssertTrue(
+            AudiobookMorphingPlayerView.downloadBarIsDeterminate(progress: 1)
+        )
+    }
 
     typealias V = AudiobookMorphingPlayerView
 
@@ -36,7 +193,7 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
         XCTAssertEqual(V.bookmarkErrorMessage(for: BookmarkError.bookmarkFailedToSave),
                        Strings.Generic.bookmarkFailedToSave,
                        "`.bookmarkFailedToSave` must map to the couldn't-be-saved copy")
-        // The two arms must be distinct — a mutation collapsing them is caught.
+        // The two arms must be distinct.
         XCTAssertNotEqual(V.bookmarkErrorMessage(for: BookmarkError.bookmarkAlreadyExists),
                           V.bookmarkErrorMessage(for: BookmarkError.bookmarkFailedToSave),
                           "The two BookmarkError cases must surface different copy")
@@ -114,8 +271,7 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
         XCTAssertEqual(m.transportHeight, 56)
     }
 
-    /// The narrow boundary is `< 370`: 369 is narrow, 370 is standard. Kills a
-    /// `<` → `<=` mutation on the tier threshold.
+    /// The narrow boundary is `< 370`: 369 is narrow, 370 is standard.
     func testControlMetrics_narrowBoundary_isStrictlyLessThan370() {
         XCTAssertTrue(V.ControlMetrics(width: 369, landscape: false).narrow,
                       "369pt must be the narrow tier")
@@ -158,11 +314,11 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
     /// A loaded player shows no overlay — regardless of the other flags.
     func testLoadingOverlayState_loadedIsHidden() {
         XCTAssertEqual(
-            V.loadingOverlayState(isLoaded: true, isDownloading: false, loadingTimedOut: false, hasStartedPlayback: false, forceSkeletons: false),
+            V.loadingOverlayState(isLoaded: true, isDownloading: false, loadingTimedOut: false, hasStartedPlayback: false, expectsSlowStart: false, hasSeenDownloading: false, forceSkeletons: false),
             .hidden,
             "A loaded, non-downloading player has no loading overlay")
         XCTAssertEqual(
-            V.loadingOverlayState(isLoaded: true, isDownloading: true, loadingTimedOut: true, hasStartedPlayback: false, forceSkeletons: false),
+            V.loadingOverlayState(isLoaded: true, isDownloading: true, loadingTimedOut: true, hasStartedPlayback: false, expectsSlowStart: false, hasSeenDownloading: false, forceSkeletons: false),
             .hidden,
             "Once loaded, neither a lingering download flag nor a stale timeout resurrects the overlay")
     }
@@ -175,11 +331,11 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
     /// (or falls through to `.skeleton`) before `isDownloading`.
     func testLoadingOverlayState_downloadingBeatsSkeletonAndTimeout() {
         XCTAssertEqual(
-            V.loadingOverlayState(isLoaded: false, isDownloading: true, loadingTimedOut: false, hasStartedPlayback: false, forceSkeletons: false),
+            V.loadingOverlayState(isLoaded: false, isDownloading: true, loadingTimedOut: false, hasStartedPlayback: false, expectsSlowStart: false, hasSeenDownloading: false, forceSkeletons: false),
             .downloading,
             "An in-flight download shows the determinate downloading state, not the shimmer skeleton")
         XCTAssertEqual(
-            V.loadingOverlayState(isLoaded: false, isDownloading: true, loadingTimedOut: true, hasStartedPlayback: false, forceSkeletons: false),
+            V.loadingOverlayState(isLoaded: false, isDownloading: true, loadingTimedOut: true, hasStartedPlayback: false, expectsSlowStart: false, hasSeenDownloading: false, forceSkeletons: false),
             .downloading,
             "A download in flight is healthy progress — it must win over a fired load timeout, never the error overlay")
     }
@@ -188,7 +344,7 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
     /// the error+retry. Kills dropping the `loadingTimedOut` branch.
     func testLoadingOverlayState_timeoutWithoutDownloadIsLoadError() {
         XCTAssertEqual(
-            V.loadingOverlayState(isLoaded: false, isDownloading: false, loadingTimedOut: true, hasStartedPlayback: false, forceSkeletons: false),
+            V.loadingOverlayState(isLoaded: false, isDownloading: false, loadingTimedOut: true, hasStartedPlayback: false, expectsSlowStart: false, hasSeenDownloading: false, forceSkeletons: false),
             .loadError,
             "A stalled, non-downloading load that fired the 30s timer shows the load-error overlay")
     }
@@ -198,11 +354,11 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
     /// skeleton even over a loaded/downloading player so it can be inspected.
     func testLoadingOverlayState_skeletonDefaultAndForceOverride() {
         XCTAssertEqual(
-            V.loadingOverlayState(isLoaded: false, isDownloading: false, loadingTimedOut: false, hasStartedPlayback: false, forceSkeletons: false),
+            V.loadingOverlayState(isLoaded: false, isDownloading: false, loadingTimedOut: false, hasStartedPlayback: false, expectsSlowStart: false, hasSeenDownloading: false, forceSkeletons: false),
             .skeleton,
             "The brief pre-download load window is the shimmer skeleton")
         XCTAssertEqual(
-            V.loadingOverlayState(isLoaded: true, isDownloading: true, loadingTimedOut: false, hasStartedPlayback: false, forceSkeletons: true),
+            V.loadingOverlayState(isLoaded: true, isDownloading: true, loadingTimedOut: false, hasStartedPlayback: false, expectsSlowStart: false, hasSeenDownloading: false, forceSkeletons: true),
             .skeleton,
             "forceSkeletons is the QA inspection override — it wins over every other flag")
     }
@@ -236,8 +392,8 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
 
     /// Pre-bind, the session rate is the meaningless 1.0× default (no player yet)
     /// — the chip must KEEP its fallback rather than be pinned to that default,
-    /// so the bind-time re-sync can later show the real restored rate. Kills a
-    /// mutation that swaps the ternary (would clobber the chip with 1.0×).
+    /// so the bind-time re-sync can later show the real restored rate (a
+    /// swapped ternary would clobber the chip with 1.0×).
     func testDisplayRate_unboundKeepsFallback() {
         XCTAssertEqual(
             V.displayRate(sessionRate: .normalTime, isBound: false, fallback: .doubleTime),
@@ -375,11 +531,62 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
     private typealias Overlay = V.LoadingOverlayState
 
     private func state(
-        loaded: Bool, downloading: Bool, timedOut: Bool, started: Bool, force: Bool = false
+        loaded: Bool, downloading: Bool, timedOut: Bool, started: Bool,
+        expectsSlow: Bool = false, seenDownloading: Bool = false, force: Bool = false
     ) -> Overlay {
         V.loadingOverlayState(
             isLoaded: loaded, isDownloading: downloading,
-            loadingTimedOut: timedOut, hasStartedPlayback: started, forceSkeletons: force
+            loadingTimedOut: timedOut, hasStartedPlayback: started,
+            expectsSlowStart: expectsSlow, hasSeenDownloading: seenDownloading,
+            forceSkeletons: force
+        )
+    }
+
+    /// A cold streamed start explains itself before anything else.
+    ///
+    /// At the tap the download has not registered, so `isDownloading` is still
+    /// false and this fell through to the shimmer — measured on device as one
+    /// frame of skeleton followed by 1.3 s of "Downloading 0%". The patron saw
+    /// the states in the wrong order.
+    func testLoadingOverlayState_predictedSlowBeforeTheDownloadRegisters_explainsFirst() {
+        XCTAssertEqual(
+            state(loaded: false, downloading: false, timedOut: false, started: false,
+                    expectsSlow: true, seenDownloading: false),
+            .downloading,
+            "a start the player knows will be slow shows the explanation, not a shimmer that is replaced"
+        )
+    }
+
+    /// An ordinary opening is unchanged: no prediction, no explanation, just the
+    /// brief shimmer and then the player. This is the cell that keeps the
+    /// loading screen off a book that opens quickly.
+    func testLoadingOverlayState_ordinaryOpening_showsOnlyTheSkeleton() {
+        XCTAssertEqual(
+            state(loaded: false, downloading: false, timedOut: false, started: false,
+                    expectsSlow: false, seenDownloading: false),
+            .skeleton,
+            "a quick opening must not be given a loading screen it does not need"
+        )
+    }
+
+    /// Once a download has been seen the pre-download window is over, so the
+    /// shimmer covers the remaining gap — loading, then skeleton, then player.
+    func testLoadingOverlayState_afterTheDownloadIsSeen_handsOverToTheSkeleton() {
+        XCTAssertEqual(
+            state(loaded: false, downloading: false, timedOut: false, started: false,
+                    expectsSlow: true, seenDownloading: true),
+            .skeleton,
+            "the explanation gives way to the shimmer once the download has been and gone"
+        )
+    }
+
+    /// The prediction must never outrank a real failure.
+    func testLoadingOverlayState_predictedSlowButTimedOut_stillShowsTheError() {
+        XCTAssertEqual(
+            state(loaded: false, downloading: false, timedOut: true, started: false,
+                    expectsSlow: true, seenDownloading: false),
+            .loadError,
+            "a fired timeout is a failure to surface, not a wait to explain"
         )
     }
 
@@ -441,8 +648,7 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
     }
 
     /// Full enumeration: 2^4 input combinations at `forceSkeletons: false`, plus the
-    /// override. States x events, not sampled scenarios — CLAUDE.md's rule exists
-    /// because the cell that ships is the one nobody sampled.
+    /// override: the whole states × events table, not sampled scenarios.
     func testLoadingOverlayState_fullTable() {
         var seen: [Overlay: Int] = [:]
         for loaded in [true, false] {
@@ -494,7 +700,7 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
 
     /// Every state is covered by the arming rule — a state added later without a
     /// decision here silently inherits `false` and takes its failure path with it.
-    /// PP-5205 round 3. `loadingTimedOut` is a LATCH, and nothing cleared it when the
+    /// PP-5205: `loadingTimedOut` is a LATCH, and nothing cleared it when the
     /// player recovered on its own — only arming and Retry did. A stall that fired the
     /// 30s timer and then came good left it true, and the mid-session arm reads it
     /// BEFORE `isDownloading` (unlike the pre-playback arm, where a healthy download
@@ -523,7 +729,7 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
     func testLoadingOverlayState_staleLatchMidSession_wouldPaintErrorOverAWorkingPlayer() {
         XCTAssertEqual(
             V.loadingOverlayState(isLoaded: false, isDownloading: false, loadingTimedOut: true,
-                                  hasStartedPlayback: true, forceSkeletons: false),
+                                  hasStartedPlayback: true, expectsSlowStart: false, hasSeenDownloading: false, forceSkeletons: false),
             .loadError,
             "premise: mid-session, a true latch goes straight to the error — which is why the latch must be cleared on recovery"
         )
@@ -562,6 +768,43 @@ final class AudiobookMorphingPlayerViewTests: XCTestCase {
                        "arming set changed — confirm the new membership is deliberate, because this is the rule that keeps `.loadError` reachable")
     }
 
+    // MARK: - VoiceOver focus on open (PP-5450)
+
+    private typealias PlayerView = AudiobookMorphingPlayerView
+
+    /// A VoiceOver patron opens the full player to listen, so focus starts on
+    /// Play rather than the title eight or nine swipes away.
+    func testOpeningFocus_fullPlayerWithControlsVisible_focusesPlayPause() {
+        XCTAssertEqual(PlayerView.openingVoiceOverFocusStep(isExpanded: true, overlayCoversControls: false),
+                       .focus(.playPause))
+    }
+
+    /// Under the loading overlay a VoiceOver patron hears that the book is
+    /// loading, and focus moves to Play once the overlay clears. Focusing the
+    /// overlay itself handed focus to Close when it disappeared.
+    func testOpeningFocus_fullPlayerUnderLoadingOverlay_announcesLoadingThenPlay() {
+        XCTAssertEqual(PlayerView.openingVoiceOverFocusStep(isExpanded: true, overlayCoversControls: true),
+                       .announceLoadingThenPlay)
+    }
+
+    /// The mini player sits under other content, so opening it must not pull
+    /// VoiceOver focus away from what the patron was reading.
+    func testOpeningFocus_miniPlayer_movesNoFocus() {
+        XCTAssertEqual(PlayerView.openingVoiceOverFocusStep(isExpanded: false, overlayCoversControls: false), .none)
+        XCTAssertEqual(PlayerView.openingVoiceOverFocusStep(isExpanded: false, overlayCoversControls: true), .none)
+    }
+
+    /// The open that waited gets Play once the overlay clears.
+    func testDeferredFocus_whenOverlayClears_focusesPlayPause() {
+        XCTAssertEqual(PlayerView.focusWhenControlsUncovered(waiting: true, overlayCoversControls: false), .playPause)
+    }
+
+    /// Nothing moves focus while the overlay still covers the controls, or when
+    /// no open is waiting (a later overlay, e.g. a mid-session download).
+    func testDeferredFocus_whileCoveredOrNotWaiting_movesNoFocus() {
+        XCTAssertNil(PlayerView.focusWhenControlsUncovered(waiting: true, overlayCoversControls: true))
+        XCTAssertNil(PlayerView.focusWhenControlsUncovered(waiting: false, overlayCoversControls: false))
+    }
 }
 
 // MARK: - PP-5205 — the chapter name and the timecodes share one observed source
@@ -602,5 +845,497 @@ final class AudiobookMorphingPlayerChapterTitleTests: XCTestCase {
             AudiobookMorphingPlayerView.chapterDisplayTitle(chapterTitle: "", bookTitle: nil),
             ""
         )
+    }
+
+    // MARK: - Minimize must be reachable without a drag gesture
+
+    /// Pull-down-to-minimize is a `DragGesture`. VoiceOver and Switch Control
+    /// cannot perform one, and the grabber was `.accessibilityHidden(true)` —
+    /// so for those patrons the ONLY exit from the full player was the ✕, which
+    /// calls `closePlayer()` and ends the session. "Keep listening while I
+    /// browse" was not merely hard to discover for them; it was unreachable.
+    /// The mini-player already carries the opposite direction
+    /// (`expandPlayerHint`), so only this half of the morph was missing.
+    ///
+    /// SwiftUI's accessibility tree is not materialized in a unit-test process
+    /// without VoiceOver running, so this guards the modifiers at the source
+    /// level — the same sentinel pattern (and the same stated reason) as
+    /// `CatalogLaneRowViewAccessibilityTests.testSwimlaneTitle_sourceDeclaresHeaderAccessibilityTrait`.
+    func testGrabber_exposesAnActivatableMinimizeToAssistiveTech() throws {
+        let grabber = try Self.declarationBody("private var grabber: some View")
+
+        XCTAssertFalse(
+            grabber.contains(".accessibilityHidden(true)"),
+            "The grabber is hidden from assistive tech, so pull-down-to-minimize has no non-drag equivalent and ✕ (which stops playback) becomes the only exit."
+        )
+        XCTAssertTrue(
+            grabber.contains("Strings.Generic.minimizePlayer"),
+            "The grabber must carry the localized minimize label, or VoiceOver announces an unlabeled element."
+        )
+        XCTAssertTrue(
+            grabber.contains(".accessibilityAction"),
+            "The grabber must expose an activation action calling minimize(); the drag gesture alone is unreachable for VoiceOver and Switch Control."
+        )
+        XCTAssertTrue(
+            grabber.contains(".isButton"),
+            "Without .isButton VoiceOver announces the grabber as static text and never offers the double-tap."
+        )
+    }
+
+    /// Minimize and Close must stay distinguishable by voice alone: one keeps
+    /// the audiobook playing, the other ends the session. Identical labels would
+    /// make the destructive choice indistinguishable from the safe one.
+    func testMinimizeAndCloseLabels_areNotInterchangeable() {
+        XCTAssertNotEqual(
+            Strings.Generic.minimizePlayer, Strings.Generic.close,
+            "Minimize keeps playback alive and Close stops it — VoiceOver users must be able to tell them apart."
+        )
+        XCTAssertFalse(
+            Strings.Generic.minimizePlayerHint.isEmpty,
+            "The minimize hint is what tells a patron playback survives; an empty hint drops that guarantee."
+        )
+    }
+
+    // MARK: - Source-sentinel helper
+
+    /// Returns the body text of a declaration in `AudiobookMorphingPlayerView.swift`,
+    /// from its signature to the closing brace at member indentation, with
+    /// whole-line `//` comments removed.
+    ///
+    /// Stripping comments is not cosmetic. The first version of this helper
+    /// returned the raw slice, and the assertion for "no `.accessibilityHidden(true)`"
+    /// then matched the comment that EXPLAINS why the modifier was removed —
+    /// the guard was reading prose and calling it code. Trailing comments on a
+    /// code line are deliberately left alone, since truncating at `//` would
+    /// also cut string literals such as `https://`.
+    ///
+    /// Both lookups `XCTUnwrap`, so a rename or restructure fails this test
+    /// loudly rather than silently scanning an empty string and passing — an
+    /// inert guard reports the same green as a satisfied one.
+    private static func declarationBody(_ signature: String) throws -> String {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()        // AppInfrastructure
+            .deletingLastPathComponent()        // PalaceTests
+            .deletingLastPathComponent()        // repo root
+            .appendingPathComponent("Palace/AppInfrastructure/AudiobookMorphingPlayerView.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+
+        let start = try XCTUnwrap(
+            source.range(of: signature),
+            "`\(signature)` no longer exists in AudiobookMorphingPlayerView.swift — re-point this guard at the renamed declaration; until then it checks nothing."
+        ).upperBound
+        let end = try XCTUnwrap(
+            source.range(of: "\n    }", range: start ..< source.endIndex),
+            "Could not find the closing brace of `\(signature)`."
+        ).lowerBound
+
+        return String(source[start ..< end])
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .joined(separator: "\n")
+    }
+}
+
+// MARK: - Layout fixtures shared by the two geometry suites
+
+/// Portrait point sizes of the device classes the app ships to: a home-button
+/// phone, the narrow tier, two Dynamic Island phones and an iPad. A layout that
+/// only breaks on one of these is what a single-device check cannot see.
+enum PlayerLayoutDevices {
+    static let portrait: [(name: String, size: CGSize)] = [
+        ("iPhone SE (3rd generation)", CGSize(width: 375, height: 667)),
+        ("iPhone 13 mini", CGSize(width: 375, height: 812)),
+        ("iPhone 16e", CGSize(width: 390, height: 844)),
+        ("iPhone 17 Pro", CGSize(width: 402, height: 874)),
+        ("iPhone 17 Pro Max", CGSize(width: 440, height: 956)),
+        ("iPad (A16)", CGSize(width: 820, height: 1180))
+    ]
+
+    /// A solid image at an exact size, so what the layout reports depends on the
+    /// artwork's aspect ratio and nothing else. 600x900 is the 2:3 book ratio in
+    /// the reported screenshot; without real artwork the player draws the square
+    /// placeholder glyph, which cannot reproduce an artwork-driven overflow.
+    static func artwork(_ width: CGFloat = 600, _ height: CGFloat = 900) -> UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: width, height: height)).image { ctx in
+            UIColor.systemTeal.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        }
+    }
+}
+
+// MARK: - Cover art geometry
+
+/// The full player budgets a SQUARE for the cover: `fullContentPortrait` stacks
+/// fixed chrome around it, so a cover that measures taller than it is wide makes
+/// the column overflow the screen at both ends. On an iPhone 17 Pro (402x874) a
+/// 2:3 cover measured 320x480 instead of 320x320, which put the column at 988pt
+/// and left the bottom control row's capsule 7.4pt past the bottom of the screen
+/// and 41.4pt inside the home-indicator inset.
+@MainActor
+final class AudiobookCoverArtLayoutTests: XCTestCase {
+
+    /// Portrait content width of the full player's cover slot: the screen width
+    /// less `coverArt`'s `.padding(.horizontal, 40)`.
+    private static let coverHorizontalPadding: CGFloat = 80
+    /// `coverArt`'s `.frame(maxWidth: 320)` at the portrait call site.
+    private static let coverMaxWidth: CGFloat = 320
+
+    /// The size the production cover view reports for a proposal — the same
+    /// measurement SwiftUI makes when laying the cover into the player column.
+    ///
+    /// `maxWidth` mirrors the portrait call site's `.frame(maxWidth: 320)`. Pass
+    /// `nil` to measure the cover alone: that frame reports the width it was
+    /// offered when its child is flexible, which hides the cover's own width.
+    private func measuredCover(
+        image: UIImage?,
+        proposing proposal: CGSize,
+        maxWidth: CGFloat? = coverMaxWidth
+    ) -> CGSize {
+        let cover = AudiobookCoverArt(image: image)
+        let host = maxWidth.map { UIHostingController(rootView: AnyView(cover.frame(maxWidth: $0))) }
+            ?? UIHostingController(rootView: AnyView(cover))
+        return host.sizeThatFits(in: proposal)
+    }
+
+    /// A portrait (2:3) cover — the common book ratio, and the one in the
+    /// reported screenshot — must still measure square.
+    func testCoverArt_portraitArtwork_measuresSquare_notTheArtworkRatio() {
+        let measured = measuredCover(image: PlayerLayoutDevices.artwork(),
+                                     proposing: CGSize(width: 322, height: 874))
+        XCTAssertEqual(measured.width, 320, accuracy: 0.5,
+                       "the cover must fill its 320pt slot")
+        XCTAssertEqual(measured.height, 320, accuracy: 0.5,
+                       "a 2:3 cover must measure 320pt tall, not the artwork's 480pt — the extra height is what pushes the control row off the screen")
+    }
+
+    /// A landscape cover must not report the artwork's width either.
+    func testCoverArt_landscapeArtwork_measuresSquare() {
+        let measured = measuredCover(image: PlayerLayoutDevices.artwork(900, 600),
+                                     proposing: CGSize(width: 322, height: 874))
+        XCTAssertEqual(measured.width, measured.height, accuracy: 0.5,
+                       "a 3:2 cover must measure square, not 480x320")
+        XCTAssertEqual(measured.height, 320, accuracy: 0.5)
+    }
+
+    /// The missing-artwork placeholder takes the same square.
+    func testCoverArt_placeholder_measuresSquare() {
+        let measured = measuredCover(image: nil,
+                                     proposing: CGSize(width: 322, height: 874))
+        XCTAssertEqual(measured.width, measured.height, accuracy: 0.5,
+                       "the placeholder must occupy the same square as artwork")
+    }
+
+    /// The property that keeps the column inside a short screen: when the stack
+    /// has less height left than the cover's 320pt cap, the cover takes what it
+    /// is offered instead of overflowing. Without this an iPhone SE column still
+    /// runs past the bottom even with a square cover.
+    func testCoverArt_takesOnlyTheHeightOffered_whenTheColumnIsTight() {
+        let measured = measuredCover(image: PlayerLayoutDevices.artwork(),
+                                     proposing: CGSize(width: 322, height: 210),
+                                     maxWidth: nil)
+        XCTAssertEqual(measured.height, 210, accuracy: 0.5,
+                       "offered 210pt the cover must measure 210pt, not grow to the artwork's height")
+        XCTAssertEqual(measured.width, 210, accuracy: 0.5,
+                       "and stay square while it shrinks")
+    }
+
+    /// Cross-device: the cover slot differs per screen width, and a layout bleed
+    /// that only reproduces on one device is exactly what a single-device journey
+    /// corpus cannot see. Portrait point sizes of the device classes the app
+    /// ships to — home-button, Dynamic Island, and iPad.
+    func testCoverArt_measuresSquareAndWithinBudget_onEveryDeviceClass() {
+        let art = PlayerLayoutDevices.artwork()
+        for device in PlayerLayoutDevices.portrait {
+            let slotWidth = device.size.width - Self.coverHorizontalPadding
+            let measured = measuredCover(
+                image: art,
+                proposing: CGSize(width: slotWidth, height: device.size.height)
+            )
+            XCTAssertEqual(measured.width, measured.height, accuracy: 0.5,
+                           "\(device.name): cover measured \(measured) — not square")
+            XCTAssertLessThanOrEqual(measured.height, min(Self.coverMaxWidth, slotWidth) + 0.5,
+                                     "\(device.name): cover is taller than its slot, so the column overflows the screen")
+        }
+    }
+}
+
+// MARK: - Full-player column geometry, across device classes
+
+/// The assertion the owner-reported bleed needs: mount the real full player at
+/// each device's point size and require its bottom controls to land inside the
+/// screen. The simdrive journey corpus cannot do this — all 26 recordings are
+/// captured at 1206x2622 and address absolute pixels — so a layout that only
+/// breaks on one screen size has no automated reader without this.
+///
+/// The host window carries no safe-area insets, and the player reads its own
+/// from the key window (`topSafeInset`/`bottomSafeInset`), so this pins the
+/// weaker property — inside the screen — rather than clear of the home
+/// indicator. Making those two insets injectable would let this assert the
+/// real one.
+@MainActor
+final class AudiobookPlayerColumnLayoutTests: XCTestCase {
+
+    /// The player's bottom control row, by the labels it publishes. Matching on
+    /// labels rather than positions means a renamed control fails the lookup
+    /// assertion below instead of quietly shrinking the set under test.
+    private var bottomControlLabels: [String] {
+        [Strings.Generic.airplay, Strings.Generic.sleepTimer, Strings.Generic.addBookmark]
+    }
+
+    private func mountExpandedPlayer(size: CGSize) -> AccessibilityAuditHost {
+        let session = SpyShimSession()
+        let presenter = AudiobookSessionPresenter(sessionManager: session)
+        presenter.adoptBook(TPPBookMocker.snapshotAudiobook())
+        presenter.adoptCoverImage(PlayerLayoutDevices.artwork())
+        presenter.expand()
+
+        let suite = "player-layout.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+
+        let player = AudiobookMorphingPlayerView(
+            presenter: presenter,
+            progress: presenter.progress,
+            audiobookSession: session
+        )
+        .defaultAppStorage(defaults)
+
+        let host = AccessibilityAuditHost(UIHostingController(rootView: player), size: size)
+        // The card slides up from one screen below on first appear; settle past
+        // that spring before reading frames, or every frame reads too low.
+        host.settle(1.5)
+        return host
+    }
+
+    /// Every bottom control must sit inside the screen on every device class.
+    /// Pre-fix this failed on the short screens by up to ~78pt.
+    func testFullPlayer_bottomControlsStayOnScreen_onEveryDeviceClass() {
+        for device in PlayerLayoutDevices.portrait {
+            let host = mountExpandedPlayer(size: device.size)
+            defer { host.tearDown() }
+
+            let elements = AccessibilityTraversalAudit.traverse(host.window)
+            for label in bottomControlLabels {
+                guard let control = elements.first(where: { $0.label == label }) else {
+                    XCTFail("\(device.name): no control labeled \"\(label)\" in the player's accessibility tree — the lookup, not the layout, is what failed here")
+                    continue
+                }
+                XCTAssertLessThanOrEqual(
+                    control.frame.maxY, device.size.height,
+                    "\(device.name): \"\(label)\" ends at \(control.frame.maxY)pt on a \(device.size.height)pt screen — it bleeds off the bottom"
+                )
+                XCTAssertGreaterThanOrEqual(
+                    control.frame.minY, 0,
+                    "\(device.name): \"\(label)\" starts above the top of the screen"
+                )
+            }
+        }
+    }
+
+    /// The transport row must stay on screen too: the overflow is split between
+    /// both ends of the column, so a regression can push either way.
+    func testFullPlayer_transportControlsStayOnScreen_onEveryDeviceClass() {
+        for device in PlayerLayoutDevices.portrait {
+            let host = mountExpandedPlayer(size: device.size)
+            defer { host.tearDown() }
+
+            let elements = AccessibilityTraversalAudit.traverse(host.window)
+            let playLabels = [Strings.Generic.playAudiobook, Strings.Generic.pauseAudiobook]
+            guard let play = elements.first(where: { playLabels.contains($0.label) }) else {
+                XCTFail("\(device.name): no play/pause control in the player's accessibility tree")
+                continue
+            }
+            XCTAssertLessThanOrEqual(play.frame.maxY, device.size.height,
+                                     "\(device.name): play/pause bleeds off the bottom")
+            XCTAssertGreaterThanOrEqual(play.frame.minY, 0,
+                                        "\(device.name): play/pause is pushed off the top")
+        }
+    }
+}
+
+// MARK: - Cover art fidelity
+
+/// The square slot is deliberate — an over-tall cover pushes the player's
+/// control row off the screen, which `AudiobookCoverArtLayoutTests` pins. What
+/// the square must not do is eat the artwork: laying the cover out `.fill`
+/// inside it overflows the square, and the clip then removes the overhang, so
+/// a 2:3 cover loses its top and bottom (PP-5441).
+///
+/// Those layout tests cannot see this. They read `sizeThatFits` on the outer
+/// view, whose size comes from `Color.clear.aspectRatio(1, .fit)`; an overlay
+/// never feeds its parent's sizing, so `.fill` and `.fit` measure identically.
+/// Green there was never evidence that red was possible.
+@MainActor
+final class AudiobookCoverArtFidelityTests: XCTestCase {
+
+    private static let side: CGFloat = 320
+
+    /// Artwork whose first and last rows are distinct, so losing either end is
+    /// visible in the pixels rather than only in the layout numbers.
+    private func bandedArtwork(width: CGFloat = 600, height: CGFloat = 900) -> UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: width, height: height)).image { ctx in
+            UIColor.systemGreen.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            UIColor.red.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: width, height: height * 0.10))
+            UIColor.blue.setFill()
+            ctx.fill(CGRect(x: 0, y: height * 0.90, width: width, height: height * 0.10))
+        }
+    }
+
+    /// Rasterizes the production view with no window. `ImageRenderer` is the
+    /// part that matters: a `UIHostingController` that was never added to a
+    /// window lays out at the wrong geometry, and `CALayer.render(in:)` drops
+    /// SwiftUI effects, so both report a crop that did not happen.
+    private func render(_ image: UIImage, side: CGFloat = side) -> UIImage? {
+        let renderer = ImageRenderer(
+            content: AudiobookCoverArt(image: image).frame(width: side, height: side))
+        renderer.scale = 1
+        return renderer.uiImage
+    }
+
+    /// Colour at a fractional point of the rendered square.
+    private func colour(_ image: UIImage, atX fx: CGFloat, y fy: CGFloat) -> UIColor? {
+        guard let cg = image.cgImage else { return nil }
+        let x = min(max(Int(CGFloat(cg.width) * fx), 0), cg.width - 1)
+        let y = min(max(Int(CGFloat(cg.height) * fy), 0), cg.height - 1)
+        var px = [UInt8](repeating: 0, count: 4)
+        guard let ctx = CGContext(data: &px, width: 1, height: 1, bitsPerComponent: 8,
+                                  bytesPerRow: 4, space: CGColorSpaceCreateDeviceRGB(),
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        ctx.draw(cg, in: CGRect(x: -x, y: -(cg.height - 1 - y), width: cg.width, height: cg.height))
+        return UIColor(red: CGFloat(px[0]) / 255, green: CGFloat(px[1]) / 255,
+                       blue: CGFloat(px[2]) / 255, alpha: CGFloat(px[3]) / 255)
+    }
+
+    private func isCloserToRedThanGreen(_ c: UIColor) -> Bool {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        c.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return r > g
+    }
+
+    private func isCloserToBlueThanGreen(_ c: UIColor) -> Bool {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        c.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return b > g
+    }
+
+    /// Guards the two assertions below. If the renderer produced nothing, every
+    /// colour probe would fail and report a crop that never happened.
+    func testRenderHarness_producesTheArtwork() throws {
+        let shot = try XCTUnwrap(render(bandedArtwork()), "ImageRenderer produced no image")
+        let middle = try XCTUnwrap(colour(shot, atX: 0.5, y: 0.5))
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        middle.getRed(&r, green: &g, blue: &b, alpha: &a)
+        XCTAssertGreaterThan(g, max(r, b),
+                             "the centre of the square should be the artwork's green body; " +
+                             "got r=\(r) g=\(g) b=\(b) — the probes below would be vacuous")
+    }
+
+    /// For a 2:3 cover the bars are left and right, so the square's top-centre
+    /// and bottom-centre are artwork in both variants — that is what makes this
+    /// a clean discriminator. Flipping `artwork` back to `.fill` reddens it.
+    func testCoverArt_tallArtwork_keepsItsTopAndBottomEdges() throws {
+        let shot = try XCTUnwrap(render(bandedArtwork()))
+        let top = try XCTUnwrap(colour(shot, atX: 0.5, y: 0.02))
+        let bottom = try XCTUnwrap(colour(shot, atX: 0.5, y: 0.98))
+        XCTAssertTrue(isCloserToRedThanGreen(top),
+                      "the artwork's top band is gone — the cover is cropped to the square")
+        XCTAssertTrue(isCloserToBlueThanGreen(bottom),
+                      "the artwork's bottom band is gone — the cover is cropped to the square")
+    }
+
+    /// The mini bar renders this view at 44pt. The backdrop scales its blur to
+    /// the square, so the artwork must survive there too.
+    func testCoverArt_atMiniBarSize_stillKeepsItsEdges() throws {
+        let shot = try XCTUnwrap(render(bandedArtwork(), side: 44))
+        let top = try XCTUnwrap(colour(shot, atX: 0.5, y: 0.05))
+        let bottom = try XCTUnwrap(colour(shot, atX: 0.5, y: 0.95))
+        XCTAssertTrue(isCloserToRedThanGreen(top),
+                      "the cover is cropped at mini-bar size")
+        XCTAssertTrue(isCloserToBlueThanGreen(bottom),
+                      "the cover is cropped at mini-bar size")
+    }
+
+    /// Alpha at a fractional point, read straight from the bitmap.
+    private func alpha(_ image: UIImage, atX fx: CGFloat, y fy: CGFloat) -> CGFloat? {
+        guard let c = colour(image, atX: fx, y: fy) else { return nil }
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        c.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return a
+    }
+
+    private func luminance(_ c: UIColor) -> CGFloat {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        c.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return 0.299 * r + 0.587 * g + 0.114 * b
+    }
+
+    /// The bars are the whole point of the backdrop, and nothing else here
+    /// samples them: every probe above lands on artwork, so removing the
+    /// backdrop overlay, flipping the isSquare guard or dropping `opaque:`
+    /// leaves those tests green. This reads the bar itself.
+    ///
+    /// A 2:3 cover in a square leaves bars on the LEFT and RIGHT, so x=0.02
+    /// and x=0.98 at mid-height are bar in every variant.
+    func testCoverArt_tallArtwork_fillsTheBarsOpaquely() throws {
+        let shot = try XCTUnwrap(render(bandedArtwork()))
+        for x in [CGFloat(0.02), CGFloat(0.98)] {
+            let a = try XCTUnwrap(alpha(shot, atX: x, y: 0.5))
+            XCTAssertEqual(a, 1.0, accuracy: 0.02,
+                           "the bar at x=\(x) is not opaque (alpha \(a)) — without a filled " +
+                           "backdrop the square shows through to whatever is behind it")
+        }
+    }
+
+    /// The backdrop is dimmed so the artwork stays the subject. If it ever
+    /// matched the artwork's brightness the cover would stop reading as a card.
+    func testCoverArt_backdropIsDimmerThanTheArtwork() throws {
+        let shot = try XCTUnwrap(render(bandedArtwork()))
+        let centre = try XCTUnwrap(colour(shot, atX: 0.5, y: 0.5))
+        let bar = try XCTUnwrap(colour(shot, atX: 0.02, y: 0.5))
+        // A margin, not a bare `<`: with the dim zeroed the bar and the centre
+        // sit near-equal and the kill would ride on blur noise rather than on
+        // a real gap.
+        XCTAssertLessThan(luminance(bar), luminance(centre) * 0.95,
+                          "the bar is not meaningfully dimmer than the artwork it frames")
+    }
+
+    /// At mini-bar size the bars are only a few points wide, which is exactly
+    /// where a translucent fill stops reading as a fill.
+    func testCoverArt_atMiniBarSize_fillsTheBarsOpaquely() throws {
+        let shot = try XCTUnwrap(render(bandedArtwork(), side: 44))
+        let a = try XCTUnwrap(alpha(shot, atX: 0.03, y: 0.5))
+        XCTAssertEqual(a, 1.0, accuracy: 0.02,
+                       "the mini-bar bar is not opaque (alpha \(a))")
+    }
+
+    /// The Reduce Transparency branch swaps the blurred backdrop for a flat
+    /// tone, and that tone must be OPAQUE: it sits over `Color.clear`, so a
+    /// translucent one leaves the bars partly empty.
+    ///
+    /// Read as a constant rather than rendered. `\.accessibilityReduceTransparency`
+    /// is a read-only environment key, so `.environment(_:_:)` will not compile
+    /// against it and the branch cannot be driven from a test render. Asserting
+    /// the alpha of the colour the view actually uses still kills the mutant
+    /// that matters: swapping it for a translucent one.
+    func testReduceTransparencyFill_isOpaque() {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        AudiobookCoverArt.reduceTransparencyFill.getRed(&r, green: &g, blue: &b, alpha: &a)
+        XCTAssertEqual(a, 1.0, accuracy: 0.001,
+                       "the Reduce Transparency fill is translucent, so the bars " +
+                       "would show through to whatever is behind the square")
+    }
+
+    /// Names what it is: a unit test of the aspect classification, not of the
+    /// view. Whether the backdrop is skipped for square artwork is not
+    /// pixel-observable — square art covers the square either way — so there
+    /// is nothing to assert through the render.
+    func testIsSquare_classifiesArtworkByAspect() {
+        XCTAssertTrue(AudiobookCoverArt.isSquare(bandedArtwork(width: 600, height: 600)))
+        XCTAssertTrue(AudiobookCoverArt.isSquare(bandedArtwork(width: 600, height: 606)),
+                      "a 1% difference is within tolerance")
+        XCTAssertFalse(AudiobookCoverArt.isSquare(bandedArtwork()))
     }
 }

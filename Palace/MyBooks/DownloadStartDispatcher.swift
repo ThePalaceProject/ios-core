@@ -2,27 +2,13 @@
 //  DownloadStartDispatcher.swift
 //  Palace
 //
-//  Owns the start-download dispatch flow lifted out of
-//  MyBooksDownloadCenter as part of the Phase 7 decomposition.
-//
-//  Three entry points, called from MBDC's startDownloadAsync after the
-//  active-cap / throttling / credential-prompt branches have settled:
-//
-//  - processUnregisteredState: pure state-seed for unregistered books
-//    whose acquisition is open-access (or doesn't require login).
-//    Returns the new TPPBookState; MBDC continues with that state.
-//  - processDownloadWithCredentials: routes a credentialed request.
-//    Borrow/hold states go to startBorrow; Overdrive audiobooks go to
-//    deferOverdriveFulfillment / processOverdriveDownload via the
-//    OverdriveDownloadHandler; everything else falls through to
-//    processRegularDownload.
-//  - processRegularDownload (internal): handles re-borrow on expired
-//    books, auto-borrow on downloadNeeded-with-borrow-link, the
-//    Wi-Fi-only guard, request resolution + bearer auth, the SAML
-//    cookies branch, and the addDownloadTask handoff.
-//
-//  logInvalidURLRequest stays on MBDC (UIKit + cookies-webview-controller
-//  presentation) and is invoked through the delegate.
+//  Start-download dispatch, run after the cap / throttling / credential-prompt
+//  checks:
+//  - processUnregisteredState: seeds state for unregistered open-access books.
+//  - processDownloadWithCredentials: borrow/hold states go to startBorrow,
+//    OverDrive audiobooks to OverdriveDownloadHandler, the rest to
+//    processRegularDownload (re-borrow, Wi-Fi-only guard, bearer auth, SAML
+//    cookies, addDownloadTask).
 //
 
 import Foundation
@@ -51,12 +37,9 @@ final class DownloadStartDispatcher {
 
     private let userAccountProvider: () -> TPPUserAccount
     /// Applies the bearer token to an outbound URLRequest using the
-    /// download's CAPTURED accountId — never `currentUserAccount`. This is
-    /// the injection seam that lets Module A close the library-swap-mid-
-    /// download window without standing up the full network executor in
-    /// tests. Production wires this to
-    /// `networkExecutor.bearerAuthorized(request:accountId:)`; tests pass a
-    /// recorder closure to assert which accountId reached the request.
+    /// download's captured accountId, never `currentUserAccount`, so a
+    /// library switch mid-download cannot send another library's token.
+    /// Production wires `networkExecutor.bearerAuthorized(request:accountId:)`.
     private let applyBearerAuth: (URLRequest, String) -> URLRequest
     private let settings: TPPSettings
     private let isOnWiFi: () -> Bool
@@ -89,11 +72,8 @@ final class DownloadStartDispatcher {
         self.memoryPressureMonitor = memoryPressureMonitor
         self.overdriveHandler = overdriveHandler
     }
-    /// Legacy convenience init for pre-Module-A test call sites — defaults
-    /// `applyBearerAuth` to the legacy class-func bearer applier (the no-arg
-    /// resolver-fallback overload). Tests that assert routing-only behavior
-    /// don't exercise the captured-accountId semantics and don't care which
-    /// applier fires; tests that DO care override this seam explicitly.
+    /// Convenience init for routing-only tests: `applyBearerAuth` defaults to
+    /// the class-func bearer applier.
     convenience init(
         userAccountProvider: @escaping () -> TPPUserAccount,
         settings: TPPSettings,
@@ -124,8 +104,8 @@ final class DownloadStartDispatcher {
         self.isOnWiFi = isOnWiFi
         self.memoryPressureMonitor = memoryPressureMonitor
     }
-    /// Legacy convenience init for pre-Module-A test call sites — defaults
-    /// `applyBearerAuth` to the legacy class-func bearer applier.
+    /// Convenience init for routing-only tests: `applyBearerAuth` defaults to
+    /// the class-func bearer applier.
     convenience init(
         userAccountProvider: @escaping () -> TPPUserAccount,
         settings: TPPSettings,
@@ -173,10 +153,8 @@ final class DownloadStartDispatcher {
         }
     }
 
-    /// Legacy 3-arg overload retained for pre-Module-A test call sites that
-    /// don't thread a captured accountId. Delegates to the 4-arg variant
-    /// using the sentinel — appropriate for routing-shape tests that don't
-    /// assert bearer-auth semantics.
+    /// 3-arg overload for routing-only tests; delegates to the 4-arg variant
+    /// with the no-account sentinel.
     func processDownloadWithCredentials(
         for book: TPPBook,
         withState state: TPPBookState,
@@ -202,12 +180,10 @@ final class DownloadStartDispatcher {
         capturedAccountId: String
     ) {
         guard let delegate else { return }
-        // PP-4161 Wave 4 (Path X): streaming-HTML titles are online-only — no
-        // local asset to download; the borrow-state route needs a borrow before
-        // download; Overdrive audiobooks divert to the fulfillment handler.
-        // The branch SELECTION lives in `DownloadStartReducer.routeWithCredentials`;
-        // this method runs the chosen effect. `#if FEATURE_OVERDRIVE` gates only
-        // the precomputed Bool + the handler call, never the pure route logic.
+        // PP-4161: streaming-HTML titles are online-only, with no asset to
+        // download. `DownloadStartReducer.routeWithCredentials` selects the
+        // branch; this runs it. `#if FEATURE_OVERDRIVE` gates only the
+        // precomputed Bool and the handler call, never the route logic.
         #if FEATURE_OVERDRIVE
         let isOverdriveAudiobook = book.distributor == OverdriveDistributorKey
             && book.defaultBookContentType == .audiobook
@@ -250,9 +226,8 @@ final class DownloadStartDispatcher {
 
     // MARK: - Internal
 
-    /// Legacy 3-arg overload — delegates to the captured-accountId variant
-    /// with the noAccountSentinelUUID. Preserves call-site compatibility for
-    /// tests + ObjC bridges written before Module A's accountId threading.
+    /// 3-arg overload for tests and ObjC bridges; delegates to the
+    /// captured-accountId variant with the no-account sentinel.
     func processRegularDownload(
         for book: TPPBook,
         withState state: TPPBookState,
@@ -345,8 +320,7 @@ final class DownloadStartDispatcher {
                 )
 
             case .reclaimDiskSpace:
-                // Reclaim space only when free disk is genuinely low — mirrors
-                // the pre-extraction unconditional pre-download call.
+                // Reclaims only when free disk is genuinely low.
                 memoryPressureMonitor.reclaimDiskSpaceIfNeeded(minimumFreeMegabytes: 512)
 
             case .handleSAML:

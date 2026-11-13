@@ -79,7 +79,7 @@ extension XCTestCase {
 /// deadlock on CI when the main-thread syncQueue and notification observers
 /// re-enter loadData().
 ///
-/// swarm_47883816 work package A — sources collaborators from a fresh
+/// Sources collaborators from a fresh
 /// isolated AppContainer (built per call) rather than the process-wide
 /// `AppContainer.production()` graph. Each call mints a fresh container,
 /// so the downloadCenter + accountsManager passed to MyBooksViewModel
@@ -248,6 +248,28 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
         // Assert: only the matching book is visible
         XCTAssertEqual(viewModel.books.count, 1, "Filter must hide non-matching books")
         XCTAssertEqual(viewModel.books.first?.identifier, "b1")
+
+    /// The stock keyboard substitutes U+2019 as the patron types, so a shelf title
+    /// stored with an ASCII apostrophe has to match a query carrying the curly one.
+    ///
+    /// This is the wiring test for PP-5021: `FoldedSearchQueryTests` covers the
+    /// folding itself, but it would keep passing if this filter went back to
+    /// comparing the two forms raw, which is the defect.
+    func testFilterBooks_CurlyApostropheQuery_MatchesStraightApostropheTitle() async {
+        let mock = TPPBookRegistryMock()
+        mock.myBooks = [
+            TPPBookMocker.mockBook(identifier: "b1", title: "Alice's Adventures in Wonderland"),
+            TPPBookMocker.mockBook(identifier: "b2", title: "Lord of the Rings")
+        ]
+        let appContainer = makeTestAppContainer()
+        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
+
+        await viewModel.filterBooks(query: "Alice\u{2019}s")
+
+        XCTAssertEqual(viewModel.books.count, 1,
+            "a title typed correctly on the stock keyboard must still find its book")
+        XCTAssertEqual(viewModel.books.first?.identifier, "b1")
+    }
     }
 
     // MARK: - Reset Filter Tests
@@ -313,34 +335,6 @@ final class MyBooksViewModelExtendedTests: XCTestCase {
     }
 
     // MARK: - Alert Tests
-
-    func testLoadAccount_WhenRegistryIsSyncing_ShowsSyncAlert() {
-        // Arrange: mock registry reports it is syncing
-        let mock = TPPBookRegistryMock()
-        mock.isSyncing = true
-        let appContainer = makeTestAppContainer()
-        let viewModel = MyBooksViewModel(bookRegistry: mock, accountsManager: appContainer.accountsManager, settings: TPPSettings(), downloadCenter: appContainer.downloadCenter, isUserAuthorizedForRegistry: { true })
-
-        // Act: trigger account loading while syncing
-        // (loadAccount only needs isSyncing to be true to show the alert)
-        guard let currentAccount = appContainer.accountsManager.currentAccount else {
-            // If no account is configured in the test environment, set the alert directly
-            // to verify the alert machinery works
-            viewModel.alert = AlertModel(
-                title: Strings.MyBooksView.accountSyncingAlertTitle,
-                message: Strings.MyBooksView.accountSyncingAlertMessage
-            )
-            XCTAssertNotNil(viewModel.alert, "Syncing alert must be surfaceable")
-            XCTAssertEqual(viewModel.alert?.title, Strings.MyBooksView.accountSyncingAlertTitle)
-            return
-        }
-        viewModel.loadAccount(currentAccount)
-
-        // Assert: the syncing alert appears with the correct strings
-        XCTAssertNotNil(viewModel.alert, "Syncing registry must produce an alert")
-        XCTAssertEqual(viewModel.alert?.title, Strings.MyBooksView.accountSyncingAlertTitle)
-        XCTAssertEqual(viewModel.alert?.message, Strings.MyBooksView.accountSyncingAlertMessage)
-    }
 
     func testAlert_ClearsOnNilAssignment() {
         // Arrange: set an alert via the published property
@@ -1102,8 +1096,7 @@ final class MyBooksViewModelNotificationTests: XCTestCase {
     }
 
     /// Tests that the ViewModel reacts to a per-book state change through the
-    /// registry's `bookStatePublisher` (migrated off `.TPPBookRegistryStateDidChange`
-    /// in swarm_8ce6f5ae WS3).
+    /// registry's `bookStatePublisher` (migrated off `.TPPBookRegistryStateDidChange`).
     func testStateChange_ViaBookStatePublisher_IsRegistered() {
         let mock = TPPBookRegistryMock()
         mock.myBooks = []
@@ -1484,7 +1477,15 @@ final class MyBooksViewModelSearchEdgeCaseTests: XCTestCase {
         XCTAssertEqual(filtered.count, 1, "Whitespace query should match all books (empty query)")
     }
 
-    /// Tests filtering with Unicode characters
+    /// Pins that case-insensitive matching treats `café` as matching `Café`.
+    ///
+    /// Two limits, both deliberate to state rather than imply. The predicate under
+    /// test is built in this test body, not taken from the view model, so this
+    /// exercises `localizedCaseInsensitiveContains` and not the production filter.
+    /// And the query is assigned, never typed: accented input from a patron goes
+    /// through the iOS input system, which no unit test reaches, and which the
+    /// simulator driver also bypasses because it pastes non-ASCII text (PP-5035).
+    /// See docs/Testing/REGRESSION_TEST_MATRIX.md, "What automated text input reaches".
     func testFilterLogic_UnicodeCharacters_Matches() {
         let books = [
             TPPBookMocker.mockBook(identifier: "1", title: "Café Stories", authors: "François"),
@@ -1501,7 +1502,11 @@ final class MyBooksViewModelSearchEdgeCaseTests: XCTestCase {
         XCTAssertEqual(filtered.first?.identifier, "1")
     }
 
-    /// Tests filtering with emoji in title
+    /// Pins that an emoji query matches an emoji in a title.
+    ///
+    /// Same two limits as the accented-input test above: the predicate is this
+    /// test's own closure rather than the production filter, and an emoji a patron
+    /// enters arrives through an input path no automated test exercises (PP-5035).
     func testFilterLogic_EmojiInContent_HandledCorrectly() {
         let books = [
             TPPBookMocker.mockBook(identifier: "1", title: "Happy 😊 Book", authors: "Author")

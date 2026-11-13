@@ -19,7 +19,11 @@ struct TPPPDFToolbarButton: View {
 
     init(icon: String, accessibilityLabel: String? = nil, action: @escaping () -> Void) {
         self.action = action
+        // `body` renders this image with `.accessibilityHidden(true)` inside a
+        // Button that carries `.accessibilityLabel`; the glyph never speaks.
+        // accesslint:disable A11Y.SWIFTUI.IMAGE_DECORATIVE
         self.image = Image(systemName: icon)
+        // accesslint:enable A11Y.SWIFTUI.IMAGE_DECORATIVE
         self.text = nil
         self.accessibilityLabelText = accessibilityLabel
     }

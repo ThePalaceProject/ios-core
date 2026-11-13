@@ -27,13 +27,12 @@ where a new document belongs.
 |---|---|
 | [`architectural-triad.md`](./architectural-triad.md) | The post-modernization "honesty epic": closing the gap between the refactor's claimed state and its actual state, across DI adoption, the Store reducer pattern, and the singleton/god-class purge. Plan, phases, exit criteria, decision log. |
 | [`state-management-doctrine.md`](./state-management-doctrine.md) | Accepted rules for where state lives and who may mutate it. Supersedes the ambient convention that preceded it. |
-| [`critical-path-review-policy.md`](./critical-path-review-policy.md) | What counts as a critical path, and the review bar a change to one must clear. |
 | [`release-merge-policy.md`](./release-merge-policy.md) | Why merges into `main` use `--no-ff` and never squash — with the 296-conflict forensic that established the rule, and the recovery recipe. |
 
 ## Area verification checklists
 
 What to re-verify when you touch an area, and which seams are load-bearing.
-Refresh the relevant one before a swarm or rigorous-fix run.
+Refresh the relevant one before changing code in that area.
 
 | Area | Checklist |
 |---|---|
@@ -54,12 +53,7 @@ Refresh the relevant one before a swarm or rigorous-fix run.
 | [`singleton-census.md`](./singleton-census.md) | Captured inventory of `.shared` declarations and reads; feeds the `.shared`-read ratchet. |
 | [`wave3-coupling-map.md`](./wave3-coupling-map.md) | Write-ahead characterization scouting for the decomposition — which seams are genuinely coupled versus incidentally adjacent. |
 | [`wave2b-mutation-baseline.md`](./wave2b-mutation-baseline.md) | Recorded mutation baseline for the Wave 2b surfaces, captured 2026-07-27. A measurement, not a plan. |
-| [`app-target-swift6-modernization-plan.md`](./app-target-swift6-modernization-plan.md) | The app target's route to Swift 6 language mode: phases, gates, and what each one is allowed to defer. |
-| [`swift6-a5-remainder-plan.md`](./swift6-a5-remainder-plan.md) | What phase A5 deliberately left behind, and the order to take it in. |
-| [`swift6-phaseB-followup.md`](./swift6-phaseB-followup.md) | Phase B's residue — the items that outlived the phase. |
-| [`swift6-phaseC-handoff-2026-07-07.md`](./swift6-phaseC-handoff-2026-07-07.md) | Phase C handoff: state at the boundary, and what the next agent needs. |
-| [`swift6-modernization-handoff-2026-07-02.md`](./swift6-modernization-handoff-2026-07-02.md) | Modernization handoff, 2026-07-02. |
-| [`swift6-modernization-handoff-2026-07-06.md`](./swift6-modernization-handoff-2026-07-06.md) | Modernization handoff, 2026-07-06 — supersedes the 07-02 state. |
+| [`swift-concurrency-doctrine.md`](./swift-concurrency-doctrine.md) | How to resolve a concurrency diagnostic: fix by isolation, never `nonisolated(unsafe)`; map shared types before fixing sites. Lifted from the six Swift 6 migration plans when the migration finished at #1199 (`SWIFT_VERSION 6.0` + `complete` on every config, so a violation is now a compile error). Those plans are in git history. |
 
 ## Subsystem designs
 
@@ -89,26 +83,23 @@ Refresh the relevant one before a swarm or rigorous-fix run.
 
 | Doc | What it covers |
 |---|---|
+| [`testing-rules-rationale.md`](./testing-rules-rationale.md) | The incidents behind the full-suite, green-board, mutation and detector-admission rules in `CLAUDE.md`. |
 | [`mutation-testing.md`](./mutation-testing.md) | First-principles rationale for the mutation-testing system (`palace_mutate.py` and friends) — and what a mutation score cannot tell you. |
 | [`critical-path-mutation-coverage.md`](./critical-path-mutation-coverage.md) | The regex methodology for deciding which surfaces are critical-path, with the recorded run that established the baseline. |
-| [`phase-3.5-class-scan.md`](./phase-3.5-class-scan.md) | The wall-as-detector pattern: turning a class of failure into a mechanical pre-commit check. |
-| [`superpartner-spectrum.md`](./superpartner-spectrum.md) | The pre-commit check that flags new code shipped without a test, and how its threshold was chosen. |
+| [`phase-3.5-class-scan.md`](./phase-3.5-class-scan.md) | The class-scan detectors: what each flags and where it runs. |
 | [`runtime-quiescence-gate.md`](./runtime-quiescence-gate.md) | The runtime-quiescence gate: what it asserts and why a timeout is a failure even at zero assertions. |
 | [`runtime-quiescence-gate-backlog.md`](./runtime-quiescence-gate-backlog.md) | Land-ready quiescence designs not blocking the current release. |
-| [`pr-report-contract.md`](./pr-report-contract.md) | What a PR body must claim and how those claims are reconciled against the diff. |
+| [`pr-report-contract.md`](./pr-report-contract.md) | Principles for the CI-generated PR comments. Its authored-body format is superseded by the short PR template and the writing conventions in `CLAUDE.md`. |
 | [`readium-money-path-validation.md`](./readium-money-path-validation.md) | One entry per Readium pin, added in the change that moves it. Readium renders and decrypts borrowed content, so a bump can break borrow/fulfillment/playback with no compile error. |
 | [`readium-upgrade-validation.md`](./readium-upgrade-validation.md) | The validation procedure a Readium upgrade must pass before the pin moves. |
+| [`lcp-device-id-migration-validation.md`](./lcp-device-id-migration-validation.md) | Why the LCP device-registration-slot criterion cannot be tested from the app, how Readium's device-ID migration and Palace's license migration interact to create the risk, and the on-device procedure that closes it. |
 
 ## Process, retrospectives, and reviews
 
 | Doc | What it covers |
 |---|---|
-| [`swarm-workflow.md`](./swarm-workflow.md) | The `/swarm` multi-module orchestration loop: triage, dispatch, integrate, promote. |
-| [`swarm-rigor-followups.md`](./swarm-rigor-followups.md) | The backlog of rigor gaps swarm runs exposed. |
 | [`parallel-agent-rebase-walkthrough.md`](./parallel-agent-rebase-walkthrough.md) | How five concurrent refactor agents on disjoint file partitions were merged into one linear stack via cherry-pick + rebase. The recipe, the conflict-avoidance strategy, and what we would change. |
-| [`triad-retro-2026-04-27.md`](./triad-retro-2026-04-27.md) | Retrospective on the triad work after the PRs landed. |
 | [`pp4156-retro-2026-05-04.md`](./pp4156-retro-2026-05-04.md) | Retrospective on the PP-4156 audiobook download indicator. |
-| [`session-observability-context.md`](./session-observability-context.md) | How session observability feeds session-start context. |
 | [`reviews/2026-08-remedy-ladder-review.md`](./reviews/2026-08-remedy-ladder-review.md) | The remedy-ladder review, recovered verbatim from the reviewing agent's transcript on 2026-08-14. Kept as the input the remedy design was distilled from. |
 
 ## Why these are public
@@ -121,5 +112,7 @@ their own app. The PRs that delivered the triad work are public:
 [#867](https://github.com/ThePalaceProject/ios-core/pull/867).
 
 Governance and planning artifacts — risk-scored changesets, gate evidence, agent
-run records — are **not** architecture and do not live here. See
-[`../../.forgeos/README.md`](../../.forgeos/README.md).
+run records, intent files, postmortem write-ups — are **not** architecture and
+are not kept in this repository. Their history up to 2026-09-30 is under
+`.forgeos/` in the repo history. Config
+that CI reads lives in [`config/ci/`](../../config/ci/README.md).

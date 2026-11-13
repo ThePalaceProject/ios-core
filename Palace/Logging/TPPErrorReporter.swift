@@ -2,7 +2,7 @@
 //  TPPErrorReporter.swift
 //  Palace
 //
-//  Wave 1c (cycle 2): app-target ErrorReporting witness — forwards to the
+//  App-target ErrorReporting witness — forwards to the
 //  TPPErrorLogger class funcs (Crashlytics-backed).
 //
 

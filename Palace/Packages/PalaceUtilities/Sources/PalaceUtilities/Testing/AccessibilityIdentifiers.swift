@@ -1,0 +1,432 @@
+import Foundation
+
+/// Centralized accessibility identifier system for UI testing.
+///
+/// **AI-DEV GUIDE:**
+/// - Add new identifiers here when creating new UI elements
+/// - Use namespaced enums to organize by screen/feature
+/// - Format: `screenName.elementType.specificName`
+/// - Always use these constants instead of string literals
+///
+/// **USAGE IN VIEWS:**
+/// ```swift
+/// Button("Get") { }
+///   .accessibilityIdentifier(AccessibilityID.BookDetail.getButton)
+/// ```
+///
+/// **USAGE IN TESTS:**
+/// ```swift
+/// let getButton = app.buttons[AccessibilityID.BookDetail.getButton]
+/// XCTAssertTrue(getButton.exists)
+/// ```
+public enum AccessibilityID {
+
+    // MARK: - Tab Bar
+
+    /// Main app tab bar identifiers
+    ///
+    /// **NOTE:** SwiftUI tab items are identified by their TEXT LABELS, not custom IDs.
+    /// In tests, use the actual tab labels:
+    /// - app.tabBars.buttons["Catalog"]
+    /// - app.tabBars.buttons["My Books"]
+    /// - app.tabBars.buttons["Holds"]
+    /// - app.tabBars.buttons["Settings"]
+    ///
+    /// The constants below are kept for reference but are NOT used by SwiftUI TabView.
+    public enum TabBar {
+        /// ⚠️ Not used - tabs identified by label "Catalog"
+        public static let catalogTab = "Catalog"
+        /// ⚠️ Not used - tabs identified by label "My Books"
+        public static let myBooksTab = "My Books"
+        /// ⚠️ Not used - tabs identified by label "Holds"
+        public static let holdsTab = "Holds"
+        /// ⚠️ Not used - tabs identified by label "Settings"
+        public static let settingsTab = "Settings"
+    }
+
+    // MARK: - Catalog Screen
+
+    /// Catalog/Browse screen identifiers
+    public enum Catalog {
+        // Navigation
+        public static let navigationBar = "catalog.navigationBar"
+        public static let searchButton = "catalog.searchButton"
+        public static let libraryLogo = "catalog.libraryLogo"
+
+        // Content
+        public static let scrollView = "catalog.scrollView"
+        public static let loadingIndicator = "catalog.loadingIndicator"
+        public static let errorView = "catalog.errorView"
+        public static let retryButton = "catalog.retryButton"
+        public static let offlineStateView = "catalog.offlineStateView"
+        public static let goToMyBooksButton = "catalog.goToMyBooksButton"
+
+        // Lanes/Sections
+        public static func lane(_ index: Int) -> String { "catalog.lane.\(index)" }
+        public static func laneTitle(_ index: Int) -> String { "catalog.lane.\(index).title" }
+        public static func laneMoreButton(_ index: Int) -> String { "catalog.lane.\(index).moreButton" }
+
+        // Book cells in catalog
+        public static func bookCell(_ bookID: String) -> String { "catalog.bookCell.\(bookID)" }
+        public static func bookCover(_ bookID: String) -> String { "catalog.bookCover.\(bookID)" }
+    }
+
+    // MARK: - Search Screen
+
+    /// Search screen identifiers
+    public enum Search {
+        public static let searchField = "search.searchField"
+        public static let clearButton = "search.clearButton"
+        public static let cancelButton = "search.cancelButton"
+        public static let resultsScrollView = "search.resultsScrollView"
+        public static let noResultsView = "search.noResultsView"
+        public static let loadingIndicator = "search.loadingIndicator"
+        public static let formatFilterRow = "search.formatFilterRow"
+        public static func resultCell(_ bookID: String) -> String { "search.result.\(bookID)" }
+    }
+
+    // MARK: - Book Detail Screen
+
+    /// Book detail view identifiers
+    public enum BookDetail {
+        // Navigation
+        public static let navigationBar = "bookDetail.navigationBar"
+        public static let backButton = "bookDetail.backButton"
+        public static let shareButton = "bookDetail.shareButton"
+
+        // Book info
+        public static let coverImage = "bookDetail.coverImage"
+        public static let title = "bookDetail.title"
+        public static let author = "bookDetail.author"
+        public static let description = "bookDetail.description"
+        public static let moreButton = "bookDetail.moreButton"
+
+        // Action buttons
+        public static let getButton = "bookDetail.getButton"
+        public static let downloadButton = "bookDetail.downloadButton"
+        public static let readButton = "bookDetail.readButton"
+        public static let listenButton = "bookDetail.listenButton"
+        /// PP-4161: terminal action for streaming-HTML titles. Distinct from
+        /// `readButton` so QA / simdrive can disambiguate the in-app WKWebView
+        /// reader from the Reader2 EPUB reader at the accessibility-tree level.
+        public static let readStreamingButton = "bookDetail.readStreamingButton"
+        public static let deleteButton = "bookDetail.deleteButton"
+        public static let returnButton = "bookDetail.returnButton"
+        public static let reserveButton = "bookDetail.reserveButton"
+        public static let cancelButton = "bookDetail.cancelButton"
+        public static let retryButton = "bookDetail.retryButton"
+        public static let manageHoldButton = "bookDetail.manageHoldButton"
+        public static let sampleButton = "bookDetail.sampleButton"
+        public static let audiobookSampleButton = "bookDetail.audiobookSampleButton"
+
+        // Progress
+        public static let downloadProgress = "bookDetail.downloadProgress"
+        /// Indeterminate spinner + "Borrowing…" label shown during the borrow
+        /// phase (network round-trip to the borrow URL is in flight). Distinct
+        /// from `downloadProgress` (linear bar that appears once the download
+        /// itself begins).
+        public static let borrowingProgress = "bookDetail.borrowingProgress"
+
+        // Half sheet
+        public static let halfSheet = "bookDetail.halfSheet"
+        public static let halfSheetTitle = "bookDetail.halfSheet.title"
+        public static let halfSheetMessage = "bookDetail.halfSheet.message"
+        public static let halfSheetCloseButton = "bookDetail.halfSheet.closeButton"
+
+        // Metadata sections
+        public static let informationSection = "bookDetail.informationSection"
+        public static let formatLabel = "bookDetail.formatLabel"
+        public static let audienceLabel = "bookDetail.audienceLabel"
+        public static let categoriesLabel = "bookDetail.categoriesLabel"
+        public static let languageLabel = "bookDetail.languageLabel"
+        public static let narratorsLabel = "bookDetail.narratorsLabel"
+        public static let durationLabel = "bookDetail.durationLabel"
+        public static let publishedLabel = "bookDetail.publishedLabel"
+        public static let publisherLabel = "bookDetail.publisherLabel"
+        public static let distributorLabel = "bookDetail.distributorLabel"
+        public static let seriesLabel = "bookDetail.seriesLabel"
+        public static let seriesLink = "bookDetail.seriesLink"
+        /// PP-4775: series row rendered as static (non-tappable) text when the
+        /// catalog has no other books in the series. Distinct from `seriesLink`
+        /// so QA / simdrive can assert the non-link state.
+        public static let seriesPlainText = "bookDetail.seriesPlainText"
+        public static let relatedBooksSection = "bookDetail.relatedBooksSection"
+    }
+
+    // MARK: - Book List
+
+    /// Rows of `BookListView`, which both the ungrouped catalog and My Books
+    /// use. Scope a query to the screen's container to count one screen's rows.
+    public enum BookList {
+        public static let cellPrefix = "bookList.cell."
+        public static func cell(_ bookID: String) -> String { cellPrefix + bookID }
+    }
+
+    // MARK: - My Books Screen
+
+    /// My Books/Library screen identifiers
+    public enum MyBooks {
+        public static let navigationBar = "myBooks.navigationBar"
+        public static let searchButton = "myBooks.searchButton"
+        public static let sortButton = "myBooks.sortButton"
+        public static let gridView = "myBooks.gridView"
+        public static let emptyStateView = "myBooks.emptyStateView"
+        public static let loadingIndicator = "myBooks.loadingIndicator"
+        public static let refreshControl = "myBooks.refreshControl"
+
+        // Book cells
+        public static func bookCell(_ bookID: String) -> String { "myBooks.bookCell.\(bookID)" }
+        public static func bookCover(_ bookID: String) -> String { "myBooks.bookCover.\(bookID)" }
+        public static func bookTitle(_ bookID: String) -> String { "myBooks.bookTitle.\(bookID)" }
+
+        // Sort menu
+        public static let sortMenu = "myBooks.sortMenu"
+        public static let sortByAuthor = "myBooks.sort.author"
+        public static let sortByTitle = "myBooks.sort.title"
+    }
+
+    // MARK: - Holds Screen
+
+    /// Holds screen identifiers
+    public enum Holds {
+        public static let navigationBar = "holds.navigationBar"
+        public static let sortButton = "holds.sortButton"
+        public static let scrollView = "holds.scrollView"
+        public static let emptyStateView = "holds.emptyStateView"
+        public static let loadingIndicator = "holds.loadingIndicator"
+        public static let searchButton = "holds.searchButton"
+        public static let searchField = "holds.searchField"
+        public static let libraryButton = "holds.libraryButton"
+
+        // Sync error
+        public static let syncErrorBanner = "holds.syncErrorBanner"
+
+        // Hold cells
+        public static func holdCell(_ bookID: String) -> String { "holds.holdCell.\(bookID)" }
+        public static func cancelHoldButton(_ bookID: String) -> String { "holds.cancelHold.\(bookID)" }
+    }
+
+    // MARK: - Settings Screen
+
+    /// Settings screen identifiers
+    public enum Settings {
+        public static let navigationBar = "settings.navigationBar"
+        public static let scrollView = "settings.scrollView"
+
+        // Account section
+        public static let accountSection = "settings.accountSection"
+        public static let libraryName = "settings.libraryName"
+        public static let accountName = "settings.accountName"
+        public static let signOutButton = "settings.signOutButton"
+        public static let signInButton = "settings.signInButton"
+
+        // Library management
+        public static let manageLibrariesButton = "settings.manageLibrariesButton"
+        public static let addLibraryButton = "settings.addLibraryButton"
+
+        // App info
+        public static let aboutPalaceButton = "settings.aboutPalaceButton"
+        public static let privacyPolicyButton = "settings.privacyPolicyButton"
+        public static let userAgreementButton = "settings.userAgreementButton"
+        public static let softwareLicensesButton = "settings.softwareLicensesButton"
+
+        // Advanced
+        public static let advancedButton = "settings.advancedButton"
+        public static let deleteServerDataButton = "settings.deleteServerDataButton"
+
+        // Downloads
+        public static let downloadOnlyOnWiFiToggle = "settings.downloadOnlyOnWiFiToggle"
+    }
+
+    // MARK: - Libraries Screen
+
+    /// Dedicated Libraries screen (PP-5098), pushed from the Settings row
+    /// identified by `Settings.manageLibrariesButton`.
+    public enum Libraries {
+        public static let list = "libraries.list"
+        public static let addLibraryButton = "libraries.addLibraryButton"
+        /// Prefix; the account uuid is appended: `libraries.row.<uuid>`.
+        public static let row = "libraries.row"
+        /// Prefix; the account uuid is appended: `libraries.selectionControl.<uuid>`.
+        public static let selectionControl = "libraries.selectionControl"
+    }
+
+    // MARK: - Audiobook Player
+
+    /// Audiobook Player identifiers
+    public enum AudiobookPlayer {
+        public static let playerView = "audiobookPlayer.view"
+        public static let closeButton = "audiobookPlayer.closeButton"
+
+        // Playback controls
+        public static let playPauseButton = "audiobookPlayer.playPauseButton"
+        public static let skipBackButton = "audiobookPlayer.skipBackButton"
+        public static let skipForwardButton = "audiobookPlayer.skipForwardButton"
+        public static let rewindButton = "audiobookPlayer.rewindButton"
+        public static let fastForwardButton = "audiobookPlayer.fastForwardButton"
+
+        // Progress
+        public static let progressSlider = "audiobookPlayer.progressSlider"
+        public static let progressBar = "audiobookPlayer.progressBar"
+        public static let currentTimeLabel = "audiobookPlayer.currentTimeLabel"
+        public static let remainingTimeLabel = "audiobookPlayer.remainingTimeLabel"
+        public static let timeElapsedLabel = "audiobookPlayer.timeElapsedLabel"
+        public static let timeRemainingLabel = "audiobookPlayer.timeRemainingLabel"
+        public static let chapterTitle = "audiobookPlayer.chapterTitle"
+
+        // Book info
+        public static let coverImage = "audiobookPlayer.coverImage"
+        public static let titleLabel = "audiobookPlayer.titleLabel"
+        public static let authorLabel = "audiobookPlayer.authorLabel"
+
+        // Settings
+        public static let playbackSpeedButton = "audiobookPlayer.playbackSpeedButton"
+        public static let speedButton = "audiobookPlayer.speedButton"
+        public static let sleepTimerButton = "audiobookPlayer.sleepTimerButton"
+        public static let tocButton = "audiobookPlayer.tocButton"
+
+        // Table of contents / Chapter list
+        public static let tocView = "audiobookPlayer.toc"
+        public static let chapterList = "audiobookPlayer.chapterList"
+        public static func tocChapter(_ index: Int) -> String { "audiobookPlayer.toc.chapter.\(index)" }
+
+        // Playback speed menu
+        public static func playbackSpeed(_ speed: String) -> String { "audiobookPlayer.speed.\(speed)" }
+
+        // Sleep timer
+        public static let sleepTimerMenu = "audiobookPlayer.sleepTimerMenu"
+        public static let sleepTimerEndOfChapter = "audiobookPlayer.sleepTimer.endOfChapter"
+        public static func sleepTimerMinutes(_ minutes: Int) -> String { "audiobookPlayer.sleepTimer.\(minutes)min" }
+    }
+
+    // MARK: - Sign In
+
+    /// Sign in screen identifiers
+    public enum SignIn {
+        public static let navigationBar = "signIn.navigationBar"
+        public static let barcodeField = "signIn.barcodeField"
+        public static let pinField = "signIn.pinField"
+        public static let signInButton = "signIn.signInButton"
+        public static let cancelButton = "signIn.cancelButton"
+        public static let errorLabel = "signIn.errorLabel"
+        public static let forgotPasswordLink = "signIn.forgotPasswordLink"
+        public static let signUpLink = "signIn.signUpLink"
+        public static let errorMessage = "signIn.errorMessage"
+        public static let loadingIndicator = "signIn.loadingIndicator"
+    }
+
+    // MARK: - Common Elements
+
+    /// Common UI elements used across screens
+    public enum Common {
+        public static let loadingIndicator = "common.loadingIndicator"
+        public static let errorView = "common.errorView"
+        public static let retryButton = "common.retryButton"
+        public static let backButton = "common.backButton"
+        public static let closeButton = "common.closeButton"
+        public static let doneButton = "common.doneButton"
+    }
+
+    // MARK: - EPUB Reader
+
+    /// EPUB reader screen identifiers
+    public enum EPUBReader {
+        // Content
+        public static let pageContent = "epubReader.pageContent"
+
+        // Navigation bar buttons
+        public static let tocButton = "epubReader.tocButton"
+        public static let bookmarkButton = "epubReader.bookmarkButton"
+        public static let searchButton = "epubReader.searchButton"
+        public static let settingsButton = "epubReader.settingsButton"
+
+        // Page navigation
+        public static let previousPageButton = "epubReader.previousPageButton"
+        public static let nextPageButton = "epubReader.nextPageButton"
+        public static let progressSlider = "epubReader.progressSlider"
+
+        // Font settings
+        public static let fontSizeIncrease = "epubReader.fontSizeIncrease"
+        public static let fontSizeDecrease = "epubReader.fontSizeDecrease"
+        public static let brightnessSlider = "epubReader.brightnessSlider"
+
+        // Theme settings
+        public static let themeWhite = "epubReader.themeWhite"
+        public static let themeSepia = "epubReader.themeSepia"
+        public static let themeDark = "epubReader.themeDark"
+    }
+
+    // MARK: - PDF Reader
+
+    /// PDF reader screen identifiers
+    public enum PDFReader {
+        // Content
+        public static let pageContent = "pdfReader.pageContent"
+        public static let thumbnailStrip = "pdfReader.thumbnailStrip"
+
+        // Navigation bar buttons
+        public static let searchButton = "pdfReader.searchButton"
+        public static let bookmarkButton = "pdfReader.bookmarkButton"
+
+        // Page navigation
+        public static let pageNumberLabel = "pdfReader.pageNumberLabel"
+        public static let previousPageButton = "pdfReader.previousPageButton"
+        public static let nextPageButton = "pdfReader.nextPageButton"
+
+        // Zoom controls
+        public static let zoomInButton = "pdfReader.zoomInButton"
+        public static let zoomOutButton = "pdfReader.zoomOutButton"
+    }
+
+    // MARK: - Library Picker
+
+    /// Library selection screen identifiers
+    public enum LibraryPicker {
+        public static let searchField = "libraryPicker.searchField"
+        public static let libraryList = "libraryPicker.libraryList"
+        public static let libraryCell = "libraryPicker.libraryCell"
+        public static let addLibraryButton = "libraryPicker.addLibraryButton"
+        public static let currentLibraryBadge = "libraryPicker.currentLibraryBadge"
+    }
+
+    // MARK: - Tutorial
+
+    /// Onboarding/tutorial screen identifiers
+    public enum Tutorial {
+        public static let welcomeScreen = "tutorial.welcomeScreen"
+        public static let skipButton = "tutorial.skipButton"
+        public static let nextButton = "tutorial.nextButton"
+        public static let pageIndicator = "tutorial.pageIndicator"
+        public static let getStartedButton = "tutorial.getStartedButton"
+    }
+
+    // MARK: - Streaming Reader
+
+    /// PP-4161: WKWebView-based streaming-media reader chrome. Online-only;
+    /// dismissal is via the system back chevron from the NavigationStack push
+    /// (no explicit close button — see StreamingReaderViewController). Offline
+    /// state exposes a Retry button and an error container.
+    public enum StreamingReader {
+        public static let webView = "streamingReader.webView"
+        public static let errorContainer = "streamingReader.errorContainer"
+        public static let retryButton = "streamingReader.retryButton"
+    }
+
+    // MARK: - Error Alerts
+
+    /// Identifiers for error alerts with retry support
+    public enum ErrorAlert {
+        public static let retryButton = "errorAlert.retryButton"
+        public static let cancelButton = "errorAlert.cancelButton"
+        public static let okButton = "errorAlert.okButton"
+        public static let viewErrorDetailsButton = "errorAlert.viewErrorDetailsButton"
+
+        // Specific alert contexts
+        public static let borrowErrorAlert = "errorAlert.borrowError"
+        public static let downloadErrorAlert = "errorAlert.downloadError"
+        public static let returnErrorAlert = "errorAlert.returnError"
+        public static let bookmarkSyncErrorAlert = "errorAlert.bookmarkSyncError"
+        public static let libraryLoadErrorAlert = "errorAlert.libraryLoadError"
+        public static let audiobookOpenErrorAlert = "errorAlert.audiobookOpenError"
+    }
+}

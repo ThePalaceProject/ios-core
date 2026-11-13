@@ -78,6 +78,9 @@ class BookCellModel: ObservableObject {
     private let samplePreviewManager: SamplePreviewManager
     private let readerService: ReaderService
     private let reachability: Reachability
+    /// Nil in production, where `BookOpenRouter` uses the AppContainer session;
+    /// a test injects one to observe the audiobook open.
+    private let injectedAudiobookSession: AudiobookSessionManaging?
     private var isFetchingImage = false
     #if LCP
     private var didPrefetchLCPStreaming = false
@@ -175,7 +178,8 @@ class BookCellModel: ObservableObject {
         accountsManager: AccountsManager,
         samplePreviewManager: SamplePreviewManager,
         readerService: ReaderService,
-        reachability: Reachability = AppContainer.production().reachability
+        reachability: Reachability = AppContainer.production().reachability,
+        audiobookSession: AudiobookSessionManaging? = nil
     ) {
         self.book = book
         self.bookRegistry = bookRegistry
@@ -184,6 +188,7 @@ class BookCellModel: ObservableObject {
         self.samplePreviewManager = samplePreviewManager
         self.readerService = readerService
         self.reachability = reachability
+        self.injectedAudiobookSession = audiobookSession
         self.isLoading = bookRegistry.processing(forIdentifier: book.identifier)
         self.currentBookIdentifier = book.identifier
         self.imageCache = imageCache
@@ -373,6 +378,11 @@ class BookCellModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] errorInfo in
                 guard let self else { return }
+
+                // A producer that already put the failure in front of the
+                // patron publishes `presentsAlert: false`; alerting again would
+                // stack a second dialog on the first.
+                guard errorInfo.presentsAlert else { return }
 
                 let alertModel: AlertModel
                 if let retryAction = errorInfo.retryAction {
@@ -658,14 +668,9 @@ extension BookCellModel {
 
         switch action {
         case .download, .retry, .get:
-            // PP-4161 Wave 4 (Path X): streaming-HTML titles funnel through
-            // didSelectDownload like every other content type.
-            // DownloadStartDispatcher.processDownloadWithCredentials early-
-            // returns for streamingHTML so the asset-download attempt is
-            // suppressed; the registry transitions to .downloadNeeded via
-            // processUnregisteredState's open-access branch, and the cell's
-            // button set then surfaces [.readStreaming, .return] on next
-            // render.
+            // PP-4161: streaming-HTML titles also go through didSelectDownload;
+            // DownloadStartDispatcher skips the asset download for them, and the
+            // cell then shows [.readStreaming, .return].
             didSelectDownload()
         case .reserve:
             didSelectReserve()
@@ -780,14 +785,9 @@ extension BookCellModel {
     }
 
     private func openAudiobookFromCell() {
-        BookService.open(book) { [weak self] in
+        BookOpenRouter.open(book, bookRegistry: bookRegistry, audiobookSession: injectedAudiobookSession) { [weak self] in
             self?.isLoading = false
         }
-    }
-
-    private func presentAudiobookFrom(json: [String: Any], decryptor: DRMDecryptor?) {
-        BookService.open(book)
-        self.isLoading = false
     }
 
     private func licenseURL(forBookIdentifier identifier: String) -> URL? {
@@ -830,9 +830,8 @@ extension BookCellModel {
     func didSelectDownload() {
         let account = accountsManager.currentUserAccount
         if account.needsAuth && !account.hasCredentials() {
-            // swarm_d8f11437 Module A wave 4 — migrated to AppContainer-
-            // injected sheet presenter. accountsManager retained on the
-            // post-dismiss closure side for the `hasCredentials()` gate.
+            // accountsManager is still read after dismissal for the
+            // `hasCredentials()` gate.
             AppContainer.production().signInModalSheetPresenter
                 .presentSignInModalForCurrentAccount { [weak self] in
                     guard let self else { return }
@@ -859,8 +858,6 @@ extension BookCellModel {
         isLoading = true
         let account = accountsManager.currentUserAccount
         if account.needsAuth && !account.hasCredentials() {
-            // swarm_d8f11437 Module A wave 4 — migrated to AppContainer-
-            // injected sheet presenter.
             AppContainer.production().signInModalSheetPresenter
                 .presentSignInModalForCurrentAccount { [weak self] in
                     guard let self else { return }
@@ -910,33 +907,36 @@ extension BookCellModel {
             return
         }
         samplePreviewManager.close()
-        EpubSampleFactory.createSample(book: book) { sampleURL, error in
-            self.isLoading = false
-            if let error = error {
-                Log.debug("Sample generation error for \(self.book.title): \(error.localizedDescription)", "")
-                return
-            }
-            if let sampleWebURL = sampleURL as? EpubSampleWebURL {
-                if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate, let top = appDelegate.topViewController() {
-                    let safari = SFSafariViewController(url: sampleWebURL.url)
-                    top.present(safari, animated: true)
+        // PP-5301: this closure was main-actor-isolated (the type is
+        // `@MainActor`) while `createSample` handed every failure back on the
+        // network executor's own thread and hopped only its success case. The
+        // first statement below reads `isLoading` and the branches present
+        // view controllers, so a sample whose download failed reached
+        // main-actor-only work from a background thread. Awaiting puts every
+        // arm here.
+        Task { @MainActor in
+            defer { self.isLoading = false }
+            do {
+                let sampleURL = try await EpubSampleFactory.createSample(book: self.book)
+                if let sampleWebURL = sampleURL as? EpubSampleWebURL {
+                    if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate, let top = appDelegate.topViewController() {
+                        let safari = SFSafariViewController(url: sampleWebURL.url)
+                        top.present(safari, animated: true)
+                    }
+                    return
                 }
-                return
-            }
-            if let url = sampleURL?.url {
-                // Check if this is an EPUB sample
-                let isEpubSample = self.book.sample?.type == .contentTypeEpubZip
-
-                if isEpubSample {
-                    // Use Readium EPUB reader for EPUB samples
-                    self.readerService.openSample(self.book, url: url)
+                if self.book.sample?.type == .contentTypeEpubZip {
+                    // Readium EPUB reader for EPUB samples
+                    self.readerService.openSample(self.book, url: sampleURL.url)
                 } else {
-                    // Use WebKit for HTML/web samples
-                    let web = BundledHTMLViewController(fileURL: url, title: self.book.title)
+                    // WebKit for HTML/web samples
+                    let web = BundledHTMLViewController(fileURL: sampleURL.url, title: self.book.title)
                     if let appDelegate = UIApplication.shared.delegate as? TPPAppDelegate, let top = appDelegate.topViewController() {
                         top.present(web, animated: true)
                     }
                 }
+            } catch {
+                Log.debug("Sample generation error for \(self.book.title): \(error.localizedDescription)", "")
             }
         }
     }

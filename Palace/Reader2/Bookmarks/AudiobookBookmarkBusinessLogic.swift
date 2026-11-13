@@ -12,18 +12,11 @@ import PalaceReadingPosition
 import PalaceBookRegistry
 @preconcurrency import PalaceAudiobookToolkit
 import PalaceBookModel
+import PalaceUtilities
 
-// Swift 6 `complete`: `@unchecked Sendable`. This class is captured by the
-// `@Sendable` `Task` / work-`queue` / `DispatchQueue.main.async` / `DispatchWorkItem`
-// closures throughout (save / fetch / delete / sync / debounce). INVARIANT:
-//   • The injected dependencies (`book`, `registry`, `annotationsManager`,
-//     `positionWriter`) are immutable `let`s assigned once in `init`.
-//   • All mutable sync state (`isSyncing`, `completionHandlersQueue`,
-//     `deletedBookmarkIds`) is only ever read/written through `onStateQueue`, and
-//     `debounceWorkItem` only on the serial work `queue` — the file's single
-//     serialization domain (see the "Serialized sync state" note below). No
-//     unsynchronized mutable state crosses the closure boundaries.
-// This waives no real race; it matches the existing per-closure boxing strategy.
+// `@unchecked Sendable` invariant: injected dependencies are immutable `let`s,
+// and all mutable sync state is accessed only through `onStateQueue` (or, for
+// `debounceWorkItem`, on the serial work `queue`).
 @objc public class AudiobookBookmarkBusinessLogic: NSObject, @unchecked Sendable {
     public let book: TPPBook
     private let registry: TPPBookRegistryProvider
@@ -33,27 +26,26 @@ import PalaceBookModel
     /// Identifies execution already on `queue` so `onStateQueue` runs inline
     /// instead of a nested `queue.sync` (which would deadlock).
     private let queueKey = DispatchSpecificKey<Void>()
-    private let debounceInterval: TimeInterval = 1.0
+    /// Collapses a burst of bookmark taps into one write. `nil` runs the write
+    /// on the work queue with no timer, which is how a test reaches it without
+    /// a wall-clock wait; production always takes the default. Optional rather
+    /// than a sentinel interval, so there is no boundary to get wrong.
+    private let debounceInterval: TimeInterval?
     private var debounceWorkItem: DispatchWorkItem?  // Access only on `queue`
 
     // MARK: - Test join seam
     // Retains the most recent `saveListeningPosition` write `Task` so tests can
-    // deterministically JOIN the actual work unit (`await handle.value`) instead
-    // of polling a wall-clock deadline (`wait(for:timeout:)`), which starves
-    // under CI sim-clone oversubscription. Production behavior is unchanged: the
-    // Task runs and calls its completion exactly as before; this reference is
-    // write-only outside of `_awaitPositionWriteForTesting()`. Access is confined
-    // to `queue` (the file's single serialization domain).
+    // join it instead of polling a deadline. Access is confined to `queue`.
     private var _positionWriteTaskForTesting: Task<Void, Never>?
+    /// Sibling of the above for `saveBookmark`, whose write also runs in a
+    /// detached `Task`. Access is confined to `queue`.
+    private var _bookmarkWriteTaskForTesting: Task<Void, Never>?
 
     // MARK: - Serialized sync state
-    // `isSyncing`, `completionHandlersQueue`, and `deletedBookmarkIds` are read
-    // and written from the UI thread, URLSession completion threads, AND the
-    // work `queue`. Concurrent mutation of the Swift Set/Array corrupted its
-    // copy-on-write buffer refcount → an over-release that surfaced in the
-    // captured network-completion closure chain (Crashlytics abfef568). All
-    // access now goes through `onStateQueue` so the serial `queue` is the single
-    // serialization domain for this state.
+    // `isSyncing`, `completionHandlersQueue`, and `deletedBookmarkIds` are
+    // touched from the UI thread, URLSession completions and the work `queue`.
+    // Concurrent mutation corrupted the collections' buffers (Crashlytics
+    // abfef568), so all access goes through `onStateQueue`.
     private var isSyncing: Bool = false
     // Boxed so the drained handlers can be captured by the `@Sendable`
     // `DispatchQueue.main.async` closure in `finalizeSync` without crossing a
@@ -62,11 +54,17 @@ import PalaceBookModel
     private var deletedBookmarkIds = Set<String>()
 
     @objc convenience init(book: TPPBook) {
+        self.init(book: book, positionTrace: nil)
+    }
+
+    /// Production entry point that also wires the PP-4963 trace.
+    convenience init(book: TPPBook, positionTrace: AudiobookPositionTraceRecorder?) {
         self.init(
             book: book,
             registry: AppContainer.production().bookRegistry,
             annotationsManager: TPPAnnotationsWrapper(),
-            positionWriter: nil
+            positionWriter: nil,
+            positionTrace: positionTrace
         )
     }
 
@@ -74,15 +72,16 @@ import PalaceBookModel
         book: TPPBook,
         registry: TPPBookRegistryProvider,
         annotationsManager: AnnotationsManager,
-        positionWriter: PositionWriter? = nil
+        positionWriter: PositionWriter? = nil,
+        positionTrace: AudiobookPositionTraceRecorder? = nil,
+        debounceInterval: TimeInterval? = 1.0
     ) {
+        self.debounceInterval = debounceInterval
+        self.positionTrace = positionTrace
         self.book = book
         self.registry = registry
         self.annotationsManager = annotationsManager
-        // Default: build a `RemotePositionWriter` from an adapter that
-        // wraps the same `AnnotationsManager` the rest of this class uses.
-        // This keeps the dependency injection seam in one place — tests
-        // and overrides can pass a spy via the `positionWriter:` argument.
+        // Default wraps the same `AnnotationsManager` the rest of this class uses.
         self.positionWriter = positionWriter ?? RemotePositionWriter(
             network: AudiobookPositionAdapter(annotations: annotationsManager)
         )
@@ -104,12 +103,20 @@ import PalaceBookModel
         }
     }
 
+    /// PP-4963 position trace, notified on every local position write (a
+    /// successful save leaves no other record).
+    ///
+    /// A `let` so the `@unchecked Sendable` invariant holds, and held strongly
+    /// here because this object lives for the whole session (via
+    /// `AudiobookManager.bookmarkDelegate`); held elsewhere, the recorder
+    /// deallocated seconds after playback began.
+    private let positionTrace: AudiobookPositionTraceRecorder?
+
     // MARK: - Remote-write cancellation (3.2.3 Cause 2)
 
     /// Cancels any pending throttled remote listening-position write for this
     /// book so a queued snapshot can't flush AFTER session teardown / return
-    /// cleanup and resurrect the stale server position that
-    /// `TPPAnnotations.deleteAllBookmarks` just deleted (3.2.3 Cause 2).
+    /// cleanup and resurrect a stale server position.
     /// Idempotent; a no-op when the writer has nothing queued for this book.
     func cancelPendingRemotePositionWrite() async {
         await positionWriter.cancel(for: book.identifier)
@@ -121,20 +128,29 @@ import PalaceBookModel
         let audioBookmark = position.toAudioBookmark()
         audioBookmark.lastSavedTimeStamp = Date().iso8601
 
-        // Save to local registry immediately - this is the user's safety net.
-        // This MUST happen before any async work so a crash/background mid-flight
-        // never loses position state. (swarm_f3b9b087 P0 #4 invariant.)
+        // Save to the local registry before any async work, so a crash or
+        // background mid-flight never loses position state.
         guard let tppLocation = audioBookmark.toTPPBookLocation() else {
+            // This exit precedes the registry write, so the position is kept
+            // neither locally nor on the server. The track and offset identify
+            // the reading-order entry that would not encode.
+            //
+            // Unreachable today: `AudioBookmark.encode(to:)` writes only String
+            // and Int, so `JSONEncoder` cannot throw. A Double field would make
+            // it reachable, and on the 15-second autosave path.
+            Log.error(#file, "Could not encode the listening position for \(self.book.identifier) into a stored location; the position was kept neither locally nor on the server: track=\(position.track.key), index=\(position.track.index), time=\(position.timestamp), offsetMilliseconds=\(audioBookmark.readingOrderItemOffsetMilliseconds?.description ?? "nil")")
             completion?(nil)
             return
         }
         registry.setLocation(tppLocation, forIdentifier: self.book.identifier)
         Log.debug(#file, "💾 Immediately saved position locally: track=\(position.track.key), time=\(position.timestamp)")
+        // PP-4963: the LOCAL write is what decides whether the patron keeps
+        // their place, so the trace is notified here rather than after the
+        // annotation post below (whose failures are a separate defect).
+        positionTrace?.noteSave(at: Date())
 
-        // Delegate the network write to the unified PositionWriter. Throttling,
-        // queue management, and background-task lifetime now live in one place
-        // (RemotePositionWriter); this method retains audiobook-specific
-        // conflict resolution after the writer resolves.
+        // Throttling, queueing and background-task lifetime live in the
+        // PositionWriter; this method keeps audiobook-specific conflict resolution.
         let sentTimestamp = audioBookmark.lastSavedTimeStamp ?? ""
         let sentTrackKey = position.track.key
         let sentTrackIndex = position.track.index
@@ -148,15 +164,16 @@ import PalaceBookModel
             device: AnnotationDevice.currentID()
         )
 
-        // Swift 6 `complete`: box the non-Sendable `String?` completion closure
-        // and the non-Sendable `AudioBookmark` (a Palace-owned mutable class) so
-        // the `@Sendable` `Task` below captures Sendable carriers. INVARIANT: the
-        // boxed `audioBookmark` is created here and handed off exclusively to
-        // this single `Task` — the synchronous prefix above finishes touching it
-        // before the Task is enqueued, and no other task aliases it — so the
-        // `annotationId` mutation inside the Task is race-free.
+        // Box the non-Sendable completion and bookmark for the `@Sendable` Task;
+        // the bookmark is owned exclusively by that Task from here on.
         let completionBox = StringCompletionBox(completion)
         let audioBookmarkBox = AudioBookmarkBox(audioBookmark)
+        // This Task runs off the main actor, and the caller (the toolkit's
+        // `@MainActor` AudiobookManager) expects its closure on main, as with
+        // every other bookmark-delegate completion here (PP-4955).
+        let complete: @Sendable (String?) async -> Void = { serverID in
+            await MainActor.run { completionBox.call?(serverID) }
+        }
 
         let writeTask = Task { [weak self] in
             guard let self else { return }
@@ -165,32 +182,19 @@ import PalaceBookModel
                 guard let serverID = try await self.positionWriter.save(snapshot) else {
                     // Throttled or queued — local position is already saved,
                     // and the writer will flush later. Nothing else to do here.
-                    completionBox.call?(nil)
+                    await complete(nil)
                     return
                 }
 
-                // Conflict resolution against the current local state.
-                // Preserved from swarm_f3b9b087 P0 #4/#5: the timestamp-newer
-                // race check and the strict-zero isAtBeginning guard protect a
-                // valid local position from being overwritten by a STALE upload
-                // result — stale meaning older.
+                // Conflict resolution: the timestamp-newer check and the
+                // strict-zero isAtBeginning guard keep a valid local position
+                // from being overwritten by an older upload result.
                 //
-                // The tolerance is 0, and that is load-bearing. `isDate` computes
-                // `d1 + delay > d2`, so any positive delay makes an EQUAL pair
-                // report "local is newer" unconditionally, and makes a local up to
-                // `delay` staler win as well. `lastSavedTimeStamp` is ISO8601 at
-                // second granularity and a save round-trips in far less than a
-                // second, so with a 1.0 window every real resolution tied and took
-                // this branch: a 37-minute locked-screen run on device produced 10
-                // resolutions, all 10 ties, all 10 discarding the just-saved
-                // position in favour of a local `track=0` — including one 331s into
-                // track 003. Zero gives the strict `d1 > d2` this guard is
-                // documented to want.
-                //
-                // Do NOT "fix" this by changing `isDate` itself. Its two other
-                // callers (BookAvailabilityFormatter:31, BookDetailViewModel:1328)
-                // use the delay deliberately, as a grace window that favours a
-                // lagging server timestamp, and ~60 assertions pin that meaning.
+                // The tolerance must be 0. `isDate` computes `d1 + delay > d2`,
+                // and `lastSavedTimeStamp` has second granularity, so any positive
+                // delay makes every same-second pair a tie that discards the
+                // just-saved position. Do not change `isDate` itself: its other
+                // callers use the delay deliberately as a grace window.
                 if let currentLocal = self.registry.location(forIdentifier: self.book.identifier),
                    let currentDict = currentLocal.locationStringDictionary(),
                    let currentBookmark = AudioBookmark.create(locatorData: currentDict) {
@@ -202,15 +206,12 @@ import PalaceBookModel
                         Log.warn(#file, "⚠️ Race condition detected: Local position is newer. Keeping local.")
                         Log.warn(#file, "  Sent: track=\(sentTrackKey), time=\(sentPlaybackTime), timestamp=\(sentTimestamp)")
                         Log.warn(#file, "  Current local: track=\(currentBookmark.chapter ?? "?"), timestamp=\(currentLocalTimestamp)")
-                        completionBox.call?(serverID)
+                        await complete(serverID)
                         return
                     }
 
-                    // Decision delegated to BeginningPositionPolicy. Was previously
-                    // `sentTrackIndex == 0 && sentPlaybackTime < 30.0` — the 30s grace
-                    // discarded real 0:25-of-chapter-1 pauses. Strict zero is correct:
-                    // the upstream timestamp-newer race check (lines 76–82) already
-                    // handles "newer-wins" semantics. See AudiobookPositionPolicy.swift.
+                    // Strict zero (see AudiobookPositionPolicy.swift): a grace
+                    // window would discard real pauses early in chapter 1.
                     let isAtBeginning = BeginningPositionPolicy.isAtBeginning(
                         trackIndex: sentTrackIndex,
                         playbackTime: sentPlaybackTime
@@ -222,7 +223,7 @@ import PalaceBookModel
                             Log.warn(#file, "⚠️ Prevented 'beginning' position from overwriting progress!")
                             Log.warn(#file, "  Attempting to save: track 0, time \(sentPlaybackTime)")
                             Log.warn(#file, "  Current position: track \(currentTrackIndex)")
-                            completionBox.call?(serverID)
+                            await complete(serverID)
                             return
                         }
                     }
@@ -234,35 +235,34 @@ import PalaceBookModel
 
                 self.registry.setLocation(audioBookmark.toTPPBookLocation(), forIdentifier: self.book.identifier)
                 Log.debug(#file, "☁️ Synced position to server: track=\(sentTrackKey), annotationId=\(audioBookmark.annotationId)")
-                completionBox.call?(serverID)
+                await complete(serverID)
             } catch {
+                // Deliberately not `.error`: `postReadingPosition` reports a
+                // deferred write, a sync-disabled account and a refusal through
+                // one content-free error, and the 15-second autosave interval
+                // would turn a persisted line per deferral into the PP-4965
+                // volume again. A refusal is persisted with the book and
+                // motivation by `TPPAnnotations.postAnnotation`.
                 Log.warn(#file, "⚠️ Server sync failed, but local position was already saved: \(error)")
-                completionBox.call?(nil)
+                await complete(nil)
             }
         }
         onStateQueue { self._positionWriteTaskForTesting = writeTask }
     }
 
-    /// Test-only join seam. Awaits the most recent `saveListeningPosition`
-    /// write `Task` so a test can deterministically block on the actual async
-    /// work unit (including the post-save conflict-resolution branch and the
-    /// completion call) rather than a wall-clock `wait(for:timeout:)` poll that
-    /// starves under CI oversubscription. No-op if no write is in flight.
-    /// Behavior-identical for production: nothing calls this outside tests.
+    /// Test-only join seam: awaits the most recent `saveListeningPosition` write
+    /// `Task`, including its conflict resolution and completion. No-op if no
+    /// write is in flight.
     func _awaitPositionWriteForTesting() async {
         let handle = onStateQueue { self._positionWriteTaskForTesting }
         await handle?.value
     }
 
     public func saveBookmark(at position: TrackPosition, completion: ((_ position: TrackPosition?) -> Void)? = nil) {
-        // Swift 6 `targeted`: box the non-Sendable `completion` closure so the
-        // `@Sendable` `Task` closure inside the debounce captures a Sendable
-        // carrier rather than the raw closure. INVARIANT: the boxed completion
-        // is only ever invoked on the main queue (the two `DispatchQueue.main
-        // .async` blocks below). Mirrors `ImageCompletionBox` in `ImageLoaderImpl`.
+        // Boxed for the `@Sendable` debounce Task; invoked only on the main queue.
         let completionBox = TrackPositionCompletionBox(completion)
-        debounce {
-            Task { [weak self] in
+        debounce { [weak self] in
+            let writeTask = Task { [weak self] in
                 guard let self else { return }
                 let location = position.toAudioBookmark()
                 var updatedPosition = position
@@ -286,24 +286,40 @@ import PalaceBookModel
                     return
                 }
 
-                if let annotationResponse = try? await self.annotationsManager.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: locationString) {
-                    location.annotationId = annotationResponse.serverId ?? ""
-                    location.lastSavedTimeStamp = annotationResponse.timeStamp ?? ""
+                do {
+                    if let annotationResponse = try await self.annotationsManager.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: locationString) {
+                        location.annotationId = annotationResponse.serverId ?? ""
+                        location.lastSavedTimeStamp = annotationResponse.timeStamp ?? ""
+                    }
+                } catch {
+                    // The `defer` above stores the bookmark locally either way.
+                    //
+                    // Below `.error`, so it does not reach the log a patron
+                    // exports: `postAudiobookBookmark` throws one content-free
+                    // error whether the server refused the post, the post was
+                    // queued for delivery while offline, or sync is off, and a
+                    // refusal is already persisted with the book and motivation
+                    // by `TPPAnnotations.postAnnotation`. Reporting a queued
+                    // write as a failure was the bulk of the PP-4965 volume.
+                    Log.warn(#file, "Bookmark post returned no server id for \(self.book.identifier) at \(location.uniqueIdentifier); the bookmark is stored locally and not yet confirmed on the server: \(error)")
                 }
             }
+            self?.onStateQueue { self?._bookmarkWriteTaskForTesting = writeTask }
         }
     }
 
+    /// Test-only join seam: awaits the most recent `saveBookmark` write `Task`.
+    /// Returns false when no write has been scheduled yet, so a caller cannot
+    /// mistake "nothing to await" for "the write finished".
+    @discardableResult
+    func _awaitBookmarkWriteForTesting() async -> Bool {
+        guard let handle = onStateQueue({ self._bookmarkWriteTaskForTesting }) else { return false }
+        await handle.value
+        return true
+    }
+
     public func fetchBookmarks(for tracks: Tracks, toc: [Chapter], completion: @escaping ([TrackPosition]) -> Void) {
-        // Swift 6 `complete`: box the non-Sendable `completion` closure so the
-        // `@Sendable` work-`queue` closure (and the nested `syncBookmarks`
-        // handler + `DispatchQueue.main.async`) capture a Sendable carrier
-        // rather than the raw closure. `AudioBookmark` is a Palace-owned
-        // mutable class (not covered by `@preconcurrency import
-        // PalaceAudiobookToolkit`), so the `[AudioBookmark]` snapshots that
-        // flow through the sync handler are boxed the same way. INVARIANT: the
-        // boxed completion is only ever invoked on the main queue (the
-        // `DispatchQueue.main.async` below). Mirrors `ReadiumBookmarkBox`.
+        // Boxed for the `@Sendable` closures below; invoked only on the main queue.
         let completionBox = TrackPositionListCompletionBox(completion)
         queue.async { [weak self] in
             guard let self else { return }
@@ -317,7 +333,7 @@ import PalaceBookModel
                 Log.info(#file, "📱 Local Bookmark #\(index): version=\(bookmark.version), timestamp=\(bookmark.lastSavedTimeStamp ?? "nil"), annotationId=\(bookmark.annotationId.isEmpty ? "UNSYNCED" : bookmark.annotationId), chapter=\(bookmark.chapter ?? "nil"), readingOrderItem=\(bookmark.readingOrderItem ?? "nil")")
             }
 
-            self.syncBookmarks(localBookmarks: localBookmarks) { syncedBookmarks in
+            self.syncBookmarks { syncedBookmarks in
                 Log.info(#file, "☁️ SYNCED BOOKMARKS COUNT: \(syncedBookmarks.count)")
 
                 for (index, bookmark) in syncedBookmarks.enumerated() {
@@ -334,11 +350,7 @@ import PalaceBookModel
                     Log.warn(#file, "⚠️ BOOKMARK CONVERSION ISSUE: \(combinedBookmarks.count - trackPositions.count) bookmarks failed to convert to TrackPosition")
                 }
 
-                // Swift 6 `complete`: box the non-Sendable `[TrackPosition]` value
-                // (produced here on the serial work `queue`, consumed once on main)
-                // before the `@Sendable` `DispatchQueue.main.async` boundary — see
-                // `TrackPositionListBox`. `@preconcurrency import` covers the type's
-                // conformance but not this region-isolation `sending` of the array.
+                // See `TrackPositionListBox`.
                 let trackPositionsBox = TrackPositionListBox(trackPositions)
                 DispatchQueue.main.async {
                     completionBox.call(trackPositionsBox.positions)
@@ -353,10 +365,7 @@ import PalaceBookModel
     }
 
     public func deleteBookmark(at bookmark: AudioBookmark, completion: ((Bool) -> Void)? = nil) {
-        // Swift 6 `complete`: box the non-Sendable `Bool` completion closure so
-        // the `@Sendable` `DispatchQueue.main.async` blocks (here and threaded
-        // into `deleteBookmarkByContentMatch`) capture a Sendable carrier.
-        // INVARIANT: the boxed completion is only ever invoked on the main queue.
+        // Boxed for the `@Sendable` main-queue hops; invoked only on the main queue.
         let completionBox = BoolCompletionBox(completion)
         deleteBookmark(at: bookmark, completion: completionBox)
     }
@@ -379,11 +388,7 @@ import PalaceBookModel
             }
         }
 
-        // Swift 6 `complete`: compute the local-deletion outcome as a `let` so the
-        // downstream `@Sendable` `DispatchQueue.main.async` / server-deletion
-        // completion closures capture an immutable value, not a captured `var`.
-        // `Bool` is already Sendable; the `let` clears the "reference to captured
-        // var 'localDeletionSucceeded' in concurrently-executing code" diagnostic.
+        // A `let` so the `@Sendable` closures below capture an immutable value.
         let localDeletionSucceeded: Bool
         if let genericLocation = bookmark.toTPPBookLocation() {
             self.registry.deleteGenericBookmark(genericLocation, forIdentifier: self.book.identifier)
@@ -466,17 +471,8 @@ import PalaceBookModel
 
     // MARK: - Sync Logic
 
-    func syncBookmarks(localBookmarks: [AudioBookmark], completion: (([AudioBookmark]) -> Void)? = nil) {
-        // Swift 6 `complete`: box the non-Sendable `[AudioBookmark]` input and
-        // the non-Sendable `completion` closure so the `@Sendable` `Task` below
-        // captures Sendable carriers instead of the raw values. `AudioBookmark`
-        // is a Palace-owned mutable class and must NOT be made `: Sendable` (9
-        // mutable `var`s) — see `AudioBookmarkListBox` / `ReadiumBookmarkBox`
-        // precedent. The serial work `queue` remains the single serialization
-        // domain (see the `isSyncing`/`completionHandlersQueue` note above), so
-        // boxing is safe: the boxed values are only ever touched on `queue` or
-        // the main queue, never concurrently.
-        let localBox = AudioBookmarkListBox(localBookmarks)
+    func syncBookmarks(completion: (([AudioBookmark]) -> Void)? = nil) {
+        // Boxed for the `@Sendable` Task; only touched on the main queue.
         let completionBox = AudioBookmarkListCompletionBox(completion)
         // Atomically test-and-set `isSyncing`. If a sync is already in flight we
         // enqueue this completion under the same lock that `finalizeSync` drains
@@ -495,7 +491,7 @@ import PalaceBookModel
 
         Task { [weak self] in
             guard let self else { return }
-            await uploadUnsyncedBookmarks(localBox.bookmarks)
+            await uploadUnsyncedBookmarks()
 
             fetchServerBookmarks { [weak self] remoteBookmarks in
                 guard let strongSelf = self else { return }
@@ -508,19 +504,24 @@ import PalaceBookModel
     }
 
     private func fetchLocalBookmarks() -> [AudioBookmark] {
-        let allBookmarks: [AudioBookmark] = registry.genericBookmarksForIdentifier(book.identifier).compactMap { bookmark -> AudioBookmark? in
-            guard let dictionary = bookmark.locationStringDictionary(),
+        fetchStoredBookmarks().map(\.bookmark)
+    }
+
+    private func fetchStoredBookmarks() -> [StoredAudioBookmark] {
+        let allBookmarks: [StoredAudioBookmark] = registry.genericBookmarksForIdentifier(book.identifier).compactMap { record -> StoredAudioBookmark? in
+            guard let dictionary = record.locationStringDictionary(),
                   let localBookmark = AudioBookmark.create(locatorData: dictionary) else {
                 return nil
             }
-            return localBookmark
+            return StoredAudioBookmark(record: record, bookmark: localBookmark)
         }
 
         // Filter out bookmarks that user has deleted (belt and suspenders approach).
         // Snapshot the deleted-id set under the lock so the filter reads a stable
         // copy instead of racing concurrent inserts/removes on the live Set.
         let deletedIds = onStateQueue { deletedBookmarkIds }
-        let filteredBookmarks = allBookmarks.filter { bookmark in
+        let filteredBookmarks = allBookmarks.filter { stored in
+            let bookmark = stored.bookmark
             let isDeletedById = deletedIds.contains(bookmark.annotationId)
             let contentHash = bookmark.uniqueIdentifier
             let isDeletedByContent = !contentHash.isEmpty && deletedIds.contains("content:\(contentHash)")
@@ -566,33 +567,73 @@ import PalaceBookModel
         }
     }
 
-    private func uploadUnsyncedBookmarks(_ localBookmarks: [AudioBookmark]) async {
-        for bookmark in localBookmarks where bookmark.isUnsynced {
+    /// Uploads each stored unsynced bookmark.
+    ///
+    /// Before uploads matched stored records by identity, an upload appended a
+    /// synced copy beside the unsynced original. Such an original, at the
+    /// position of a synced record by `AudioBookmark.isSimilar`, is that same
+    /// bookmark, so it is removed instead of posted again. An unsynced bookmark
+    /// with no synced twin is always uploaded, never removed.
+    private func uploadUnsyncedBookmarks() async {
+        for candidate in fetchStoredBookmarks() where candidate.bookmark.isUnsynced {
+            // Re-read each time: an upload earlier in this loop may have synced a
+            // record at the same position, or the patron may have deleted this one.
+            let current = fetchStoredBookmarks()
+            guard current.contains(where: { $0.record.isSameRecord(as: candidate.record) }) else { continue }
+
+            if current.contains(where: { !$0.bookmark.isUnsynced && $0.bookmark.isSimilar(to: candidate.bookmark) }) {
+                Log.info(#file, "Removing unsynced copy of an already-synced bookmark: \(candidate.bookmark.uniqueIdentifier)")
+                registry.deleteGenericBookmark(identicalTo: candidate.record, forIdentifier: book.identifier)
+                continue
+            }
+
             do {
-                try await uploadBookmark(bookmark)
+                try await uploadBookmark(candidate)
             } catch {
+                // Left at `.debug`, the one level `Log` does not forward to the
+                // crash reporter. This loop re-posts every stored unsynced
+                // bookmark on each sync pass, and a library that does not offer
+                // sync leaves them all unsynced, so any higher level lets one
+                // patron's bookmarks evict the rolling breadcrumb buffer. A
+                // refusal here is persisted with the book and motivation by
+                // `TPPAnnotations.postAnnotation`.
                 Log.debug(#file, "Failed to save annotation with error: \(error.localizedDescription)")
             }
         }
     }
 
-    private func uploadBookmark(_ bookmark: AudioBookmark) async throws {
-        guard let data = bookmark.toData(),
+    private func uploadBookmark(_ stored: StoredAudioBookmark) async throws {
+        guard let data = stored.bookmark.toData(),
               let locationString = String(data: data, encoding: .utf8) else { return }
 
         guard let annotationResponse = try await annotationsManager.postAudiobookBookmark(forBook: self.book.identifier, selectorValue: locationString) else {
             return
         }
 
-        updateLocalBookmark(bookmark, with: annotationResponse)
+        updateLocalBookmark(stored, with: annotationResponse)
     }
 
-    private func updateLocalBookmark(_ bookmark: AudioBookmark, with annotationResponse: AnnotationResponse) {
-        if let updatedBookmark = bookmark.copy() as? AudioBookmark {
-            updatedBookmark.annotationId = annotationResponse.serverId ?? ""
-            updatedBookmark.lastSavedTimeStamp = annotationResponse.timeStamp ?? ""
-            replace(oldLocation: bookmark, with: updatedBookmark)
+    /// Writes the server's annotation ID, and its time when it sent one, into
+    /// the stored record, leaving the record's other fields as stored. A
+    /// response without an ID is not a sync: the record stays unsynced so the
+    /// next sync uploads it again.
+    private func updateLocalBookmark(_ stored: StoredAudioBookmark, with annotationResponse: AnnotationResponse) {
+        guard let serverId = annotationResponse.serverId, !serverId.isEmpty else {
+            Log.warn(#file, "Bookmark upload response carried no annotation ID; keeping the bookmark unsynced")
+            return
         }
+        guard var fields = stored.record.locationStringDictionary() else { return }
+        fields[AudioBookmark.CodingKeys.annotationId.rawValue] = serverId
+        if let timeStamp = annotationResponse.timeStamp, !timeStamp.isEmpty {
+            fields[AudioBookmark.CodingKeys.timeStamp.rawValue] = timeStamp
+        }
+        guard JSONSerialization.isValidJSONObject(fields),
+              let data = try? JSONSerialization.data(withJSONObject: fields),
+              let locationString = String(data: data, encoding: .utf8),
+              let updated = TPPBookLocation(locationString: locationString, renderer: stored.record.renderer) else {
+            return
+        }
+        registry.replaceGenericBookmark(stored.record, with: updated, forIdentifier: book.identifier)
     }
 
     private func updateLocalBookmarks(with remoteBookmarks: [AudioBookmark], completion: @escaping ([AudioBookmark]) -> Void) {
@@ -687,13 +728,6 @@ import PalaceBookModel
         }
     }
 
-    private func replace(oldLocation: AudioBookmark, with newLocation: AudioBookmark) {
-        guard
-            let oldLocation = oldLocation.toTPPBookLocation(),
-            let newLocation = newLocation.toTPPBookLocation() else { return }
-        registry.replaceGenericBookmark(oldLocation, with: newLocation, forIdentifier: book.identifier)
-    }
-
     // MARK: - Helpers
 
     /// Immediately flushes any pending debounced operations
@@ -721,14 +755,24 @@ import PalaceBookModel
             registry.setLocation(tppLocation, forIdentifier: self.book.identifier)
             Log.warn(#file, "⚠️ Registry doesn't support sync save, using async fallback")
         }
+        // PP-4963: the termination path is a save like any other, and leaving
+        // it out would make a session that only ever saved on termination look
+        // as though it had never saved at all.
+        positionTrace?.noteSave(at: Date())
     }
 
-    // Swift 6 `complete`: `action` is `@Sendable` because it is captured by the
-    // `@Sendable` work-`queue` closure and wrapped in a `DispatchWorkItem` (whose
-    // `block:` init requires a `@Sendable` block). The sole caller (`saveBookmark`)
-    // passes a closure that captures only Sendable carriers (a `TrackPositionCompletionBox`
-    // and the `@preconcurrency`-imported `TrackPosition`), so this does not ripple.
+    // `action` is `@Sendable` because `DispatchWorkItem(block:)` requires it.
     private func debounce(action: @escaping @Sendable () -> Void) {
+        guard let debounceInterval else {
+            // `onStateQueue`, not a bare `queue.sync`: this runs inline when
+            // already on `queue`, which a nested `sync` would deadlock on.
+            onStateQueue {
+                debounceWorkItem?.cancel()
+                debounceWorkItem = nil
+                action()
+            }
+            return
+        }
         queue.async { [weak self] in
             guard let self else { return }
             self.debounceWorkItem?.cancel()
@@ -736,11 +780,19 @@ import PalaceBookModel
             let workItem = DispatchWorkItem(block: action)
             self.debounceWorkItem = workItem
             DispatchQueue.global(qos: .userInitiated).asyncAfter(
-                deadline: .now() + self.debounceInterval,
+                deadline: .now() + debounceInterval,
                 execute: workItem
             )
         }
     }
+}
+
+/// A bookmark parsed from the registry, with the exact record it was read from.
+/// The record is the bookmark's identity: parsing normalizes fields (a missing
+/// `chapter` becomes "0"), so the parsed bookmark re-encoded need not match it.
+private struct StoredAudioBookmark {
+    let record: TPPBookLocation
+    let bookmark: AudioBookmark
 }
 
 private extension Array where Element == AudioBookmark {
@@ -767,16 +819,8 @@ extension AudiobookBookmarkBusinessLogic: AudiobookBookmarkDelegate {}
 
 // MARK: - Sendable carrier for `saveBookmark`'s @Sendable-closure capture
 
-/// Sendable carrier for the non-Sendable `completion` closure captured by the
-/// `@Sendable` `Task` closure in `saveBookmark`. Wrapping the closure lets the
-/// Task capture this box (Sendable) instead of the raw closure, clearing the
-/// `targeted` capture diagnostic WITHOUT rippling `@Sendable` onto the public
-/// `saveBookmark(at:completion:)` signature (which would ripple to every caller).
-///
-/// INVARIANT — the boxed closure is only ever invoked on the main queue: both
-/// call sites are inside `DispatchQueue.main.async` blocks (the `defer` success
-/// path and the encode-failure early return). It is never invoked concurrently.
-/// Mirrors `ImageCompletionBox` in `ImageLoaderImpl`.
+/// Sendable carrier for `saveBookmark`'s completion, so `@Sendable` does not
+/// ripple onto the public signature. Invariant: invoked only on the main queue.
 private final class TrackPositionCompletionBox: @unchecked Sendable {
     let call: ((TrackPosition?) -> Void)?
     init(_ call: ((TrackPosition?) -> Void)?) { self.call = call }
@@ -786,8 +830,7 @@ private final class TrackPositionCompletionBox: @unchecked Sendable {
 
 /// Sendable carrier for a non-Sendable `[TrackPosition]` completion closure
 /// captured by the `@Sendable` work-`queue` / `DispatchQueue.main.async` chain
-/// in `fetchBookmarks`. INVARIANT — invoked only on the main queue.
-/// Mirrors `TrackPositionCompletionBox` / `ReadiumBookmarkBox`.
+/// in `fetchBookmarks`. Invariant: invoked only on the main queue.
 private final class TrackPositionListCompletionBox: @unchecked Sendable {
     let call: ([TrackPosition]) -> Void
     init(_ call: @escaping ([TrackPosition]) -> Void) { self.call = call }
@@ -795,13 +838,8 @@ private final class TrackPositionListCompletionBox: @unchecked Sendable {
 
 /// Sendable carrier for a non-Sendable `[AudioBookmark]` completion closure
 /// captured by the `@Sendable` `Task` in `syncBookmarks` and the
-/// `DispatchQueue.main.async` drain in `finalizeSync`. `AudioBookmark` is a
-/// Palace-owned mutable class (9 mutable `var`s) that must NOT be made
-/// `: Sendable` — boxing the closure is the correct ceiling, mirroring
-/// `ReadiumBookmarkBox` (Decision 3). INVARIANT — the boxed closure is only
-/// ever invoked on the main queue (the `finalizeSync` drain). The serial work
-/// `queue` remains the single serialization domain for the sync state, so no
-/// two invocations race.
+/// `DispatchQueue.main.async` drain in `finalizeSync`. Invariant: invoked only
+/// on the main queue.
 private final class AudioBookmarkListCompletionBox: @unchecked Sendable {
     let call: (([AudioBookmark]) -> Void)?
     init(_ call: (([AudioBookmark]) -> Void)?) { self.call = call }
@@ -810,9 +848,8 @@ private final class AudioBookmarkListCompletionBox: @unchecked Sendable {
 /// Sendable carrier for a non-Sendable `[AudioBookmark]` value crossing a
 /// `@Sendable` `Task` / `DispatchQueue.main.async` boundary (the sync input in
 /// `syncBookmarks`, the result in `finalizeSync`). The wrapped array and its
-/// `AudioBookmark` elements are only ever produced, merged, and consumed on the
-/// serial work `queue` or the main queue — never mutated concurrently across
-/// the box — so `@unchecked Sendable` waives no real race.
+/// `AudioBookmark` elements are only produced, merged and consumed on the
+/// serial work `queue` or the main queue, never concurrently.
 private final class AudioBookmarkListBox: @unchecked Sendable {
     let bookmarks: [AudioBookmark]
     init(_ bookmarks: [AudioBookmark]) { self.bookmarks = bookmarks }
@@ -820,31 +857,25 @@ private final class AudioBookmarkListBox: @unchecked Sendable {
 
 /// Sendable carrier for a non-Sendable `[TrackPosition]` value crossing the
 /// `@Sendable` `DispatchQueue.main.async` boundary in `fetchBookmarks`.
-/// `TrackPosition` is a `@preconcurrency`-imported PalaceAudiobookToolkit value
-/// type: the pre-concurrency import covers its missing `Sendable` conformance,
-/// but region isolation still flags *sending* the array across the async hop.
-/// INVARIANT — the array is produced on the serial work `queue` and consumed
-/// exactly once on the main queue; no two contexts touch it concurrently, so
-/// `@unchecked Sendable` waives no real race. Mirrors `AudioBookmarkListBox`.
+/// `@preconcurrency import` covers `TrackPosition`'s conformance but region
+/// isolation still flags sending the array. Invariant: produced on the work
+/// `queue`, consumed exactly once on the main queue.
 private final class TrackPositionListBox: @unchecked Sendable {
     let positions: [TrackPosition]
     init(_ positions: [TrackPosition]) { self.positions = positions }
 }
 
 /// Sendable carrier for a single non-Sendable `AudioBookmark` handed off to the
-/// `@Sendable` `Task` in `saveListeningPosition`. INVARIANT — the wrapped
-/// bookmark is created immediately before the Task and owned exclusively by it;
-/// the synchronous prefix finishes touching it before the Task is enqueued and
-/// no other task aliases it, so the in-Task `annotationId` mutation is race-free.
+/// `@Sendable` `Task` in `saveListeningPosition`. Invariant: created immediately
+/// before the Task and owned exclusively by it.
 private final class AudioBookmarkBox: @unchecked Sendable {
     let bookmark: AudioBookmark
     init(_ bookmark: AudioBookmark) { self.bookmark = bookmark }
 }
 
 /// Sendable carrier for a non-Sendable `String?` completion closure captured by
-/// the `@Sendable` `Task` in `saveListeningPosition`. INVARIANT — invoked only
-/// inside that single Task (server-sync terminal paths). Mirrors
-/// `TrackPositionCompletionBox`.
+/// the `@Sendable` `Task` in `saveListeningPosition`. Invariant: invoked only
+/// on the main actor, through that Task's `MainActor.run` hop.
 private final class StringCompletionBox: @unchecked Sendable {
     let call: ((String?) -> Void)?
     init(_ call: ((String?) -> Void)?) { self.call = call }
@@ -852,9 +883,8 @@ private final class StringCompletionBox: @unchecked Sendable {
 
 /// Sendable carrier for a non-Sendable `Bool` completion closure captured by the
 /// `@Sendable` `DispatchQueue.main.async` blocks in `deleteBookmark` /
-/// `deleteBookmarkByContentMatch`. INVARIANT — invoked only on the main queue,
-/// exactly once per delete request (the terminal paths are mutually exclusive).
-/// Mirrors `TrackPositionCompletionBox`.
+/// `deleteBookmarkByContentMatch`. Invariant: invoked only on the main queue,
+/// exactly once per delete request.
 private final class BoolCompletionBox: @unchecked Sendable {
     let call: ((Bool) -> Void)?
     init(_ call: ((Bool) -> Void)?) { self.call = call }

@@ -49,7 +49,7 @@ def _build_tree(tmp_path: Path) -> Path:
     (root / "Packages" / "Pkg" / "Sources").mkdir(parents=True, exist_ok=True)
 
     # counted: 2 real locator uses in an ordinary file
-    (root / "Book" / "BookService.swift").write_text(
+    (root / "Book" / "BookOpener.swift").write_text(
         "let am = AppContainer.production().accountsManager\n"
         "let br = AppContainer.production().bookRegistry\n"
         "let e = something // @Environment placeholder unrelated\n"
@@ -154,3 +154,33 @@ def test_live_repo_baseline_passes():
     """Checked-in baseline + allowlist must PASS against today's Palace/ tree."""
     r = subprocess.run(["bash", str(_SCRIPT)], capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_live_baseline_has_zero_slack():
+    """The checked-in baseline must EQUAL today's measured count, not merely bound it.
+
+    `test_live_repo_baseline_passes` above asserts exit 0, which the gate also
+    returns when the tree is BELOW baseline. The gate prints "Ratchet baseline
+    down to N" in that case and the advisory feeds nothing — it does not touch
+    the exit code, so accumulated slack is invisible to the whole suite. A
+    ratchet with slack is not a ratchet: locator uses removed by one wave
+    silently fund uses added by the next, and the baseline stops describing the
+    tree.
+
+    Asserting the advisory empty also closes the raise direction: a baseline
+    edited upward past the measured count fails here even though the gate
+    itself still exits 0. The sibling shared-read baseline was raised that way
+    once (a0968e652, 164 -> 167).
+
+    It does NOT close the two-sided edit where new locator uses are added and
+    the baseline is raised to exactly match — see the same caveat, stated in
+    full, in test_check_shared_read_count.py::test_live_baseline_has_zero_slack.
+    """
+    r = subprocess.run(["bash", str(_SCRIPT)], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stdout + r.stderr
+    slack = [ln.strip() for ln in r.stdout.splitlines() if "Ratchet baseline down to" in ln]
+    assert not slack, (
+        "locator uses are below the checked-in baseline. Lower the integer in "
+        "scripts/godclass-appcontainer-locator-baseline.txt to the measured count "
+        "and add a rationale line saying which change removed them:\n  " + "\n  ".join(slack)
+    )

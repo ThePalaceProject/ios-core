@@ -2,41 +2,14 @@
 //  AccountsManagerIsolationLintTests.swift
 //  PalaceTests
 //
-//  Meta-test enforcing the AccountsManager-isolation hygiene rule
-//  introduced by swarm_47883816 Module B (test pollution sweep):
-//
-//    Bare `AccountsManager()` constructions are forbidden in
-//    PalaceTests/** outside a tightly-scoped whitelist. All other test
-//    sites MUST go through `PalaceWiringTestCase.makeFreshAccountsManager()`
-//    (or the live-load sibling helper) so the base class's
-//    cancel-background-work + Combine-bag-drain + disk-cache-purge
-//    guarantees fire automatically on tearDown.
-//
-//  Why this matters: a bare `AccountsManager()` in a test method spawns
-//  a background `loadCatalogs` Task that outlives the test, retains
-//  Combine sinks, and writes the bundled-catalog snapshot into the
-//  shared Application Support directory. The next test in the bundle
-//  inherits that state. swarm_4b64e4e0 Wave 1c built the wiring base
-//  class to close this exact leak; this lint pins the contract so the
-//  pattern can't drift back in.
-//
-//  Whitelist (any new entry requires a paired wall-failure entry):
-//   - PalaceTests/Support/PalaceWiringTestCase.swift           — the seam itself
-//   - PalaceTests/Support/PalaceWiringTestCaseTests.swift      — tests the seam
-//   - PalaceTests/AppInfrastructure/AppContainerResetTests.swift — comment-only
-//                                                                 historical refs
-//   - PalaceTests/Mocks/**                                     — mock-side
-//                                                                 implementations
-//   - PalaceTests/Support/TestAppContainerFactory*.swift       — Module A's
-//                                                                 factory seam
-//                                                                 (defers init
-//                                                                 the same way)
-//
-//  Implementation: plain text scan, no SwiftSyntax. Line-based so a
-//  method declaration `func testFoo_AccountsManager_path() {` that
-//  contains the substring is correctly skipped via the `func ` test.
-//
-//  swarm_47883816 Module B.
+//  Forbids bare `AccountsManager()` constructions in PalaceTests/** outside a
+//  whitelist; tests use `PalaceWiringTestCase.makeFreshAccountsManager()` so
+//  teardown cancels background work, drains Combine bags and purges the disk cache.
+//  A bare instance starts a `loadCatalogs` Task that outlives the test and writes
+//  the bundled-catalog snapshot into shared Application Support, polluting the
+//  next test. Whitelist: the wiring base class and its tests,
+//  AppContainerResetTests (comment-only refs), Mocks/**, and
+//  TestAppContainerFactory*. Plain line-based text scan; `func ` lines are skipped.
 //
 
 import Foundation
@@ -67,8 +40,8 @@ final class AccountsManagerIsolationLintTests: XCTestCase {
         "Support/PalaceWiringTestCase.swift",
         "Support/PalaceWiringTestCaseTests.swift",
         "AppInfrastructure/AppContainerResetTests.swift",
-        // Module A's factory seam — also defers loadCatalogs the same way
-        // PalaceWiringTestCase does. Owned by sibling swarm contract.
+        // The test container factory — also defers loadCatalogs the same way
+        // PalaceWiringTestCase does.
         "Support/TestAppContainerFactory.swift",
         "Support/TestAppContainerFactoryTests.swift",
         // Module E's TearDownRequired lint contains "AccountsManager("
@@ -277,12 +250,11 @@ final class AccountsManagerIsolationLintTests: XCTestCase {
     /// `AccountsManager` directly and already pin
     /// `deferInitialLoadCatalogsForTesting = true` + a `cancelBackgroundWork()`
     /// teardown, OR carry the constructor substring only inside fixture strings
-    /// for their own scanners. Any NEW entry must be paired with a wall-failure
-    /// note (same rule as the bare-construction whitelist above).
+    /// for their own scanners. Any NEW entry needs a stated reason.
     private static let wiringBaseAllowlistSuffixes: [String] = [
         // The seam itself — `makeFreshAccountsManager()` builds the manager here.
         "Support/PalaceWiringTestCase.swift",
-        // Module A's factory seam — defers loadCatalogs the same way.
+        // The test container factory — defers loadCatalogs the same way.
         "Support/TestAppContainerFactory.swift",
         "Support/TestAppContainerFactoryTests.swift",
         // Fixture-carrier: the constructor substring appears only inside the

@@ -67,7 +67,7 @@ next sync silently destroys them. This is the reason for decision #1's exemption
 ### Sync exemption (surgical, CRITICAL PATH)
 - In `BookRegistrySync` reconciliation: `recordsToDelete.subtract(sideloadedIDs)`.
 - Inject the id set from `SideloadedBookRegistry` via `AppContainer`.
-- Highest-risk change → architect + SoD review required.
+- Highest-risk change → independent review required.
 
 ### PP-2679 — `SideloadedLane`
 - Inject `CatalogLaneModel(title:, books: sideloadedRegistry.allBooks, moreURL: nil)`
@@ -134,13 +134,12 @@ Settings "Side Loading" → UIDocumentPicker → file URL
    (critical-path files → 100% on touched lines).
 4. **Build + `scripts/verify-pr.sh --quick`** (full-suite parity).
 5. **simdrive E2E:** enable in Settings → import the LCP 2.x test EPUB (PP-2580) →
-   see lane → open in reader → renders. Record a replay for the chaos-replay corpus.
-6. **DoD 11-check battery** before READY.
+   see lane → open in reader → renders.
 
 ## Orchestration
 Spans ≥2 modules (Book/registry, MyBooks, Settings, CatalogUI) **and** touches a
-critical path (registry sync + DRM) → implement via **`/swarm`** with architect +
-SoD review focused on the sync-exemption change.
+critical path (registry sync + DRM) → split the work by module and get an
+independent review focused on the sync-exemption change.
 
 ## Open items / risks
 - **My Books visibility:** decision #1 makes sideloaded books appear on the My Books

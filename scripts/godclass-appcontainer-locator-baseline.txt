@@ -19,4 +19,49 @@
 #   named in a doc/line comment (e.g. the S2b AccountScope rationale prose above) is no
 #   longer counted — it is documentation, not a locator call. Re-baselined 302 -> 256 by
 #   that recount alone: a pure measurement correction, not 46 removed call sites.
-256
+# Wave 7 sweep: 256 -> 249, measured on bf7b12d82. Accumulated drift across the
+#   waves that landed after the 2026-07-31 recount; no per-wave attribution is
+#   claimed because none was measured. test_live_baseline_has_zero_slack now
+#   fails on any slack, so this number must be re-measured, not estimated.
+# 249 -> 248: TPPUserAccount's keychain key derivation reads
+#   AccountsManager.TPPAccountUUIDs[0] instead of AppContainer.production().
+# 248 -> 246: two unreachable methods deleted from TPPNetworkResponder took
+#   their locators with them — handleHTTPResponse's credentialSnapshot() read
+#   and refreshToken(userAccount:)'s default argument. Neither method had a
+#   caller. The file still holds 7 locators, so it is still scanned and still
+#   matching; the drop is removed uses, not a glob that stopped resolving.
+# 246 -> 245: TPPReaderBookmarksBusinessLogic.handleBookmarksSyncFail reads the
+#   user account through TPPAnnotations.currentAccountsManager, the source the
+#   sync gate checks, instead of AppContainer.production().
+# 245 -> 238: CatalogSearchView takes its container (3 owned-service reads and
+#   2 downloadCenter reads), CatalogLaneMoreViewModel requires its catalog API,
+#   and URLSessionNetworkClient's executor default argument had no caller left.
+# 238 -> 237: CatalogSearchView's row-refresh publisher reads its container's
+#   registry.
+# 237 -> 236: the PP-5301 seams gave AudiobookLoader's init four lazily-resolved
+#   production fallbacks, taking that file 12 -> 13 and the total 237 -> 238.
+#   Hoisting the duplicate container reads in `finalizeBuild` and
+#   `makeProductionAdapters` then took the file 13 -> 11, so the total lands at
+#   236. Both numbers are the same commit; net -1 against the prior baseline.
+# 236 -> 233: BookOpenTracker deleted. Its three recordOpened call sites
+#   (ReaderService x2, AudiobookSessionManager) each read the tracker through
+#   AppContainer.production(); the tracker had no reader after PP-4910.
+# 233 -> 232: BookService retired. Its open forwarder's default registry
+#   argument read AppContainer.production(); callers now pass their own registry.
+# 232 -> 228: BookAvailabilityFormatter deleted. It had no production caller
+#   and duplicated BookDetailViewModel's chooseLocalLocation, requestSyncWithCompletion
+#   and presentEndOfBookAlert; its copy of the end-of-book alert held four locator reads
+#   (navigationCoordinatorHub, downloadCenter and ratingPromptPresenter twice). The
+#   surviving view-model copy takes its downloadCenter injected, so the deletion removes
+#   the reads rather than moving them. This lands on top of the BookService retirement
+#   above, so the total is the composition of both, measured rather than added by hand.
+# 228 -> 226: TPPNetworkResponder's 401 handling reads the accounts manager and
+#   the classifier's host set through the executor that owns the responder.
+# 226 -> 225: ReadiumPDFReaderView deleted. The Readium PDF navigator path it
+#   hosted had no caller since PR #1008; its readerService read went with it.
+# 225 -> 223: a 401 or 2xx on a responder whose executor was released no
+#   longer falls back to the app executor and accounts manager.
+# 223 -> 222: PP-5452 reads the production container once in syncAsync.
+# 222 -> 221: PP-5451 reads LCP download progress through the download
+#   center injected into the content wait, not a fresh production container.
+221

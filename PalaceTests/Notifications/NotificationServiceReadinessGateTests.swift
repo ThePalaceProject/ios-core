@@ -6,35 +6,12 @@
 //  reach token registration while the current account is still fetching its
 //  authentication document.
 //
-//  THE OBSERVABLE, and why an earlier round wrongly concluded there wasn't one.
-//
-//  A first attempt counted `userAccount(for:)`. That is ambiguous: `updateToken()`
-//  reads `currentUserAccount` in its own prologue, resolving the SAME uuid
-//  registration would, so a second trigger whose claim was correctly REJECTED
-//  looked identical to the gate failing. I concluded no unambiguous observable
-//  existed and deleted the test. Two independent reviewers found the real one in
-//  the same file.
-//
-//  Read counting was the second attempt and is ALSO unusable, for a different
-//  reason: the test host re-enters `updateToken()` through the observers
-//  `installNotificationObservers()` registers, and `decideHoldNavigation` reads
-//  `currentAccount` as well, so neither the count nor its parity is stable. That
-//  version passed in isolation and failed intermittently in the suite.
-//
-//  THE OBSERVABLE THAT WORKS: claim lifetime.
-//
-//  `RegistrationClaims` holds the account's slot from just after the account is
-//  captured until the awaiting Task body RETURNS. So:
-//
-//      still claimed after a real budget  <=>  the readiness wait is parked
-//      released                            <=>  the attempt ran to completion
-//
-//  Interfering triggers cannot corrupt this: a second trigger for the same uuid
-//  is REJECTED before it enters the Task, so it never releases the slot. The
-//  signal depends only on the mechanism under test.
-//
-//  Mutation-proven: replacing the readiness await with a no-op releases the
-//  claim within milliseconds and fails `testUpdateToken_whileLoading_holdsTheClaim`.
+//  The observable is claim lifetime: `RegistrationClaims` holds the account's
+//  slot until the awaiting Task body RETURNS, so "still claimed after a real
+//  budget" means the readiness wait is parked. A second trigger for the same
+//  uuid is REJECTED before entering the Task, so it cannot release the slot.
+//  (Counting account reads is unstable: the host re-enters `updateToken()`
+//  via its notification observers.)
 //
 
 import XCTest
@@ -71,9 +48,7 @@ final class NotificationServiceReadinessGateTests: XCTestCase {
     /// `NotificationService` which the test-only initializer registered as a
     /// permanent `NotificationCenter` observer, so it wakes up inside whatever
     /// suite is running 45s later and files a `.residual` Crashlytics non-fatal
-    /// from it. Multiplied by `-test-iterations 3`. This is precisely the leak
-    /// `PP4958ReadinessPrimitiveTests` was deleted for, and a reviewer caught it
-    /// here one round after that deletion.
+    /// from it.
     private var parkedAccounts: [Account] = []
 
     override func tearDown() {
@@ -184,8 +159,7 @@ final class NotificationServiceReadinessGateTests: XCTestCase {
         // `whenAccountIsAlreadyReady_releasesWithinTheHoldingBudget` proves the
         // pool TYPICALLY schedules inside 1.2s, but it is a different run: it
         // cannot rule out that during THIS window the pool was merely slow, in
-        // which case the assertion above is vacuous. A reviewer made exactly
-        // that point. So drive a ready account through the same executor at the
+        // which case the assertion above is vacuous. So drive a ready account through the same executor at the
         // same instant — if IT released, the pool was running, and "still
         // claimed" above means parked rather than starved.
         let readyAccount = try makeLoadedAccount()
@@ -201,8 +175,8 @@ final class NotificationServiceReadinessGateTests: XCTestCase {
 
         // Converts "still claimed" into "provably PARKED". The claim is taken
         // synchronously BEFORE the Task is created, so the assertion above also
-        // holds if the executor never scheduled the Task at all — under which a
-        // gate-removed mutant would survive. Resolving the account here proves
+        // holds if the executor never scheduled the Task at all, even with the
+        // gate removed. Resolving the account here proves
         // the Task existed and was genuinely suspended in the readiness wait.
         account._setState(.detailsLoaded(try makeDetails(for: account)))
         XCTAssertTrue(wait(upTo: 5.0) { !service.isRegistrationClaimed(account.uuid) },
@@ -211,7 +185,7 @@ final class NotificationServiceReadinessGateTests: XCTestCase {
 
     /// The top guard: an account already registered must not start an attempt
     /// at all. This change lengthened the window that guard protects, so it is
-    /// worth a cell — and it kills the mutant that deletes the guard.
+    /// worth a cell.
     func testUpdateToken_whenTokenAlreadyRegistered_doesNotClaimAtAll() {
         let account = makeLoadingAccount()
         account.hasUpdatedToken = true
@@ -226,9 +200,8 @@ final class NotificationServiceReadinessGateTests: XCTestCase {
     /// THE PROMPTNESS CONTROL for `testUpdateToken_whileLoading_holdsTheClaim`.
     ///
     /// That test reads "still claimed after 1.2s" as "parked in the readiness
-    /// wait". A reviewer pointed out the gap: it is also true of a Task the
-    /// cooperative pool simply scheduled LATE, and no test proved the executor
-    /// schedules promptly at all. `onceTheAccountLoads` does not close it — it
+    /// wait", but that is also true of a Task the cooperative pool simply
+    /// scheduled LATE. `onceTheAccountLoads` does not close it — it
     /// rules out never-starts, not starts-late, because it gives the Task a
     /// fresh 5s after driving the account terminal.
     ///

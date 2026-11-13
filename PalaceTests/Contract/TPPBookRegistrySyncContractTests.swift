@@ -2,56 +2,20 @@
 //  TPPBookRegistrySyncContractTests.swift
 //  PalaceTests
 //
-//  God-class decomposition Wave 2b — the SERVER-SYNC call-order contract for
-//  `BookRegistrySync.sync(currentState:setState:completion:)`. Pins the CURRENT
-//  ordered effect sequence of a loans-feed sync BEFORE the cluster moves into an
-//  SPM package, so the extraction can be proven behavior-neutral: after the move
-//  these snapshots must stay green with their assertions untouched.
-//
-//  WHY a contract snapshot (vs. plain unit tests): `sync()` is a decision tree
-//  over enum states that emits an ORDERED sequence of side effects into three
-//  injected dependencies. A refactor that reorders them (e.g. saving before the
-//  deletion pass, or emitting `.synced` before the feed fetch) is exactly the
-//  silent regression class the snapshot pattern was built to catch (see
-//  ContractSnapshot.swift header). The cleanly-spyable ordered dependency calls
-//  are:
-//    · `setState(_:)`            — the RegistryState transition closure sync() drives
-//    · `OPDSFeedFetching.fetchFeed(from:resetCache:)` — the loans-feed seam
-//    · `LocalBookContentService.deleteLocalContent(forBook:)` — the eviction seam
-//      (spied via the same `localContentService` override BookRegistrySync's
-//      sideload-exemption suite uses)
-//    · `completion(errorDocument:newBooks:)`
-//
-//  The per-entry merge-vs-fresh registry writes and the authoritative `save(...)`
-//  are INTERNAL to `BookRegistrySync` (no dependency call to spy — `save` is a
-//  method on a `final` class, and the merge/fresh branch mutates the store's
-//  in-memory dict). Those are pinned by explicit assertions on the resulting
-//  store state + the on-disk registry file the authoritative save writes.
-//  See the header note in TPPBookRegistryFacadeContractTests / the Wave-2b intent
-//  for the missing `DownloadCenter` protocol + spyable-save seams the extraction
-//  will want to make those steps directly call-order-pinnable.
-//
-//  VERIFIED sequences (against BookRegistrySync.swift at develop tip 77f6ded53):
-//    happy path  : setState(.syncing) → fetchFeed(resetCache:true) →
-//                  deleteLocalContent(<evicted book>) → setState(.synced) →
-//                  completion(nil, newBooks:true)
-//    no creds    : setState(.loaded) → completion(nil,false)  [ZERO fetchFeed]
-//    awaitReady✗ : setState(.syncing) → setState(.loaded) →
-//                  completion(nil,false)  [ZERO fetchFeed; syncUrl stays nil]
-//    empty-feed  : setState(.syncing) → fetchFeed(resetCache:true) →
-//    bulk guard    setState(.synced) → completion(nil,false)  [ZERO delete; NO save]
-//
-//  NOTE — the credentials gate (`!userAccount.hasCredentials()`) sits BEFORE
-//  `setState(.syncing)`, so the no-credentials exit emits ONLY `.loaded` (never
-//  `.syncing`). This matched the brief's hypothesis. The `.syncing` emission
-//  therefore only appears once the account is credentialed — which is why the
-//  awaitReady-failure sequence starts `.syncing, .loaded` while the no-creds one
-//  is just `.loaded`.
+//  Pins the ordered effect sequence of `BookRegistrySync.sync(currentState:setState:completion:)`
+//  across `setState`, `fetchFeed`, `deleteLocalContent` and `completion`:
+//    happy path : .syncing → fetchFeed(resetCache:true) → delete(evicted) → .synced → completion(nil,true)
+//    no creds   : .loaded → completion(nil,false)            (credentials gate is before .syncing)
+//    awaitReady✗: .syncing → .loaded → completion(nil,false)
+//    empty feed : .syncing → fetchFeed → .synced → completion(nil,false)  (bulk guard: no delete, no save)
+//  Registry writes and `save(...)` are internal to `BookRegistrySync`, so they are
+//  asserted on the resulting store and on-disk file instead.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
 import XCTest
+import Combine
 import PalaceCatalog
 import PalaceBookModel
 @testable import Palace
@@ -103,6 +67,8 @@ final class TPPBookRegistrySyncContractTests: XCTestCase {
         let log: CallLog
         var stubbedFeed: TPPOPDSFeed?
         var stubbedError: Error?
+        /// Runs while the fetch is in flight, before the feed is returned.
+        var duringFetch: (@Sendable () async -> Void)?
         private let lock = NSLock()
         private var _fetchCount = 0
 
@@ -117,6 +83,7 @@ final class TPPBookRegistrySyncContractTests: XCTestCase {
         func fetchFeed(from url: URL, resetCache: Bool) async throws -> TPPOPDSFeed {
             lock.withLock { _fetchCount += 1 }
             log.record("fetchFeed", args: ["resetCache": resetCache])
+            if let duringFetch { await duringFetch() }
             if let stubbedError { throw stubbedError }
             if let stubbedFeed { return stubbedFeed }
             throw NSError(domain: "RecordingOPDSFeedFetcher", code: -1,
@@ -496,5 +463,114 @@ final class TPPBookRegistrySyncContractTests: XCTestCase {
                       "the guard must perform ZERO on-disk deletions")
         XCTAssertFalse(FileManager.default.fileExists(atPath: registryURL.path),
                        "no changes made → no authoritative save should be written")
+    }
+
+    // MARK: - PP-5360: hold and loan state follows the server
+
+    /// Loans feed whose entries carry an `opds:availability` status.
+    private func makeLoansFeed(statuses: [(id: String, status: String)]) -> TPPOPDSFeed {
+        let entries = statuses.map { entry in
+            """
+            <entry>
+              <title type="text">Entry \(entry.id)</title>
+              <id>\(entry.id)</id>
+              <updated>2026-07-01T00:00:00Z</updated>
+              <link href="http://example.com/\(entry.id)" type="application/epub+zip" rel="http://opds-spec.org/acquisition/borrow">
+                <opds:availability status="\(entry.status)"/>
+              </link>
+            </entry>
+            """
+        }.joined(separator: "\n")
+        let xml = """
+        <?xml version="1.0" encoding="utf-8"?>
+        <feed xmlns="http://www.w3.org/2005/Atom" xmlns:opds="http://opds-spec.org/2010/catalog">
+          <title type="text">Loans</title>
+          <id>urn:test:sync-shelf-state</id>
+          <updated>2026-07-01T00:00:00Z</updated>
+          \(entries)
+        </feed>
+        """
+        return TPPOPDSFeed(xml: TPPXML.xml(withData: Data(xml.utf8))!)!
+    }
+
+    private func syncAgainst(_ feed: TPPOPDSFeed, uuid: String,
+                             duringFetch: (@Sendable () async -> Void)? = nil) async {
+        let log = CallLog()
+        let fetcher = RecordingOPDSFeedFetcher(log: log)
+        fetcher.stubbedFeed = feed
+        fetcher.duringFetch = duringFetch
+        let sut = makeSyncManager(fetcher: fetcher)
+        seededRegistryURLs.append(sut.registryUrl(for: uuid)!)
+        await runSync(sut, currentState: .loaded, log: log, received: { _ in }, onCompletion: { _, _ in })
+    }
+
+    /// A hold borrowed on another device (or auto-checked-out by the library)
+    /// comes back as a loan; it must move from Holds to My Books.
+    func testSync_holdThatIsNowALoan_movesToMyBooks() async throws {
+        let (uuid, cleanup) = try seedCredentialedLoansAccount()
+        defer { cleanup() }
+        await seedStore([(id: "now-a-loan", state: .holding)])
+
+        await syncAgainst(makeLoansFeed(statuses: [(id: "now-a-loan", status: "available")]), uuid: uuid)
+
+        XCTAssertEqual(store.state(for: "now-a-loan"), .downloadNeeded)
+        XCTAssertTrue(store.myBooks.contains { $0.identifier == "now-a-loan" })
+        XCTAssertFalse(store.heldBooks.contains { $0.identifier == "now-a-loan" })
+    }
+
+    func testSync_undownloadedLoanThatIsNowAHold_movesToHolds() async throws {
+        let (uuid, cleanup) = try seedCredentialedLoansAccount()
+        defer { cleanup() }
+        await seedStore([(id: "now-a-hold", state: .downloadNeeded)])
+
+        await syncAgainst(makeLoansFeed(statuses: [(id: "now-a-hold", status: "reserved")]), uuid: uuid)
+
+        XCTAssertEqual(store.state(for: "now-a-hold"), .holding)
+        XCTAssertTrue(store.heldBooks.contains { $0.identifier == "now-a-hold" })
+    }
+
+    func testSync_undownloadedLoanStillALoan_staysInMyBooks() async throws {
+        let (uuid, cleanup) = try seedCredentialedLoansAccount()
+        defer { cleanup() }
+        await seedStore([(id: "still-a-loan", state: .downloadNeeded)])
+
+        await syncAgainst(makeLoansFeed(statuses: [(id: "still-a-loan", status: "available")]), uuid: uuid)
+
+        XCTAssertEqual(store.state(for: "still-a-loan"), .downloadNeeded)
+        XCTAssertTrue(store.myBooks.contains { $0.identifier == "still-a-loan" })
+    }
+
+    /// Cells, the shared cell-model cache and detail views listen per book, so a
+    /// state the merge changes must be published there; an unchanged one is not.
+    func testSync_publishesEachStateTheMergeChanges() async throws {
+        let (uuid, cleanup) = try seedCredentialedLoansAccount()
+        defer { cleanup() }
+        await seedStore([(id: "flips", state: .holding), (id: "stays", state: .holding)])
+        var published: [String: TPPBookState] = [:]
+        let subscription = store.bookStateSubject.sink { published[$0.0] = $0.1 }
+        defer { subscription.cancel() }
+
+        await syncAgainst(makeLoansFeed(statuses: [(id: "flips", status: "available"),
+                                                   (id: "stays", status: "reserved")]), uuid: uuid)
+
+        XCTAssertEqual(published["flips"], .downloadNeeded)
+        XCTAssertNil(published["stays"], "a record whose state did not change is not republished")
+    }
+
+    /// A feed fetched before a local borrow must not move the fresh loan back to
+    /// Holds: the record changed while the feed was in flight, so it keeps its state.
+    func testSync_recordChangedDuringTheFetch_keepsItsLocalState() async throws {
+        let (uuid, cleanup) = try seedCredentialedLoansAccount()
+        defer { cleanup() }
+        await seedStore([(id: "borrowed-mid-sync", state: .holding)])
+        let store = self.store!
+
+        await syncAgainst(makeLoansFeed(statuses: [(id: "borrowed-mid-sync", status: "reserved")]), uuid: uuid,
+                          duringFetch: {
+                              store.setState(.downloadNeeded, for: "borrowed-mid-sync")
+                              await store._awaitPendingWritesForTesting()
+                          })
+
+        XCTAssertEqual(store.state(for: "borrowed-mid-sync"), .downloadNeeded)
     }
 }

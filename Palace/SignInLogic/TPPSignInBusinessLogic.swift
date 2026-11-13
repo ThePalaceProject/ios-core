@@ -10,6 +10,7 @@ import CoreLocation
 import PalaceLogging
 import PalaceCatalog
 import PalaceAuth
+import PalaceUtilities
 
 @objc enum TPPAuthRequestType: Int {
     case signIn = 1
@@ -70,11 +71,8 @@ private struct TPPBoundedCompletionSink<T>: @unchecked Sendable {
     func reset(_ libraryID: String!)
 }
 
-// De-objc (god-class decomp Wave 2b prep): was `@objc protocol … : NSObjectProtocol`.
-// Every consumer is Swift-only (BookDetailViewModel, AccountDetailViewModel,
-// DeveloperSettingsViewModel, SignInBusinessLogic, TPPBookRegistryMock) — verified
-// zero `.m`/`.h` references, zero selector/`responds(to:)` dispatch. Plain protocol
-// drops the NSObjectProtocol constraint so the concrete conformer need not be NSObject.
+// Plain Swift protocol (every consumer is Swift), so the conformer need not be
+// an NSObject.
 protocol TPPBookRegistrySyncing {
     var isSyncing: Bool {get}
     func reset(_ libraryAccountUUID: String)
@@ -88,9 +86,8 @@ protocol TPPBookRegistrySyncing {
     func deauthorize(withUsername username: String!, password: String!, userID: String!, deviceID: String!, completion: (@Sendable (Bool, Error?) -> Void)!)
 }
 
-// NYPLADEPT's conformance to TPPDRMAuthorizing now lives at
-// `Palace/Accounts/User/NYPLADEPT+TPPDRMAuthorizing.swift` (added to xcodeproj
-// during the swarm_ea663ab6 recovery wiring stage).
+// NYPLADEPT's conformance to TPPDRMAuthorizing lives at
+// `Palace/Accounts/User/NYPLADEPT+TPPDRMAuthorizing.swift`.
 
 // Swift 6 `complete` mode: `TPPSignInBusinessLogic` is a UI-driving auth
 // orchestrator — it reads/writes `@MainActor`-isolated UIKit state (alerts,
@@ -193,6 +190,13 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         return uiDelegate?.context ?? "Unknown"
     }
 
+    /// Metadata reported to Crashlytics when sign-in fails. PP-5381: it carries
+    /// no patron identifier, raw or hashed; `loggableString` drops the
+    /// Authorization header.
+    nonisolated static func signInLoggingContext(request: URLRequest, uiContext: String) -> [String: Any] {
+        ["Request": request.loggableString, "Context": uiContext]
+    }
+
     // MARK: - Auth state machine
 
     /// In-flight auth state managed by `AuthReducer`. The legacy `@objc`
@@ -257,26 +261,10 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
 
     /// Cookies used to authenticate. Only required for the SAML flow.
     ///
-    /// TODO(wave-4-SignInModal-migration): the SAML refactor's Phases 1, 2,
-    /// and 4 (UI decoupling via `SAMLAuthContext` + `SAMLWebViewPresenting`
-    /// protocols; force-unwrap elimination; `ignoreSignedInState` →
-    /// `AuthReducer`) already landed via swarm_ea663ab6. What REMAINS from
-    /// `~/.claude/plans/calm-knitting-thunder.md` is:
-    ///   - Phase 3 cookie-validation deduplication (this `cookies` property
-    ///     duplicates `samlHelper.cookies`; both are written by
-    ///     `LegacySAMLAuthContext.handleSAMLRedirect`).
-    ///   - Phase 5 state isolation — moving the SAML-specific cookie cache
-    ///     onto the helper exclusively so the businessLogic doesn't
-    ///     maintain two parallel sources of truth.
-    /// Once `SignInModalSheetPresenter` (PR #1022) lands wave 4's migration
-    /// of the 9 remaining `SignInModalPresenter.presentSignInModal` call
-    /// sites, the cookies-duplication cleanup can be done in the same pass
-    /// (callers will read from `samlHelper.cookies` directly). Until then
-    /// both fields are maintained by `LegacySAMLAuthContext.handleSAMLRedirect`
-    /// and this property is kept as the legacy mirror.
-    ///
-    /// swarm_18b0d071 wave 3 Module B is a HARDENING pass — full migration
-    /// is explicitly deferred per the swarm's plan.md anti-scope section.
+    /// TODO(saml-cookies): this duplicates `samlHelper.cookies`; both are
+    /// written by `LegacySAMLAuthContext.handleSAMLRedirect`. Once callers
+    /// read `samlHelper.cookies` directly, move the SAML cookie cache onto
+    /// the helper exclusively and drop this legacy mirror.
     @objc var cookies: [HTTPCookie]?
 
     // MARK: - SAML triad (helper + context + presenter)
@@ -351,25 +339,16 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
     /// State-machine-aware synchronous read of `AccountDetails`. Returns
     /// `nil` when details have not yet transitioned to `.detailsLoaded`
     /// (i.e. `.notLoaded`, `.basicInfoLoaded`, `.detailsLoading`,
-    /// `.detailsFailed`, or `.detailsEvicted` — the eviction-marker
-    /// sibling added by the swarm_51f248d5 enum split). This preserves the
+    /// `.detailsFailed`, or `.detailsEvicted`). This preserves the
     /// legacy `account.details?` nil-tolerance for sync UI/`@objc` callers
     /// that cannot adopt the async `awaitReady()` gate without cascading
     /// `async` upward through SwiftUI/UIKit render paths.
     ///
-    /// Bucket A migration policy (per ADR `docs/architecture/account-state-machine.md`):
-    /// the 6 sub-sites in this file are sync property getters / `@objc`
-    /// methods read from SwiftUI render bodies and synchronous UI flows.
-    /// Reading `loadState` directly is the state-machine-aware version of
-    /// what the legacy `details?` reads did — both return non-nil only
-    /// when details are loaded. Migration to the truly-async
-    /// `awaitReady()` form happens at user-initiated entry points
-    /// (`startRegularCardCreation`, `TPPAgeCheck`, `NotificationService`
-    /// hold navigation) where wrapping in a `Task` does not cascade.
-    // Internal (not private) so extensions in other files can consume it.
-    // Phase 2 (Bucket B) reuses it from `+BookmarkSyncing` to gate the
-    // sync-button visibility on the same readiness contract used by the
-    // sync sites — there's no reason for a parallel implementation.
+    /// Used by the sync getters / `@objc` methods in this file that SwiftUI
+    /// render bodies read. User-initiated entry points use the async
+    /// `awaitReady()` instead, where a `Task` does not cascade. See
+    /// `docs/architecture/account-state-machine.md`.
+    // Internal (not private) so `+BookmarkSyncing` can reuse it.
     var loadedAccountDetails: AccountDetails? {
         guard let account = libraryAccount else { return nil }
         if case .detailsLoaded(let details) = account.loadState {
@@ -435,9 +414,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         get {
             guard _selectedAuthentication == nil else { return _selectedAuthentication }
             guard userAccount.authDefinition == nil else { return userAccount.authDefinition }
-            // Bucket A migration (line 281): state-machine-aware read. Returns
-            // `nil` until details are `.detailsLoaded` — same null-tolerance as
-            // legacy `libraryAccount?.details?.auths`.
+            // `nil` until details are `.detailsLoaded`.
             guard let auths = loadedAccountDetails?.auths else { return nil }
             guard auths.count > 1 else { return auths.first }
 
@@ -465,9 +442,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
 
         let authTypeStr = (authType == .signOut ? "signing out" : "signing in")
 
-        // Bucket A migration (line 309): state-machine-aware read of
-        // `userProfileUrl`. Sync getter, no async cascade.
-        let loadedDetails = loadedAccountDetails
+        let loadedDetails = signInTargetDetails
         guard
             let urlStr = loadedDetails?.userProfileUrl,
             let url = URL(string: urlStr) else {
@@ -517,7 +492,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
     /// including those that require negotiation with 3rd parties (such as
     /// Clever and SAML), validate said credentials against the Circulation
     /// Manager servers and call back to the UI once that's concluded.
-    func validateCredentials() {
+    func validateCredentials() async {
         dispatch(.credentialsValidationStarted)
 
         guard let req = makeRequest(for: .signIn, context: uiContext) else {
@@ -536,22 +511,31 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         // be the currently selected library (Settings signs in/out for any
         // library). Naming it here keeps a 401 retry authenticating as the right
         // one.
-        networker.executeRequest(req, enableTokenRefresh: false, accountId: libraryAccountID) { [weak self] result in
-            guard let self = self else { return }
+        // PP-5301: awaited directly. A completion would arrive off the main
+        // actor (`delegateQueue: nil`) while the closure inherited this
+        // method's `@MainActor` isolation and type-checked anyway — the crash
+        // class. This method is `async`, so no `Task` wrapper: one here would
+        // let it return as soon as the request was started, and a caller
+        // awaiting sign-in would race it.
+        //
+        // The awaiting frame holds this object, so a validation already in
+        // flight runs to completion — credentials persisted, DRM credentials
+        // saved — even if the screen that started it goes away. That is
+        // deliberate: the half-finished alternative leaves a patron signed in
+        // on the server with nothing stored locally.
+        do {
+            let result = await networker.execute(
+                req, enableTokenRefresh: false, accountId: libraryAccountID)
 
-            let loggingContext: [String: Any] = [
-                "Request": req.loggableString,
-                "Attempted Barcode": self.uiDelegate?.username?.md5hex() ?? "N/A",
-                "Context": self.uiContext]
+            let loggingContext = Self.signInLoggingContext(request: req, uiContext: uiContext)
 
             switch result {
             case .success(let responseData, _):
                 self.dispatch(.credentialsValidationSucceeded)
                 // Notify delegate that credentials were received and DRM processing is about to begin
                 // This allows the UI to show a loading indicator after WebView dismisses
-                TPPMainThreadRun.asyncIfNeeded {
-                    self.uiDelegate?.businessLogicDidReceiveCredentials?(self)
-                }
+                // Already on the main actor inside this Task, so no hop needed.
+                self.uiDelegate?.businessLogicDidReceiveCredentials?(self)
 
                 #if FEATURE_DRM_CONNECTOR
                 // PP-3649: Save DRM credentials from profile document but defer Adobe
@@ -602,7 +586,9 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
                 case .success(let tokenResponse):
                     self?.dispatch(.bearerTokenReceived(token: tokenResponse.accessToken,
                                                         expiration: tokenResponse.expirationDate))
-                    self?.validateCredentials()
+                    if let self {
+                        self.startSignInTask { await self.validateCredentials() }
+                    }
                 case .failure(let error):
                     self?.handleNetworkError(error as NSError, loggingContext: ["Context": self?.uiContext as Any])
                 }
@@ -649,6 +635,10 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
     /// Precedence: server-supplied problem document > network-connectivity
     /// error > default "invalid credentials". Without the connectivity check,
     /// a dropped Wi-Fi or LTE during sign-in was misreported as bad creds.
+    ///
+    /// A returned title of `""` means the server asked for no title at all
+    /// (`show_title: false`); `nil` means it supplied none and the caller may
+    /// substitute its own. Callers must keep those two cases distinct.
     // `nonisolated`: pure error classifier over an `NSError` + optional
     // problem document, no actor state. Kept off `@MainActor` so nonisolated
     // callers (and the PalaceAuth `AuthReducer` mirror) can invoke it directly.
@@ -657,7 +647,13 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         problemDocument: TPPProblemDocument?
     ) -> (title: String?, message: String?) {
         if let problemDocument {
-            return (problemDocument.title, problemDocument.detail)
+            // `show_title: false` marks a `detail` that should stand on its own
+            // — a library's patron-blocking-rule message, where the standard
+            // "Blocked by library policy." title is framing the library asked
+            // us to drop. Empty rather than nil: nil means "the server gave us
+            // no title" and the display layer substitutes its own
+            // ("Login Failed"), which is exactly what suppression must avoid.
+            return (problemDocument.shouldShowTitle ? problemDocument.title : TPPProblemDocument.suppressedTitle, problemDocument.detail)
         }
         if isNetworkConnectivityError(error) {
             return (Strings.Error.networkUnavailableErrorTitle,
@@ -704,12 +700,12 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         }
     }
 
-    @objc func logIn() {
-        logIn(with: nil)
+    func logIn() async {
+        await logIn(with: nil)
     }
 
     /// Initiates process of signing in with the server.
-    @objc func logIn(with tokenURL: URL? = nil) {
+    func logIn(with tokenURL: URL? = nil) async {
         // Nothing to do without a selected auth method. But on a fast
         // (programmatic or quick-tap) sign-in the user can submit before the
         // account's `authentication_document` has finished loading — at which
@@ -752,13 +748,13 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
                   let password = self.uiDelegate?.pin,
                   let tokenURL = tokenURL ?? userAccount.authDefinition?.tokenURL
             else {
-                validateCredentials()
+                await validateCredentials()
                 return
             }
 
             getBearerToken(username: username, password: password, tokenURL: tokenURL)
         case .basic, .coppa, .anonymous, .none:
-            validateCredentials()
+            await validateCredentials()
         }
     }
 
@@ -800,8 +796,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         // because the body captures non-Sendable `account` (`Account`, owned by
         // the Accounts module) and non-Sendable `self` (`TPPSignInBusinessLogic`).
         // Closing it requires either `Account: Sendable` or
-        // `TPPSignInBusinessLogic: @MainActor` — both out of scope for an
-        // isolation-only pass on this module (see handoff §D/§F). Runtime is
+        // `TPPSignInBusinessLogic: @MainActor`. Runtime is
         // correct: `awaitReady()` is awaited, then all state mutation hops to the
         // main thread via the non-`@Sendable` `asyncIfNeeded`.
         Task { [weak self] in
@@ -809,14 +804,16 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
                 _ = try await account.awaitReady()
             } catch {
                 Log.warn(#file, "Sign-in awaited readiness but the auth document did not load: \(error)")
-                TPPMainThreadRun.asyncIfNeeded { [weak self] in
-                    NotificationCenter.default.post(name: .TPPIsSigningIn, object: false)
-                    self?.isAwaitingReadinessForLogIn = false
-                }
+                NotificationCenter.default.post(name: .TPPIsSigningIn, object: false)
+                self?.isAwaitingReadinessForLogIn = false
                 return
             }
 
-            TPPMainThreadRun.asyncIfNeeded { [weak self] in
+            // Both arms previously hopped through `TPPMainThreadRun`. That hop
+            // was redundant: this `Task` is formed in a `@MainActor` type, so it
+            // inherits that isolation and its body already runs there. Removing
+            // it is also what lets the re-entry below be awaited (PP-5301).
+            do {
                 guard let self else { return }
                 // Details are loaded now; `selectedAuthentication` resolves via
                 // `loadedAccountDetails?.auths`. Re-enter the normal path. If it
@@ -825,7 +822,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
                 // prevents a second await, so a nil here falls through to the
                 // (now harmless) silent return on the recursive call.
                 if self.selectedAuthentication != nil {
-                    self.logIn(with: tokenURL)
+                    await self.logIn(with: tokenURL)
                 } else {
                     NotificationCenter.default.post(name: .TPPIsSigningIn, object: false)
                 }
@@ -1010,10 +1007,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
                     TPPErrorLogger.logError(
                         withCode: .appLogicInconsistency,
                         summary: "uiDelegate missing while refreshing basic auth",
-                        metadata: [
-                            "usingExistingCredentials": usingExistingCredentials,
-                            "hashedBarcode": userAccount.barcode?.md5hex() ?? "N/A"
-                        ])
+                        metadata: ["usingExistingCredentials": usingExistingCredentials])
                     #endif
                 }
                 // `UITextField.text`/`becomeFirstResponder()` are
@@ -1027,7 +1021,7 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
                     uiDelegate?.PINTextField?.text = userAccount.PIN
                 }
 
-                logIn()
+                startSignInTask { await self.logIn() }
                 return false
             } else {
                 MainActor.assumeIsolated {
@@ -1140,55 +1134,16 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
 
     /// - Returns: Whether it is possible to sign up for a new account or not.
     @objc func registrationIsPossible() -> Bool {
-        // Bucket A migration (line 732): state-machine-aware read of
-        // `signUpUrl`. Sync `@objc`, called from SwiftUI rendering.
         return !isSignedIn() && loadedAccountDetails?.signUpUrl != nil
     }
 
     @objc func isSamlPossible() -> Bool {
-        // Bucket A migration (line 736): state-machine-aware read.
-        // Per ADR: SAML reauth inherits the existing 15s reauth-coordinator
+        // SAML reauth inherits the existing 15s reauth-coordinator
         // timeout — do not wrap in additional `withTimeout`. Sync `@objc`
         // signature is preserved; reading `loadState` does not block.
         // On `.detailsFailed` this returns `false`, matching the legacy
         // nil-semantic — the migration does NOT crash on `.detailsFailed`.
         loadedAccountDetails?.auths.contains { $0.isSaml } ?? false
-    }
-
-    /// Auto-select a WebView-based authentication (SAML, then OIDC) when
-    /// the library advertises multiple auth methods and none is explicitly
-    /// chosen. Fixes the regression where multi-auth SAML libraries rendered
-    /// the basic-auth credential fields instead of the SAML sign-in prompt.
-    ///
-    /// Also auto-selects the sole SAML IdP when the chosen SAML auth
-    /// advertises exactly one — without this, tapping "Sign in" on a
-    /// single-IdP SAML library is a silent no-op because
-    /// `samlHelper.logIn()` guards on `selectedIDP?.url`.
-    ///
-    /// Idempotent: only sets `selectedAuthentication` / `selectedIDP` when
-    /// they are currently nil.
-    @objc func selectPreferredAuthIfNeeded() {
-        // Bucket A migration (line 753): state-machine-aware read of `auths`.
-        // Sync `@objc`, called from sync UI flows (e.g. `setupViews`).
-        if selectedAuthentication == nil,
-           let auths = loadedAccountDetails?.auths, auths.count > 1 {
-            if let saml = auths.first(where: { $0.isSaml }) {
-                selectedAuthentication = saml
-            } else if let oidc = auths.first(where: { $0.isOidc }) {
-                selectedAuthentication = oidc
-            }
-        }
-
-        // Auto-select the sole SAML IdP so Sign In opens the WebView
-        // immediately instead of silently no-op'ing. Multi-IdP libraries
-        // still require the user to pick via the IdP list UI.
-        if selectedIDP == nil,
-           let samlAuth = selectedAuthentication,
-           samlAuth.isSaml,
-           let idps = samlAuth.samlIdps,
-           idps.count == 1 {
-            selectedIDP = idps.first
-        }
     }
 
     @objc func shouldShowEULALink() -> Bool {
@@ -1199,8 +1154,6 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         // and the standalone EULA entry is reachable via Settings → User
         // Agreement and the Software Licenses sheet. Gate visibility on the
         // sign-in form being the active surface.
-        // Bucket A migration (line 781): state-machine-aware read of EULA
-        // URL. Sync `@objc`, called from SwiftUI rendering.
         guard loadedAccountDetails?.getLicenseURL(.eula) != nil else {
             return false
         }
@@ -1236,8 +1189,8 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
         // Verify the device is actually still authorized with Adobe
         #if FEATURE_DRM_CONNECTOR
         guard let drmAuthorizer = drmAuthorizer,
-              drmAuthorizer.isUserAuthorized(userID, withDevice: deviceID) else {
-            Log.info(#file, "Device not currently authorized with Adobe - cannot skip activation")
+              drmAuthorizer.canUseRecordedActivation(userAccount) else {
+            Log.info(#file, "Device not usable by this connector - cannot skip activation")
             return false
         }
         #endif

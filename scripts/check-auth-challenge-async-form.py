@@ -60,7 +60,7 @@ types), over a comment-stripped copy of the source so a prose mention in a doc
 comment cannot trip the gate.
 
 Scope: `Palace/**/*.swift` (app target). Test/mock/preview/scripts dirs are
-excluded — mirrors `check-addoperation-literal-ban.py`.
+excluded.
 
 False-positive escape hatch: `// no-auth-challenge-async-form: <reason>` on the
 violating line or any of the 3 preceding lines.
@@ -101,7 +101,7 @@ _RE_NO_BAN_ANNOTATION = re.compile(
     r"//\s*no-auth-challenge-async-form\b", re.IGNORECASE
 )
 
-# Non-prod path substrings — mirrors check-addoperation-literal-ban.py.
+# Non-prod path substrings.
 _NON_PROD_PATH_SUBSTRINGS = (
     "PalaceTests/",
     "Tests/",

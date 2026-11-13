@@ -2,31 +2,13 @@
 //  Reader2PositionAdapterContractTests.swift
 //  PalaceTests
 //
-//  Contract-snapshot tests for the EPUB + PDF position-write/read adapters
-//  introduced in swarm_f4fbef9c Module C. Locks the call ORDER between
-//  the SUTs and their dependencies:
-//
-//    - `TPPLastReadPositionPoster.storeReadPosition(locator:)`:
-//        `bookRegistry.setLocation(locator)` → `positionWriter.save(snapshot)`
-//    - `TPPLastReadPositionSynchronizer.sync(for:book:drmDeviceID:)`:
-//        `positionWriter.load(bookID)` → (conflict-resolution decision)
-//        → optional `bookRegistry.setLocation(remote)`
-//    - `TPPPDFDocumentMetadata.setCurrentPage(_:)`:
-//        `bookRegistry.setLocation(pageLocation)` → `positionWriter.save(snapshot)`
-//
-//  The conflict-resolution rule in the synchronizer (Deviation 7 — same
-//  device + local exists → return nil; same payload → return nil) is
-//  audiobook-specific in the broader system but EPUB-specific in this
-//  module. The contract here pins the CALL SEQUENCE, not the decision
-//  internals — the 23 `SyncDecisionHelper` tests + 4 writer-delegation
-//  tests cover decision branches.
-//
-//  Pattern matches `BorrowReducerContractTests.swift`.
-//
-//  **First run:** records baselines at
-//  `__Snapshots__/Reader2PositionAdapterContractTests/<scenario>.json`
-//  and FAILS with "snapshot recorded — re-run to verify". Set
-//  `CONTRACT_SNAPSHOT_RECORD=1` to deliberately re-record.
+//  Contract snapshots for the EPUB/PDF position adapters' call ORDER:
+//    - `TPPLastReadPositionPoster.storeReadPosition`: registry.setLocation → writer.save
+//    - `TPPLastReadPositionSynchronizer.sync`: writer.load → optional registry.setLocation
+//    - `TPPPDFDocumentMetadata.setCurrentPage`: registry.setLocation → writer.save
+//  Decision internals are covered by the `SyncDecisionHelper` tests.
+//  First run records `__Snapshots__/Reader2PositionAdapterContractTests/<scenario>.json`
+//  and fails; set `CONTRACT_SNAPSHOT_RECORD=1` to re-record.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -151,6 +133,7 @@ private final class RecordingRegistry: NSObject, TPPBookRegistryProvider, @unche
     func preloadData(bookIdentifier: String, locations: [TPPBookLocation]) { inner.preloadData(bookIdentifier: bookIdentifier, locations: locations) }
     func addGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) { inner.addGenericBookmark(location, forIdentifier: bookIdentifier) }
     func deleteGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) { inner.deleteGenericBookmark(location, forIdentifier: bookIdentifier) }
+    func deleteGenericBookmark(identicalTo location: TPPBookLocation, forIdentifier bookIdentifier: String) { inner.deleteGenericBookmark(identicalTo: location, forIdentifier: bookIdentifier) }
     func replaceGenericBookmark(_ oldLocation: TPPBookLocation, with newLocation: TPPBookLocation, forIdentifier bookIdentifier: String) { inner.replaceGenericBookmark(oldLocation, with: newLocation, forIdentifier: bookIdentifier) }
     func removeBook(forIdentifier bookIdentifier: String) { inner.removeBook(forIdentifier: bookIdentifier) }
     func updateAndRemoveBook(_ book: TPPBook) { inner.updateAndRemoveBook(book) }
@@ -266,7 +249,7 @@ final class Reader2PositionAdapterContractTests: XCTestCase {
 
     // MARK: - 3. EPUB Synchronizer — same device + local exists → suppressed
 
-    /// Pins the Deviation 7 conflict-rule: when the server snapshot's
+    /// Pins the same-device conflict rule: when the server snapshot's
     /// device matches `drmDeviceID` AND a local location exists, the
     /// synchronizer returns nil (no alert). The snapshot records exactly
     /// one `writer.load` and NO `registry.setLocation`.

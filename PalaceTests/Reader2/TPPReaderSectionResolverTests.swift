@@ -112,8 +112,8 @@ final class TPPReaderSectionResolverTests: XCTestCase {
         // entry declared first — the chapter — and must be deterministic rather
         // than whichever the sort happened to land on.
         //
-        // Surfaced by mutation: `<` -> `<=` in the comparator survived, because
-        // nothing exercised a tie. That flip makes max(by:) keep the LAST tied
+        // A `<` -> `<=` change in the comparator needs a tie to show: it makes
+        // max(by:) keep the LAST tied
         // entry, announcing an arbitrary sub-heading instead of the chapter.
         let toc = [
             entry("Chapter 2", resource: 5),

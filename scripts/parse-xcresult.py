@@ -125,6 +125,27 @@ RESULT_MAP = {
 }
 
 
+# A test runner that never connected, or died, is filed by xcodebuild as a
+# "test case" named "<Host> (<pid>) encountered an error" under a "System
+# Failures" pseudo-suite (run 36797084975: "The test runner hung before
+# establishing connection."). It is not a test, and listing it as the run's
+# failed test hides that the cause was the runner.
+SYSTEM_FAILURES_SUITE = 'System Failures'
+RUNNER_FAILURE_NAME = re.compile(r'\(\d+\) encountered an error\b')
+
+
+def split_runner_failures(tests: List[Dict]) -> Tuple[List[Dict], List[Dict]]:
+    """-> (tests, [{"name", "message"}]) with runner failures moved out."""
+    kept, runner = [], []
+    for t in tests:
+        if t.get('class') == SYSTEM_FAILURES_SUITE or RUNNER_FAILURE_NAME.search(str(t.get('name', ''))):
+            msgs = [f.get('message', '') for f in t.get('failures', []) if f.get('message')]
+            runner.append({'name': t.get('name', ''), 'message': '; '.join(msgs)})
+        else:
+            kept.append(t)
+    return kept, runner
+
+
 def _is_repetition(node: Dict) -> bool:
     if not isinstance(node, dict):
         return False
@@ -454,7 +475,9 @@ def get_build_status(xcresult_path: str) -> Dict:
             # Extract errors from 'errors' array
             for issue in data.get('errors', []):
                 msg = issue.get('message', '')
-                if msg:
+                # A runner failure is repeated here as an error issue; it is
+                # reported once, under runner_failures, from the test tree.
+                if msg and not RUNNER_FAILURE_NAME.search(msg):
                     build_info['errors'].append(msg)
             
             # Also check 'warnings'
@@ -532,8 +555,11 @@ def generate_report(xcresult_path: str) -> Dict:
                     'status': 'Failure',
                     'duration': 0.0,
                     'duration_formatted': '<1ms',
-                    'failures': [{'message': failure.get('message', 'Test failed')}]
+                    'failures': [{'message': failure.get('failureText',
+                                                         failure.get('message', 'Test failed'))}]
                 })
+            tests, runner_failures = split_runner_failures(tests)
+            failed = max(0, failed - len(runner_failures))
             
             # Use summary stats directly
             return {
@@ -552,7 +578,8 @@ def generate_report(xcresult_path: str) -> Dict:
                 },
                 'tests': tests,
                 'classes': group_tests_by_class(tests),
-                'failed_tests': [t for t in tests if t['status'] == 'Failure']
+                'failed_tests': [t for t in tests if t['status'] == 'Failure'],
+                'runner_failures': runner_failures,
             }
     else:
         print("New API returned no tests, trying legacy...", file=sys.stderr)
@@ -562,6 +589,7 @@ def generate_report(xcresult_path: str) -> Dict:
         tests = get_tests_from_xcresult_legacy(xcresult_path)
     
     tests = deduplicate_tests(tests)
+    tests, runner_failures = split_runner_failures(tests)
     print(f"Found {len(tests)} tests", file=sys.stderr)
     
     total = len(tests)
@@ -595,7 +623,8 @@ def generate_report(xcresult_path: str) -> Dict:
         'tests': sorted(tests, key=lambda t: (t.get('class', ''), t.get('name', ''))),
         'classes': classes,
         'failed_tests': failed_tests,
-        'flaky_tests': flaky_tests
+        'flaky_tests': flaky_tests,
+        'runner_failures': runner_failures,
     }
 
 
@@ -630,6 +659,13 @@ def output_github_actions(report: Dict, output_file: str):
                 f.write(f"{test['class']}.{test['method']}\n")
             f.write("ENDOFFAILEDTESTS\n")
         
+        runner_failures = report.get('runner_failures', [])
+        if runner_failures:
+            f.write("runner_failures<<ENDOFRUNNERFAILURES\n")
+            for r in runner_failures[:30]:
+                f.write(f"{r['name']}: {r['message']}".replace('\n', ' ')[:300] + "\n")
+            f.write("ENDOFRUNNERFAILURES\n")
+
         if classes:
             # Fields: class|total|passed|failed|skipped|duration. `skipped` is emitted so
             # the PR comment can reconcile every row — a class of all-skipped tests must not

@@ -142,8 +142,8 @@ final class AudiobookDataManagerNetworkSyncTests: XCTestCase {
     private var dataManager: AudiobookDataManager!
     private var testStoreURL: URL!
 
-    // Tests below don't exercise the cross-account scope guard added by
-    // swarm_162a3219 / Module C. They inject a "permissive" provider that
+    // Tests below don't exercise the cross-account scope guard.
+    // They inject a "permissive" provider that
     // mirrors whatever libraryId is currently queued so the guard is
     // transparent here. The lifecycle suite
     // (`AudiobookPlaytimesLifecycleTests`) pins the cross-account behavior.
@@ -339,7 +339,7 @@ final class AudiobookDataManagerErrorHandlingTests: XCTestCase {
         clearAudiobookTimeTrackerStore()
         mockNetworkExecutor = MockNetworkExecutorForSync()
         // Permissive cross-account provider — these error-handling tests
-        // don't exercise the scope guard added by swarm_162a3219 / Module C.
+        // don't exercise the cross-account scope guard.
         dataManager = AudiobookDataManager(
             syncTimeInterval: 3600,
             networkService: mockNetworkExecutor,

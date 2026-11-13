@@ -34,6 +34,7 @@ struct EPUBSearchView: View {
                 .accessibilityLabel(Strings.Generic.goBack)
                 Text(Strings.Generic.search)
                     .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
                 Spacer()
             }
             .padding()
@@ -155,14 +156,19 @@ struct EPUBSearchView: View {
         combinedText.append(highlight)
         combinedText.append(AttributedString(text.after ?? ""))
 
-        return Text(combinedText)
-            .palaceFont(.body)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                viewModel.userSelected(locator)
-            }
-            .padding(.horizontal, 5)
+        // A real Button, not a tap gesture: VoiceOver announces each match as a
+        // button that jumps to that place in the book, and Full Keyboard Access
+        // can focus it.
+        return Button {
+            viewModel.userSelected(locator)
+        } label: {
+            Text(combinedText)
+                .palaceFont(.body)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 5)
     }
 
     private func search(newValue: String) {

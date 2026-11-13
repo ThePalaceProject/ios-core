@@ -1,22 +1,10 @@
 //
-//  BookCellModelProcessingStateTests.swift
-//  PalaceTests
-//
-//  The list cell raises its own spinner on tap and only a handful of specific
-//  completion paths ever lowered it, so any borrow that failed without one of
-//  those firing left the spinner up for the lifetime of the cell.
-//
-//  Observed 2026-09-09 while validating PP-3649: an Adobe activation failure
-//  surfaced its alert, and dismissing the alert left the My Books cell
-//  spinning. The failure path clears the REGISTRY's processing flag and
-//  broadcasts `TPPBookProcessingDidChange`; nothing in the cell listened.
-//
-//  `bindReachability` is the same defect already patched for exactly one cause
-//  (a mid-flight network drop) and it has a suite — `BookCellModelOfflineTests`.
-//  `bindProcessingState` is the general case and shipped with none, which is
-//  the gap this file closes: every assertion below fails if the subscription is
-//  deleted, and the last two fail if it is widened into something that fights
-//  the cell's own tap handling.
+//  `bindProcessingState`: the list cell raises its own spinner on tap, and a
+//  borrow failure that clears the registry's processing flag (e.g. an Adobe
+//  activation failure, seen while validating PP-3649) left it spinning because the
+//  cell did not observe `TPPBookProcessingDidChange`. Every assertion fails if the
+//  subscription is deleted; the last two fail if it is widened to fight the cell's
+//  own tap handling. `BookCellModelOfflineTests` covers the reachability case.
 //
 
 import Combine
@@ -89,6 +77,58 @@ final class BookCellModelProcessingStateTests: XCTestCase {
             object: nil,
             userInfo: [TPPNotificationKeys.bookProcessingBookIDKey: bookID,
                        TPPNotificationKeys.bookProcessingValueKey: processing])
+    }
+
+    // MARK: - Already-presented errors
+
+    /// `BorrowOperation` presents its own alert and publishes with
+    /// `presentsAlert: false`. The cell must not raise a second one on top of
+    /// it — the shape a patron reads as dismissing an alert and finding
+    /// another behind it (PP-5407).
+    func test_whenTheProducerAlreadyAlerted_theCellDoesNotRaiseASecondOne() async {
+        let book = makeBook(id: "already-alerted")
+        mockRegistry.setState(.unregistered, for: book.identifier)
+        let model = makeModel(book: book)
+
+        container.downloadCenter.progressReporter.downloadErrorPublisher.send(
+            DownloadErrorInfo(
+                bookId: book.identifier,
+                title: "Borrow Failed",
+                message: "Borrowing could not be completed.",
+                kind: .borrow,
+                retryAction: nil,
+                presentsAlert: false
+            )
+        )
+        await drainMainQueueAsync()
+        await Task.yield()
+        await drainMainQueueAsync()
+
+        XCTAssertNil(model.showAlert,
+                     "the producer already put this failure in front of the patron")
+        XCTAssertNil(model.downloadErrorAlert,
+                     "a half-sheet alert would stack on the one already showing")
+    }
+
+    /// The other arm, so the guard above can still be false: an error nobody
+    /// has shown yet must reach the patron.
+    func test_whenNoOneHasAlertedYet_theCellRaisesTheAlert() async {
+        let book = makeBook(id: "not-yet-alerted")
+        mockRegistry.setState(.unregistered, for: book.identifier)
+        let model = makeModel(book: book)
+
+        container.downloadCenter.progressReporter.downloadErrorPublisher.send(
+            DownloadErrorInfo(
+                bookId: book.identifier,
+                title: "Borrow Failed",
+                message: "Borrowing could not be completed.",
+                kind: .borrow
+            )
+        )
+        await awaitConditionAsync { (model.showAlert ?? model.downloadErrorAlert) != nil }
+
+        XCTAssertNotNil(model.showAlert ?? model.downloadErrorAlert,
+                        "a borrow failure nobody has reported must still reach the patron")
     }
 
     // MARK: - The defect

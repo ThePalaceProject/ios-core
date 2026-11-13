@@ -101,7 +101,7 @@ final class AccountModelGapTests: XCTestCase {
     /// Coverage Gap: AccountDetails — verify eulaIsAccepted persists via UserDefaults
     func testAccountDetails_eulaIsAccepted_persistsAcrossObjectRecreation() {
         // Arrange: use a fresh UUID and per-test isolated UserDefaults suite
-        // (swarm_cd181acd D-cleanup) so the persisted EULA dict cannot
+        // so the persisted EULA dict cannot
         // leak across tests. Both AccountDetails instances below share
         // the same suite to exercise the round-trip.
         let uuid = "coverage-gap-eula-\(UUID().uuidString)"
@@ -132,7 +132,7 @@ final class AccountModelGapTests: XCTestCase {
     /// Coverage Gap: AccountDetails — verify syncPermissionGranted persists via UserDefaults
     func testAccountDetails_syncPermissionGranted_persistsAcrossObjectRecreation() {
         // Arrange: use a fresh UUID and per-test isolated UserDefaults suite
-        // (swarm_cd181acd D-cleanup) so the persisted sync dict cannot
+        // so the persisted sync dict cannot
         // leak across tests.
         let uuid = "coverage-gap-sync-\(UUID().uuidString)"
         let defaults = Self.testUserDefaults()

@@ -1,22 +1,11 @@
 //
 //  ReaderServicePDFRouteTests.swift
-//  PalaceTests
 //
-//  Behavior tests for `ReaderService.pdfOpenRoute(for:)` — the pure routing
-//  decision that `openPDF` dispatches on to send a book to either the LCP
-//  extract pipeline (`openLCPPDF`) or the plain PDFKit path (`openPlainPDF`).
-//
-//  Regression context: the Continue-reading card calls `ReaderService.openPDF`
-//  directly. While `openPDF` was LCP-only, tapping a *plain* (open-access)
-//  downloaded PDF drove it through the Readium publication-open + disk-extract
-//  pipeline, which failed with a spurious "unable to open" alert — the user
-//  saw a loading spinner and then an error. BookDetail worked only because it
-//  routed through `BookService.presentPDF`'s own LCP gate. The fix moves the
-//  gate into `openPDF` (via `pdfOpenRoute`) so every caller routes correctly
-//  through one seam. These tests pin that a non-LCP PDF routes `.plain` and an
-//  LCP PDF routes `.lcp`; flipping the gate condition in production fails them.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  `ReaderService.pdfOpenRoute(for:)` decides whether `openPDF` sends a book to
+//  the LCP extract pipeline or plain PDFKit. The Continue-reading card calls
+//  `openPDF` directly, and while it was LCP-only an open-access PDF failed with
+//  a spurious "unable to open" alert. The gate now lives in `openPDF`, so every
+//  caller routes through one seam: non-LCP → `.plain`, LCP → `.lcp`.
 //
 
 import XCTest

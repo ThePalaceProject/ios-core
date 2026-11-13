@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opds="http://opds-spec.org/2010/catalog" xmlns:schema="http://schema.org/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:simplified="http://librarysimplified.org/terms/">
+  <id>https://palace-fixtures.test/library/loans/</id>
+  <title>Active loans and holds</title>
+  <updated>2026-01-01T00:00:00Z</updated>
+  <link href="https://palace-fixtures.test/library/loans/" rel="self" type="application/atom+xml;profile=opds-catalog;kind=acquisition"/>
+</feed>

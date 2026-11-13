@@ -1,0 +1,25 @@
+Testing started
+Test Suite 'Selected tests' started at 2026-10-13 11:20:01.000.
+Test Suite 'PalaceTests.xctest' started at 2026-10-13 11:20:01.001.
+Test Suite 'WidgetExtraTests' started at 2026-10-13 11:20:01.100.
+Test Case '-[PalaceTests.WidgetExtraTests testA]' started.
+Test Case '-[PalaceTests.WidgetExtraTests testA]' passed (0.001 seconds).
+Test Case '-[PalaceTests.WidgetExtraTests testB]' started.
+Test Case '-[PalaceTests.WidgetExtraTests testB]' passed (0.001 seconds).
+Test Suite 'WidgetExtraTests' passed at 2026-10-13 11:20:01.200.
+	 Executed 2 tests, with 0 failures (0 unexpected) in 0.002 (0.003) seconds
+Test Suite 'WidgetTests' started at 2026-10-13 11:20:01.100.
+Test Case '-[PalaceTests.WidgetTests testA]' started.
+Test Case '-[PalaceTests.WidgetTests testA]' passed (0.001 seconds).
+Test Case '-[PalaceTests.WidgetTests testB]' started.
+Test Case '-[PalaceTests.WidgetTests testB]' passed (0.001 seconds).
+Test Case '-[PalaceTests.WidgetTests testC]' started.
+Test Case '-[PalaceTests.WidgetTests testC]' passed (0.001 seconds).
+Test Suite 'WidgetTests' passed at 2026-10-13 11:20:01.200.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.003 (0.004) seconds
+Test Suite 'PalaceTests.xctest' passed at 2026-10-13 11:20:01.300.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.005 (0.006) seconds
+Test Suite 'Selected tests' passed at 2026-10-13 11:20:01.301.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.005 (0.007) seconds
+
+** TEST SUCCEEDED **

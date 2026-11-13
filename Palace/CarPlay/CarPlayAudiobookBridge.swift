@@ -24,6 +24,10 @@ enum CarPlayPlaybackError: Error {
     case drmError
     case notDownloaded
     case unknown
+    /// The open returned `.alreadyLoading`: a stop or a newer open replaced it
+    /// (PP-5302), the same book was already loading, or the LCP content gate
+    /// found a newer open. Nothing to report to the patron.
+    case superseded
 
     init(from sessionError: AudiobookSessionError) {
         switch sessionError {
@@ -33,8 +37,28 @@ enum CarPlayPlaybackError: Error {
             self = .notDownloaded
         case .networkUnavailable:
             self = .networkError
+        case .alreadyLoading:
+            self = .superseded
         default:
             self = .unknown
+        }
+    }
+
+    /// The CarPlay alert for this failure, or nil when none should be shown.
+    var alertContent: (title: String, message: String)? {
+        switch self {
+        case .authenticationRequired:
+            return (Strings.CarPlay.Error.authRequired, Strings.CarPlay.Error.authMessage)
+        case .networkError:
+            return (Strings.CarPlay.Error.offline, Strings.CarPlay.Error.offlineMessage)
+        case .drmError:
+            return (Strings.CarPlay.Error.playbackFailed, Strings.CarPlay.Error.drmMessage)
+        case .notDownloaded:
+            return (Strings.CarPlay.Error.notDownloaded, Strings.CarPlay.Error.downloadRequired)
+        case .unknown:
+            return (Strings.CarPlay.Error.playbackFailed, Strings.CarPlay.Error.tryAgain)
+        case .superseded:
+            return nil
         }
     }
 }
@@ -45,18 +69,11 @@ enum CarPlayPlaybackError: Error {
 enum CarPlayAuthHelper {
     /// Checks if the user is authenticated with the current library.
     ///
-    /// PHASE 1 (swarm_81b5099e Bucket A) — converted to async to consume
-    /// `Account.awaitReady()`. Previously read `account.details` directly
-    /// and returned `true` (treating unloaded details as "no auth required")
-    /// during the cold-launch window between disk-preload and
-    /// authentication-document fetch. That silently let CarPlay start
-    /// playback for libraries that DID require auth — until the playback
-    /// itself 401'd from a bad bearer header. Now blocks on awaitReady;
-    /// on awaitReady failure surfaces as unauthenticated so CarPlay shows
-    /// its existing "auth required" alert (CarPlay cannot show a sign-in
-    /// UI — phone-side sign-in is the only resolution). The 20s session-
-    /// manager timeout downstream covers the await window; per the ADR's
-    /// single-timeout policy, no additional withTimeout wrapping here.
+    /// Awaits `Account.awaitReady()` so unloaded account details during cold
+    /// launch are not read as "no auth required". On failure it reports
+    /// unauthenticated so CarPlay shows its "auth required" alert (CarPlay
+    /// cannot present sign-in). The downstream 20s session-manager timeout
+    /// bounds the wait.
     static func isAuthenticated(accountsManager: AccountsManager = AppContainer.production().accountsManager) async -> Bool {
         guard let account = accountsManager.currentAccount else {
             // Shares the audiobook gate's policy rather than restating it — CarPlay
@@ -201,13 +218,8 @@ final class CarPlayAudiobookBridge: ObservableObject {
 
     /// Dismisses the audiobook view on the phone.
     ///
-    /// swarm_0b7616e7 Module C — replaces the legacy
-    /// `coordinator.removeAudioModel + coordinator.popToRoot` pair with a
-    /// presenter minimize. The session itself remains active (mini-player
-    /// stays visible on the phone — that's the P3 win); only the
-    /// full-screen player UI is dismissed. CarPlay disconnect should
-    /// NEVER stop phone playback — phone-side handling owns its own
-    /// lifecycle.
+    /// Minimizes the presenter: the session stays active and the mini-player
+    /// stays visible. CarPlay disconnect must never stop phone playback.
     ///
     /// We use the AppContainer-resolved presenter so production and any
     /// `withAudiobookSessionPresenter(_:)` test-seam override share the
@@ -218,8 +230,8 @@ final class CarPlayAudiobookBridge: ObservableObject {
         presenter.minimize()
     }
 
-    /// Checks if user is authenticated.
-    /// PHASE 1: async to consume the Bucket A readiness gate via the helper.
+    /// Checks if user is authenticated; async because it awaits account
+    /// readiness.
     func isAuthenticated() async -> Bool {
         await CarPlayAuthHelper.isAuthenticated()
     }

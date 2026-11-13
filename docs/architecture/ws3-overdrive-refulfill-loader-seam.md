@@ -1,6 +1,6 @@
 # ADR: Injectable loader factory on AudiobookSessionManager (WS-3 OverDrive re-fulfill)
 
-**Status:** Accepted (coordinator-approved, pending architect SoD)
+**Status:** Accepted; implemented in #1073 (`AudiobookSessionManager.makeLoader`).
 **Date:** 2026-06-11
 **Context:** WS-3 / 3.2.0 crash-triage follow-up — OverDrive expired-signed-URL
 playback dead-end (`fleet/w-lane-overdrive`).
@@ -24,8 +24,12 @@ seam to inject a spy.
 Add a minimal, default-preserving injection seam to `AudiobookSessionManager`:
 
 ```swift
-var makeLoader: (Bool) -> AudiobookLoader = { AudiobookLoader(forceRefulfill: $0) }
+private(set) var makeLoader: @MainActor (Bool) -> AudiobookLoader
 ```
+
+The factory is an `init` parameter, `makeLoader:`, whose default is
+`{ AudiobookLoader(forceRefulfill: $0) }`. It was first a settable property that
+tests assigned; PP-5302 moved it to construction so tests pass it to `init`.
 
 and widen `handleManagerState` from `private` to `internal` (visibility only —
 no new API surface). `openAudiobook` now calls `makeLoader(forceRefulfill)`
@@ -34,11 +38,11 @@ instead of the inline constructor.
 ## Production-behavior-unchanged invariant (the hard constraint)
 
 The default `makeLoader` closure is **byte-equivalent** to the inline
-`AudiobookLoader(forceRefulfill:)` it replaces. Production never overrides
-`makeLoader`, so runtime behavior on the real path is identical to before. The
-seam is exercised only by tests, which assign a spy closure returning
-`AudiobookLoader(adapters: [spyAdapter])` (`AudiobookLoader` is `final`, so the
-spy is at the adapter level). `handleManagerState`'s widening is visibility-only.
+`AudiobookLoader(forceRefulfill:)` it replaces. Production never passes
+`makeLoader:`, so runtime behavior on the real path is identical to before. The
+seam is exercised only by tests, which pass a closure returning
+`AudiobookLoader(adapters: [spyAdapter])` to `init` (`AudiobookLoader` is
+`final`, so the spy is at the adapter level). `handleManagerState`'s widening is visibility-only.
 
 ## What this seam does and does NOT prove
 

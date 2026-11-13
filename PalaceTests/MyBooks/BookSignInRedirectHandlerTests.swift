@@ -1,20 +1,9 @@
 //
-//  BookSignInRedirectHandlerTests.swift
-//  PalaceTests
-//
-//  Coverage for the SAML/cookie auth-redirect state machine in
-//  BookSignInRedirectHandler.
-//
-//  handleProblem branches covered:
-//    - .SAMLStarted circuit breaker (sign-in modal without sign-out)
-//    - SAML cookies expired (state .SAMLStarted + retry startDownload)
-//    - No-credentials sign-in (reauth + retry on hasCredentials)
-//
-//  Plus cancellation, book-found, and cookie-storage sync.
-//
-//  handleSAMLStartedState's UIKit web-view presentation is NOT
-//  covered here — it's a side-effect with no observable test surface
-//  short of integration testing.
+//  BookSignInRedirectHandler's SAML/cookie auth-redirect state machine:
+//  handleProblem's .SAMLStarted circuit breaker, expired SAML cookies, and
+//  no-credentials reauth + retry, plus cancellation, book-found and cookie-storage
+//  sync. handleSAMLStartedState's web-view presentation has no observable unit
+//  surface and is left to integration testing.
 //
 
 import XCTest
@@ -47,7 +36,12 @@ final class BookSignInRedirectHandlerTests: XCTestCase {
             bookRegistry: registry,
             stateManager: stateManager,
             reauthenticator: reauthenticator,
-            userAccountProvider: { [unowned self] in self.userAccount },
+            // Captured STRONGLY, not `[unowned self]`. The circuit-breaker
+            // branch hops to other actors, so its Task can resume AFTER
+            // tearDown has nil'd `userAccount` — and reading the IUO through
+            // `self` then traps with "Unexpectedly found nil", killing the
+            // whole test host and taking the rest of the bundle with it.
+            userAccountProvider: { [account = userAccount!] in account },
             credentialRequestState: credentialState
         )
         handler.delegate = spyDelegate
@@ -92,7 +86,9 @@ final class BookSignInRedirectHandlerTests: XCTestCase {
     /// Retained only for the SAML-cookies-expired branch, whose retry runs on
     /// a background `Task { }` (actor hops + `MainActor.run`) with no handle to
     /// join — the loud-on-timeout poll is the honest fallback there. All
-    /// all-`@MainActor` branches use `flushMainActorTasks()` instead.
+    /// Branches that genuinely never leave this actor use
+    /// `flushMainActorTasks()` instead. The SAMLStarted circuit breaker is
+    /// NOT one of them, despite once being listed as such.
     private func waitForAsync(
         timeout: TimeInterval = 10.0,
         file: StaticString = #file,
@@ -103,8 +99,9 @@ final class BookSignInRedirectHandlerTests: XCTestCase {
     }
 
     /// Deterministic join for the branches whose entire flow runs in
-    /// `Task { @MainActor }` bodies on THIS actor (SAMLStarted circuit breaker,
-    /// no-credentials sign-in, has-credentials no-op). Awaiting barrier
+    /// `Task { @MainActor }` bodies on THIS actor (no-credentials sign-in,
+    /// has-credentials no-op). The SAMLStarted circuit breaker was listed
+    /// here and does not belong: it awaits two other actors. Awaiting barrier
     /// `Task { @MainActor }` values services those earlier-submitted tasks in
     /// order; the reauth mock invokes its completion synchronously, so the
     /// whole entry→reauth-completion→retry chain drains. Completes the instant
@@ -161,10 +158,16 @@ final class BookSignInRedirectHandlerTests: XCTestCase {
         }
 
         handler.handleProblem(for: book, problemDocument: nil)
-        // Circuit-breaker flow is all `Task { @MainActor }` — flush drains it
-        // (the entry Task calls authenticateIfNeeded, whose mock fires its
-        // completion synchronously) rather than polling a wall-clock deadline.
-        await flushMainActorTasks()
+        // NOT `flushMainActorTasks()`. The circuit-breaker branch is not
+        // all-`@MainActor`: it awaits `stateManager.bookIdentifierToDownloadInfo`
+        // and `stateManager.downloadCoordinator` (BookSignInRedirectHandler.swift
+        // :170-171), both other actors. A main-actor barrier cannot join work on
+        // another actor's executor, so under serial-leg load the assertions ran
+        // before the Task reached `setState(.downloadFailed)` — and the Task then
+        // resumed after tearDown and trapped on a nil IUO, crashing the host.
+        await waitForAsync { [self] in
+            self.reauthenticator.authenticateIfNeededCalled
+        }
 
         XCTAssertEqual(registry.state(for: book.identifier), .downloadFailed,
                        "Circuit breaker flips state to .downloadFailed before sign-in modal")

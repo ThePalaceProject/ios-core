@@ -1,30 +1,8 @@
 //
-//  BorrowAndDownloadIntegrationTests.swift
-//  PalaceTests
-//
-//  Integration tests that wire REAL collaborators across the borrow ->
-//  download -> return arc. Unlike the unit tests under PalaceTests/MyBooks/
-//  which mock the registry, these tests assemble:
-//
-//    * Real `TPPBookRegistry` (constructed against a fresh `AccountsManager`
-//      so cross-test state can't leak)
-//    * Real `TPPNetworkExecutor` with `HTTPStubURLProtocol`-backed
-//      URLSession (so every request is hermetic)
-//    * Real `BorrowOperation` driven by injected fetchBook/alert closures
-//      (the only seams BorrowOperation exposes to its caller — these are
-//      production-shipped closures, not test-only hooks)
-//    * Real `MyBooksDownloadCenter` whose state-manager is observable for
-//      side-effect assertions (state-machine transitions, registry writes)
-//
-//  Only the network layer + DRM are mocked. Disk state (registry persistence)
-//  is allowed to write to the real registry file under the fresh
-//  AccountsManager — registry data lives inside the per-account folder, and
-//  the fresh AccountsManager has no current account, so no real persistence
-//  fires.
-//
-//  SRS: REQ-INTG-BORROW-001 — Borrow + download + return composition
-//
-//  Copyright 2026 The Palace Project. All rights reserved.
+//  Borrow -> download -> return with real TPPBookRegistry (fresh AccountsManager),
+//  TPPNetworkExecutor over HTTPStubURLProtocol, BorrowOperation, and
+//  MyBooksDownloadCenter. Only the network and DRM are mocked; the fresh
+//  AccountsManager has no current account, so no registry persistence fires.
 //
 
 import XCTest
@@ -45,6 +23,7 @@ class BorrowAndDownloadIntegrationTests: PalaceWiringTestCase {
     private var stateManager: DownloadStateManager!
     private var reachability: MockReachability!
     private var downloadCenter: MyBooksDownloadCenter!
+    private var networkLossMonitor: DownloadNetworkLossMonitor!
 
     /// Real registry-mock used by BorrowOperation (the operation has its own
     /// internal closure seams that bypass the registry entirely for the
@@ -87,6 +66,10 @@ class BorrowAndDownloadIntegrationTests: PalaceWiringTestCase {
             stateManager: stateManager,
             reachability: reachability
         )
+        let center: MyBooksDownloadCenter = downloadCenter
+        networkLossMonitor = MainActor.assumeIsolated {
+            AppContainer.makeDownloadNetworkLossMonitor(for: center)
+        }
 
         fetchBookResult = nil
         fetchBookCalls = []
@@ -96,6 +79,7 @@ class BorrowAndDownloadIntegrationTests: PalaceWiringTestCase {
     override func tearDown() {
         BorrowOperation.clearAllBorrowReauthState()
         HTTPStubURLProtocol.reset()
+        networkLossMonitor = nil
         downloadCenter = nil
         reachability = nil
         stateManager = nil
@@ -144,6 +128,7 @@ class BorrowAndDownloadIntegrationTests: PalaceWiringTestCase {
             presentBorrowErrorAlert: { [unowned self] title, message, _, _, _, retry in
                 self.alertCalls.append((title, message, retry != nil))
             },
+            publishBorrowError: { _ in },
             presentSignInModal: { _ in },
             attemptOIDCReauth: { false }
         )
@@ -281,7 +266,7 @@ class BorrowAndDownloadIntegrationTests: PalaceWiringTestCase {
     /// reachability drop must transition every active download to
     /// .downloadFailed within a deterministic window. Verifies the
     /// composition of:
-    ///   reachability publisher -> MBDC's drop handler -> state manager
+    ///   reachability publisher -> the container's network-loss monitor -> state manager
     ///   teardown -> registry state writes.
     func testReachabilityDrop_DuringActiveDownloads_FailsAllOfThem() async {
         let bookA = makeBook(identifier: "midflight-a")

@@ -1,33 +1,12 @@
-//
 //  TPPCredentialSnapshotCoherenceTests.swift
-//  PalaceTests
 //
-//  Regression guard for the build-459 → HEAD UI refresh bug.
-//
-//  Context: after PR #822 introduced per-account `TPPUserAccount` instances
-//  and AccountDetailViewModel switched from the static class-level
-//  `TPPUserAccount.credentialSnapshot(for:)` to the per-instance method,
-//  the sign-in/sign-out UI stopped updating. Root cause: each
-//  `TPPKeychainVariable` caches its last-read value in memory and only
-//  invalidates explicitly. Historically two instances could point at the same
-//  library (a singleton writer + a per-account reader), so the reader's cache
-//  went stale after the writer persisted a change.
-//
-//  Contract as of CP-D2 (swarm_27c181b5 Wave C): production keeps exactly ONE
-//  `TPPUserAccount` per library UUID (`AccountsManager.userAccount(for:)`
-//  cache) and the keychain cache is write-through, so the single production
-//  instance is always self-coherent WITHOUT re-reading the keychain on every
-//  `credentialSnapshot()`. Cross-instance / out-of-band coherence is now
-//  carried by EVENT-DRIVEN invalidation (`invalidateCredentialCaches()`, fired
-//  on sign-out finalisation and account switch) rather than per-read
-//  invalidation.
-//
-//  These tests still write through one instance and read through a peer, but
-//  they now fire the invalidation EVENT (the production seam) between the peer
-//  write and the coherence read — proving the event-driven mechanism keeps
-//  peers coherent. A regression that drops the event-driven invalidation, or
-//  that breaks the write-through cache, fails here.
-//
+//  After #822 introduced per-account `TPPUserAccount` instances, the sign-in UI
+//  stopped updating: each `TPPKeychainVariable` caches its value, so a reader
+//  instance went stale after a peer wrote. Production now keeps one instance per
+//  library UUID with a write-through cache, and cross-instance coherence comes
+//  from `invalidateCredentialCaches()` on sign-out and account switch. These
+//  tests write through one instance, fire that invalidation, and read through a
+//  peer; dropping the invalidation or the write-through cache fails them.
 
 import XCTest
 import PalaceKeychain

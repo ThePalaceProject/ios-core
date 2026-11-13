@@ -38,6 +38,10 @@ struct PDFThumbnailStrip: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: spacing) {
                         ForEach(0..<provider.pageCount, id: \.self) { page in
+                            // The cell carries `.accessibilityLabel` and
+                            // `.isButton`/`.isSelected` (`PDFThumbnailStripCell.body`),
+                            // so the tap target already announces as a button.
+                            // accesslint:disable A11Y.SWIFTUI.MISSING_TRAITS
                             PDFThumbnailStripCell(
                                 provider: provider,
                                 page: page,
@@ -47,6 +51,7 @@ struct PDFThumbnailStrip: View {
                             .id(page)
                             .contentShape(Rectangle())
                             .onTapGesture { currentPage = page }
+                            // accesslint:enable A11Y.SWIFTUI.MISSING_TRAITS
                         }
                     }
                     .padding(.horizontal, 12)
@@ -143,13 +148,9 @@ private struct PDFThumbnailStripCell: View {
     }
 }
 
-/// Sendable carrier that transports the non-Sendable `PDFKitThumbnailProvider`
-/// across the `@Sendable` background-render closure in `Fetcher.fetch()`.
-/// `PDFKitThumbnailProvider.thumbnail(for:)` is invoked ONLY on
-/// `pdfThumbnailRenderingQueue`, and the rendered image is published back via
-/// the main-queue hop — the provider is never touched concurrently — so
-/// `@unchecked Sendable` is sound. Mirrors `ImageCompletionBox` in
-/// `ImageLoaderImpl`.
+/// Sendable carrier for the non-Sendable `PDFKitThumbnailProvider` in
+/// `Fetcher.fetch()`. Invariant: the provider is only used on
+/// `pdfThumbnailRenderingQueue`, never concurrently.
 private final class ThumbnailProviderBox: @unchecked Sendable {
     let provider: PDFKitThumbnailProvider
     init(_ provider: PDFKitThumbnailProvider) { self.provider = provider }

@@ -1,42 +1,11 @@
-//
 //  BookDetailOpenRoutingTests.swift
-//  PalaceTests
 //
-//  God-class decomposition — pin-before-extract pack for
-//  `Palace/Book/UI/BookDetail/BookDetailViewModel.swift`, MOVING clusters
-//  "Reading / open-routing" and "Related books" (plan §3a-4 / §5). These clusters
-//  become `BookOpenRouter` (open-routing) and `RelatedBooksService` (related
-//  derivation). The tests lock the observable routing DECISION and the related-
-//  navigation state derivation so the extraction can't change them silently.
-//
-//  ADDITIVE — does NOT overlap the existing 81-125 tests in
-//  `PalaceTests/Book/BookDetailViewModelTests`, which pin the streamingHTML
-//  NavigationCoordinator push, BookButtonMapper/buttonTypes, series-row display,
-//  selectRelatedBook clearing, and showMoreBooksForLane. Here we add:
-//    1. open-routing decision table: audiobook format → the injected
-//       AudiobookSessionManaging is opened; a non-audiobook format is NOT.
-//    2. selectRelatedBook re-derives bookState from the registry for the NEWLY
-//       selected book (the existing test asserts identifier + lane-clearing but
-//       never the re-derived state).
-//
-//  SEAM: EPUB / PDF / streamingHTML open-routing runs through `BookService.open`
-//  → `AppContainer.production().readerService` / `.navigationCoordinatorHub`
-//  (process-wide statics, NOT injected into the VM), so those destinations are
-//  not observable from a unit seam. Only the audiobook branch is drivable, via
-//  the injected `AudiobookSessionManaging`. The planned `BookOpenRouter`
-//  extraction should inject reader + navigation seams so EPUB/PDF/streaming
-//  destinations become assertable. Pinned here: audiobook routing + content-type
-//  discrimination through the one seam that exists today.
-//
-//  SEAM: `fetchRelatedBooks` / `createRelatedBooksCells` (the author-lane
-//  reordering derivation) depends on the CONCRETE `OPDSFeedService` actor
-//  returning an `.acquisitionGrouped` feed with `groupAttributes`; it cannot be
-//  unit-pinned without an injected `OPDSFeedFetching` seam + a grouped-feed
-//  fixture. `RelatedBooksService` should take `OPDSFeedFetching`. The author-
-//  reorder derivation is left uncovered pending that inversion.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Pins BookDetailViewModel's open routing and related-book selection before the
+//  `BookOpenRouter` / `RelatedBooksService` extraction: audiobooks open through the
+//  injected `AudiobookSessionManaging` and other formats do not, and
+//  `selectRelatedBook` re-derives state for the new book. EPUB/PDF/streaming
+//  destinations go through production statics, and the author-lane reordering
+//  needs an injected feed fetcher, so neither is covered here.
 
 import Combine
 import PalacePreferences
@@ -55,6 +24,8 @@ final class BookDetailOpenRoutingTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        // `_awaitOpenTasksForTesting` has no deadline; the allowance fails a hung open.
+        executionTimeAllowance = 60
         appContainer = makeTestAppContainer()
     }
 
@@ -66,8 +37,8 @@ final class BookDetailOpenRoutingTests: XCTestCase {
     // MARK: - Open-routing decision table
 
     /// AUDIOBOOK content type must route through `openBook` → `openAudiobook` →
-    /// `BookService.open` → the injected `AudiobookSessionManaging`. Pinning this
-    /// at the VM's `openBook` switch (rather than at BookService) is what locks
+    /// `BookOpenRouter.open` → the injected `AudiobookSessionManaging`. Pinning this
+    /// at the VM's `openBook` switch (rather than at the router) is what locks
     /// the routing decision: the session is opened exactly once, with the
     /// resolved book's identifier and `startPlaying: true`.
     ///
@@ -95,6 +66,27 @@ final class BookDetailOpenRoutingTests: XCTestCase {
                        "The routed identifier must be the audiobook under open")
         XCTAssertEqual(session.lastStartPlaying, true,
                        "Audiobook opens must request immediate playback (startPlaying: true)")
+    }
+
+    /// `openAudiobook` resolves the book through the view model's own registry,
+    /// so the session gets the registry's record rather than the caller's copy.
+    func testOpenAudiobook_resolvesTheBookThroughTheViewModelsRegistry() async {
+        let identifier = "vm-registry-\(UUID().uuidString)"
+        let callerCopy = TPPBookMocker.mockBook(identifier: identifier, title: "Caller copy", distributorType: .OpenAccessAudiobook)
+        let registryCopy = TPPBookMocker.mockBook(identifier: identifier, title: "Registry copy", distributorType: .OpenAccessAudiobook)
+        let registry = TPPBookRegistryMock()
+        registry.addBook(registryCopy, state: .downloadSuccessful)
+        let session = RecordingAudiobookSession()
+        let vm = makeVM(book: callerCopy, registry: registry, session: session)
+        var finishCount = 0
+
+        vm.openAudiobook(callerCopy, completion: { finishCount += 1 })
+
+        await BookOpenRouter._awaitOpenTasksForTesting()
+        XCTAssertEqual(finishCount, 1, "The open must report completion once")
+        XCTAssertTrue(session.lastOpenedBook === registryCopy,
+                      "The open must resolve through the registry the view model was built with")
+        XCTAssertEqual(session.openCount, 1)
     }
 
     /// The discriminator: a NON-audiobook format must NOT reach the audiobook
@@ -128,7 +120,7 @@ final class BookDetailOpenRoutingTests: XCTestCase {
     /// selectRelatedBook, on navigating to a DIFFERENT book, must re-derive
     /// `bookState` from the registry for the NEWLY selected identifier. The
     /// existing suite asserts the book swap + lane-clearing but never the state
-    /// re-derivation — so a mutant that reads the OLD identifier (or skips the
+    /// re-derivation — so a change that reads the OLD identifier (or skips the
     /// state read entirely) would pass there and fail here.
     func testSelectRelatedBook_differentBook_reDerivesBookStateFromRegistryForNewBook() {
         let current = TPPBookMocker.mockBook(identifier: "current-book", title: "Current",
@@ -216,11 +208,11 @@ final class BookDetailOpenRoutingTests: XCTestCase {
 
 // MARK: - Recording session double
 
-/// Minimal `AudiobookSessionManaging` that records the open call BookService
+/// Minimal `AudiobookSessionManaging` that records the open call BookOpenRouter
 /// routes to it. Overrides the 3-arg `openAudiobook` witness (the variant
-/// `BookService.dispatchOpen` invokes) so the routing decision is observable.
+/// `BookOpenRouter.dispatch` invokes) so the routing decision is observable.
 /// Mirrors the compiling `HookRecordingSession` in
-/// `PalaceTests/Book/BookServiceAudiobookOpenTests.swift`.
+/// `PalaceTests/Book/BookOpenRouterAudiobookOpenTests.swift`.
 ///
 /// VERIFY: if `AudiobookSessionManaging` gains a required (non-defaulted) member,
 /// add a stub here.
@@ -228,6 +220,7 @@ final class BookDetailOpenRoutingTests: XCTestCase {
 private final class RecordingAudiobookSession: AudiobookSessionManaging {
     private(set) var openCount = 0
     private(set) var lastOpenedIdentifier: String?
+    private(set) var lastOpenedBook: TPPBook?
     private(set) var lastStartPlaying: Bool?
     var onOpen: (() -> Void)?
 
@@ -236,6 +229,7 @@ private final class RecordingAudiobookSession: AudiobookSessionManaging {
                        onLoadingShellPresented: (@MainActor () -> Void)?) async -> Result<Void, AudiobookSessionError> {
         openCount += 1
         lastOpenedIdentifier = book.identifier
+        lastOpenedBook = book
         lastStartPlaying = startPlaying
         onOpen?()
         return .success(())

@@ -1,44 +1,11 @@
-//
 //  AudiobookSessionManagerPresenterMigrationTests.swift
-//  PalaceTests
 //
-//  Module C (swarm_0b7616e7) — pins the migration of
-//  `AudiobookSessionManager` off `coordinator.pushAudioRoute(...)` /
-//  `coordinator.storeAudioModel(...)` / `coordinator.removeAudioModel(...)`
-//  / `coordinator.popToRoot()` onto the new root-level
-//  `AudiobookSessionPresenter`. These tests are SEPARATE from the existing
-//  `AudiobookSessionManagerTests` / `AudiobookFirstOpenHangTests` /
-//  `AudiobookSessionManagerShutdownTests` — those continue to pass
-//  unchanged. This file ADDS the presenter-migration coverage.
-//
-//  Two spy strategies are used per the contract's A1 finding (Module C
-//  contract §"Spy strategy"):
-//
-//    Path 1 — `SpyAudiobookSessionPresenter` via the manager's
-//    `audiobookSessionPresenterProvider` closure (the manager's own DI
-//    seam, no AppContainer modifier needed). Assertion: "the manager
-//    called the right presenter method." Used for tests 1, 5, 6 + the
-//    F-011 first-open + resume-from-mini-player tests.
-//
-//    Path 2 — real `NavigationCoordinator` + `NavigationCoordinatorHub`
-//    via `navigationCoordinatorHubProvider`. Assertion: "the legacy
-//    coordinator was NOT touched." Used for tests 2, 3, 4 — the test
-//    asserts on observable state of the live coordinator (`path.isEmpty`,
-//    `resolveAudioModel(for:)`).
-//
-//  Driving strategy: the migration tests drive the new INTERNAL seams
-//  (`pushSessionToPresenter(book:playbackModel:)` and
-//  `dismissPlayerOnPhone(bookId:)`) directly. These are the production
-//  seams that the migration introduces — `presentCoverArtAndNavigation`
-//  calls `pushSessionToPresenter` directly, and `stopPlayback(dismissPhoneUI:
-//  true)` calls `dismissPlayerOnPhone`. Driving the seams directly is
-//  honest end-state coverage and matches the precedent set by
-//  `AudiobookFirstOpenHangTests` driving `awaitReadinessAndIssueFirstPlay`.
-//  An end-to-end loop through `openAudiobook` is NOT feasible from a unit
-//  test (the loader stage requires a real downloaded audiobook).
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
-//
+//  Pins the move of `AudiobookSessionManager` off the coordinator's audio-route
+//  calls and onto the root-level `AudiobookSessionPresenter`. A spy presenter
+//  (via `audiobookSessionPresenterProvider`) asserts the right presenter call; a
+//  real `NavigationCoordinator` + hub asserts the legacy coordinator is untouched.
+//  Tests drive `pushSessionToPresenter` and `dismissPlayerOnPhone` directly, since
+//  a full `openAudiobook` loop needs a real downloaded audiobook.
 
 import Combine
 import XCTest
@@ -255,7 +222,7 @@ final class AudiobookSessionManagerPresenterMigrationTests: XCTestCase {
 
     // MARK: - Nil-book dismiss branch (PR #1230 "✕ did nothing" fix)
 
-    /// BLOCKER coverage (qa_test SoD review of PR #1230): `stopPlayback` with
+    /// PR #1230: `stopPlayback` with
     /// `dismissPhoneUI: true` and NO bound book (`currentBook == nil`) must
     /// STILL clear the presenter on the flag-ON path. This is the exact
     /// regression the fix addressed — gating the whole dismiss behind

@@ -2,20 +2,11 @@
 //  DownloadThrottlingService.swift
 //  Palace
 //
-//  Owns the active-download concurrency cap, suspend/resume orchestration,
-//  and the network-conditions observer that re-applies the cap whenever the
-//  app becomes active. Extracted from MyBooksDownloadCenter so the
-//  concurrency policy can be exercised in isolation with a test
-//  DownloadStateManager + NotificationCenter.
-//
-//  Audiobooks are special: pauseAllDownloads / limitActiveDownloads-when-
-//  over-cap both refuse to suspend audiobook tasks because the user may be
-//  streaming and a suspend would interrupt playback.
-//
-//  MyBooksDownloadCenter still exposes the same `limitActiveDownloads(max:)`
-//  / `pauseAllDownloads()` / `resumeIntelligentDownloads()` API surface for
-//  the @objc TPPAppDelegate + memoryPressureMonitor callers — those methods
-//  now delegate here.
+//  The active-download concurrency cap, suspend/resume, and the observer that
+//  re-applies the cap when the app becomes active. Audiobook tasks are never
+//  suspended, because the patron may be streaming. MyBooksDownloadCenter's
+//  `limitActiveDownloads(max:)` / `pauseAllDownloads()` /
+//  `resumeIntelligentDownloads()` delegate here.
 //
 
 import Foundation

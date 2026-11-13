@@ -2,16 +2,10 @@
 //  AuthDecisionPayload.swift
 //  PalaceAuth
 //
-//  Pure value-type payload describing a single auth decision. Designed to
-//  cross the PalaceAuth boundary without dragging in FirebaseCrashlytics —
-//  the main-target wrapper (`AuthDecisionEvent`) consumes this struct and
-//  ships it to Crashlytics via its `Error` / `CustomNSError` conformance.
-//
-//  Each decision point in PalaceAuth (`AuthErrorClassifier.classify`,
-//  `AuthCoordinator.refreshCredentialsIfNeeded` start/end, modal cancel,
-//  silent-refresh outcome) constructs one payload and hands it to the
-//  injected `AuthDecisionRecording` recorder. Tests use `SpyAuthDecisionRecorder`
-//  (in PalaceTests/Mocks/) to assert payload shape + emission counts.
+//  Value-type record of one auth decision, so PalaceAuth can report to
+//  Crashlytics without importing it: the main-target `AuthDecisionEvent`
+//  wraps this payload as an `Error`. Each decision point emits one payload
+//  through the injected `AuthDecisionRecording`.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -158,10 +152,8 @@ public struct AuthDecisionPayload: Sendable, Equatable {
         return result
     }
 
-    // Localized per call (playbook: a shared non-Sendable ISO8601DateFormatter
-    // static is a #MutableGlobalVariable under Swift 6; never nonisolated(unsafe)).
-    // Called once per telemetry payload — not a hot path, so per-call allocation
-    // is fine and keeps the formatter provably race-free.
+    // Created per call: a shared ISO8601DateFormatter static is a mutable
+    // global under Swift 6. Once per telemetry payload, so the cost is fine.
     private static func makeISO8601Formatter() -> ISO8601DateFormatter {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]

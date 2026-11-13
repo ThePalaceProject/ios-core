@@ -6,9 +6,6 @@
 //  by Sign Out and Reset Account flows) to the PalaceAuth `PushTokenDeleting`
 //  seam protocol so the package never reads a `.shared` singleton.
 //
-//  This file is NOT yet wired into `Palace.xcodeproj/project.pbxproj`.
-//  Impl 4 must add it to both `Palace` and `Palace-noDRM` Sources phases.
-//
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 

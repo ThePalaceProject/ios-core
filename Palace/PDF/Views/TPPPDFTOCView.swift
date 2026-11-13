@@ -19,11 +19,16 @@ struct TPPPDFTOCView: View {
         VStack {
             List {
                 ForEach(document.tableOfContents) { location in
-                    TPPPDFLocationView(location: location, emphasizeLevel: 0)
-                        .onTapGesture {
-                            metadata.currentPage = location.pageNumber
-                            done()
-                        }
+                    // A real Button, not a tap gesture: VoiceOver announces the
+                    // entry as a button and Full Keyboard Access can focus it,
+                    // which is how a patron moves through the table of contents.
+                    Button {
+                        metadata.currentPage = location.pageNumber
+                        done()
+                    } label: {
+                        TPPPDFLocationView(location: location, emphasizeLevel: 0)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }

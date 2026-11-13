@@ -102,8 +102,7 @@ final class LibraryCatalogMergerTests: XCTestCase {
     /// (thumbnailHref) actually changed: URL→different URL, nil→URL,
     /// URL→nil, and brand-new publication. It must NOT include a UUID
     /// when the URL is unchanged. Lock all five transitions in one body
-    /// — a mutant that flips ANY single transition's classification fails
-    /// here on a different row.
+    /// — misclassifying ANY single transition fails here on a different row.
     func testMerge_uuidsWithChangedLogos_includesAllTransitionsAndExcludesUnchangedURL() {
         struct Transition {
             let label: String

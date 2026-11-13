@@ -3,6 +3,7 @@
 #import "ADEPT/NYPLADEPT.h"
 #import "ADEPT/ADEPT.h"
 #import "AdobeDRMContainer.h"
+#import "AdobeConnectorBuild.h"
 #import "RDServicesStubs.h"
 #endif
 

@@ -228,8 +228,8 @@ final class AccountDetailsNeedsAuthAggregateTests: XCTestCase {
 
     func testAccountDetails_NeedsAuth_BasicOnly_ReturnsTrue() {
         // Pair-assert that the underlying authentication entry exists AND has
-        // the expected type — so a mutation that always returns true from
-        // needsAuth (regardless of the auth list) would fail the type check.
+        // the expected type — so a needsAuth that always returns true
+        // (regardless of the auth list) would fail the type check.
         let details = makeAccountDetails(authTypes: ["http://opds-spec.org/auth/basic"])
         XCTAssertTrue(details.needsAuth,
                       "Basic auth library must report needsAuth=true so loans/holds fetches are gated by credentials, not skipped")
@@ -240,8 +240,8 @@ final class AccountDetailsNeedsAuthAggregateTests: XCTestCase {
     }
 
     func testAccountDetails_NeedsAuth_SamlOnly_ReturnsTrue() {
-        // Pair-assert the SAML type explicitly so a mutation that always
-        // returns true would still need to survive the type assertion.
+        // Pair-assert the SAML type explicitly so an always-true needsAuth
+        // is still caught by the type assertion.
         let details = makeAccountDetails(authTypes: ["http://librarysimplified.org/authtype/SAML-2.0"])
         XCTAssertTrue(details.needsAuth,
                       "SAML library must report needsAuth=true")
@@ -251,8 +251,8 @@ final class AccountDetailsNeedsAuthAggregateTests: XCTestCase {
 
     func testAccountDetails_NeedsAuth_AnonymousOnly_ReturnsFalse() {
         // The Palace Bookshelf shape: a single anonymous auth method, no patron concept.
-        // Pair-assert the anonymous type explicitly so a mutation that always
-        // returns false would still need to survive the type assertion.
+        // Pair-assert the anonymous type explicitly so an always-false
+        // needsAuth is still caught by the type assertion.
         let details = makeAccountDetails(authTypes: ["http://librarysimplified.org/rel/auth/anonymous"])
         XCTAssertFalse(details.needsAuth,
                        "Anonymous-only library (Palace Bookshelf) must report needsAuth=false — this is the BUG-004 guard")
@@ -262,8 +262,8 @@ final class AccountDetailsNeedsAuthAggregateTests: XCTestCase {
 
     func testAccountDetails_NeedsAuth_CoppaOnly_ReturnsFalse() {
         // COPPA gate is age-restriction, not credential-based — should not trigger holds fetch.
-        // Pair-assert the COPPA type explicitly so a mutation that returns
-        // false on any age-gate type would still need to survive the type check.
+        // Pair-assert the COPPA type explicitly so returning false for any
+        // age-gate type is still caught by the type check.
         let details = makeAccountDetails(authTypes: ["http://librarysimplified.org/terms/authentication/gate/coppa"])
         XCTAssertFalse(details.needsAuth,
                        "COPPA-only library must report needsAuth=false (age gate, not credentials)")
@@ -284,9 +284,8 @@ final class AccountDetailsNeedsAuthAggregateTests: XCTestCase {
     }
 
     func testAccountDetails_NeedsAuth_OAuthOnly_ReturnsTrue() {
-        // Pair-assert the OAuth type explicitly so a mutation that ignores
-        // the authType field and always returns true would still need to
-        // survive a type check.
+        // Pair-assert the OAuth type explicitly so ignoring the authType
+        // field and always returning true is caught by a type check.
         let details = makeAccountDetails(authTypes: ["http://librarysimplified.org/authtype/OAuth-with-intermediary"])
         XCTAssertTrue(details.needsAuth, "OAuth library must report needsAuth=true")
         XCTAssertEqual(details.auths.first?.authType, .oauthIntermediary,
@@ -295,8 +294,8 @@ final class AccountDetailsNeedsAuthAggregateTests: XCTestCase {
 
     func testAccountDetails_NeedsAuth_OidcOnly_ReturnsTrue() {
         // Pair-assert OIDC type AND assert that the legacy OIDC URL
-        // (the historical Palace-OIDC string) also resolves to .oidc — so a
-        // mutation that loses the legacy aliasing is caught.
+        // (the historical Palace-OIDC string) also resolves to .oidc — so
+        // losing the legacy aliasing is caught.
         let details = makeAccountDetails(authTypes: ["http://palaceproject.io/authtype/OpenIDConnect"])
         XCTAssertTrue(details.needsAuth, "OIDC library must report needsAuth=true")
         XCTAssertEqual(details.auths.first?.authType, .oidc,
@@ -329,8 +328,8 @@ final class AccountDetailsNeedsAuthAggregateTests: XCTestCase {
     func testAccount_NeedsAuth_BasicDetailsLoaded_ReturnsTrue() {
         // Drive the full pre/post — start with no auth doc (nil) then assign
         // one. Pair-assert both the nil-before state and the true-after state
-        // so a mutation that hard-codes a return value is caught regardless
-        // of which side of the transition it hard-codes.
+        // so a hard-coded return value is caught regardless of which side
+        // of the transition it hard-codes.
         let account = makeAccountWithoutAuthDoc()
         XCTAssertNil(account.needsAuth,
                      "Precondition: needsAuth nil before auth doc loaded — default-deny window")

@@ -7,7 +7,7 @@ import XCTest
 /// during `exit()`'s C++ static-destructor pass when the iPad app runs on Apple
 /// Silicon Macs.
 ///
-/// The fix (WS-4): on `isiOSAppOnMac` only, terminate via `_exit(0)` to skip the
+/// The fix: on `isiOSAppOnMac` only, terminate via `_exit(0)` to skip the
 /// static-destructor pass — `applicationWillTerminate` (Cmd-Q) calls `_exit(0)`
 /// last, and `applicationDidEnterBackground` installs an `atexit { _exit(0) }`
 /// interceptor (once Adobe DRM has been used this session) for the forced/

@@ -198,12 +198,12 @@ final class TPPLoginNoActivationTests: XCTestCase {
     func testValidateCredentials_doesNotTriggerAdobeActivation() async {
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
 
-        // Single main-queue hop: `TPPRequestExecutorMock.executeRequest`
-        // completes via one `DispatchQueue.main.async`, and `finalizeSignIn`
-        // runs synchronously off that hop via `TPPMainThreadRun.asyncIfNeeded`'s
-        // on-main fast path (mirrors TPPCredentialVisibilityTests.swift).
+        // The double completes on its own background queue, matching the
+        // executor's `delegateQueue: nil`; `finalizeSignIn` hops to main via
+        // `TPPMainThreadRun.asyncIfNeeded`, so one drain settles the
+        // post-sign-in state (mirrors TPPCredentialVisibilityTests.swift).
         await drainMainQueueAsync()
 
         XCTAssertEqual(drmAuthorizer.authorizeCallCount, 0,
@@ -215,7 +215,7 @@ final class TPPLoginNoActivationTests: XCTestCase {
     func testValidateCredentials_savesLicensorForLaterUse() async {
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
 
         // Single main-queue hop (see testValidateCredentials_doesNotTriggerAdobeActivation above).
         await drainMainQueueAsync()
@@ -242,7 +242,7 @@ final class TPPLoginNoActivationTests: XCTestCase {
 
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
 
         // Single main-queue hop (see testValidateCredentials_doesNotTriggerAdobeActivation above).
         await drainMainQueueAsync()

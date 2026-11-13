@@ -126,8 +126,10 @@ PLACEHOLDER_PATHS = frozenset({
 # not live instructions. Rewriting history to keep a linter quiet is worse than
 # the dangling link.
 # `.forgeos/` holds intent files and swarm transcripts — records of what was
-# true at the time. Rewriting history to keep a linter quiet is worse than the
-# dangling link. `.claude/` is NOT archival — skills and agents are live
+# true at the time. It is no longer tracked here (the maintainer harness keeps
+# it, and .gitignore denies it), so this only matters on a branch that predates
+# the move. Rewriting history to keep a linter quiet is worse than the dangling
+# link. `.claude/` is NOT archival — skills and agents are live
 # instructions — so it is scanned. (Verified against the real tree: unskipping
 # adds zero findings.) `.claude/worktrees/` is excluded separately: those are
 # sibling checkouts, not this repo's content.

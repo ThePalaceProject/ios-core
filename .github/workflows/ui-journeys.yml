@@ -1,0 +1,251 @@
+name: UI Journeys
+
+# Fixture-backed XCUITest journeys (docs/Testing/UI_JOURNEYS.md). They build
+# the app, so they run only when the app, the journeys or the project change.
+# Not a required check: a path-filtered workflow that is required would wait
+# forever on PRs it skips. The unit-test run and its coverage use the Palace
+# scheme and are unaffected; this lane uses the PalaceUITests scheme.
+on:
+  pull_request:
+    paths:
+      - 'Palace/**'
+      - 'PalaceUITests/**'
+      - 'Palace.xcodeproj/**'
+      - 'ios-audiobooktoolkit'
+      - '.github/workflows/ui-journeys.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ui-journeys-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  journeys:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: 'latest-stable'
+
+      - name: Checkout main repo and submodules
+        uses: actions/checkout@v7
+        with:
+          submodules: true
+          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+
+      - name: Cache Swift packages
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/dd/SourcePackages
+          key: ${{ runner.os }}-spm-${{ hashFiles('Palace.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      - name: Checkout Certificates
+        uses: actions/checkout@v7
+        with:
+          repository: ThePalaceProject/mobile-certificates
+          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+          path: ./mobile-certificates
+
+      - name: Checkout Adobe RMSDK
+        uses: ./.github/actions/checkout-adobe
+        with:
+          token: ${{ secrets.CI_GITHUB_ACCESS_TOKEN }}
+
+      - name: Setup repo with DRM
+        run: ./scripts/setup-repo-drm.sh
+        env:
+          BUILD_CONTEXT: ci
+
+      - name: Build non-Carthage 3rd party dependencies
+        run: ./scripts/build-3rd-party-dependencies.sh
+        env:
+          BUILD_CONTEXT: ci
+
+      - name: Select simulator
+        id: sim
+        run: |
+          SIMULATOR_ID=$(xcrun simctl list devices available | grep "iPhone" \
+            | grep -oE '[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}' | head -1)
+          [ -n "$SIMULATOR_ID" ] || { echo "::error::no iPhone simulator"; exit 1; }
+          echo "id=$SIMULATOR_ID" >> "$GITHUB_OUTPUT"
+
+      # The app's own log, from before launch, so a slow or failed run shows
+      # what the app was doing. Uploaded with the result bundle below.
+      - name: Start app log capture
+        run: |
+          SIM="${{ steps.sim.outputs.id }}"
+          xcrun simctl boot "$SIM" || true
+          xcrun simctl bootstatus "$SIM" -b
+          echo "Simulator: $(xcrun simctl list devices | grep "$SIM")" >> "$GITHUB_STEP_SUMMARY"
+          nohup xcrun simctl spawn "$SIM" log stream --level debug --style compact \
+            --predicate 'process == "Palace" AND (messageType != debug OR subsystem == "org.thepalaceproject.palace")' \
+            > "$RUNNER_TEMP/palace-app.log" 2>&1 &
+          # Diagnostic: if the catalog has not rendered 8s after the app starts,
+          # take two stack samples 10s apart, to tell a wait from a slow loop.
+          nohup bash -c '
+            # The PID comes from the launch line the app logs itself: a
+            # process-name match also hits the build tools that link Palace.app.
+            for _ in $(seq 1 1200); do
+              pid=$(grep -m1 -E "MockBackend launch:" "$RUNNER_TEMP/palace-app.log" | sed -nE "s/.*Palace\[([0-9]+):.*/\1/p")
+              [ -n "$pid" ] && break; sleep 1
+            done
+            [ -n "$pid" ] || exit 0
+            for n in 1 2; do
+              sleep $(( n == 1 ? 8 : 10 ))
+              grep -q "\[PERF\] Catalog load" "$RUNNER_TEMP/palace-app.log" && exit 0
+              # Unprivileged sample cannot see the simulator app on the runner.
+              sudo -n /usr/bin/sample "$pid" 3 -file "$RUNNER_TEMP/palace-sample-$n.txt" \
+                || /usr/bin/sample "$pid" 3 -file "$RUNNER_TEMP/palace-sample-$n.txt"
+              sudo -n chmod a+r "$RUNNER_TEMP/palace-sample-$n.txt" 2>/dev/null
+            done
+          ' > "$RUNNER_TEMP/palace-sampler.log" 2>&1 &
+
+      # Same ad-hoc signing as the unit-test build; the command matches the
+      # one docs/Testing/UI_JOURNEYS.md gives contributors.
+      - name: Build and run the journeys
+        shell: bash
+        run: |
+          # GitHub runs this shell with -e and pipefail; turn -e off so a
+          # failing run still reaches the status and summary lines below.
+          set +e
+          set -o pipefail
+          start=$(date +%s)
+          xcodebuild test \
+            -project Palace.xcodeproj \
+            -scheme PalaceUITests \
+            -destination "id=${{ steps.sim.outputs.id }}" \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            -resultBundlePath "$RUNNER_TEMP/UIJourneys.xcresult" \
+            -collect-test-diagnostics on-failure \
+            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="" 2>&1 | tee ui-journeys.log
+          status=${PIPESTATUS[0]}
+          echo "Build and journeys took $(( $(date +%s) - start ))s" >> "$GITHUB_STEP_SUMMARY"
+          grep -E "^Test Case .*(passed|failed)" ui-journeys.log >> "$GITHUB_STEP_SUMMARY"
+          { echo '```'; grep -E "BUILD MARKER|MockBackend \[|\[PERF\]|registry snapshot|Loading catalogs|task started" \
+              "$RUNNER_TEMP/palace-app.log" | cut -c1-220 | head -40; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          # `xcodebuild test` that selects nothing still prints TEST SUCCEEDED.
+          passed=$(grep -cE "^Test Case .*passed" ui-journeys.log)
+          if [ "$status" -eq 0 ] && [ "$passed" -eq 0 ]; then
+            echo "::error::no journey ran"
+            status=1
+          fi
+          exit "$status"
+
+      # Diagnostic: the runtime reports priority inversions as encoded
+      # backtraces; symbolicate them here, against this build and runtime.
+      - name: Symbolicate antipattern backtraces
+        if: failure()
+        continue-on-error: true
+        run: |
+          SIM="${{ steps.sim.outputs.id }}"
+          RUNTIME_ROOT=$(python3 -c 'import json,subprocess,sys; d=json.loads(subprocess.run(["xcrun","simctl","list","-j"],capture_output=True,text=True).stdout); rt=[k for k,v in d["devices"].items() if any(x["udid"]==sys.argv[1] for x in v)][0]; print([r["runtimeRoot"] for r in d["runtimes"] if r["identifier"]==rt][0])' "$SIM")
+          xcrun xcresulttool export attachments --path "$RUNNER_TEMP/UIJourneys.xcresult" --output-path "$RUNNER_TEMP/attachments"
+          cat > "$RUNNER_TEMP/symbolicate.py" <<'PY'
+          """Symbolicate the runtime's antipattern backtraces from a UI journey result bundle.
+
+          The "Complete Issue Description" attachment carries each backtrace as hex: per
+          frame a 16-byte image UUID then a 4-byte little-endian offset into that image.
+          Frames in images found under the app or the simulator runtime are passed to atos.
+
+          usage: symbolicate.py <attachments-dir> <Palace.app> [<runtime-root>]
+          """
+          import json
+          import os
+          import re
+          import subprocess
+          import sys
+
+
+          def uuid_of(path):
+              out = subprocess.run(["dwarfdump", "--uuid", path], capture_output=True, text=True).stdout
+              return {m.group(1).replace("-", "").upper(): path
+                      for m in re.finditer(r"UUID: ([0-9A-F-]+) \(arm64\)", out)}
+
+
+          def text_vmaddr(path):
+              out = subprocess.run(["otool", "-l", "-arch", "arm64", path], capture_output=True, text=True).stdout
+              m = re.search(r"segname __TEXT\n\s+vmaddr (0x[0-9a-f]+)", out)
+              return int(m.group(1), 16) if m else 0
+
+
+          def images(roots):
+              found = {}
+              for root in roots:
+                  for dirpath, _, files in os.walk(root):
+                      for name in files:
+                          path = os.path.join(dirpath, name)
+                          if name.endswith((".dylib", ".debug.dylib")) or os.access(path, os.X_OK) and "." not in name:
+                              try:
+                                  found.update(uuid_of(path))
+                              except OSError:
+                                  pass
+              return found
+
+
+          def frames(text):
+              hexes = re.findall(r"\b[0-9A-F]{2}\b", text.split("'", 1)[-1])
+              raw = bytes(int(h, 16) for h in hexes)
+              for i in range(0, len(raw) - 19, 20):
+                  yield raw[i:i + 16].hex().upper(), int.from_bytes(raw[i + 16:i + 20], "little")
+
+
+          def main():
+              attachments, app = sys.argv[1], sys.argv[2]
+              roots = [app] + sys.argv[3:]
+              manifest = json.load(open(os.path.join(attachments, "manifest.json")))
+              reports = [os.path.join(attachments, a["exportedFileName"])
+                         for t in manifest for a in t["attachments"]
+                         if a.get("suggestedHumanReadableName", "").startswith("Complete Issue Description")]
+              if not reports:
+                  print("no antipattern report in the result bundle")
+                  return
+              index = images(roots)
+              print(f"indexed {len(index)} images")
+              for report in reports:
+                  for chunk in open(report, errors="replace").read().split("__delegate_identifier__")[1:]:
+                      message = re.search(r'"message":"([^"]+)"', chunk)
+                      print("\n== " + (message.group(1) if message else "(no message)"))
+                      for uuid, offset in frames(chunk):
+                          path = index.get(uuid)
+                          if not path:
+                              print(f"  {uuid} +0x{offset:x}  (image not found)")
+                              continue
+                          base = text_vmaddr(path)
+                          sym = subprocess.run(["atos", "-o", path, "-arch", "arm64", "-l", hex(base), hex(base + offset)],
+                                               capture_output=True, text=True).stdout.strip()
+                          print(f"  {os.path.basename(path)} +0x{offset:x}  {sym}")
+
+
+          if __name__ == "__main__":
+              main()
+          PY
+          python3 "$RUNNER_TEMP/symbolicate.py" "$RUNNER_TEMP/attachments" \
+            "$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator/Palace.app" \
+            "$RUNTIME_ROOT/usr/lib" "$RUNTIME_ROOT/System/Library/Frameworks" \
+            "$RUNTIME_ROOT/System/Library/PrivateFrameworks/UIKitCore.framework" \
+            | tee "$RUNNER_TEMP/palace-antipatterns.txt"
+          { echo '```'; head -80 "$RUNNER_TEMP/palace-antipatterns.txt"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      # On failure the bundle holds a screenshot and the accessibility tree
+      # named after the failing step. Uploaded on every run: the app log of a
+      # slow but green run is evidence too.
+      - name: Upload journey results
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-journeys-results
+          path: |
+            ${{ runner.temp }}/UIJourneys.xcresult
+            ${{ runner.temp }}/palace-app.log
+            ${{ runner.temp }}/palace-sample-*.txt
+            ${{ runner.temp }}/palace-sampler.log
+            ${{ runner.temp }}/palace-antipatterns.txt
+          retention-days: 7

@@ -2,57 +2,13 @@
 //  DownloadStartDispatcherContractTests.swift
 //  PalaceTests
 //
-//  E1 (WS6) characterization contract-snapshot coverage for
-//  `DownloadStartDispatcher`. The dispatcher owns the start-download
-//  decision tree lifted out of MyBooksDownloadCenter:
-//
-//    - processUnregisteredState  (open-access seed vs stay-unregistered)
-//    - processDownloadWithCredentials (streaming-HTML skip, borrow route,
-//      Overdrive-audiobook divert, fall-through to regular)
-//    - processRegularDownload    (re-borrow-on-expired, auto-borrow-on-
-//      downloadNeeded, Wi-Fi guard, request resolution + bearer auth,
-//      SAML-cookies branch, invalid-URL log, addDownloadTask handoff)
-//
-//  WHY A CONTRACT SNAPSHOT (vs the existing `DownloadStartDispatcherTests`
-//  unit tests): the sibling unit tests assert per-branch call *counts* and
-//  *absence*. They do NOT pin the ORDERED sequence of collaborator calls
-//  (e.g. `clearAndSetCookies` THEN `addDownloadTask`; `setState(.unregistered)`
-//  THEN `startBorrow`). E2 (WS7) extracts the dispatcher's branch logic into
-//  a pure `DownloadStartReducer`; the behavior-preservation proof required by
-//  Contract E is "the E2 core's emitted sequence is shape-equal to this E1
-//  service snapshot." That proof needs the ordered emission pinned as JSON —
-//  which is exactly what these snapshots lock. A refactor that reorders,
-//  drops, or adds a collaborator call drifts the snapshot and fails loudly.
-//
-//  All collaborator calls (delegate surface + the delegate's registry) are
-//  recorded into a single `CallLog` in call order. Books use deterministic
-//  identifiers so the JSON stays stable across runs.
-//
-//  Coverage map (each row → one snapshot):
-//    unregisteredState_openAccess_seedsDownloadNeeded
-//    unregisteredState_borrowLink_staysUnregistered_emitsNothing
-//    withCredentials_streamingHTML_returnsEarly_emitsNothing
-//    withCredentials_unregistered_routesStartBorrow
-//    withCredentials_holding_routesStartBorrow
-//    regular_expiredWithBorrow_setUnregisteredThenReBorrow
-//    regular_downloadNeededWithBorrow_setUnregisteredThenAutoBorrow
-//    regular_wifiOnlyEnforced_failsWifi_noDownloadTask
-//    regular_normal_clearCookiesThenAddDownloadTask
-//    regular_samlWithCookies_routesSAMLHandler_noDownloadTask
-//    regular_noAcquisitionURL_logsInvalidRequest
-//  #if FEATURE_OVERDRIVE
-//    withCredentials_overdriveAudiobook_divertsToOverdriveHandler
-//  #endif
-//
-//  DEFERRED (documented seam-gaps, not faked):
-//    - The Overdrive DEFER branch (`shouldDeferOverdriveFulfillment == true`,
-//      i.e. audiobook whose default acquisition is still a borrow link) routes
-//      into `OverdriveDownloadHandler.deferOverdriveFulfillment`, which does a
-//      live `bookRegistry.sync()` + a MainActor progress-reporter hop with no
-//      dispatcher-delegate emission — there is no deterministic dispatcher-
-//      level contract to pin (the handler is a `final` class, not spyable at
-//      the dispatcher boundary). Covered by `OverdriveDeferredFulfillmentTests`
-//      at the handler layer.
+//  Contract snapshots of `DownloadStartDispatcher`'s start-download decision tree
+//  (processUnregisteredState, processDownloadWithCredentials, processRegularDownload).
+//  `DownloadStartDispatcherTests` asserts counts; these pin the ORDERED collaborator
+//  calls (e.g. `clearAndSetCookies` then `addDownloadTask`), which
+//  `DownloadStartReducerContractTests` must match.
+//  Not pinned: the Overdrive defer branch, which has no dispatcher-level emission;
+//  `OverdriveDeferredFulfillmentTests` covers it at the handler layer.
 //
 
 import XCTest

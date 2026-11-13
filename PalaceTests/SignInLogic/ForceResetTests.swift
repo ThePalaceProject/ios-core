@@ -1,26 +1,11 @@
-//
 //  ForceResetTests.swift
-//  PalaceTests
 //
-//  Locks the patron-self-service "Reset Account" contract:
-//   1. The one-shot ephemeral-session flag (set by `performForceReset`,
-//      consumed by the OIDC sign-in entry points) self-clears on read so
-//      it forces ephemeral cookies for exactly one OIDC session and no more.
-//   2. Reading the flag when it was never set returns false (no-op).
-//   3. Writing-then-reading-twice returns true once and false after.
-//
-//  Why this matters (HelpSpot 17716, PP-4282):
-//  Carissa from support flagged that "delete app + reinstall" doesn't fix
-//  patrons stuck in a weird state. For OIDC libraries this is partially
-//  caused by Safari-shared cookies that survive app deletion (the
-//  `ASWebAuthenticationSession` was created with
-//  `prefersEphemeralWebBrowserSession = false` to support silent borrow
-//  re-auth). The "Reset Account" button defeats that for one cycle by
-//  flipping the flag — but only for one cycle, so silent SSO still works
-//  for normal future borrows.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  "Reset Account" (HelpSpot 17716, PP-4282). OIDC sessions use
+//  `prefersEphemeralWebBrowserSession = false` for silent borrow re-auth, so
+//  Safari cookies survive reinstalling the app. `performForceReset` sets a
+//  one-shot flag that forces an ephemeral session for the next OIDC sign-in only.
+//  Pinned: reading the flag clears it (true once, then false), and reading an
+//  unset flag returns false.
 
 import XCTest
 @testable import Palace
@@ -34,7 +19,7 @@ final class ForceResetTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        // swarm_cd181acd D-cleanup: swap the extension's static
+        // Swap the extension's static
         // `forceResetUserDefaults` for a per-test isolated suite so the
         // one-shot ephemeral flag cannot leak between tests.
         // `static var` swap-and-restore is the chosen seam because Swift
@@ -75,7 +60,7 @@ final class ForceResetTests: XCTestCase {
     /// Set then immediately consume returns true exactly once.
     func testConsume_whenFlagSet_returnsTrueOnce() {
         // Pair-assert the UserDefaults observable went from true→cleared so
-        // a mutation that returns true without actually consuming the
+        // a regression that returns true without actually consuming the
         // underlying flag is caught.
         defaults.set(true, forKey: key)
         XCTAssertTrue(defaults.bool(forKey: key),

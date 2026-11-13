@@ -32,8 +32,11 @@ struct SentimentGateView: View {
           .ignoresSafeArea()
           .contentShape(Rectangle())
           .onTapGesture { presenter.dismiss() }
-          .accessibilityLabel(Text(L.askLater))
-          .accessibilityAction { presenter.dismiss() }
+          // Pointer-only convenience. The card carries `.isModal`, which takes
+          // VoiceOver off every sibling element, so a label and action on the
+          // scrim reach nobody. VoiceOver dismisses through the card's own
+          // "Ask me later" button or the escape action declared on the card.
+          .accessibilityHidden(true)
       }
 
       if let step = presenter.step {
@@ -76,6 +79,7 @@ struct SentimentGateView: View {
           .font(.headline)
           .multilineTextAlignment(.center)
           .fixedSize(horizontal: false, vertical: true)
+          .accessibilityAddTraits(.isHeader)
 
         VStack(spacing: 12) {
           primaryButton(L.positive) { presenter.respondPositive() }
@@ -88,6 +92,7 @@ struct SentimentGateView: View {
           .font(.headline)
           .multilineTextAlignment(.center)
           .fixedSize(horizontal: false, vertical: true)
+          .accessibilityAddTraits(.isHeader)
 
         VStack(spacing: 12) {
           primaryButton(L.feedbackConfirm) { presenter.confirmFeedback() }
@@ -105,6 +110,9 @@ struct SentimentGateView: View {
     .padding(32)
     .accessibilityElement(children: .contain)
     .accessibilityAddTraits(.isModal)
+    // Two-finger scrub defers the prompt, matching the tap-outside gesture
+    // that sighted users get from the scrim.
+    .accessibilityAction(.escape) { presenter.dismiss() }
   }
 
   // MARK: - Button styles

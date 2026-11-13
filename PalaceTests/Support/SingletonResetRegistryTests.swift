@@ -6,7 +6,9 @@ import XCTest
 /// invoked by `PalaceSingletonResetObserver.testCaseDidFinish(_:)` after every
 /// test. The registry is process-wide; every test in this class drains the
 /// registry via `_removeAllForTests()` in `setUp` so the suite's built-in
-/// resetters do not leak into these assertions and vice-versa.
+/// resetters do not leak into these assertions and vice-versa. The observer
+/// re-registers the built-ins at the next test boundary, so clearing here
+/// does not disable them for later suites.
 @MainActor
 final class SingletonResetRegistryTests: XCTestCase {
 

@@ -26,7 +26,7 @@ final class TPPBookContentTypeConverterStreamingHTMLTests: XCTestCase {
 
     /// PP-4161: `.streamingHTML` must round-trip to the exact token
     /// "StreamingHTML". Downstream callers (Logging, DeviceSpecificErrorMonitor)
-    /// log this string verbatim; a mutant that returns the wrong string
+    /// log this string verbatim; a regression that returns the wrong string
     /// would break log analysis but not crash.
     func testTPPBookContentTypeConverter_stringValue_streamingHTML_returnsExpectedToken() {
         let value = TPPBookContentTypeConverter.stringValue(of: .streamingHTML)
@@ -41,7 +41,7 @@ final class TPPBookContentTypeConverterStreamingHTMLTests: XCTestCase {
     }
 
     /// All five enum cases (epub, audiobook, pdf, unsupported, streamingHTML)
-    /// must produce distinct, non-empty tokens. Catches a mutant that returns
+    /// must produce distinct, non-empty tokens. Catches a regression that returns
     /// the same string for two cases (e.g. defaulting unhandled cases to ""
     /// or to another case's value).
     func testTPPBookContentTypeConverter_stringValue_allCases_returnDistinctNonEmptyTokens() {

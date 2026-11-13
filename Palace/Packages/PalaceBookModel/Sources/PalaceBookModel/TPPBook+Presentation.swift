@@ -16,14 +16,9 @@ import PalaceLogging
 // MARK: - Cover Image Fetching & Cache
 
 extension TPPBook {
-    /// Routes cover/thumbnail loads through the `ImageLoading` umbrella so this
-    /// file no longer reaches for `TPPBookCoverRegistry.shared` /
-    /// `TPPBookCoverRegistryBridge.shared` directly. Wave 2a inverted the former
-    /// `AppContainer.production().imageLoader` reach through
-    /// `TPPBookImageContext`, which the composition root configures once at
-    /// bootstrap (before any TPPBook is constructed). Returns `nil` only in
-    /// unit tests that never configure the context — in which case the network
-    /// fetch branches below no-op and the injected cache-hit paths still run.
+    /// The loader configured on `TPPBookImageContext` at bootstrap, before any
+    /// TPPBook exists. `nil` only in unit tests that never configure it, where
+    /// the network fetches below no-op and the cache-hit paths still run.
     var imageLoader: ImageLoading? {
         TPPBookImageContext.imageLoader()
     }
@@ -31,6 +26,11 @@ extension TPPBook {
     func fetchCoverImage() {
         fetchCoverImage(forDisplayHeight: nil)
     }
+
+    /// Above this height (points) a cover view needs more pixels than a lane
+    /// thumbnail. Matches `TPPBookCoverRegistry.smallDisplayThreshold`, which
+    /// picks the thumbnail URL at or below it.
+    static let largeCoverMinimumDisplayHeight: CGFloat = 200
 
     /// First cached image among `keys`, consulting the cache **exactly once per
     /// key**.
@@ -62,7 +62,18 @@ extension TPPBook {
         // unsized path. PP-4772 / Crashlytics 077218fc.
         let displayHeight = displayHeight?.finitePositiveDimension
         let sizeKey: String? = displayHeight.map { "\(identifier)_\(Int($0))pt" }
-        let lookupKeys: [String] = if let sizeKey { [sizeKey, identifier] } else { [identifier] }
+        // The bare identifier usually holds a lane-sized thumbnail, so a large view
+        // shows it only as a placeholder and always asks the loader, whose
+        // registry caches real decodes by pixel size. The point-size key is not
+        // read or written for large views: it can hold an offline fallback.
+        let isLargeDisplay = (displayHeight ?? 0) > Self.largeCoverMinimumDisplayHeight
+        let lookupKeys: [String] = if isLargeDisplay {
+            []
+        } else if let sizeKey {
+            [sizeKey, identifier]
+        } else {
+            [identifier]
+        }
 
         // Synchronous memory-cache check (instant, no disk I/O on main thread)
         if let img = Self.firstCachedImage(in: imageCache, keys: lookupKeys) {
@@ -75,7 +86,14 @@ extension TPPBook {
 
         guard !isCoverLoading else { return }
 
-        DispatchQueue.main.async { self.isCoverLoading = true }
+        let placeholder = isLargeDisplay ? imageCache.get(for: identifier) : nil
+        DispatchQueue.main.async {
+            if let placeholder {
+                self.coverImage = placeholder
+                self.updateDominantColor(using: placeholder)
+            }
+            self.isCoverLoading = true
+        }
 
         if let displayHeight {
             Task { [weak self] in
@@ -104,12 +122,13 @@ extension TPPBook {
                     return
                 }
                 let img = await imageLoader.coverImage(for: self, displayPoints: displayHeight)
-                let final = img ?? self.thumbnailImage
+                let final = img ?? placeholder ?? self.thumbnailImage
                 await MainActor.run {
                     self.coverImage = final
                     if let img = final {
-                        let cacheKey = sizeKey ?? self.identifier
-                        self.imageCache.set(img, for: cacheKey)
+                        if !isLargeDisplay {
+                            self.imageCache.set(img, for: sizeKey ?? self.identifier)
+                        }
                         self.updateDominantColor(using: img)
                     }
                     self.isCoverLoading = false

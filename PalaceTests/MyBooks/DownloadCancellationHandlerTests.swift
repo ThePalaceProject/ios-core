@@ -6,8 +6,8 @@
 //  handles both the no-task cancellation path (state-based, e.g.
 //  cancelling during a borrow request before the URL session task
 //  exists) and the with-task path (real URLSessionDownloadTask.cancel
-//  + dictionary cleanup). Critical-path per CLAUDE.md (cancel/borrow
-//  flows touch user money/access).
+//  + dictionary cleanup). Critical path: cancel/borrow flows touch
+//  patron access.
 //
 
 import XCTest

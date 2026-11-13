@@ -1,27 +1,12 @@
-//
 //  LCPPDFOpenProgressTests.swift
-//  PalaceTests
 //
-//  State-machine + counter tests for `LCPPDFOpenProgress`, the
-//  observable that drives the LCP-PDF loading view. The user-visible
-//  symptom that motivates these tests: on the first device run the
-//  progress bar got stuck at "1%" (the curve was wrong) and on the
-//  next iteration jumped to "Finishing up…" too soon (premature
-//  ceiling). The progress math has to be right or the loading UI
-//  lies to users for the entire decrypt walk.
-//
-//  Phase transitions get round-trip coverage per CLAUDE.md
-//  "Round-trip wiring tests required for state machines":
-//
-//    .idle → .preparing → .openingPublication → .decryptingContent
-//          (auto-bump on first decrypt) → .extractingToDisk
-//          (auto-bump on first extracted-byte record) → .loadingFirstPage
-//          → .idle (via finish)
-//
-//  Tests deliberately cover the AUTO-TRANSITION seams — those are
-//  the ones a mutation (flipping the `if phase == X` guard) can
-//  silently break and leave the UI stuck on the wrong status text.
-//
+//  State-machine and counter tests for `LCPPDFOpenProgress`, which drives the
+//  LCP-PDF loading view; wrong progress math showed a bar stuck at 1% or an
+//  early "Finishing up...". Phases:
+//    .idle -> .preparing -> .openingPublication -> .decryptingContent
+//    -> .extractingToDisk -> .idle (via finish)
+//  The automatic transitions (on first decrypt, on first extracted byte) get
+//  explicit coverage, since a wrong phase guard leaves the status text stuck.
 
 #if LCP
 
@@ -71,7 +56,7 @@ final class LCPPDFOpenProgressTests: XCTestCase {
         progress.setPhase(.decryptingContent)
         progress.recordDecrypt(byteCount: 2_048)
         progress.recordDecrypt(byteCount: 2_048)
-        progress.recordExtractedBytes(1_024)
+        progress.recordExtractedBytes(1_024, bookIdentifier: bookID)
 
         // Settle the nonisolated → MainActor hops.
         let firstOpenWait = expectation(description: "first-open counters published")
@@ -162,7 +147,7 @@ final class LCPPDFOpenProgressTests: XCTestCase {
         progress.begin(bookIdentifier: bookID)
         progress.setPhase(.openingPublication)
 
-        progress.recordExtractedBytes(1_048_576) // 1MB chunk
+        progress.recordExtractedBytes(1_048_576, bookIdentifier: bookID) // 1MB chunk
 
         let wait = expectation(description: "extract bytes flushed")
         Task { @MainActor in wait.fulfill() }
@@ -173,13 +158,47 @@ final class LCPPDFOpenProgressTests: XCTestCase {
                        "first chunk write must transition phase to extractingToDisk")
     }
 
+    // MARK: - Updates from another book's open
+
+    /// An extract abandoned by a back-out can still report; it must not move
+    /// the bar of a different book's open; the matching report still counts.
+    func testRecordExtractedBytes_ForAnotherBook_IsIgnored() async {
+        let progress = LCPPDFOpenProgress()
+        progress.begin(bookIdentifier: bookID)
+        progress.setPhase(.openingPublication)
+
+        await progress.recordExtractedBytes(4_096, bookIdentifier: "urn:isbn:abandoned").value
+        await progress.recordExtractedBytes(1_024, bookIdentifier: bookID).value
+
+        XCTAssertEqual(progress.bytesExtracted, 1_024)
+    }
+
+    func testRecordExtractedBytes_ForAnotherBook_LeavesThePhase() async {
+        let progress = LCPPDFOpenProgress()
+        progress.begin(bookIdentifier: bookID)
+        progress.setPhase(.openingPublication)
+
+        await progress.recordExtractedBytes(4_096, bookIdentifier: "urn:isbn:abandoned").value
+
+        XCTAssertEqual(progress.phase, .openingPublication)
+    }
+
+    func testSetTotalExtractBytes_ForAnotherBook_IsIgnored() {
+        let progress = LCPPDFOpenProgress()
+        progress.begin(bookIdentifier: bookID)
+
+        progress.setTotalExtractBytes(8_192, bookIdentifier: "urn:isbn:abandoned")
+
+        XCTAssertEqual(progress.totalExtractBytes, 0)
+    }
+
     // MARK: - percentComplete: bytes-based vs curve fallback
 
     func testPercentComplete_withByteTotal_returnsTrueRatio() {
         let progress = LCPPDFOpenProgress.shared
         progress.begin(bookIdentifier: bookID)
-        progress.setTotalExtractBytes(100)
-        progress.recordExtractedBytes(50)
+        progress.setTotalExtractBytes(100, bookIdentifier: bookID)
+        progress.recordExtractedBytes(50, bookIdentifier: bookID)
 
         let wait = expectation(description: "bytes settled")
         Task { @MainActor in wait.fulfill() }
@@ -192,8 +211,8 @@ final class LCPPDFOpenProgressTests: XCTestCase {
     func testPercentComplete_clampsAt99NotAt100() {
         let progress = LCPPDFOpenProgress.shared
         progress.begin(bookIdentifier: bookID)
-        progress.setTotalExtractBytes(100)
-        progress.recordExtractedBytes(100) // ratio = 1.0
+        progress.setTotalExtractBytes(100, bookIdentifier: bookID)
+        progress.recordExtractedBytes(100, bookIdentifier: bookID) // ratio = 1.0
 
         let wait = expectation(description: "bytes settled")
         Task { @MainActor in wait.fulfill() }
@@ -237,8 +256,8 @@ final class LCPPDFOpenProgressTests: XCTestCase {
     func testFinish_resetsToIdleAndClearsIdentifier() {
         let progress = LCPPDFOpenProgress.shared
         progress.begin(bookIdentifier: bookID)
-        progress.setPhase(.loadingFirstPage)
-        progress.recordExtractedBytes(1_024)
+        progress.setPhase(.extractingToDisk)
+        progress.recordExtractedBytes(1_024, bookIdentifier: bookID)
 
         let wait = expectation(description: "settled")
         Task { @MainActor in wait.fulfill() }
@@ -252,7 +271,7 @@ final class LCPPDFOpenProgressTests: XCTestCase {
                        "finish must clear the cross-actor flag so cover prefetch can resume")
     }
 
-    /// Round-trip per CLAUDE.md state-machine rule: begin → work →
+    /// Round-trip: begin → work →
     /// finish → begin again must yield clean state. A bug where
     /// `finish` failed to reset would silently carry counters
     /// across opens.

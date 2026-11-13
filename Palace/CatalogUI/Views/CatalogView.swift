@@ -3,6 +3,7 @@ import PalacePreferences
 import UIKit
 import PalaceLogging
 import PalaceBookModel
+import PalaceUtilities
 
 struct CatalogView: View {
     // MARK: - Properties
@@ -97,7 +98,8 @@ private extension CatalogView {
                     repository: viewModel.searchRepository,
                     baseURL: viewModel.searchBaseURL,
                     books: viewModel.state.allBooks,
-                    onBookSelected: presentBookDetail
+                    onBookSelected: presentBookDetail,
+                    appContainer: appContainer
                 )
             } else {
                 catalogStateView
@@ -182,6 +184,7 @@ private extension CatalogView {
             Text(Strings.Generic.error)
                 .font(.headline)
                 .foregroundStyle(.red)
+                .accessibilityAddTraits(.isHeader)
 
             Text(message)
                 .font(.body)
@@ -227,6 +230,7 @@ private extension CatalogView {
 
             Text(Strings.Catalog.offlineTitle)
                 .font(.headline)
+                .accessibilityAddTraits(.isHeader)
 
             Text(Strings.Catalog.offlineMessage)
                 .font(.body)

@@ -2,22 +2,17 @@
 //  AccountsManager+ProblemReportContext.swift
 //  Palace
 //
-//  Wave 1c (cycle 2): the problem-report composer no longer reaches into
-//  AccountsManager (ErrorHandling↔Accounts cycle back-edge). Callers snapshot
-//  this context and pass values in. Replicates the exact pre-wave resolution
-//  from ProblemReportEmail.beginComposing(to:presentingViewController:book:libraryUUID:):
-//  a specific library's patron ID when the UUID (or current account id) is
-//  known, else the current user account; library display name is always the
-//  CURRENT account's (matching the old generateBody behavior even when a
-//  different library was selected).
+//  Callers snapshot this context and pass it to the problem-report composer, so
+//  ErrorHandling does not depend on AccountsManager. The patron reference comes
+//  from the given library (or the current account) and is hashed before it
+//  leaves here (PP-4818); the library display name is always the current
+//  account's, even when a different library was selected.
 //
 
 import Foundation
 
 extension AccountsManager {
-    func problemReportContext(
-        forLibrary libraryUUID: String?
-    ) -> (patronIdentifier: String?, libraryName: String?, libraryUUID: String?) {
+    func problemReportContext(forLibrary libraryUUID: String?) -> SupportReportContext {
         let account: TPPUserAccount
         let resolvedID = libraryUUID ?? currentAccountId
         if let id = resolvedID {
@@ -25,12 +20,13 @@ extension AccountsManager {
         } else {
             account = currentUserAccount
         }
-        // PP-5078: the resolved ID is returned alongside the name because the two
-        // resolve independently. The patron ID comes from `account` (looked up by
-        // ID), while the name comes from `currentAccount`, which stays nil until
-        // the library registry has loaded. In that window the app knows WHICH
-        // library is selected but cannot name it — the exact state that produced
-        // problem reports with a populated Patron ID and a blank Library line.
-        return (account.authorizationIdentifier, currentAccount?.name, resolvedID)
+        // PP-5078: the resolved ID is returned alongside the name because
+        // `currentAccount` stays nil until the registry loads. In that window the
+        // app knows which library is selected but cannot name it.
+        return SupportReportContext(
+            rawPatronIdentifier: account.authorizationIdentifier,
+            libraryName: currentAccount?.name,
+            libraryUUID: resolvedID
+        )
     }
 }

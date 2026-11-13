@@ -5,7 +5,6 @@ enum AppTab: Hashable {
     case myBooks
     case holds
     case discover
-    case stats
     case collections
     case settings
 }

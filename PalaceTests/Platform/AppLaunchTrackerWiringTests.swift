@@ -2,8 +2,7 @@
 //  AppLaunchTrackerWiringTests.swift
 //  PalaceTests
 //
-//  Wiring test for the launch instrumentation added in swarm_27c181b5
-//  (Startup-AppLifecycle). Proves that recording the launch milestones in the
+//  Wiring test for the launch instrumentation. Proves that recording the launch milestones in the
 //  order the production sites fire them (processStart in TPPAppDelegate,
 //  didFinishLaunching in TPPAppDelegate, firstFrame in SceneDelegate,
 //  catalogLoaded in CatalogViewModel) yields a non-nil, correctly-ordered
@@ -51,7 +50,7 @@ final class AppLaunchTrackerWiringTests: XCTestCase {
         await tracker.recordMilestone(.catalogLoaded)
 
         // timeToInteractive = processStart -> catalogLoaded must be non-nil and
-        // strictly positive (kills the `endTime - startTime` sign-flip mutant).
+        // strictly positive (guards the `endTime - startTime` sign).
         let tti = await tracker.timeToInteractive
         XCTAssertNotNil(tti, "timeToInteractive must be non-nil once processStart and catalogLoaded are recorded")
         XCTAssertGreaterThan(tti ?? 0, 0, "timeToInteractive must be strictly positive")

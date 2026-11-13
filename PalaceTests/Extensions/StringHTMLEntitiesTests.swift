@@ -45,8 +45,8 @@ final class StringHTMLEntitiesTests: XCTestCase {
 
   /// Pass-through and edge cases: empty string, plain text, mixed content
   /// with multiple entity types interleaved with plain characters. Pin the
-  /// full mixed-content roundtrip so a mutant that only handles one entity
-  /// type at a time fails on the multi-entity input.
+  /// full mixed-content roundtrip so handling only one entity type at a
+  /// time fails on the multi-entity input.
   func testDecode_passThroughAndMixedContentEdgeCases() {
     XCTAssertEqual("".stringByDecodingHTMLEntities, "",
                    "Empty string must pass through unchanged")
@@ -61,8 +61,8 @@ final class StringHTMLEntitiesTests: XCTestCase {
   /// Malformed-input safety: invalid entities and lone ampersands MUST
   /// pass through verbatim, never crash, never replace with garbage.
   /// Pin both shapes (invalid `&foo;` and bare `&`) plus a mid-string
-  /// invalid entity adjacent to a valid one — guards against a mutant
-  /// that drops invalid entities entirely or eats trailing text.
+  /// invalid entity adjacent to a valid one — guards against dropping
+  /// invalid entities entirely or eating trailing text.
   func testDecode_malformedInputPreservedVerbatim() {
     XCTAssertEqual("&foo;".stringByDecodingHTMLEntities, "&foo;",
                    "Unknown named entity must be preserved verbatim")
@@ -78,8 +78,8 @@ final class StringHTMLEntitiesTests: XCTestCase {
   // MARK: - NSString bridge
 
   /// NSString bridge mirrors the Swift extension. Lock the bridge for both
-  /// a simple decode AND a mixed-content decode so a mutant that only
-  /// implements the bridge as a no-op fails on the second case.
+  /// a simple decode AND a mixed-content decode so a no-op bridge fails
+  /// on the second case.
   func testNSStringBridge_decodesEntitiesAndMixedContent() {
     let simple = ("&lt;tag&gt;" as NSString).stringByDecodingHTMLEntities()
     XCTAssertEqual(simple as String, "<tag>",

@@ -7,13 +7,8 @@
 //  the `PalaceReadingPosition` SPM stays free of `URLSession` /
 //  `TPPNetworkExecutor` / `TPPAnnotations` dependencies.
 //
-//  The adapter is the "network seam" for audiobook position writes:
-//  - `post(_:)` calls `AnnotationsManager.postListeningPosition(...)`
-//  - `fetch(bookID:)` is currently unused on the audiobook write path
-//    (`AudiobookBookmarkBusinessLogic` reads from `TPPBookRegistry` for
-//    conflict resolution, not the server). Returning `nil` keeps the
-//    `PositionWriter.load(for:)` contract honest until a remote-load
-//    surface exists for audiobooks.
+//  `fetch(bookID:)` returns nil: audiobook conflict resolution reads the
+//  local registry, not the server.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -52,10 +47,7 @@ final class AudiobookPositionAdapter: PositionNetworkAdapter, @unchecked Sendabl
     }
 
     func fetch(bookID: String) async throws -> PositionSnapshot? {
-        // The audiobook write path resolves conflicts against the local
-        // registry, not a fresh server fetch. Returning nil signals "no
-        // remote-load implemented" without throwing — callers that don't
-        // call `load(for:)` (the current audiobook path) are unaffected.
+        // No remote load for audiobooks; see the file header.
         nil
     }
 }

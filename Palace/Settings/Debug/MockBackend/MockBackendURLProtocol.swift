@@ -26,10 +26,34 @@ private final class MockBackendConfigStore: @unchecked Sendable {
     private var _fixtureBundle: Bundle = .main
     private var _fixtureDirectoryPath: String?
     private var _requestCount = 0
+    private var _flags: Set<String> = []
+    private var _flagsDidChange: (@Sendable (Set<String>) -> Void)?
 
+    /// Changing the scenario clears its flags: they belong to one scenario run.
     var activeScenario: MockScenario? {
         get { lock.lock(); defer { lock.unlock() }; return _activeScenario }
-        set { lock.lock(); defer { lock.unlock() }; _activeScenario = newValue }
+        set {
+            lock.lock(); defer { lock.unlock() }
+            _activeScenario = newValue
+            _flags = []
+        }
+    }
+    var flags: Set<String> {
+        get { lock.lock(); defer { lock.unlock() }; return _flags }
+        set { lock.lock(); defer { lock.unlock() }; _flags = newValue }
+    }
+    var flagsDidChange: (@Sendable (Set<String>) -> Void)? {
+        get { lock.lock(); defer { lock.unlock() }; return _flagsDidChange }
+        set { lock.lock(); defer { lock.unlock() }; _flagsDidChange = newValue }
+    }
+    /// Raises `flag` and reports the new set outside the lock.
+    func raise(_ flag: String) {
+        lock.lock()
+        let inserted = _flags.insert(flag).inserted
+        let snapshot = _flags
+        let observer = _flagsDidChange
+        lock.unlock()
+        if inserted { observer?(snapshot) }
     }
     var scopedHost: String? {
         get { lock.lock(); defer { lock.unlock() }; return _scopedHost }
@@ -50,14 +74,32 @@ private final class MockBackendConfigStore: @unchecked Sendable {
     }
 }
 
-/// Carries the `@unchecked Sendable` `MockBackendURLProtocol` instance across the
-/// `@Sendable` `DispatchQueue.main.async` boundary in `deliverResponse` as a single
-/// owned handoff — the region-analysis-friendly form of "send `self` to main."
-/// The URL Loading System owns the protocol instance for the request lifetime and
-/// the finish callback fires once, so the strong reference is safe.
-private final class MockProtocolBox: @unchecked Sendable {
-    let value: MockBackendURLProtocol
-    init(_ value: MockBackendURLProtocol) { self.value = value }
+/// The thread that called `startLoading` and the run loop modes it was running.
+///
+/// The URL loading system expects every client callback on that thread, which
+/// runs its run loop (Apple's CustomHTTPProtocol sample, "Threading Notes":
+/// https://developer.apple.com/library/archive/samplecode/CustomHTTPProtocol/Listings/Read_Me_About_CustomHTTPProtocol_txt.html).
+/// `@unchecked Sendable`: `CFRunLoop` is thread-safe for `CFRunLoopPerformBlock`
+/// and `CFRunLoopWakeUp`, and both stored properties are immutable.
+private struct MockClientThread: @unchecked Sendable {
+    private let runLoop: CFRunLoop
+    private let modes: CFArray
+
+    /// Captures the calling thread. Call from `startLoading`.
+    static func current() -> MockClientThread {
+        let runLoop = CFRunLoopGetCurrent()!
+        var modes: [CFString] = [CFRunLoopMode.defaultMode.rawValue]
+        if let mode = CFRunLoopCopyCurrentMode(runLoop), mode != .defaultMode {
+            modes.append(mode.rawValue)
+        }
+        return MockClientThread(runLoop: runLoop, modes: modes as CFArray)
+    }
+
+    /// Runs `block` on the client thread's next run loop pass.
+    func perform(_ block: @escaping () -> Void) {
+        CFRunLoopPerformBlock(runLoop, modes, block)
+        CFRunLoopWakeUp(runLoop)
+    }
 }
 
 // Swift 6 `complete` — `@unchecked Sendable` invariant: this `URLProtocol` subclass
@@ -65,8 +107,8 @@ private final class MockProtocolBox: @unchecked Sendable {
 // lock-backed `static let config` (`MockBackendConfigStore`, itself
 // `@unchecked Sendable`), and `client`/`request` are per-instance state owned and
 // serialized by the URL Loading System. `self` is captured only into the deferred
-// response-delivery closures below, which the loading system drives on the
-// protocol's own thread. Documented invariant, not a bare waiver.
+// response-delivery closures below, which run on the thread that called
+// `startLoading`. Documented invariant, not a bare waiver.
 final class MockBackendURLProtocol: URLProtocol, @unchecked Sendable {
 
     // MARK: - Static Configuration
@@ -100,6 +142,19 @@ final class MockBackendURLProtocol: URLProtocol, @unchecked Sendable {
         set { config.fixtureDirectoryPath = newValue }
     }
 
+    /// Flags raised by routes with `setsFlag` during the active scenario.
+    static var flags: Set<String> {
+        get { config.flags }
+        set { config.flags = newValue }
+    }
+
+    /// Called with the full flag set whenever a route raises a new flag, so a
+    /// launch-time activation can carry the flags across an app relaunch.
+    static var flagsDidChange: (@Sendable (Set<String>) -> Void)? {
+        get { config.flagsDidChange }
+        set { config.flagsDidChange = newValue }
+    }
+
     // MARK: - URLProtocol Overrides
 
     override class func canInit(with request: URLRequest) -> Bool {
@@ -118,7 +173,8 @@ final class MockBackendURLProtocol: URLProtocol, @unchecked Sendable {
         // Only intercept requests that match an explicit route.
         // Unmatched requests pass through to the real server so the
         // catalog, cover images, and other non-mocked endpoints work normally.
-        let matched = scenario.routes.contains { $0.matches(request) }
+        let flags = config.flags
+        let matched = scenario.routes.contains { $0.matches(request, flags: flags) }
         if !matched, let url = request.url?.absoluteString {
             Log.debug(#file, "MockBackend: pass-through (no route matched) \(request.httpMethod ?? "?") \(url)")
         }
@@ -131,6 +187,7 @@ final class MockBackendURLProtocol: URLProtocol, @unchecked Sendable {
 
     override func startLoading() {
         let requestNum = Self.config.nextRequestCount()
+        let clientThread = MockClientThread.current()
 
         guard let scenario = Self.activeScenario,
               let url = request.url else {
@@ -143,9 +200,11 @@ final class MockBackendURLProtocol: URLProtocol, @unchecked Sendable {
         Log.info(#file, "MockBackend [\(requestNum)] \(method) \(url.absoluteString)")
 
         // Find matching route
-        guard let route = scenario.routes.first(where: { $0.matches(request) }) else {
+        let flags = Self.config.flags
+        guard let route = scenario.routes.first(where: { $0.matches(request, flags: flags) }) else {
             Log.warn(#file, "MockBackend [\(requestNum)] No route matched, returning 404")
-            deliverResponse(statusCode: 404,
+            deliverResponse(on: clientThread,
+                           statusCode: 404,
                            contentType: "application/problem+json",
                            data: makeProblemDocument(title: "Not Found",
                                                      detail: "MockBackend: no route matched \(url.path)",
@@ -154,6 +213,10 @@ final class MockBackendURLProtocol: URLProtocol, @unchecked Sendable {
         }
 
         Log.info(#file, "MockBackend [\(requestNum)] Matched route: \(route.fixtureName) → \(route.statusCode)")
+
+        if let flag = route.setsFlag {
+            Self.config.raise(flag)
+        }
 
         // Load fixture data
         guard let fixtureData = loadFixture(route: route) else {
@@ -167,13 +230,17 @@ final class MockBackendURLProtocol: URLProtocol, @unchecked Sendable {
 
         if delay > 0 {
             DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [weak self] in
-                self?.deliverResponse(statusCode: route.statusCode,
-                                      contentType: route.contentType,
-                                      data: fixtureData,
-                                      additionalHeaders: route.headers)
+                clientThread.perform {
+                    self?.deliverResponse(on: clientThread,
+                                          statusCode: route.statusCode,
+                                          contentType: route.contentType,
+                                          data: fixtureData,
+                                          additionalHeaders: route.headers)
+                }
             }
         } else {
-            deliverResponse(statusCode: route.statusCode,
+            deliverResponse(on: clientThread,
+                           statusCode: route.statusCode,
                            contentType: route.contentType,
                            data: fixtureData,
                            additionalHeaders: route.headers)
@@ -194,13 +261,19 @@ final class MockBackendURLProtocol: URLProtocol, @unchecked Sendable {
         // Priority 0: embedded fixtures (always available, no bundle needed)
         data = EmbeddedFixtures.data(for: name)
 
-        // Priority 1: direct file system path (set by tests)
+        // Priority 1: direct file system path (set by tests). A name that
+        // already carries its extension (a binary fixture such as an EPUB) is
+        // read as-is.
         if let dirPath = Self.fixtureDirectoryPath {
-            for ext in possibleExtensions {
-                let path = "\(dirPath)/\(name).\(ext)"
-                if let d = FileManager.default.contents(atPath: path) {
-                    data = d
-                    break
+            if let d = Self.regularFileContents(atPath: "\(dirPath)/\(name)") {
+                data = d
+            } else {
+                for ext in possibleExtensions {
+                    let path = "\(dirPath)/\(name).\(ext)"
+                    if let d = FileManager.default.contents(atPath: path) {
+                        data = d
+                        break
+                    }
                 }
             }
         }
@@ -245,9 +318,18 @@ final class MockBackendURLProtocol: URLProtocol, @unchecked Sendable {
         return fixtureData
     }
 
+    private static func regularFileContents(atPath path: String) -> Data? {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
+              !isDirectory.boolValue else { return nil }
+        return FileManager.default.contents(atPath: path)
+    }
+
     // MARK: - Response Delivery
 
-    private func deliverResponse(statusCode: Int,
+    /// Call only on `clientThread`.
+    private func deliverResponse(on clientThread: MockClientThread,
+                                  statusCode: Int,
                                   contentType: String,
                                   data: Data,
                                   additionalHeaders: [String: String]? = nil) {
@@ -267,22 +349,16 @@ final class MockBackendURLProtocol: URLProtocol, @unchecked Sendable {
             return
         }
 
-        // Deliver response and data synchronously, then finish on next runloop
-        // tick. This ensures the URLSession delegate processes didReceive(data:)
-        // before didCompleteWithError: fires — otherwise TPPNetworkResponder's
-        // progressData may be empty when it tries to parse the problem document.
+        // Deliver response and data now, then finish on the client thread's next
+        // run loop pass. The extra pass lets the URLSession delegate process
+        // didReceive(data:) before didCompleteWithError: fires; otherwise
+        // TPPNetworkResponder's progressData may be empty when it parses a
+        // problem document. Finishing on main instead stalled requests into
+        // -1001 timeouts whenever the main thread was busy.
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: data)
-        // `complete`: box `self` (an `@unchecked Sendable` `URLProtocol` subclass)
-        // into a carrier before the `@Sendable` `main.async` closure so the
-        // region checker sees a single owned handoff rather than "sending 'self'
-        // risks data races." The URL Loading System owns this protocol instance
-        // for the request's lifetime, and the finish callback runs exactly once,
-        // so the strong reference in the box is safe. Dispatch timing unchanged.
-        let selfBox = MockProtocolBox(self)
-        DispatchQueue.main.async {
-            let this = selfBox.value
-            this.client?.urlProtocolDidFinishLoading(this)
+        clientThread.perform {
+            self.client?.urlProtocolDidFinishLoading(self)
         }
     }
 

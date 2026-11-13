@@ -2,7 +2,7 @@
 //  OPDS1ParsingTests.swift
 //  PalaceTests
 //
-//  Deep, mutation-killing unit tests for the OPDS 1.x parser stack:
+//  Unit tests for the OPDS 1.x parser stack:
 //  TPPOPDSFeed, TPPOPDSEntry, TPPOPDSLink, plus facet-group attributes.
 //
 //  These tests pin existing parser behavior — they intentionally do NOT
@@ -378,7 +378,7 @@ final class OPDS1ParsingTests: XCTestCase {
     // MARK: - Edge cases via inline XML (kept tiny and deterministic)
 
     func testEntry_veryLongTitle_preservedExactly() {
-        // > 1KB title to defend against truncation/length mutations.
+        // > 1KB title to defend against truncation.
         let longTitle = String(repeating: "Long Title Segment. ", count: 60)
         XCTAssertGreaterThan(longTitle.count, 1024)
         let xmlString = """
@@ -454,8 +454,8 @@ final class OPDS1ParsingTests: XCTestCase {
     }
 
     func testLink_invalidHrefScheme_capturedAsIs() {
-        // URL(string:) is fairly permissive — this defends against a mutant
-        // that drops the URL guard entirely.
+        // URL(string:) is fairly permissive — this defends against dropping
+        // the URL guard entirely.
         let xmlString = """
         <link href="" rel="self"/>
         """

@@ -86,8 +86,8 @@ struct TicketPreviewCard: View {
             }
 
             HStack(spacing: BotUI.Spacing.small) {
-                BotUI.CancelButton(title: "Discard") { onAction(.cancel) }
-                BotUI.PrimaryButton(title: "Send", systemImage: "paperplane.fill") {
+                BotUI.CancelButton(title: BotStrings.discard) { onAction(.cancel) }
+                BotUI.PrimaryButton(title: BotStrings.send, systemImage: "paperplane.fill") {
                     onAction(.send)
                 }
             }
@@ -223,7 +223,7 @@ struct ErrorActionsCard: View {
 
             VStack(spacing: BotUI.Spacing.small) {
                 if let draft {
-                    BotUI.PrimaryButton(title: "Try again", systemImage: "arrow.clockwise") {
+                    BotUI.PrimaryButton(title: BotStrings.tryAgain, systemImage: "arrow.clockwise") {
                         onAction(.retry)
                     }
                     Button {

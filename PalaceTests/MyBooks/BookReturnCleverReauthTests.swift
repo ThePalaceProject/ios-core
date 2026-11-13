@@ -2,26 +2,11 @@
 //  BookReturnCleverReauthTests.swift
 //  PalaceTests
 //
-//  Module B of swarm_66819d80 — explicit pinning of the behavior
-//  broadening at substitution site 4.10 inside `BookReturnService`.
-//
-//  Pre-Module-B the return-time auth-error decision used
-//  `(authDef?.isSaml == true || authDef?.isOidc == true) && hasCredentials`.
-//  A Clever (OAuth-intermediary) library hitting an invalid-credentials
-//  problem doc on return therefore skipped the `markCredentialsStale()`
-//  call — the reauthenticator was dispatched with the expired bearer
-//  still live in keychain, and the next attempt silently reused the
-//  stale token.
-//
-//  Post-Module-B the predicate is `authDef?.isBrowserBased == true &&
-//  hasCredentials`. Clever now flips auth state to `.credentialsStale`
-//  before the reauthenticator is invoked, forcing a fresh browser
-//  sign-in — matching the SAML/OIDC recovery semantics.
-//
-//  This file pins that broadening with a single behavior spec. It was
-//  originally co-located with `BorrowOperationCleverReauthTests` in
-//  that file, then extracted here so the test file name matches the
-//  test class name (discovery + pbxproj-routing convention).
+//  Pins the return-time auth-error decision in `BookReturnService`, now
+//  `authDef?.isBrowserBased == true && hasCredentials` (previously SAML/OIDC
+//  only). A Clever (OAuth-intermediary) library hitting an invalid-credentials
+//  problem doc on return must flip to `.credentialsStale` before the
+//  reauthenticator runs; otherwise the next attempt reuses the expired bearer.
 //
 //  Copyright 2026 The Palace Project. All rights reserved.
 //

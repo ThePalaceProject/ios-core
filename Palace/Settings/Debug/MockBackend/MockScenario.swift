@@ -19,6 +19,10 @@ struct MockScenario: Codable, Identifiable {
     let description: String
     let routes: [MockRoute]
 
+    /// App state a launch-time activation applies before any service starts.
+    /// Only `MockBackendLaunchHook` reads it; the debug menu ignores it.
+    var launch: MockScenarioLaunch?
+
     /// Load a scenario from a JSON file in the given bundle.
     static func load(_ name: String, from bundle: Bundle) -> MockScenario? {
         guard let url = bundle.url(forResource: name, withExtension: "json", subdirectory: "Scenarios") ??
@@ -56,6 +60,16 @@ struct MockScenario: Codable, Identifiable {
     }
 }
 
+/// App state applied at launch so the app starts against the scenario's
+/// fixture library instead of the production registry.
+struct MockScenarioLaunch: Codable, Equatable {
+    /// Full URL of the fixture library registry feed.
+    let libraryRegistryURL: String
+
+    /// Registry id of the library to select at launch.
+    let libraryID: String
+}
+
 /// A single route in a mock scenario — maps a URL pattern to a fixture response.
 struct MockRoute: Codable {
     /// HTTP method to match (nil matches any method).
@@ -82,9 +96,18 @@ struct MockRoute: Codable {
     /// Optional additional response headers.
     let headers: [String: String]?
 
+    /// When set, the route matches only while this flag is raised. Lets one
+    /// scenario answer the same URL differently before and after an action,
+    /// such as the loans feed before and after a borrow.
+    let requiresFlag: String?
+
+    /// When set, serving this route raises the flag.
+    let setsFlag: String?
+
     private enum CodingKeys: String, CodingKey {
         case method, pathPattern, fixtureName, fixtureKey
         case statusCode, contentType, delayMs, headers
+        case requiresFlag, setsFlag
     }
 
     init(
@@ -95,7 +118,9 @@ struct MockRoute: Codable {
         statusCode: Int = 200,
         contentType: String = "application/json",
         delayMs: Int? = nil,
-        headers: [String: String]? = nil
+        headers: [String: String]? = nil,
+        requiresFlag: String? = nil,
+        setsFlag: String? = nil
     ) {
         self.method = method
         self.pathPattern = pathPattern
@@ -105,10 +130,16 @@ struct MockRoute: Codable {
         self.contentType = contentType
         self.delayMs = delayMs
         self.headers = headers
+        self.requiresFlag = requiresFlag
+        self.setsFlag = setsFlag
     }
 
-    /// Check if this route matches a given URLRequest.
-    func matches(_ request: URLRequest) -> Bool {
+    /// Check if this route matches a given URLRequest while `flags` are raised.
+    func matches(_ request: URLRequest, flags: Set<String> = []) -> Bool {
+        if let requiredFlag = requiresFlag, !flags.contains(requiredFlag) {
+            return false
+        }
+
         if let method = method, method.uppercased() != request.httpMethod?.uppercased() {
             return false
         }

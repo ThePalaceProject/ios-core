@@ -2,12 +2,10 @@
 //  CirculationOfflineSupport.swift
 //  PalaceNetwork
 //
-//  Wave 1c (god-class decomposition, cycle 3): seam protocols for the
-//  circulation-analytics offline-retry path. Declared package-side so the
-//  relocated TPPCirculationAnalytics names NO app-target Network type
-//  (naming NetworkQueue/TPPNetworkExecutor from its new OPDS2 home would
-//  re-mint the folder cycle this wave dissolves). App-side conformances:
-//  NetworkQueue + TPPNetworkExecutor (Palace/Network/).
+//  Seams for the circulation-analytics offline-retry path, declared here so
+//  TPPCirculationAnalytics (in OPDS2) names no app-target Network type, which
+//  would create a folder dependency cycle. App-side conformances:
+//  NetworkQueue and TPPNetworkExecutor (Palace/Network/).
 //
 
 import Foundation

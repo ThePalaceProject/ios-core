@@ -1,39 +1,11 @@
 //
-// TPPSignInBusinessLogic+ForceReset.swift
-// The Palace Project
-//
-// "Reset This Library Account" — patron-self-service stuck-state recovery.
-// Mirrors the cleanup work in TPPSignInBusinessLogic+SignOut.swift but
-// runs UNCONDITIONALLY: every step proceeds regardless of whether the
-// CM-side DELETE call succeeded. This is the difference that matters for
-// patrons whose app is already broken (HelpSpot 17716 Cornell SAML and
-// the broader pattern Carissa flagged on 2026-05-05) — Sign Out's network
-// DELETE often hangs or fails for them, leaving downstream cleanup
-// short-circuited and the patron stuck across delete-and-reinstall.
-//
-// What this clears (locally):
-//   - FCM device-token registration with the CM (best-effort DELETE; no gating)
-//   - Stored credentials in Keychain (`userAccount.removeAll`)
-//   - Account.hasUpdatedToken flag
-//   - bookDownloadsCenter + bookRegistry state for this library
-//   - selectedIDP + samlHelper state
-//   - NetworkExecutor cache + URLCache
-//   - WKWebsiteDataStore.default() — ALL data types (cookies, local storage,
-//     IndexedDB, the lot) — unconditionally
-//   - Sets a one-shot flag so the NEXT OIDC `ASWebAuthenticationSession`
-//     forces `prefersEphemeralWebBrowserSession = true`. This defeats the
-//     Safari-shared-cookie reuse that survives app deletion for OIDC
-//     libraries (PR #909 / cross-platform audit finding).
-//
-// What this does NOT clear (out of client reach):
-//   - CM-side device-token rows for this patron (CM team intervention or
-//     reaper task — recommended in audit)
-//   - The library's IdP-side session at the identity provider
-//   - iCloud-backup-restored stale state (next reset still helps once the
-//     user re-launches and writes new state)
-//
-// Diagnostic: every step emits a `[RESET_ACCOUNT]` log line so a patron
-// sysdiagnose can be grepped to confirm the reset ran end-to-end.
+// "Reset This Library Account" — patron self-service stuck-state recovery.
+// Does the Sign Out cleanup unconditionally, whether or not the CM-side DELETE
+// succeeds, because for stuck patrons that DELETE often hangs (HelpSpot 17716).
+// Clears credentials, registry/download state, IdP/SAML state, network caches,
+// and all WKWebsiteDataStore data, and makes the next OIDC session ephemeral so
+// Safari's shared cookies can't be reused (PR #909). Cannot clear CM-side token
+// rows or the IdP's own session. Each step logs `[RESET_ACCOUNT]`.
 //
 // Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -104,10 +76,7 @@ extension TPPSignInBusinessLogic {
     /// extensions — including init injection. A swappable `static var`
     /// is the minimum-surface seam that lets both the static and
     /// instance call sites share one backing store.
-    // PUBLIC_INTENT: swarm_cd181acd D-cleanup. Extension methods access UserDefaults via this property; static var is the only injectable seam (extensions can't have stored instance properties or init injection). Default `.standard` preserves all production callers.
-    // Swift 6 `complete`: backed by the file-private `OSAllocatedUnfairLock`
-    // above (not `nonisolated(unsafe)`); the public get/set contract is
-    // unchanged so every existing caller and test seam works verbatim.
+    // PUBLIC_INTENT: extensions can't have stored or init-injected properties, so a static var is the only injectable seam. Default `.standard` in production.
     // `nonisolated`: backed by the file-private lock-box `ForceResetDefaultsBox`
     // (already `@unchecked Sendable`, `OSAllocatedUnfairLock`-guarded), so it is
     // thread-safe independent of actor isolation. The reset test suites read and

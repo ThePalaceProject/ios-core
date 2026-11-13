@@ -2,19 +2,11 @@
 //  BookReturnServiceAuthCoordinatorTests.swift
 //  PalaceTests
 //
-//  swarm_66819d80 Module C — caller-migration assertions at the
-//  `BookReturnService` SEAM. Pins that when the service is constructed
-//  WITH a non-nil `authCoordinator`, the auth-error branch routes
-//  through the coordinator (NOT the legacy `reauthenticator` closure).
-//
-//  Reviewer-fixup (QA-3, swarm_66819d80 Pass 3): the original test class
-//  never instantiated `BookReturnService` — all 3 tests hit the
-//  coordinator directly and duplicated `AuthCoordinatorTests` coverage.
-//  The service's coordinator-routing branch was unverified at the
-//  service seam. This rewrite instantiates the real `BookReturnService`
-//  with spy collaborators, drives a return that triggers the auth-error
-//  branch (401 with invalid-credentials problem-doc), and asserts the
-//  coordinator IS invoked while the legacy reauthenticator is NOT.
+//  Caller-migration assertions at the `BookReturnService` seam: with a
+//  non-nil `authCoordinator`, a return that hits the auth-error branch
+//  (401 with an invalid-credentials problem doc) routes through the
+//  coordinator, not the legacy `reauthenticator` closure. Uses the real
+//  service with spy collaborators.
 //
 
 import XCTest

@@ -2,48 +2,15 @@
 //  RuntimeQuiescenceLintTests.swift
 //  PalaceTests
 //
-//  The STRUCTURAL half of the WS-0 / M0 runtime-quiescence gate. The
-//  `PalaceTestCase.tearDownWithError` assert is the RUNTIME enforcement, but it
-//  is opt-in — it only protects tests that subclass the quiescence base. This
-//  lint closes that gap: it makes adoption MANDATORY for exactly the tests that
-//  can violate the invariant.
+//  Structural half of the runtime-quiescence gate. A test that sets
+//  `AccountsManager.deferInitialLoadCatalogsForTesting = false` and forgets to
+//  restore it makes the next class's container rebuild start a live registry crawl
+//  that starves the cooperative pool. So any file with a real (non-comment,
+//  non-string) such assignment must not declare a direct `XCTestCase` subclass; it
+//  must extend `PalaceTestCase`, whose tearDown asserts the flag was restored.
+//  Other leaks (detached Tasks, observers, disk cache) belong to
+//  `TearDownRequiredLintTests` and `AccountsManagerIsolationLintTests`.
 //
-//  The invariant
-//  =============
-//  The only way a test can leave the suite non-quiescent (per the documented
-//  root cause) is by assigning
-//  `AccountsManager.deferInitialLoadCatalogsForTesting = false` and failing to
-//  restore it — which then makes the next test class's `AppContainer.production()`
-//  rebuild spawn a live registry crawl that starves the cooperative pool.
-//
-//  The rule
-//  ========
-//  Any PalaceTests Swift file that contains a real (non-comment, non-string)
-//  `deferInitialLoadCatalogsForTesting = false` assignment MUST NOT declare a
-//  test class that extends `XCTestCase` *directly*. Such a class must instead
-//  extend `PalaceTestCase` (or `PalaceWiringTestCase`, which inherits it), so
-//  the inherited `tearDown` quiescence assert deterministically fails the test
-//  if it forgets to restore the flag. This holds under randomized test order
-//  (`Palace.xcscheme` runs `testExecutionOrdering = "random"`), where a trailing
-//  "final gate" test cannot.
-//
-//  What this gate DOES and does NOT catch (honest scope — see ADR)
-//  ==============================================================
-//  DOES: any test that sets the defer flag `false` without adopting the
-//  quiescence base — structurally, at lint time, broadly across PalaceTests
-//  (not a hard-coded file list).
-//  DOES NOT: other quiescence leaks (un-cancelled detached Tasks, leaked
-//  NotificationCenter observers, dirty disk cache) that do NOT route through
-//  the defer flag. Those remain the domain of the existing `TearDownRequiredLintTests`
-//  + `AccountsManagerIsolationLintTests` + `PalaceWiringTestCase` machinery.
-//  The defer flag is the single documented starvation root cause; this gate
-//  makes THAT class structurally impossible to reintroduce silently.
-//
-//  Why a Swift XCTest (not a shell grep): a hook flag (`--no-verify`) cannot
-//  bypass it — if the suite runs, the rule runs. Mirrors
-//  `AppContainerIsolationLintTests`.
-//
-//  swarm WS-0 / M0 (3.2.0 release gate).
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 

@@ -7,14 +7,12 @@
 
 import Foundation
 
-/// Registry lifecycle notification names, relocated into the package (god-class
-/// decomposition Wave 2b) because the engine POSTS them — the facade's
+/// Registry lifecycle notification names, declared in the package because the
+/// engine posts them — the facade's
 /// `BoolWithDelay` posts `TPPSyncBegan`/`TPPSyncEnded`, `postSyncFailure` posts
 /// `TPPSyncFailed`, and the store/sync save posts `TPPBookRegistryDidChange`.
 ///
-/// String values are IDENTICAL to the former app-side declarations in
-/// `NSNotification+TPP.swift` — 8 app files observe `TPPBookRegistryDidChange`
-/// and 5 observe `TPPSyncBegan`/`TPPSyncEnded`; those names must not change.
+/// App-side observers match on these string values; do not change them.
 public extension Notification.Name {
     static let TPPSyncBegan = Notification.Name("TPPSyncBegan")
     static let TPPSyncEnded = Notification.Name("TPPSyncEnded")

@@ -1,6 +1,6 @@
 # Palace iOS — Target Architecture & Decomposition Plan (ADR draft)
 
-**Status:** proposed · **Author:** architect agent, 2026-07-23 · **Extends:** `docs/architecture/architectural-triad.md` (Phases 6–7, which this document supersedes with a complete map) · **Vocabulary:** this doc reuses the triad's terms — AppContainer composition root, `Store<State,Action,Environment>`, reducer-as-pure-function, contract-snapshot tests, "load-bearing on day 1."
+**Status:** Accepted, in progress: Wave 3a (`AccountsManager`, #1361, #1363, #1366, #1367, #1368) is merged; Wave 5 (`BookDetailViewModel`) service extraction is merged (#1534), with the shell still above its 600-line target and the cycle 7 navigation inversion deferred to Wave 7; Wave 6 (`AudiobookSessionManager`) is in progress (#1539); see section 4 for remaining waves · **Date:** 2026-07-23 · **Extends:** `docs/architecture/architectural-triad.md` (Phases 6–7, which this document supersedes with a complete map) · **Vocabulary:** this doc reuses the triad's terms — AppContainer composition root, `Store<State,Action,Environment>`, reducer-as-pure-function, contract-snapshot tests, "load-bearing on day 1."
 
 ---
 
@@ -38,6 +38,66 @@ re-litigate 3a-6.** The `PalaceAccounts` SwiftPM package move is the next, separ
 
 ---
 
+## Wave 5 — `BookDetailViewModel` service extraction: COMPLETE (2026-09-29)
+
+Three services out of the hub, app-target only, no new packages. Measured with the
+ceiling gate's own code-line counter:
+
+| file | before | after |
+|---|---|---|
+| `BookDetailViewModel.swift` | 971 | **867** |
+| `BookService.swift` (retired 2026-10-12, see below) | 167 | **97** |
+| `BookOpenRouter.swift` (new, AppInfrastructure) | — | 101 |
+| `BookMetadataService.swift` (new) | — | 58 |
+| `RelatedBooksService.swift` (new) | — | 54 |
+
+**Cycle 8 (PDF↔Book) is closed.** The back-edge was `BookService` routing to PDF
+opening. `grep -E 'PDFDocument|ReaderService\.openPDF|TPPPDFDocumentMetadata|presentPDF'`
+across all of `Palace/Book/` now returns **zero**. Format routing lives in
+`BookOpenRouter` in the Application layer, which is where a component that knows
+every reader belongs.
+
+**`BookService` is retired (2026-10-12).** Wave 5 left it two audiobook-domain
+helpers and an `open` forwarder. The helpers moved to the audiobook layer: the
+open-failure alert is `AudiobookOpenFailureAlert` (`Palace/Audiobooks/`), which
+`AudiobookSessionManager` receives as an injected closure and whose Retry reopens
+through `BookOpenRouter` with the manager's registry, and the second-leg
+bearer-token manifest fetch is owned by `ProductionBearerTokenManifestFetcher`
+(`Palace/Audiobooks/Vendors/Adapters+Production.swift`). Moving those helpers met the
+forwarder's removal condition, so `BookDetailViewModel` and `BookCellModel` now
+call `BookOpenRouter.open` with the registry they were built with, the router's
+audiobook tests are `BookOpenRouterAudiobookOpenTests`, and the file is deleted.
+In production both registries are the AppContainer's, so the open resolves the same
+book as before; a test that injects a registry now gets its open resolved through
+that registry, which `BookDetailOpenRoutingTests` and
+`BookCellModelAudiobookOpenTests` pin.
+
+**Cycle 7's navigation inversion is NOT done, and is deferred to Wave 7.** §6 risk 7
+already concedes this cycle ends gate-enforced rather than compiler-enforced while
+both sides stay app-target Presentation, so no compile-time win is available yet;
+the destination-provider is a `NavigationCoordinatorHub` surface change, which is
+composition-root work of the same category as Wave 7's locator sweep.
+
+**Cycle 7 is two shapes, not one** — the §3b row describes only the first:
+
+  1. *Navigation*: `BookDetailView.swift:486` and `:657` construct
+     `CatalogLaneMoreView` in a `NavigationLink`. A destination provider addresses
+     these.
+  2. *Entry→model factory*: `RelatedBooksService.swift:87` calls
+     `CatalogViewModel.makeBook(from:bookRegistry:)`. A destination provider does
+     **not** address this; it wants relocating to PalaceBookModel/PalaceCatalog.
+
+Both are pre-existing, neither introduced by Wave 5, and the second changes the
+next wave's estimate.
+
+**Locator reads went down, not up.** `AppContainer.production()` is read four times
+inside `BookOpenRouter`, but the gate counts 250 → **249**: the same resolutions
+were previously spelled out twice in the Presentation layer, and are now spelled
+once in the Application layer. `BookOpenRouter.swift` is **not** in
+`scripts/godclass-appcontainer-locator-allowlist.txt`, which is file-specific, so
+all four stay counted. Concentration without concealment; Wave 7 owns the
+inversion.
+
 ## 1. Current-state review
 
 ### What is healthy (the target pattern is proven in-repo, not hypothetical)
@@ -55,7 +115,7 @@ re-litigate 3a-6.** The `PalaceAccounts` SwiftPM package move is the next, separ
 - **The god-orchestrators are accreting, not shrinking.** 19-day deltas: AudiobookSessionManager +529 (+24%), AccountsManager +549 (+33%), MyBooksDownloadCenter +328 (+18%). Every reliability fix (F-011 readiness gates, PP-4542 position resolve, WS-A durable downloads, CP-D1 launch hydration) lands *inside* the hub because the hub is where the seams are. Without a ratchet, decomposition is bailing a leaking boat.
 - **39 declared singletons are the coupling substrate.** The triad cut `.shared` call sites 732→~564, but the highest-fan-in ambient reaches remain: TPPKeychain.shared (40), RemoteFeatureFlags.shared (32), FirebaseManager.shared (25), UserAccountPublisher.shared (16), ImageCache.shared (16), NotificationService.shared (12), AccountStateStore.shared (8). Notably, **several of these already have AppContainer seams that consumers bypass** (`imageCache`, `userAccountPublisher`, `bookRegistry` are container members; `AppContainer._buildCachedAppContainer()` itself still reads `ImageCache.shared` and `UserAccountPublisher.shared` to build them). Even `appRatingService` construction inside AppContainer reaches for `RemoteFeatureFlags.shared` / `FirebaseManager.shared` via closures. The pattern exists; enforcement doesn't.
 - **`AppContainer.production()` is itself used as a service locator** — e.g. `Palace/ErrorHandling/ErrorDetail.swift` and `Palace/Book/UI/TPPProblemReportViewController.swift` call `AppContainer.production().accountsManager` in default args / bodies. That's a `.shared` read with extra steps: it preserves the ambient-reach graph and defeats testability the same way. The target must treat `AppContainer.production()` outside composition roots as a violation, not a win.
-- **Known debt from the triad remains open**: AuthReducer not integrated into TPPSignInBusinessLogic (gated on characterization tests that were never written — the class had 0 dedicated tests at triad time); MBDC de-singletonized but body intact; the AppContainer static-cache cells (`_audiobookSession`, `_catalogRepository`, …) are themselves process-wide singletons with hand-maintained `_resetForTesting()` bookkeeping — a recurring source of the systemic test pollution.
+- **Known debt from the triad remains open**: AuthReducer **is now integrated** into TPPSignInBusinessLogic — `authState` is the documented single source of truth and the legacy `@objc` properties compute from it. This line previously read "not integrated (gated on characterization tests that were never written — the class had 0 dedicated tests at triad time)"; both halves were false by the time anyone read them; MBDC de-singletonized but body intact; the remaining AppContainer static-cache cells (`_audiobookSession`, `_appRatingService`, …) are themselves process-wide singletons with hand-maintained `_resetForTesting()` bookkeeping — a recurring source of the systemic test pollution.
 
 **One-sentence diagnosis:** the architecture has the right *mechanisms* (packages, container, reducers, contracts) but the wrong *defaults* — inside the monolithic target, reaching sideways is free, so every fix accretes onto a hub; the fix is to make sideways reach a compile error by promoting the hub folders' lower halves into SPM packages with an enforced DAG, leaving thin app-target shells.
 
@@ -153,7 +213,7 @@ Key inversions that make this acyclic (each is a protocol defined *in the lower 
 
 1. **SwiftPM (hard, structural):** cyclic package dependencies are a manifest-resolution error; a package cannot import the app target at all. Once code is in a package, the cycle it participated in *cannot recur*.
 2. **Ledger layer gate (soft, for the shrinking app-target remainder):** the existing `layerRules` in `tools/ledger/ledger-config.json` keep policing the in-target folders during transition; each wave moves a folder's Domain half out and re-tags the remainder Presentation/Application. Name-inferred edges get a confidence tag (see §3b cycle 9).
-3. **New ratchet gates (Wave 0):** god-class LOC freeze per file; `.shared`-read count monotone-down; `AppContainer.production()` call-site count outside an allowlist (composition roots, `@Environment` default, test bootstrap) monotone-down. All three are dumb greps — cheap, ungameable, wired into `verify-pr.sh` + a tooling-checks-style workflow per CLAUDE.md's "don't land a gate faster than you can verify it."
+3. **New ratchet gates (Wave 0):** god-class LOC freeze per file (**RETIRED 2026-09-25** — see the Wave 0 note below; replaced by a generic file-size ceiling, `scripts/check-file-size-ceiling.sh`); `.shared`-read count monotone-down; `AppContainer.production()` call-site count outside an allowlist (composition roots, `@Environment` default, test bootstrap) monotone-down. All three are dumb greps — cheap, ungameable, wired into `verify-pr.sh` + a tooling-checks-style workflow per CLAUDE.md's "don't land a gate faster than you can verify it."
 
 ### 2.5 Why each root 2-cycle becomes structurally impossible (summary; full map in §3b)
 
@@ -218,7 +278,7 @@ Clusters are read from the files' own `// MARK:` structure (verified against sou
 | Metadata hydration (521–590) + Related books / series row (21–43, 591–683) | fetch full OPDS entry, related-works lanes | `BookMetadataService` + `RelatedBooksService` → app-target **Domain-in-transit**, backed by **PalaceCatalog**'s repository (candidate to fold into PalaceCatalog once TPPBook lives in PalaceBookModel) |
 | Button actions + Download/Return/Cancel (684–802, 894–948) | dispatch to downloadCenter/borrow | **Shell** (thin dispatch through injected `MyBooksDownloadCenterProtocol`) |
 | Authentication helper (803–893) | reauth-then-retry glue | delete in place — route through **PalaceAuth**'s `AuthCoordinator` (this is exactly what AuthCoordinator was built for; the VM-local copy is pre-coordinator legacy) |
-| Reading + Audiobook opening + Streaming HTML reader PP-4161 (949–1118) | open EPUB/PDF/audio/streaming | `BookOpenRouter` (app-target Application service; `BookService.swift` already holds the format-routing seam — consolidate there, see cycle 8) |
+| Reading + Audiobook opening + Streaming HTML reader PP-4161 (949–1118) | open EPUB/PDF/audio/streaming | `BookOpenRouter` (app-target Application service; the format routing that `BookService.swift` used to hold was consolidated there, see cycle 8). **DONE 2026-09-29 (Wave 5)** |
 | Samples (1119–1176) | sample playback | **Shell** dispatch to existing `SamplePreviewManager` (AppContainer seam exists) |
 | Error alerts (1177–…) + LCP streaming ext | present errors | **Shell** |
 
@@ -263,7 +323,7 @@ Each row names the *verified* code behind both directions (grepped this session)
 | 5 | **Accounts↔Settings** | `AccountsManager` stores `private let settings: TPPSettings` | `Palace/Settings/` UI (`AccountDetailViewModel`, `AdvancedSettingsView`, `TPPSettings+SE`) reads `AccountsManager`/`TPPUserAccount` | Split the Settings folder by layer: `TPPSettings` (pure prefs store) → **PalacePreferences** (Layer 0); Settings *screens* are Presentation and legitimately depend on PalaceAccounts one-way. The cycle existed only because store and screens shared a folder. (`TPPSettings+SE`'s hardcoded `AccountsManager.TPPAccountUUIDs` constant moves to PalaceAccounts as data) |
 | 6 | **Settings↔Audiobooks** | `AudiobookSessionManager` stores `private let settings: TPPSettings` | `DeveloperSettingsViewModel.emailAudiobookLogs` + `AudiobookMailComposeDelegate` (dev tooling — the only Settings→Audiobooks reach) | Same PalacePreferences split kills the down-edge's folder-coupling; the dev-tools log-email consumes a `LogArchiveExporting` protocol (declared in **PalaceLogging**, implemented by the audiobook stack) instead of importing audiobook types. Thinnest cycle of the nine |
 | 7 | **Book↔CatalogUI** | `CatalogState`/`CatalogSortService` operate on `[TPPBook]` | `BookDetailView` constructs `CatalogLaneMoreView` (series carousel / related lanes NavigationLinks) | `TPPBook` → **PalaceBookModel** makes CatalogUI→model a down-edge. The back-edge is Presentation-internal navigation: route via a destination-provider closure / `NavigationCoordinatorHub` (already an AppContainer member) instead of direct view construction. Both view folders stay app-target Presentation initially, so this one is gate-enforced (ledger) before it is compiler-enforced — flagged honestly |
-| 8 | **PDF↔Book** | `TPPPDFDocumentMetadata` uses `TPPBook` + `TPPBookRegistryProvider` (already protocol-typed) | `Palace/Book/.../BookService.swift` routes to PDF opening (`PDFDocument(url:)` path) | PDF→**PalaceBookModel**/**PalaceBookRegistry** is a clean down-edge (it already consumes the registry via protocol). The back-edge dies by *relocating* `BookService`'s format-routing to the Application layer (`BookOpenRouter`, §3a-4): a router that knows all readers is composition, not Book-domain code |
+| 8 | **PDF↔Book** | `TPPPDFDocumentMetadata` uses `TPPBook` + `TPPBookRegistryProvider` (already protocol-typed) | Before Wave 5, `Palace/Book/.../BookService.swift` routed to PDF opening (`PDFDocument(url:)` path) | PDF→**PalaceBookModel**/**PalaceBookRegistry** is a clean down-edge (it already consumes the registry via protocol). The back-edge dies by *relocating* `BookService`'s format-routing to the Application layer (`BookOpenRouter`, §3a-4): a router that knows all readers is composition, not Book-domain code. **CLOSED 2026-09-29 (Wave 5)** — the PDF-routing grep across `Palace/Book/` returns zero |
 | 9 | **TriageBotUI↔Palace** | — | — | **False positive** (name-based inference; PalaceTriageBot is an SPM package that cannot import the app target). Action: Wave 0 annotates it in ledger config as a known-false-positive / adds a confidence field for name-inferred edges, so the trend gate doesn't count it. No code change |
 
 **Sanity check on completeness:** hubs named by the ledger = Accounts (cycles 1,2,4,5), Book (1,7,8), Settings (5,6), Audiobooks (6), Logging (3), Downloads (dissolved via PalaceDownloads even though it appears in longer paths, all of which thread the nine back-edges above). All 15 longer DFS cycles reuse these same back-edges, so dissolving the nine dissolves all 24.
@@ -284,7 +344,7 @@ Each row names the *verified* code behind both directions (grepped this session)
 
 **Explicitly not-yet-mapped (findings, not hidden gaps):**
 1. **The other ~31 declared singletons** below this fan-in tier (e.g. `AdobeDRMService.shared`, `DLNavigator.shared`, sim/debug helpers) are not individually mapped here. Disposition rule: each wave's checklist includes "any `.shared` in files the wave touches gets a container seam or a written exemption." A full 39-row census is a Wave 0 deliverable (one script run against `reference_god_class_candidates` data), not an ADR blocker.
-2. **AppContainer's static lazy caches** (`_audiobookSession`, `_catalogRepository`, `_signInModalSheetPresenter`, …) are process-wide singletons wearing container clothes, each with hand-maintained `_resetForTesting` bookkeeping. Target: fold into instance `let`s as their construction-order constraints allow (several exist only to break init cycles that die when AccountsManager decomposes in Wave 3). Mapped as a Wave-3/6 side effect, not a standalone wave.
+2. **AppContainer's static lazy caches** (`_audiobookSession`, `_appRatingService`, `_sideloadedBookManager`, …) are process-wide singletons wearing container clothes, each with hand-maintained `_resetForTesting` bookkeeping. The sign-in sheet presenter, book cell cache and catalog API/repository are now owned per container (`AppContainerOwnedServices`). Target: fold into instance `let`s as their construction-order constraints allow (several exist only to break init cycles that die when AccountsManager decomposes in Wave 3). Mapped as a Wave-3/6 side effect, not a standalone wave.
 3. **`AppContainer.production()` as service locator** (default args in ErrorHandling, Book/UI, Settings, Logging): mapped to the Wave 0 ratchet (count monotone-down) + per-wave cleanup, since each occurrence dies naturally when its file gets constructor injection.
 
 ---
@@ -296,6 +356,35 @@ Ordering principle: **leaf-inward** — extract what the hubs depend ON before t
 ### Wave 0 — Ratchet + census (1 PR-week; prerequisite for everything)
 No extraction. Land the gates so the problem stops growing while the fleet works:
 - **God-class LOC freeze:** script + CI check — the 6 files' line counts may not exceed a checked-in baseline (decreases auto-rebaseline). Fires in `verify-pr.sh` + PR workflow.
+
+  > **RETIRED 2026-09-25, replaced by `scripts/check-file-size-ceiling.sh`.** This
+  > was the right idea with two holes, both of which were exercised in practice.
+  > (a) A named list only sees files someone already noticed, and *decomposition
+  > mints god-classes*: `AccountRegistryLoader.swift` was created at 693 code
+  > lines by the Wave 3a extraction and had no baseline entry, so it was born
+  > unwatched. (b) "decreases auto-rebaseline" reads as a ratchet but the
+  > mechanism also permitted *increases* with a justifying paragraph, and that
+  > became the accretion channel: the 3.2.1/3.2.2/3.2.3 hotfix forward-port
+  > (PR #1348) raised four hubs by +528 physical lines. (Those are the
+  > baseline's physical counts, not the code-line metric the replacement gate
+  > uses; the two are not comparable, and a wider total across the baseline's
+  > whole history is not quotable because its entries mix the two.) The
+  > baseline had stopped being a ratchet and become a changelog.
+  >
+  > The replacement is a generic 800-code-line ceiling over every app-target
+  > Swift file **including `Palace/Packages/*/Sources`**, with a DOWN-only
+  > allowlist and deliberately no upward path. This **extends** the Wave 7 exit
+  > criterion below ("ratchet thresholds converted from trend-down to hard
+  > ceiling") rather than contradicting it — the conversion simply happened in
+  > Wave 0 instead, because the hatch was actively in use.
+  >
+  > Wave 0 also gained a gate the original plan did not anticipate:
+  > `scripts/check-package-tests-wired.sh`. Extraction creates
+  > `Palace/Packages/*/Tests`, and nothing ran them — 144 passing tests across
+  > PalaceAuth, PalaceReadingPosition and PalaceLogging had executed zero times
+  > in CI, PalaceAuth's since 2026-05-12. Moving code into a package silently
+  > moved its tests out of the suite, which would have made every later wave
+  > look safer than it was.
 - **Coupling trend-down:** ledger avg-coupling + cycle-count thresholds pinned at current values (183 edges / 24 cycles), must be ≤ baseline per PR.
 - **`.shared`-read + `AppContainer.production()`-locator counts** monotone-down (grep-based, allowlisted composition roots).
 - **Ledger hygiene:** annotate TriageBotUI↔Palace as known-false-positive; add confidence tags for name-inferred edges.
@@ -327,11 +416,61 @@ Strictly ordered, critical path: **(i)** characterization tests for `TPPSignInBu
 ### Wave 5 ∥ — Presentation slimming (parallel with Wave 4; disjoint files)
 `BookDetailViewModel` service extraction per §3a-4 (MetadataService/RelatedBooksService, BookOpenRouter consolidation into the Application layer — closes cycle 8's back-edge; navigation inversion for cycle 7's back-edge). App-target refactor only, no new packages.
 
+**Status 2026-09-29: the extraction and cycle 8 are COMPLETE; the cycle 7 navigation inversion is DEFERRED to Wave 7.** See the Wave 5 section at the top for the measured evidence, the reason for the deferral, and the two distinct shapes cycle 7 turns out to have.
+
 ### Wave 6 — Audiobook session split (after 4; package conditional)
 In-target decomposition per §3a-1 first (reducer, position resolver, readiness gate, TOC normalizer as separate injected files); `PalaceAudiobookSession` package **only if** the toolkit-API caveat resolves. Retire the `_audiobookSession`/`_playbackBootstrapper` static caches into container lets as construction order allows.
 
 ### Wave 7 — Sweep + declare
 Remaining `.shared` census rows dispositioned; `AppContainer.production()` locator count → allowlist-only; ledger `componentRoots` updated to package-first; ratchet thresholds converted from "trend-down" to "hard ceiling"; ADR finalized into `docs/architecture/` with the before/after ledger runs as evidence.
+
+**Status bf7b12d82: two of the five criteria are met; the two counting criteria and
+the ADR are not.**
+
+*Hard ceiling — met.* Both count ratchets now fail on slack, not just on growth.
+`check-file-size-ceiling.sh` already had `test_live_allowlist_has_zero_slack`;
+the `.shared` and locator gates printed a "Ratchet baseline down to N" advisory
+that touched nothing, so a baseline could sit above the tree indefinitely. Each
+now has a `test_live_baseline_has_zero_slack` arm asserting that advisory empty.
+Both baselines were carrying slack and are ratcheted to the measured values:
+`.shared` 167 → 162, locator 256 → 249.
+
+That also closes a direction that had already been used. Commit `a0968e652`
+raised the `.shared` baseline 164 → 167 in the same commit as the code that
+needed it — the one edit to that file with no rationale line — after the gate
+failed and told the author to inject the dependency instead. Later waves removed
+more than it added, so the debt nets out at 162 rather than needing to be repaid.
+The **two-sided** edit is still open: add reads and raise the baseline to exactly
+match, and nothing in the tree objects, because every in-tree record of the old
+value is editable in the same commit. Closing it needs the baseline compared
+against the base branch's committed copy. Not done, for the reason already
+written up in `test_check_file_size_ceiling.py::test_live_allowlist_has_zero_slack`
+— a ratchet that silently skips when the ref is missing is worse than none.
+
+*Ledger `componentRoots` — met.* It listed 29 app-target paths and none of the
+twelve extracted packages, so the instrument measuring the decomposition could
+not see anything the decomposition produced. Now package-first: the twelve
+`Palace/Packages/*` roots lead, app-target paths follow. `layerOverrides` is
+deliberately left alone — the real package DAG has same-layer edges
+(`PalaceBookModel → PalaceCatalog`, `PalaceBookRegistry → both`) and
+`allowedEdges` permits none, so hand-assigning layers would either invent
+violations or show the layer model needs an intra-layer rule. That is a question
+for a ledger run, and the run is in CI.
+
+*The two counts — not met, and they are the wave.* Measured on bf7b12d82:
+**162** `.shared` reads and **249** out-of-allowlist locator uses across 93 files,
+the largest single file holding 16. "Allowlist-only" means driving the second to
+roughly zero. This is the plan's own "4+ weeks combined" category and no cheap
+win exists in the distribution; it is a long tail, not a few hot spots.
+
+*ADR — not written, deliberately.* It is the "declare" half of "sweep + declare"
+and the sweep is not done; an ADR written now would record an incomplete state
+and be rewritten. The before/after ledger evidence it calls for also does not
+exist yet — there is no local ledger runner, only the CI job.
+
+*Inherited from Wave 5:* cycle 7's navigation inversion, in the two shapes
+described above — the destination provider, and relocating the
+`CatalogViewModel.makeBook(from:bookRegistry:)` reach out of `RelatedBooksService`.
 
 **Rough shape of effort:** Waves 0–1 ≈ 2 weeks; Wave 2 ≈ 2–3 weeks (churn-heavy); Wave 3 ≈ 3–4 weeks (the risky middle); Waves 4–6 ≈ 4+ weeks combined; total a solid quarter of fleet-time. Consistent with the triad's observed pace (Phases 1–5 took ~a month of comparable scope).
 
@@ -339,16 +478,22 @@ Remaining `.shared` census rows dispositioned; `AppContainer.production()` locat
 
 ## 5. How the test-coverage fleet plugs in
 
+**This table names artifacts, not counts, and that is deliberate.** It previously carried an "Exists today" column of test tallies. Audited 2026-09-30 against `9dc551a75`: of six rows, three carried counts the tree contradicted and two prerequisite columns asked for packs that already existed. One row was **false when written** — 115 tests existed at the commit that authored "0 dedicated tests", and that same commit added the characterization files its own column requested.
+
+The counts were removed rather than corrected. A tally decays on every PR and nothing fails when it does: the repo gates cited *paths* (`check-doc-references-resolve.py`) and gates no numbers at all, so a wrong count survives indefinitely while the gate stays green. A named artifact is checkable by that existing gate and by `grep`. Where a count genuinely matters — a mutation bar, a coverage floor — measure it at the moment of use and state the method, rather than reading it here.
+
+The recurring mechanism, recorded so the next reader recognises it: counting one FILE and reporting it as a class's coverage. In this repo a file name is not a class name, and three of these rows did exactly that. A related trap in the same audit — four `PalaceTests/Decomp/*ContractTests` are *named* as contracts but contain **zero** `ContractSnapshot.assert` calls; every reference is a comment, and `PalaceTests/Decomp/__Snapshots__` does not exist. They are ordinary assertion tests, and a grep for `ContractSnapshot` counts the comments.
+
 General contract: **no extraction PR merges unless the target's pre-wave test pack existed BEFORE the move and passes identically AFTER it.** "Identically" for contract snapshots means byte-equal JSON under `PalaceTests/Contract/__Snapshots__/` (re-record only with `CONTRACT_SNAPSHOT_RECORD=1` + reviewed diff). Coverage is measured per CLAUDE.md: full-scheme runs only (`scripts/xcode-test-optimized.sh` / `verify-pr.sh --quick`), mutation verification via `scripts/palace_mutate.py --file <moved file> --tests <class>` with `--diff-only` on wave branches; kill-rate on moved critical-path files must be ≥ the pre-move baseline (record baseline in the wave brief).
 
-| Target | Exists today | Fleet must build BEFORE its wave | Wave |
-|---|---|---|---|
-| **AccountsManager** | ~57 unit tests; `AppContainerResetTests`; no contract suite | Characterization pack: registry-crawl lifecycle (start/cancel/drain — deterministic Task-join seams per the de-flake pattern memo, *not* sleeps), slim-vs-full hydration (CP-D1), disk-cache TTL/corruption, auth-doc fetch → `AccountStateStore` transition contract test, currentAccount-switch publication order | 3a |
-| **MyBooksDownloadCenter** | 23 tests (thin); Borrow/BookReturn/DownloadStart contract suites | `BackgroundReconciliationContractTests` (INV-4 adopt-don't-double-start, INV-6 transient retry, INV-7 completion handler) against a stubbed URLSession; throttling/disk-budget edge tests; mid-flight-drop (PP-4114) characterization; DRM dispatch contract (spy `FulfillmentHandling` recording call order per format) | 3b |
-| **BorrowOperation** | `BorrowOperationContractTests` + `BorrowReducerContractTests` + circuit-breaker units — already the model citizen | Nothing new; suites re-run green post-move (snapshot byte-equal) | 3b |
-| **TPPSignInBusinessLogic** | **0 dedicated tests** (unchanged since triad) — the single worst test debt in the repo | Full characterization pack, ≥30 tests: basic/OAuth/SAML/Clever/OIDC happy paths, token-request error branches, credential persistence (mock keychain), DRM-activation skip decisions, sign-out. Then AuthReducer integration parity tests (reducer output == legacy state machine on recorded scenarios). Mutation gate: ≥40% kill minimum, 100% on conditional/return-flip mutants for the flow engines (triad's stated bar) | 4 (blocking prerequisite) |
-| **BookDetailViewModel** | 81–125 tests (directly mutate `@Published`) + `BorrowReducerContractTests` | Pin-before-extract for the moving clusters only: metadata-hydration stub-response tests, related-books/series-row tests, open-routing decision table (format → router destination). Existing tests must remain untouched-and-green (the snapshot/apply constraint) | 5 |
-| **AudiobookSessionManager** | `AudiobookPositionAdapterContractTests`, `PositionWriterContractTests`; scattered playback tests | Session-state contract test (spy toolkit manager recording bind/play/teardown call order); position-resolution decision table (local vs remote vs none — PP-4542 cases); readiness-gate characterization (F-011: play deferred until gate opens); TOC-normalizer pure-function units. LCP first-open stays sim-verified (simdrive) — no unit seam without DRM | 6 |
+| Target | Prerequisite artifacts — named, not counted | Wave |
+|---|---|---|
+| **AccountsManager** | BUILT: `AccountsManagerLaunchSnapshotTests` (slim-vs-full hydration, CP-D1); disk-cache **TTL** across `AccountsManagerCacheTests` / `CacheReadTests` / `AccountRegistryCacheSeamTests`; `Decomp/AccountsManagerAuthDocContractTests` (auth-doc → `AccountStateStore`); `Decomp/AccountsManagerCurrentAccountSwitchContractTests` (publication order). **REMAINS:** crawl-lifecycle join seams — `AccountsManagerCatalogLoadJoinTests` is the sleep-free pattern, but `AccountsManagerCancellationTests` and `CatalogCrawlSchedulerTests` still use `Task.sleep`/`sleep`, which this row's own de-flake requirement excludes; and disk-cache **corruption** (no test drives a corrupt/truncated cache file) | 3a |
+| **MyBooksDownloadCenter** | **ALL BUILT** — nothing here to build. `Decomp/BackgroundReconciliationContractTests` pins INV-4 on the pure `DownloadReconciliation` engine and routes INV-6 → `DownloadTransferRetryTests`, INV-7 → `BackgroundSessionRoutingTests`. Throttling/disk-budget: `DownloadThrottlingServiceTests`, `Decomp/DownloadThrottlingContractTests`, `DiskBudgetManagerTests`, `DownloadFreeSpaceExhaustionTests`, `MyBooksDownloadCenterEvictionTests`. PP-4114 mid-flight-drop: `MyBooksDownloadCenterOfflineTests`. DRM dispatch: `Decomp/RightsManagementDispatchContractTests`, the only place `FulfillmentHandling` is spied | 3b |
+| **BorrowOperation** | Nothing new — `BorrowOperationContractTests`, `BorrowReducerContractTests`, `BorrowReducerCoreContractTests` all present with committed snapshots. Suites re-run green post-move (snapshot byte-equal) | 3b |
+| **TPPSignInBusinessLogic** | BUILT: `Decomp/TPPSignInBusinessLogicCharacterizationTests`, `Decomp/TPPSignInCapabilitiesCharacterizationTests`, and the token-error pack `Decomp/TPPSignInFlowCharacterizationTests`. **`AuthReducer` is already integrated** — `TPPSignInBusinessLogic.authState` is the documented single source of truth, driven by 13 `dispatch(_:)` sites across 4 files, with every legacy `@objc` property computed from it. The "integration parity tests (reducer output == legacy state machine)" this row used to demand are **not buildable as specified**: there is no separate legacy machine left to compare against, so such a test would assert a value against itself. **REMAINS:** the flip-clause half of the mutation bar (measured 90.0% on decided cmp/bool/retval, not 100%), and the SAML cookie duplication named at `TPPSignInBusinessLogic.swift:262` — `cookies` duplicates `samlHelper.cookies`, both written by `LegacySAMLAuthContext.handleSAMLRedirect` | 4 |
+| **BookDetailViewModel** | **ALL BUILT**, wave merged 2026-09-30 (`461dd6a55`): metadata-hydration via `ViewModels/BookDetailMetadataHydrationTests` + `Decomp/BookDetailMetadataHydrationGuardTests` + `Decomp/BookDetailMetadataMergeContractTests`; related-books via `Decomp/RelatedBooksServiceTests`; open-routing decision table via `Decomp/BookDetailOpenRoutingDecisionTableTests` + `Decomp/BookOpenRouterTests`, asserted over every `TPPBookContentType` case | 5 |
+| **AudiobookSessionManager** | BUILT, wave merged 2026-09-30 (`d09ef5c49`): `Decomp/AudiobookPositionResolverDecisionTableTests` (PP-4542 cells); `Decomp/AudiobookReadinessPlaybackContractTests` (F-011); TOC-normalizer units as `AudiobookChapterTOCNormalizationTests`, which live inside `AudiobookSessionManagerTests.swift` — a filename search for them finds nothing. **REMAINS:** the full session-state contract. `Decomp/AudiobookSessionPresenterLifecycleContractTests` pins `bind → present` and `teardown → dismiss` and says in its own header that it covers only the reachable subset; toolkit-manager `bind/play/teardown` ordering is not yet pinned | 6 |
 
 Fleet mechanics: each wave brief hands an implementation agent (a) the §3a cluster table row, (b) the required test list above, (c) the CI gate definition. Test-building agents can run **ahead** of extraction waves in parallel (tests against current code are wave-independent) — the sign-in characterization pack in particular should start immediately, since it gates Wave 4 and depends on nothing.
 

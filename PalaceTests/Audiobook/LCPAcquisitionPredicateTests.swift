@@ -1,20 +1,11 @@
 //
 //  LCPAcquisitionPredicateTests.swift
-//  PalaceTests
 //
-//  Behavior tests for `LCPAudiobooks.hasLCPAcquisition(_:)` — the recursive
-//  predicate that catches Marketplace audiobooks regardless of which OPDS
-//  feed (XML /loans/ or JSON /groups/) populated the book record.
-//
-//  This is the load-bearing fix that closes the PP-4407 regression class.
-//  Module C of swarm_5c8ddbd5. Ports the 3.0.3 hotfix logic from commit
-//  `ca2ff13b6` (release branch only — never forward-merged to develop).
-//
-//  File-level guard, NOT `#if LCP`: `hasLCPAcquisition` is `@objc static`
-//  and reachable from the Palace-noDRM build, so its tests live outside the
-//  LCP gate. The LCP MIME constant is a plain string — no Readium link.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  `LCPAudiobooks.hasLCPAcquisition(_:)` recognizes Marketplace audiobooks from
+//  either OPDS feed (XML /loans/ or JSON /groups/), closing the PP-4407 class;
+//  it ports hotfix `ca2ff13b6` (3.0.3 release branch only). File-level guard,
+//  NOT `#if LCP`: the predicate is `@objc static` and reachable from
+//  Palace-noDRM, and the LCP MIME constant is a plain string.
 //
 
 #if LCP
@@ -131,11 +122,10 @@ final class LCPAcquisitionPredicateTests: XCTestCase {
 
         XCTAssertTrue(LCPAudiobooks.hasLCPAcquisition(book),
                       "Marketplace /groups/ JSON shape (LCP nested in indirectAcquisitions) must match — PP-4407 kill point")
-        // swarm_162a3219 / Module D1: `canOpenBook` now delegates to
-        // `hasLCPAcquisition` (the canonical recursive predicate). The
-        // historical divergence — `canOpenBook` narrow + `hasLCPAcquisition`
-        // recursive — was the PP-4407 bug shape. Locking equivalence
-        // pins the architectural improvement.
+        // `canOpenBook` now delegates to `hasLCPAcquisition` (the canonical
+        // recursive predicate). The historical divergence — `canOpenBook`
+        // narrow + `hasLCPAcquisition` recursive — was the PP-4407 bug shape,
+        // so equivalence is locked here.
         XCTAssertTrue(LCPAudiobooks.canOpenBook(book),
                       "canOpenBook MUST agree with hasLCPAcquisition on Marketplace fixtures — swarm_162a3219 closed the PP-4407 class")
         XCTAssertEqual(LCPAudiobooks.canOpenBook(book),
@@ -143,10 +133,9 @@ final class LCPAcquisitionPredicateTests: XCTestCase {
                        "canOpenBook and hasLCPAcquisition must agree on all LCP fixtures post-swarm_162a3219")
     }
 
-    // NOTE: a `testHasLCPAcquisition_doublyNestedIndirectChain_returnsTrue`
-    // test previously existed here to claim "mutant that stops the recursion
-    // after one level would fail". It was removed because the claim is
-    // mechanically false in production: `hasLCPAcquisition`'s upfront guard
+    // NOTE: there is deliberately no doubly-nested (depth-2) test. Stopping
+    // the recursion after one level is unobservable in production:
+    // `hasLCPAcquisition`'s upfront guard
     // requires `book.defaultBookContentType == .audiobook`, which is computed
     // via `TPPOPDSAcquisitionPath.supportedAcquisitionPaths(...)`. That
     // walker only accepts chains whose intermediates appear in
@@ -154,8 +143,7 @@ final class LCPAcquisitionPredicateTests: XCTestCase {
     // `OPDSPublication` (Marketplace's actual shape) has LCP buried at
     // depth > 1. The single real-world depth-1 shape is covered by
     // `testHasLCPAcquisition_nestedLCPInIndirectChain_returnsTrue` above
-    // (PP-4407 kill point). A depth-2 mutant would have zero observable
-    // production behavior and so is not worth a test.
+    // (PP-4407 regression guard).
 
     /// OpenAccess audiobook fixture — no LCP MIME anywhere in the chain.
     /// Companion negative case: pins that `hasLCPAcquisition` does NOT

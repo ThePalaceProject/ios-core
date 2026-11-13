@@ -1,29 +1,11 @@
-//
 //  ButtonStateMonotonicClampTests.swift
-//  PalaceTests
 //
-//  fix/audiobook-first-open-flicker (BUG B) — pins the NARROW "hold Listen
-//  against a transient post-success `.downloading` re-read" latch that stops
-//  the LCP first-open button flicker (Listen ↔ Cancel ↔ Listen), WITHOUT
-//  stranding any real backward transition:
-//    - HOLD:  .downloadSuccessful → .downloading  (the LCP early-ready artifact;
-//             never a real transition — re-download routes through .downloadNeeded)
-//    - PASS:  .downloadSuccessful → .downloadNeeded  (REAL eviction / re-fulfill —
-//             DiskBudgetManager LRU sets .downloadNeeded directly; must show
-//             Download, not a stranded Listen on an evicted file)
-//    - PASS:  .downloading → .downloadNeeded  (real cancel / SAML login-cancel;
-//             the optimistic-write #2 flicker is deferred — a state-only latch
-//             can't tell it from a real cancel)
-//    - DROP:  the latch resets on ANY non-(success/held-downloading) state, so
-//             return (.unregistered) / .downloadFailed yield the real label.
-//
-//  Both the My Books cell (BookCellModel) and the book-detail half-sheet
-//  (BookDetailViewModel) are covered. The button pipeline throttles 50ms on
-//  RunLoop.main, so each assertion follows a `settleThrottle()` — the real-timing
-//  style the existing BookCellModelStateTests use (no virtual-scheduler dep).
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
-//
+//  Pins the latch that holds Listen against a transient `.downloading` re-read
+//  after `.downloadSuccessful` (the LCP first-open flicker) without hiding real
+//  backward transitions: success -> downloadNeeded (eviction) and downloading ->
+//  downloadNeeded (cancel) pass, and any other state resets the latch. Covers
+//  BookCellModel and BookDetailViewModel; the pipeline throttles 50ms on
+//  RunLoop.main, so assertions follow `settleThrottle()`.
 
 import XCTest
 import PalacePreferences
@@ -74,8 +56,8 @@ final class ButtonStateMonotonicClampTests: XCTestCase {
 
     /// PASS — eviction (`.downloadSuccessful → .downloadNeeded`, DiskBudgetManager
     /// LRU) must show Download, NOT a stranded Listen on an evicted file.
-    /// Mutates: a broad monotonicity clamp that held ANY backward move would keep
-    /// `.downloadSuccessful` here → fails. (blast_radius finding.)
+    /// A broad monotonicity clamp that held ANY backward move would keep
+    /// `.downloadSuccessful` here and fail this test.
     func testCell_evictionToDownloadNeeded_showsDownload_notStrandedListen() {
         let (model, book) = makeCell(state: .downloadSuccessful)
         settleThrottle()
@@ -106,9 +88,8 @@ final class ButtonStateMonotonicClampTests: XCTestCase {
     // MARK: - BookCellModel — latch DROPS on reset states (proven via re-read)
 
     /// DROP — after Listen is returned (.unregistered), a SUBSEQUENT `.downloading`
-    /// must NOT be held (the latch dropped). This is the mutant-killing reset test:
-    /// deleting the `default: listenLatched = false` branch would hold Listen here.
-    /// (qa finding — the prior reset tests never drove a post-reset progress read.)
+    /// must NOT be held (the latch dropped). Deleting the
+    /// `default: listenLatched = false` branch would hold Listen here.
     func testCell_returnThenReDownload_latchDropped_showsDownloading() {
         let (model, book) = makeCell(state: .downloadSuccessful)
         settleThrottle()

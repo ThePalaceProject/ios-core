@@ -1,42 +1,12 @@
 //
 //  AccountsManagerFirstRunDecodeTests.swift
-//  PalaceTests
 //
-//  CP-D3 (FirstRunDecode) tests for the cold-first-launch bundled-registry
-//  decode in `AccountsManager.loadCatalogs`.
-//
-//  The bug: on a fresh install (no on-disk catalog cache) two callers race
-//  into `loadCatalogs` — the background init arm AND
-//  `TPPAppDelegate.presentFirstRunFlowIfNeeded` (@MainActor) — and BOTH reach
-//  the ~2.4 MB bundled-snapshot decode because the dedupe guard sat AFTER the
-//  bundled branch. The @MainActor caller decoded on the main thread.
-//
-//  The fix (with the Phase 1a correction): a SINGLE dedupe guard placed ABOVE
-//  the bundled branch (so a concurrent second caller short-circuits before the
-//  decode) that is NOT re-checked before the network fetch (re-checking there
-//  would make the first caller observe its own registration and `return`
-//  before the network ever fires — stranding the picker on stale bundled data
-//  until next launch), plus hopping the bundled decode off the main thread.
-//
-//  These three tests pin the contract:
-//    1. Dedupe-before-bundled — a second concurrent load short-circuits BEFORE
-//       the bundled decode (the decode runs exactly once).
-//    2. Network-fetch-still-fires (the Phase-1a-critical one) — the network
-//       fetch still fires exactly once AFTER the bundled decode. A dedupe that
-//       swallows the fetch (the regression the naive fix would ship) leaves
-//       the fetch count at 0 and fails this test.
-//    3. Off-main — the bundled decode does not run on the main thread.
-//
-//  Isolation is inherited from `PalaceWiringTestCase`: per-test
-//  `SingletonResetRegistry.invokeAll()`, `deferInitialLoadCatalogsForTesting`,
-//  `cancelBackgroundWork()` on every helper-minted manager in tearDown, and an
-//  Application-Support `accounts_catalog_*` purge in setUp + tearDown. The
-//  manager's bundled-snapshot loader is injected via the production
-//  `snapshotResourceResolver` seam so the tests observe the decode's thread +
-//  invocation count against a tiny fixture feed — no 2.4 MB real snapshot, no
-//  network dependency for the bundled leg.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  Cold-first-launch bundled-registry decode in `AccountsManager.loadCatalogs`.
+//  Two callers race in on a fresh install, one on the main actor. Pinned: a
+//  second concurrent load short-circuits before the ~2.4 MB bundled decode; the
+//  network fetch still fires exactly once afterwards (a dedupe re-checked before
+//  the fetch would strand the picker on stale bundled data); and the decode runs
+//  off the main thread. The loader is injected via `snapshotResourceResolver`.
 //
 
 import XCTest

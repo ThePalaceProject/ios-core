@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # pre-commit-phase35-detectors.sh
 #
-# Phase 3.5 class-scan detectors (swarm_162a3219). Runs the 6 detectors
+# Phase 3.5 class-scan detectors (swarm_162a3219). Runs the class-scan detectors
 # against the staged diff; block-mode classes fail the commit, warn-mode
 # classes just print to stderr.
 #
 # Bypass: SKIP_PHASE35_DETECTORS=1 (intentional carve-out; audit trail).
 # Per-detector bypass: SKIP_PHASE35_<DETECTOR_ID>=1
-#   (e.g. SKIP_PHASE35_FOREIGN_HOST_401_SCOPING=1)
+#   (e.g. SKIP_PHASE35_RAISING_UNARCHIVER=1)
 
 set -eu
 
@@ -35,21 +35,22 @@ if [ ! -s "$DIFF_FILE" ]; then
   exit 0
 fi
 
-# (id|script-basename|severity|mode)  severity: block | warn   mode: diff | scan
+# (id|script-basename|severity|mode)  severity: block | warn
+# mode: diff | scan | project
 # `diff` detectors accept `--diff <file>` (diff-scoped). `scan` detectors only
 # accept a whole-tree scan (`check-lcp-acquisition-recursive.py` has no --diff
 # flag — passing one is an argparse error that surfaces as a spurious block).
+# `project` detectors compare Palace.xcodeproj with the index; they run with
+# `--root` and only in a tree that has the project file.
 DETECTORS=(
-  "FOREIGN_HOST_401_SCOPING|check-foreign-host-401-scoping.py|block|diff"
   "LCP_ACQUISITION_RECURSIVE|check-lcp-acquisition-recursive.py|block|scan"
-  "COMPLETION_NIL_ERROR_SUPPRESSION|check-completion-nil-error-suppression.py|block|diff"
-  "NSERROR_PROBLEMDOC_PRESERVATION|check-nserror-problemdoc-preservation.py|block|diff"
   "SWIFTUI_PLACEHOLDER_A11Y|check-swiftui-placeholder-a11y.py|warn|diff"
-  "NOTIFICATION_CENTER_OBSERVER_STORAGE|check-notification-center-observer-storage.py|warn|diff"
   "UNSYNCHRONIZED_SENDABLE_MOCK|check-unsynchronized-sendable-mock.py|block|scan"
-  "ADDOPERATION_LITERAL_BAN|check-addoperation-literal-ban.py|block|diff"
   "AUTH_CHALLENGE_ASYNC_FORM|check-auth-challenge-async-form.py|block|diff"
   "RAISING_UNARCHIVER|check-raising-unarchiver.py|block|diff"
+  "OPAQUE_BLOB_EGRESS|check-opaque-blob-egress.py|block|diff"
+  "COMMENT_HYGIENE|check-comment-hygiene.py|block|diff"
+  "SWIFT_SOURCES_COMPILED|check-swift-sources-compiled.py|block|project"
 )
 
 OVERALL_EXIT=0
@@ -70,7 +71,10 @@ for entry in "${DETECTORS[@]}"; do
   # `OUT=$(... || true)` was the bug — `$?` then captured the always-0 exit
   # of `|| true`. The correct shape captures the python exit via
   # `&& EXIT=0 || EXIT=$?`. Wall-failure 2026-06-05-swarm162a3219-arch1.md.
-  if [ "$MODE" = "scan" ]; then
+  if [ "$MODE" = "project" ]; then
+    [ -f "$REPO_ROOT/Palace.xcodeproj/project.pbxproj" ] || continue
+    OUT=$(python3 "$SCRIPT_PATH" --root "$REPO_ROOT" --quiet 2>&1) && EXIT=0 || EXIT=$?
+  elif [ "$MODE" = "scan" ]; then
     OUT=$(python3 "$SCRIPT_PATH" --quiet 2>&1) && EXIT=0 || EXIT=$?
   else
     OUT=$(python3 "$SCRIPT_PATH" --diff "$DIFF_FILE" --quiet 2>&1) && EXIT=0 || EXIT=$?

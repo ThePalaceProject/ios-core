@@ -2,13 +2,12 @@
 //  AccountDetailsAuthenticationIsBrowserBasedTests.swift
 //  PalaceTests
 //
-//  Module B of swarm_66819d80 — truth-table coverage for the new
+//  Truth-table coverage for the
 //  `AccountDetails.Authentication.isBrowserBased` predicate that
 //  retires six scattered `(isOauth || isSaml || isOidc)` duplications
 //  identified in `docs/3.2.0-auth-recon.md` § Section 4.
 //
-//  The truth table is the mutation-killing surface for the property:
-//  the implementation is a single ORed expression, so flipping any
+//  The implementation is a single ORed expression, so flipping any
 //  operand or returning a constant must fail at least one row.
 //
 //  Copyright 2026 The Palace Project. All rights reserved.

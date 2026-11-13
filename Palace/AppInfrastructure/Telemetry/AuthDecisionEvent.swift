@@ -1,17 +1,11 @@
 //
-//  AuthDecisionEvent.swift
-//  Palace
-//
 //  Main-target Error wrapper around `PalaceAuth.AuthDecisionPayload`.
 //  Lives outside the PalaceAuth package so we don't drag FirebaseCrashlytics
 //  into the SPM module (PalaceAuth must stay dependency-clean).
 //
-//  Crashlytics consumes any `Error` that conforms to `CustomNSError`. The
-//  `errorUserInfo` dictionary becomes the keys/values that appear in the
-//  dashboard under each non-fatal — that's how `idp_type`,
-//  `library_uuid`, `decision`, `correlation_id`, etc become filterable
-//  facets. The `errorCode` distinguishes auth-decision events from other
-//  non-fatals (e.g., PR #933's playback-failure events).
+//  `errorUserInfo` becomes the filterable facets in the Crashlytics dashboard
+//  (`idp_type`, `library_uuid`, `decision`, …); `errorCode` separates these
+//  from other non-fatals.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

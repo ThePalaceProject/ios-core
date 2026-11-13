@@ -256,3 +256,60 @@ def test_baseline_failure_names_the_common_environmental_cause():
     src = (SCRIPTS / "palace_mutate.py").read_text()
     assert "PALACE_MUTATE_DERIVED_DATA_PATH" in src
     assert "could not measure" in src.lower()
+
+
+def test_per_mutant_key_cannot_be_built_without_a_test_fingerprint():
+    """The producer, not the helper.
+
+    `compute_mutant_key` was already test-sensitive and already unit-tested for
+    it above — but `tests_fingerprint` carried a default, its only caller omitted
+    the argument, and every key therefore hashed the "UNRESOLVED" placeholder.
+    The per-mutant cache was test-INSENSITIVE in production while these tests
+    proved the opposite about the function, so a stored verdict outlived the test
+    written to change it. Keyword-only with no default makes omitting it a
+    TypeError instead of a silent constant.
+    """
+    import inspect
+    sig = inspect.signature(pm.compute_mutant_key)
+    param = sig.parameters["tests_fingerprint"]
+    assert param.default is inspect.Parameter.empty, (
+        "tests_fingerprint must have NO default — a default is what let the "
+        "caller omit it and hash a placeholder instead")
+    assert param.kind is inspect.Parameter.KEYWORD_ONLY, (
+        "keyword-only, so it cannot be satisfied by accident from positional order")
+
+
+def test_the_only_caller_passes_the_fingerprint_through():
+    """The call site is the thing that was wrong; pin it directly.
+
+    A signature contract stops a default being re-added, but not a caller that
+    passes `None`. This reads the one call site and asserts it forwards the
+    resolved fingerprint.
+    """
+    src = (SCRIPTS / "palace_mutate.py").read_text()
+    calls = [i for i in range(len(src)) if src.startswith("compute_mutant_key(", i)]
+    # One definition, one call site.
+    assert len(calls) == 2, f"expected the def and one call, found {len(calls)}"
+    call = src[calls[1]:calls[1] + 400]
+    assert "tests_fingerprint=fingerprint" in call, (
+        "the per-mutant cache key must carry the resolved fingerprint, not a default")
+
+def test_two_mutants_on_one_line_do_not_share_a_key():
+    """`guard a > 0, b > 0` yields two mutants with identical key inputs.
+
+    Context, line text and the operator pair are all the same for both, so
+    keyed without the mutation's own position they collide and the second
+    inherits the first's verdict without ever being run. Seen 2026-10-18: a
+    mutant a test demonstrably kills was reported `survived (cached)`.
+    """
+    line = "        guard byteCount > 0, bytesPerSecond > 0 else { return 0 }"
+    base = dict(tests=["T"], context_before="func f() -> Double {",
+                line_text=line, context_after="}", original=">", mutated=">=",
+                tests_fingerprint="fp")
+    first = pm.compute_mutant_key(
+        **base,
+        mutated_line="        guard byteCount >= 0, bytesPerSecond > 0 else { return 0 }")
+    second = pm.compute_mutant_key(
+        **base,
+        mutated_line="        guard byteCount > 0, bytesPerSecond >= 0 else { return 0 }")
+    assert first != second, "two mutants on one line must not share a cache key"

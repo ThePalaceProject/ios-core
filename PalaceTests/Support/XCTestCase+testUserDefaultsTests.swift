@@ -1,8 +1,7 @@
 import XCTest
 @testable import Palace
 
-/// Tests for the `XCTestCase.testUserDefaults()` helper introduced by
-/// swarm_47883816 Module D. These tests prove the helper actually
+/// Tests for the `XCTestCase.testUserDefaults()` helper. These tests prove the helper actually
 /// isolates state, does not leak into `.standard`, and registers a
 /// working resetter into `SingletonResetRegistry.shared`.
 ///

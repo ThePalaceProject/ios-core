@@ -5,11 +5,10 @@ import XCTest
 /// `XCTContext.runActivity` so the test report carries the evidence
 /// but the test itself does NOT fail.
 ///
-/// The rationale matches `swarm_47883816/contracts/D-UserDefaultsIsolation.md`:
-/// existing tests interact with production code that reads
+/// Existing tests interact with production code that reads
 /// `UserDefaults.standard` directly (`AccountsManager`, `CatalogRepository`,
 /// `TPPBookmarkDeletionLog`, etc.) — migrating those tests requires
-/// adding DI to those production classes, which is out of D's scope.
+/// adding DI to those production classes first.
 /// We document the violators here so the future "production DI sweep"
 /// pass has a runnable inventory.
 ///
@@ -30,7 +29,7 @@ final class UserDefaultsIsolationLintTests: XCTestCase {
         // clear its own suite.
         "Support/XCTestCase+testUserDefaults.swift",
 
-        // swarm_cd181acd D-cleanup landed DI seams on AccountDetails,
+        // DI seams now exist on AccountDetails,
         // AccountsManager, TPPBookmarkDeletionLog, CatalogRepository,
         // and TPPSignInBusinessLogic+ForceReset; the eight previously
         // deferred test files now use `Self.testUserDefaults()` and have
@@ -42,6 +41,24 @@ final class UserDefaultsIsolationLintTests: XCTestCase {
         // The lint test itself references the string literally in
         // assertion bodies — that's a self-reference, not a violation.
         "MetaTests/UserDefaultsIsolationLintTests.swift",
+
+        // The selected-library gate and its self-test. Both must read and
+        // write `.standard` by definition: the gate exists because that suite
+        // is the app's own container on a simulator, and a gate pointed at an
+        // isolated suite would audit nothing.
+        "Support/PalaceTestCase.swift",
+        "Support/RuntimeQuiescenceAuditor.swift",
+        "MetaTests/SelectedLibraryGateTests.swift",
+
+        // Proves the factory's `defaults:` seam keeps the seed out of
+        // `.standard`, so it must name the suite it asserts absence from.
+        "Support/TestAppContainerFactoryTests.swift",
+
+        // The factory's isolated-defaults helper calls
+        // `UserDefaults.standard.removePersistentDomain(forName:)` to wipe each
+        // suite it hands out — the documented way to drop a whole suite, and the
+        // opposite of writing the app's own container (PP-5411).
+        "Support/TestAppContainerFactory.swift",
     ]
 
     /// PalaceTests directory root, resolved at runtime by walking up
@@ -137,8 +154,7 @@ final class UserDefaultsIsolationLintTests: XCTestCase {
         // Edge case: a string literal that happens to contain the
         // banned token but is wrapped in a comment is still flagged.
         // The detector is intentionally regex-grep-flavoured (matches
-        // CLAUDE.md's `grep -rn 'UserDefaults.standard'` invariant)
-        // rather than AST-aware — we want false positives over
+        // a plain `grep -rn 'UserDefaults.standard'`) rather than AST-aware — we want false positives over
         // silent misses.
         let commentedInput = """
         // Pre-existing comment referencing UserDefaults.standard.

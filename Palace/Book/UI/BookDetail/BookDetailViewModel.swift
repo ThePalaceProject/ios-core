@@ -6,17 +6,12 @@ import PalaceLogging
 import PalaceCatalog
 import PalaceBookModel
 import PalaceBookRegistry
+import PalaceUtilities
 
 #if LCP
 import ReadiumShared
 import ReadiumStreamer
 #endif
-
-struct BookLane {
-    let title: String
-    let books: [TPPBook]
-    let subsectionURL: URL?
-}
 
 @MainActor
 final class BookDetailViewModel: ObservableObject {
@@ -118,14 +113,9 @@ final class BookDetailViewModel: ObservableObject {
     /// the download itself starts) and from `processingButtons` (which
     /// tracks user-initiated UI spinners on individual buttons).
     ///
-    /// Surfacing this flag fixes the "borrow stuck with Cancel-only UI" bug
-    /// on slow distributors (Overdrive in particular): before this, the
-    /// half-sheet rendered a 0%-linear progress bar and an inert Cancel
-    /// button with no indeterminate spinner, so the user had no signal that
-    /// anything was happening. BorrowOperation's setProcessing(true:false)
-    /// pair is the canonical truth here; we mirror it via the existing
-    /// `.TPPBookProcessingDidChange` notification so unit tests can flip it
-    /// without standing up the full download stack.
+    /// Lets the half-sheet show an indeterminate spinner during slow borrows
+    /// (e.g. Overdrive) instead of an inert 0% bar. Mirrored from
+    /// `.TPPBookProcessingDidChange`.
     @Published private(set) var isBorrowProcessing: Bool = false
 
     var isShowingSample = false
@@ -140,8 +130,9 @@ final class BookDetailViewModel: ObservableObject {
     private let opdsFeedService: OPDSFeedService
     private let samplePreviewManager: SamplePreviewManager
     private let readerService: ReaderService
-    private let metadataHydrator: BookMetadataHydrator
-    /// Optional injected audiobook session — nil in production (BookService
+    private let metadataService: BookMetadataService
+    private let relatedBooksService: RelatedBooksService
+    /// Optional injected audiobook session — nil in production (BookOpenRouter
     /// resolves the DI-root session). A test injects a mock so the audiobook
     /// open → half-sheet-dismiss wiring is drivable. fix/audiobook-first-open-hang.
     private let injectedAudiobookSession: AudiobookSessionManaging?
@@ -149,15 +140,14 @@ final class BookDetailViewModel: ObservableObject {
     /// the real `ensureAuthAndExecute`, which loads the auth document and may
     /// present a sign-in modal against real singletons / UserDefaults / network).
     /// A test injects an immediate pass-through so the dismissal wiring is driven
-    /// deterministically without touching auth. fix/audiobook-first-open-hang.
+    /// deterministically without touching auth.
     private let authGateOverride: ((@escaping () -> Void) -> Void)?
     private var cancellables = Set<AnyCancellable>()
 
-    typealias BookMetadataHydrator = (URL) async throws -> TPPBook?
+    /// Retained spelling of `BookMetadataFetcher` so existing call sites and
+    /// tests that name the view model's typealias keep compiling.
+    typealias BookMetadataHydrator = BookMetadataFetcher
 
-    // Note: audiobook management moved to BookService
-    // private var audiobookViewController: UIViewController? // No longer used
-    // private var audiobookManager: DefaultAudiobookManager? // No longer used
     private var audiobookPlayer: AudiobookPlayer?
     private var audiobookBookmarkBusinessLogic: AudiobookBookmarkBusinessLogic?
     private var timer: DispatchSourceTimer?
@@ -204,6 +194,7 @@ final class BookDetailViewModel: ObservableObject {
         samplePreviewManager: SamplePreviewManager,
         readerService: ReaderService,
         metadataHydrator: BookMetadataHydrator? = nil,
+        relatedBooksFetcher: RelatedBooksFeedFetcher? = nil,
         audiobookSession: AudiobookSessionManaging? = nil,
         authGateOverride: ((@escaping () -> Void) -> Void)? = nil
     ) {
@@ -215,15 +206,14 @@ final class BookDetailViewModel: ObservableObject {
         self.opdsFeedService = opdsFeedService
         self.samplePreviewManager = samplePreviewManager
         self.readerService = readerService
-        // Test seam (fix/audiobook-first-open-hang): lets a test drive the
-        // audiobook open path with a mock session so the half-sheet dismissal
-        // wiring is exercised. nil in production → BookService falls back to the
-        // AppContainer DI-root session.
+        // Test seam: nil in production, where BookOpenRouter falls back to the
+        // AppContainer session.
         self.injectedAudiobookSession = audiobookSession
         self.authGateOverride = authGateOverride
-        // Default hydrator captures the injected services instead of reading
-        // .shared singletons. Tests pass a custom hydrator to short-circuit.
-        self.metadataHydrator = metadataHydrator ?? { url in
+        // Default fetchers capture the injected services instead of reading
+        // .shared singletons. Tests pass custom ones to short-circuit the
+        // network and the Obj-C feed bridge.
+        self.metadataService = BookMetadataService(fetcher: metadataHydrator ?? { url in
             let feed = try await opdsFeedService.fetchFeed(
                 from: url,
                 useToken: accountsManager.currentUserAccount.hasAdobeToken()
@@ -231,7 +221,16 @@ final class BookDetailViewModel: ObservableObject {
             guard let entries = feed.entries as? [TPPOPDSEntry],
                   let entry = entries.first else { return nil }
             return TPPBook(entry: entry)
-        }
+        })
+        self.relatedBooksService = RelatedBooksService(
+            fetcher: relatedBooksFetcher ?? { url in
+                try await opdsFeedService.fetchFeed(
+                    from: url,
+                    useToken: accountsManager.currentUserAccount.hasAdobeToken()
+                )
+            },
+            registry: registry
+        )
         self.bookState = registry.state(for: book.identifier)
         self.bookIdentifier = book.identifier
         self.stableButtonState = self.computeButtonState(book: book, state: self.bookState, isManagingHold: self.isManagingHold)
@@ -379,24 +378,14 @@ final class BookDetailViewModel: ObservableObject {
             .assign(to: &$downloadProgress)
 
         // LCP audiobook content re-download: the book is already
-        // `.downloadSuccessful` from an earlier session and only its `.lcpa`
-        // went missing, so the download-state-driven progress bar does not
-        // apply. This flag lets the half-sheet show the bar for that case.
+        // `.downloadSuccessful` and only its `.lcpa` is missing, so the
+        // state-driven progress bar does not apply. A dedicated signal is needed
+        // because `downloadProgress` is clamped monotonically upward.
         //
-        // A dedicated signal rather than an inference from `downloadProgress`:
-        // that value is clamped monotonically upward above, so for a book whose
-        // earlier download already reached 1.0 every fresh sample would clamp
-        // back to 1.0 and a new transfer would be undetectable.
-        // Seed from the registry BEFORE subscribing. `lcpContentDownloadPublisher`
-        // is a PassthroughSubject with no replay, so a model constructed AFTER the
-        // transfer started would never learn about it and would sit at `false` for
-        // the whole download. That is the normal case here, not an edge case: this
-        // view model is built when the patron OPENS the book detail, while the
-        // measured archives (438 MB / 778 MB / 1.9 GB) all run past three minutes —
-        // so opening a book mid-transfer is precisely the common path, and it always
-        // gets a fresh model. Without this seed the cue falls to `.idle`, the sheet
-        // offers "Download", and the tap is a silent no-op for the rest of the
-        // transfer.
+        // Seed from the registry before subscribing: `lcpContentDownloadPublisher`
+        // does not replay, and large archives take minutes, so opening the detail
+        // mid-transfer is the common case. Without the seed the sheet offers
+        // "Download" and the tap does nothing until the transfer ends.
         isDownloadingLCPContent = downloadCenter.progressReporter
             .isLCPContentTransferActive(for: book.identifier)
 
@@ -406,11 +395,9 @@ final class BookDetailViewModel: ObservableObject {
             .sink { [weak self] update in
                 guard let self else { return }
                 let isActive = update.1
-                // Zero the progress on the rising edge. `downloadProgress` is
-                // clamped monotonically upward above, so a book whose earlier
-                // download already reached 1.0 would render a full bar for the
-                // entire new transfer. Resetting here re-bases the clamp for
-                // this download.
+                // Zero the progress on the rising edge to re-base the monotonic
+                // clamp; otherwise a book that previously reached 1.0 shows a
+                // full bar for the whole new transfer.
                 if isActive && !self.isDownloadingLCPContent {
                     self.downloadProgress = 0.0
                 }
@@ -420,44 +407,35 @@ final class BookDetailViewModel: ObservableObject {
 
         // Subscribe to download errors so we can present them via SwiftUI .alert
         // instead of UIKit (which can fail when a SwiftUI sheet is topmost).
-        // Filter by error kind so borrow errors only show when the user initiated
-        // a borrow (Get), and download errors only show for downloads/retries.
+        // The per-kind admission rules live in `BookDetailErrorAdmission`.
         downloadCenter.downloadErrorPublisher
             .filter { [weak self] in $0.bookId == self?.book.identifier }
             .filter { [weak self] errorInfo in
                 guard let self else { return true }
-                switch errorInfo.kind {
-                case .borrow:
-                    return self.processingButtons.contains(.get) || self.bookState == .unregistered
-                case .download:
-                    return self.processingButtons.contains(.download) || self.processingButtons.contains(.retry)
-                        || self.bookState == .downloading || self.bookState == .downloadFailed || self.bookState == .downloadNeeded
-                case .general:
-                    return true
-                }
+                return BookDetailErrorAdmission.admits(
+                    kind: errorInfo.kind,
+                    bookState: self.bookState,
+                    processingButtons: self.processingButtons
+                )
             }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] errorInfo in
                 guard let self else { return }
 
-                if let retryAction = errorInfo.retryAction {
-                    self.downloadErrorAlert = .retryable(
-                        title: errorInfo.title,
-                        message: errorInfo.message,
-                        retryAction: retryAction
-                    )
-                } else {
-                    self.downloadErrorAlert = AlertModel(title: errorInfo.title, message: errorInfo.message)
+                // The resync below runs for every admitted error; only the
+                // alert is conditional. A producer that already put the failure
+                // in front of the patron publishes `presentsAlert: false`, and
+                // alerting again would stack a second dialog on the first.
+                if errorInfo.presentsAlert {
+                    self.downloadErrorAlert = errorInfo.retryAction.map {
+                        .retryable(title: errorInfo.title, message: errorInfo.message, retryAction: $0)
+                    } ?? AlertModel(title: errorInfo.title, message: errorInfo.message)
                 }
 
-                // startDownloadAfterAuth sets bookState =
-                // .downloading and shows a Cancel button in the half-sheet
-                // before the download task even runs. When the download is
-                // refused (Wi-Fi-only on cellular, auth issue, etc.), nothing
-                // reverts that local UI state, so the sheet gets stuck on
-                // "Cancel" forever and the user thinks the download is in
-                // flight. Re-sync bookState and the processing buttons to the
-                // registry's truth so the UI reflects the failure.
+                // startDownloadAfterAuth sets bookState = .downloading before
+                // the task runs. If the download is refused (Wi-Fi-only on
+                // cellular, auth issue), re-sync from the registry so the sheet
+                // is not left showing "Cancel".
                 self.bookState = self.registry.state(for: self.book.identifier)
                 self.processingButtons.remove(.download)
                 self.processingButtons.remove(.get)
@@ -468,17 +446,10 @@ final class BookDetailViewModel: ObservableObject {
             .store(in: &cancellables)
     }
 
-    /// Latch for the ONE download-state revert that is provably a transient
-    /// re-read and never a real transition (fix/audiobook-first-open-flicker):
-    /// once the book has surfaced `.downloadSuccessful` (Listen), a subsequent
-    /// `.downloading` re-read is the LCP early-ready artifact — hold Listen
-    /// instead of bouncing to Cancel. Safe because a REAL re-download never goes
-    /// `.downloadSuccessful → .downloading` directly (eviction/re-fulfill route
-    /// through `.downloadNeeded` first). Every other state drops the latch and
-    /// passes through, so the label always reflects a genuine change (no stranded
-    /// Listen on evicted content). NARROW by design: the optimistic-`.downloading`
-    /// ↔`.downloadNeeded` (#2) + throttle-forward-flip (#1) are timing artifacts a
-    /// state-only latch can't separate from a real cancel — deferred (contract).
+    /// Once the book has surfaced `.downloadSuccessful` (Listen), a following
+    /// `.downloading` re-read is the LCP early-ready artifact, so hold Listen
+    /// instead of bouncing to Cancel. Safe because a real re-download routes
+    /// through `.downloadNeeded` first; every other state drops the latch.
     private var listenLatched = false
 
     /// Holds Listen against a transient post-success `.downloading`; passes every
@@ -570,72 +541,21 @@ final class BookDetailViewModel: ObservableObject {
 
     // MARK: - Metadata Hydration
 
-    /// Some OPDS servers serve lightweight `<entry>` blocks inside grouped-lane
-    /// feeds — they omit `<dcterms:issued>`, `<bibframe:publisher>`,
-    /// `<distribution>`, and `<category>`. When the user lands on the detail
-    /// view from a swimlane, the INFORMATION section would render empty rows.
-    /// Re-fetching the single-entry feed at `alternateURL` returns the full
-    /// metadata; we merge the missing fields in without disturbing navigational
-    /// state (acquisitions, related/revoke/report URLs) that the lane entry
-    /// does populate.
+    /// Fills in the INFORMATION-section fields a lightweight lane entry omits,
+    /// by re-fetching the single-entry feed at `alternateURL`.
+    ///
+    /// Both post-await guards are needed: during the fetch a related-book tap
+    /// can replace `book`, or a registry emission can deliver an already-hydrated
+    /// copy, so identity and needs-hydration are re-checked afterwards.
     func hydrateMetadataIfNeeded() async {
-        guard Self.needsMetadataHydration(book) else { return }
-        guard let url = book.alternateURL else { return }
-
         let targetIdentifier = book.identifier
-        do {
-            guard let fresh = try await metadataHydrator(url) else { return }
-            guard book.identifier == targetIdentifier else { return }
-            guard Self.needsMetadataHydration(book) else { return }
+        guard let fresh = await metadataService.fetchFullEntry(for: book) else { return }
+        guard book.identifier == targetIdentifier else { return }
+        guard BookMetadataService.needsHydration(book) else { return }
 
-            let merged = Self.mergeHydratedMetadata(into: book, fresh: fresh)
-            book = merged
-            _ = registry.updatedBookMetadata(merged)
-        } catch {
-            Log.warn(#file, "Failed to hydrate book metadata: \(error.localizedDescription)")
-        }
-    }
-
-    private static func needsMetadataHydration(_ book: TPPBook) -> Bool {
-        book.published == nil
-            && (book.publisher?.isEmpty ?? true)
-            && (book.distributor?.isEmpty ?? true)
-            && (book.categoryStrings?.isEmpty ?? true)
-            && (book.audience?.isEmpty ?? true)
-            && (book.language?.isEmpty ?? true)
-    }
-
-    private static func mergeHydratedMetadata(into current: TPPBook, fresh: TPPBook) -> TPPBook {
-        TPPBook(
-            acquisitions: current.acquisitions,
-            authors: current.bookAuthors,
-            categoryStrings: (current.categoryStrings?.isEmpty ?? true) ? fresh.categoryStrings : current.categoryStrings,
-            distributor: (current.distributor?.isEmpty ?? true) ? fresh.distributor : current.distributor,
-            identifier: current.identifier,
-            imageURL: current.imageURL ?? fresh.imageURL,
-            imageThumbnailURL: current.imageThumbnailURL ?? fresh.imageThumbnailURL,
-            published: current.published ?? fresh.published,
-            publisher: (current.publisher?.isEmpty ?? true) ? fresh.publisher : current.publisher,
-            subtitle: current.subtitle ?? fresh.subtitle,
-            summary: (current.summary?.isEmpty ?? true) ? fresh.summary : current.summary,
-            title: current.title,
-            updated: current.updated,
-            annotationsURL: current.annotationsURL,
-            analyticsURL: current.analyticsURL,
-            alternateURL: current.alternateURL,
-            relatedWorksURL: current.relatedWorksURL,
-            previewLink: current.previewLink ?? fresh.previewLink,
-            seriesURL: current.seriesURL ?? fresh.seriesURL,
-            seriesName: (current.seriesName?.isEmpty ?? true) ? fresh.seriesName : current.seriesName,
-            revokeURL: current.revokeURL,
-            reportURL: current.reportURL,
-            timeTrackingURL: current.timeTrackingURL,
-            contributors: current.contributors,
-            bookDuration: (current.bookDuration?.isEmpty ?? true) ? fresh.bookDuration : current.bookDuration,
-            audience: (current.audience?.isEmpty ?? true) ? fresh.audience : current.audience,
-            language: (current.language?.isEmpty ?? true) ? fresh.language : current.language,
-            imageCache: current.imageCache
-        )
+        let merged = BookMetadataService.merge(into: book, fresh: fresh)
+        book = merged
+        _ = registry.updatedBookMetadata(merged)
     }
 
     // MARK: - Related Books
@@ -659,59 +579,19 @@ final class BookDetailViewModel: ObservableObject {
 
         isLoadingRelatedBooks = true
 
+        let authorName = book.authors
         Task { [weak self] in
             guard let self else { return }
-            do {
-                let feed = try await opdsFeedService.fetchFeed(from: url, useToken: accountsManager.currentUserAccount.hasAdobeToken())
-
-                await MainActor.run {
-                    guard self.book.identifier == currentBookId else {
-                        self.isLoadingRelatedBooks = false
-                        return
-                    }
-
-                    if feed.type == .acquisitionGrouped {
-                        var groupTitleToBooks: [String: [TPPBook]] = [:]
-                        var groupTitleToMoreURL: [String: URL?] = [:]
-                        if let entries = feed.entries as? [TPPOPDSEntry] {
-                            for entry in entries {
-                                guard let group = entry.groupAttributes else { continue }
-                                let groupTitle = group.title ?? ""
-                                if let b = CatalogViewModel.makeBook(from: entry, bookRegistry: registry) {
-                                    groupTitleToBooks[groupTitle, default: []].append(b)
-                                    if groupTitleToMoreURL[groupTitle] == nil { groupTitleToMoreURL[groupTitle] = group.href }
-                                }
-                            }
-                        }
-                        self.createRelatedBooksCells(groupedBooks: groupTitleToBooks, moreURLs: groupTitleToMoreURL)
-                    } else {
-                        self.isLoadingRelatedBooks = false
-                    }
-                }
-            } catch {
-                Log.warn(#file, "Failed to fetch related books: \(error.localizedDescription)")
-                await MainActor.run { self.isLoadingRelatedBooks = false }
+            let lanes = await relatedBooksService.fetchLanes(from: url, authorName: authorName)
+            guard self.book.identifier == currentBookId, let lanes else {
+                self.isLoadingRelatedBooks = false
+                return
             }
+            self.applyRelatedBooks(lanes)
         }
     }
 
-    private func createRelatedBooksCells(groupedBooks: [String: [TPPBook]], moreURLs: [String: URL?]) {
-        var lanesMap = [String: BookLane]()
-        for (title, books) in groupedBooks {
-            let lane = BookLane(title: title, books: books, subsectionURL: moreURLs[title] ?? nil)
-            lanesMap[title] = lane
-        }
-
-        if let author = book.authors, !author.isEmpty {
-            if let authorLane = lanesMap.first(where: { $0.value.books.contains(where: { $0.authors?.contains(author) ?? false }) }) {
-                lanesMap.removeValue(forKey: authorLane.key)
-                var reorderedBooks = [String: BookLane]()
-                reorderedBooks[authorLane.key] = authorLane.value
-                reorderedBooks.merge(lanesMap) { _, new in new }
-                lanesMap = reorderedBooks
-            }
-        }
-
+    private func applyRelatedBooks(_ lanesMap: [String: BookLane]) {
         DispatchQueue.main.async {
             // Don't replace existing related books with empty data.
             // This can happen if the network request succeeds but parsing fails.
@@ -763,50 +643,29 @@ final class BookDetailViewModel: ObservableObject {
 
         case .download, .get, .retry:
             self.downloadProgress = 0
-            // PP-4161 Wave 4 (Path X): streaming-HTML titles funnel through
-            // the same didSelectDownload path as every other content type.
-            // DownloadStartDispatcher.processUnregisteredState already sets
-            // the registry to .downloadNeeded via the open-access branch,
-            // and processDownloadWithCredentials early-returns for
-            // streamingHTML (no asset to download). The button set then
-            // maps to [.readStreaming, .return] on next render, so the
-            // user taps Read on a second tap.
+            // PP-4161: streaming-HTML titles use the same didSelectDownload
+            // path. There is no asset to download, so the registry lands on
+            // .downloadNeeded and the buttons become [.readStreaming, .return].
             didSelectDownload(for: book)
         // Don't remove processing here - will be removed when state changes to .downloading or .downloadFailed
 
         case .read, .listen:
             // PP-4633: dismiss the half-sheet so it does not linger over the
-            // reader/player. On iPhone the .medium detent is covered by the
-            // full-screen presentation; on iPad it renders as a floating
-            // form-sheet that otherwise stays on screen.
+            // reader/player (on iPad it is a floating form-sheet). Dismiss only
+            // AFTER the reader/player is presented: dismissing while the player
+            // is presenting races the two modal transitions on iPad and freezes
+            // the screen.
             //
-            // The dismiss MUST happen AFTER the reader/player is presented, NOT on
-            // tap: on iPad, dismissing the form-sheet while the player is being
-            // presented races the two modal transitions, so the player fails to
-            // present and the screen freezes. Presenting first, then dismissing
-            // the sheet underneath, avoids the race. Mirrors .reserve / .return.
-            //
-            // fix/audiobook-first-open-hang: for AUDIOBOOKS the open completion
-            // fires only after the PP-4542 content-download wait (up to minutes on
-            // a fresh checkout), which left the half-sheet stacked over the loading
-            // shell looking hung. So dismiss EARLY via `onLoadingShellPresented` —
-            // fired the instant the morphing player's loading shell is on screen,
-            // still present-first-then-dismiss (no iPad race). The completion
-            // dismissal below STAYS as an idempotent backstop: EPUB has no shell
-            // hook, and audiobook opens that fail BEFORE presenting a shell
-            // (already-loading / validation) never fire the early hook, so the
-            // always-fired completion still clears the sheet. Both write the same
-            // value → order-independent, no stuck sheet on any path.
+            // Audiobooks dismiss early via `onLoadingShellPresented`, because the
+            // open completion waits for the content download (PP-4542). The
+            // completion dismissal stays as an idempotent backstop for EPUB and
+            // for opens that fail before a shell is shown.
             didSelectRead(for: book, completion: {
                 self.removeProcessingButton(button)
                 self.showHalfSheet = false
             }, onLoadingShellPresented: { [weak self] in
-                // Defer the dismiss one runloop tick so the player's present
-                // (the shell hook fires in the SAME tick that sets
-                // isPlayerExpanded = true) fully commits before we dismiss the
-                // sheet underneath. Dismissing in the same tick is exactly the
-                // PP-4633 iPad present-while-dismiss modal race; the one-tick
-                // hop keeps present-first-then-dismiss ordering on iPad too.
+                // Defer one runloop tick so the player's present commits first;
+                // same-tick dismissal is the PP-4633 iPad modal race.
                 DispatchQueue.main.async { self?.showHalfSheet = false }
             })
 
@@ -852,21 +711,17 @@ final class BookDetailViewModel: ObservableObject {
 
     // MARK: - Authentication Helper
 
-    /// Ensures authentication document is loaded and handles sign-in if needed.
-    /// Routes an action through the auth gate. In production this is the real
-    /// `ensureAuthAndExecute` (auth-doc load + possible sign-in modal); a test can
-    /// inject `authGateOverride` (an immediate pass-through) so the read/listen
-    /// path is driven deterministically without touching the real accountsManager
-    /// / UserDefaults / network. fix/audiobook-first-open-hang.
+    /// Routes an action through the auth gate: `ensureAuthAndExecute` in
+    /// production, or `authGateOverride` when a test injects one.
     private func runAuthGate(_ action: @escaping () -> Void) {
         if let authGateOverride {
             authGateOverride(action)
         } else {
-            ensureAuthAndExecute(action)
+            ensureAuthAndExecute(request: .other, action)
         }
     }
 
-    private func ensureAuthAndExecute(_ action: @escaping () -> Void) {
+    private func ensureAuthAndExecute(request: GatedRequest, _ action: @escaping () -> Void) {
         let businessLogic = TPPSignInBusinessLogic(
             libraryAccountID: accountsManager.currentAccount?.uuid ?? "",
             libraryAccountsProvider: accountsManager,
@@ -883,22 +738,10 @@ final class BookDetailViewModel: ObservableObject {
                 guard let self = self else { return }
 
                 let account = self.accountsManager.currentUserAccount
-                let needsSignIn = account.needsAuth && !account.hasCredentials()
-                // .credentialsStale means we still hold credentials but a 401
-                // has marked the session expired. Reading the cached book
-                // proceeds straight to a hung reader (no fresh fulfillment,
-                // no fresh DRM grant) without an intervening sign-in. Force
-                // re-auth here so the user has a path to recover without
-                // reinstalling. HelpSpot 17716 (Cornell SAML).
-                let needsReauth = account.authState == .credentialsStale
-                if needsSignIn || needsReauth {
-                    Log.info(#file, "[SAML-REAUTH] ensureAuthAndExecute presenting modal: needsSignIn=\(needsSignIn) needsReauth=\(needsReauth)")
+                if Self.promptsSignInBeforeAction(for: account, request: request) {
+                    Log.info(#file, "[SAML-REAUTH] ensureAuthAndExecute presenting modal: hasCredentials=\(account.hasCredentials()) authState=\(account.authState)")
                     let halfSheetWasShowing = self.showHalfSheet
                     self.showHalfSheet = false
-                    // swarm_d8f11437 Module A wave 4 — migrated to
-                    // AppContainer-injected sheet presenter. self.accountsManager
-                    // is the same `_cached` singleton the presenter resolves
-                    // internally, so the behavior is preserved.
                     AppContainer.production().signInModalSheetPresenter
                         .presentSignInModalForCurrentAccount { [weak self] in
                             guard let self else { return }
@@ -911,17 +754,11 @@ final class BookDetailViewModel: ObservableObject {
                             // book and reproduce the original hang.
                             guard post.hasCredentials() && post.authState == .loggedIn else {
                                 Log.info(#file, "[SAML-REAUTH] Sign-in cancelled or incomplete (hasCredentials=\(post.hasCredentials()) authState=\(post.authState)) — not proceeding with action")
-                                // Clear ALL processing state. A bailed-out modal can
-                                // leave .read/.listen/.reserve/etc. stuck in the set,
-                                // and `handleAction` ignores any tap whose button is
-                                // already processing — i.e. the next Read tap is
-                                // silently dropped until the view is recreated.
+                                // Clear all processing state: `handleAction` ignores
+                                // taps on a button that is still marked processing.
                                 self.processingButtons.removeAll()
-                                // Restore the half-sheet so the patron can retry. We
-                                // only re-show it if the caller had it open before
-                                // the modal stole the screen (e.g. download in
-                                // flight); pure book-detail actions like Read don't
-                                // use the half-sheet and shouldn't summon it now.
+                                // Re-show the half-sheet only if it was open before
+                                // the modal appeared.
                                 if halfSheetWasShowing {
                                     self.showHalfSheet = true
                                 }
@@ -945,7 +782,8 @@ final class BookDetailViewModel: ObservableObject {
 
     func didSelectDownload(for book: TPPBook) {
         self.downloadProgress = 0
-        ensureAuthAndExecute { [weak self] in
+        let request = Self.gatedRequest(forDownloadFrom: registry.state(for: book.identifier))
+        ensureAuthAndExecute(request: request) { [weak self] in
             self?.startDownloadAfterAuth(book: book)
         }
     }
@@ -957,7 +795,7 @@ final class BookDetailViewModel: ObservableObject {
     }
 
     func didSelectReserve(for book: TPPBook, completion: (() -> Void)? = nil) {
-        ensureAuthAndExecute { [weak self] in
+        ensureAuthAndExecute(request: .borrow) { [weak self] in
             guard let self = self else {
                 completion?()
                 return
@@ -977,7 +815,24 @@ final class BookDetailViewModel: ObservableObject {
 
     func didSelectCancel() {
         downloadCenter.cancelDownload(for: book.identifier)
-        self.downloadProgress = 0
+
+        // Resolve the UI against the registry, which is read AFTER the cancel
+        // above so it carries that call's own effect. `startDownloadAfterAuth`
+        // sets `bookState = .downloading` before the request runs, and a borrow
+        // that never reaches the registry leaves that optimistic state in place
+        // — `BookButtonMapper` pins the half-sheet to Cancel only, while
+        // `DownloadCancellationHandler` reads the registry, finds nothing in
+        // flight and declines. Taking the registry's answer means Cancel always
+        // resolves: a cancelled transfer has just been moved to
+        // `.downloadNeeded` so the sheet stays open on Download — except the
+        // Adobe branch, which hands off to `cancelFulfillment` and writes no
+        // state, so that one reads back `.downloading` and the sheet likewise
+        // stays open. A borrow that failed is still `.unregistered`, so there
+        // the sheet closes instead of offering a button that does nothing
+        // (PP-5407).
+        var snapshot = snapshotBorrowState()
+        _ = BorrowReducer.reduce(&snapshot, .cancelTapped(registryState: registry.state(for: book.identifier), registryProcessing: registry.processing(forIdentifier: book.identifier)))
+        applyBorrowState(snapshot)
     }
 
     // `completion` is `@Sendable` so the closure handed to
@@ -1011,7 +866,7 @@ final class BookDetailViewModel: ObservableObject {
                         self.openBook(book, completion: completion, onLoadingShellPresented: onLoadingShellPresented)
                         return
                     } else if AdobeCertificate.isDRMAvailable &&
-                                !AdobeDRMService.shared.isUserAuthorized(user.userID, deviceID: user.deviceID) {
+                                !AdobeDRMService.shared.canUseRecordedActivation(user) {
                         // On-demand DRM activation instead of showing sign-in modal
                         Task {
                             do {
@@ -1037,65 +892,43 @@ final class BookDetailViewModel: ObservableObject {
         TPPCirculationAnalytics.postEvent("open_book", withBook: book)
 
         let resolvedBook = registry.book(forIdentifier: book.identifier) ?? book
-        let contentType = resolvedBook.defaultBookContentType
+        let destination = BookOpenRouter.destination(for: resolvedBook)
 
-        Log.debug(#file, "  Content type determined: \(TPPBookContentTypeConverter.stringValue(of: contentType))")
-        Log.debug(#file, "  Distributor: \(resolvedBook.distributor ?? "nil")")
+        Log.debug(#file, "  Routing \(TPPBookContentTypeConverter.stringValue(of: resolvedBook.defaultBookContentType)) to \(destination); distributor: \(resolvedBook.distributor ?? "nil")")
 
-        switch contentType {
-        case .epub:
-            Log.debug(#file, "  → Opening as EPUB")
-            presentEPUB(resolvedBook) { [weak self] in
-                DispatchQueue.main.async {
-                    self?.processingButtons.removeAll()
-                    completion?()
-                }
+        // Every arm below clears `processingButtons` — a button left spinning is
+        // a stuck screen. `.unsupported` deliberately does NOT report
+        // completion: it ends in an alert, not in a reader.
+        let finishOnMain: () -> Void = { [weak self] in
+            DispatchQueue.main.async {
+                self?.processingButtons.removeAll()
+                completion?()
             }
-        case .pdf:
-            Log.debug(#file, "  → Opening as PDF")
-            presentPDF(resolvedBook) { [weak self] in
-                DispatchQueue.main.async {
-                    self?.processingButtons.removeAll()
-                    completion?()
-                }
-            }
-        case .audiobook:
-            Log.debug(#file, "  → Opening as AUDIOBOOK")
-            openAudiobook(resolvedBook, completion: { [weak self] in
-                DispatchQueue.main.async {
-                    self?.processingButtons.removeAll()
-                    completion?()
-                }
-            }, onLoadingShellPresented: onLoadingShellPresented)
-        case .streamingHTML:
-            // PP-4161: streaming-media titles use the in-app WKWebView reader
-            // presented via NavigationCoordinator. Note: handleAction(.readStreaming)
-            // is the canonical entry point; this case handles the rare path
-            // where some other call site funnels a streamingHTML book through
-            // openBook(_:completion:) (e.g. a coordinator-level resume).
-            Log.debug(#file, "  → Opening as STREAMING-HTML")
-            presentStreamingReader(resolvedBook)
+        }
+
+        switch destination {
+        case .epubReader, .pdfReader:
+            BookOpenRouter.open(resolvedBook, bookRegistry: registry, onFinish: finishOnMain)
+        case .audiobookSession:
+            openAudiobook(resolvedBook, completion: finishOnMain, onLoadingShellPresented: onLoadingShellPresented)
+        case .streamingReader:
+            // PP-4161: `handleAction(.readStreaming)` is the canonical entry
+            // point; this arm covers the rare path where another call site
+            // funnels a streamingHTML book through `openBook` (a
+            // coordinator-level resume, say).
+            BookOpenRouter.presentStreamingReader(resolvedBook)
             processingButtons.removeAll()
             completion?()
-        default:
-            Log.error(#file, "  ❌ UNSUPPORTED CONTENT TYPE - showing error to user")
+        case .unsupported:
             processingButtons.removeAll()
             presentUnsupportedItemError()
         }
     }
 
-    @MainActor private func presentEPUB(_ book: TPPBook, completion: (() -> Void)? = nil) {
-        BookService.open(book, onFinish: completion)
-    }
-
-    @MainActor private func presentPDF(_ book: TPPBook, completion: (() -> Void)? = nil) {
-        BookService.open(book, onFinish: completion)
-    }
-
     // MARK: - Audiobook Opening
 
     func openAudiobook(_ book: TPPBook, completion: (() -> Void)? = nil, onLoadingShellPresented: (@MainActor () -> Void)? = nil) {
-        BookService.open(book, audiobookSession: injectedAudiobookSession, onFinish: completion, onLoadingShellPresented: onLoadingShellPresented)
+        BookOpenRouter.open(book, bookRegistry: registry, audiobookSession: injectedAudiobookSession, onFinish: completion, onLoadingShellPresented: onLoadingShellPresented)
     }
 
     // MARK: - Streaming HTML Reader (PP-4161)
@@ -1103,7 +936,7 @@ final class BookDetailViewModel: ObservableObject {
     /// Presents the in-app WKWebView reader for streaming-media (text/html)
     /// titles. Distinct from `didSelectRead` because there's no auth document
     /// dependency (no DRM grant), no openBook dispatch (no LCP / Readium /
-    /// audiobook session), and no `BookService.open` reentrancy guard — we
+    /// audiobook session), and no `BookOpenRouter.open` reentrancy guard — we
     /// route straight to `NavigationCoordinator.push(.streamingHTML(...))`.
     @MainActor
     func didSelectReadStreaming(for book: TPPBook, completion: (() -> Void)? = nil) {
@@ -1112,17 +945,12 @@ final class BookDetailViewModel: ObservableObject {
         completion?()
     }
 
-    /// Pushes the streamingHTML route on the navigation coordinator after
-    /// storing the book payload so the destination resolver can look it up.
+    /// Pushes the streamingHTML route. The coordinator lookup and the
+    /// unreachable-reader fallback live in `BookOpenRouter` so this screen and
+    /// the open pipeline reach the shell the same way.
     @MainActor
     private func presentStreamingReader(_ book: TPPBook) {
-        guard let coordinator = AppContainer.production().navigationCoordinatorHub.coordinator else {
-            // PP-5022 — a warn line is not a patron-visible outcome.
-            ReaderService.presentUnreachableReaderAlert(for: book, source: "BookDetailViewModel.presentStreamingReader")
-            return
-        }
-        coordinator.store(book: book)
-        coordinator.push(.streamingHTML(BookRoute(id: book.identifier)))
+        BookOpenRouter.presentStreamingReader(book)
     }
 
     private func getLCPLicenseURL(for book: TPPBook) -> URL? {
@@ -1187,29 +1015,30 @@ final class BookDetailViewModel: ObservableObject {
             }
         } else {
             samplePreviewManager.close()
-            EpubSampleFactory.createSample(book: book) { sampleURL, error in
-                DispatchQueue.main.async {
-                    if let error = error {
-                        Log.debug("Sample generation error for \(book.title): \(error.localizedDescription)", "")
-                    } else if let sampleWebURL = sampleURL as? EpubSampleWebURL {
-                        self.presentWebView(sampleWebURL.url)
-                    } else if let sampleURL = sampleURL?.url {
-                        // Check if this is an EPUB sample
-                        let isEpubSample = book.sample?.type == .contentTypeEpubZip
-
-                        if isEpubSample {
-                            // Use Readium EPUB reader for EPUB samples
-                            self.readerService.openSample(book, url: sampleURL)
-                        } else {
-                            // Use WebKit for HTML/web samples
-                            let web = BundledHTMLViewController(fileURL: sampleURL, title: book.title)
-                            if let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
-                                top.present(web, animated: true)
-                            }
-                        }
-                    }
+            // `createSample` is awaited, so everything below already runs on
+            // this `@MainActor` type and the `DispatchQueue.main.async` that
+            // wrapped it is gone (PP-5301).
+            Task { @MainActor in
+                defer {
                     self.isProcessingSample = false
                     completion?()
+                }
+                do {
+                    let sampleURL = try await EpubSampleFactory.createSample(book: book)
+                    if let sampleWebURL = sampleURL as? EpubSampleWebURL {
+                        self.presentWebView(sampleWebURL.url)
+                    } else if book.sample?.type == .contentTypeEpubZip {
+                        // Readium EPUB reader for EPUB samples
+                        self.readerService.openSample(book, url: sampleURL.url)
+                    } else {
+                        // WebKit for HTML/web samples
+                        let web = BundledHTMLViewController(fileURL: sampleURL.url, title: book.title)
+                        if let top = (UIApplication.shared.delegate as? TPPAppDelegate)?.topViewController() {
+                            top.present(web, animated: true)
+                        }
+                    }
+                } catch {
+                    Log.debug("Sample generation error for \(book.title): \(error.localizedDescription)", "")
                 }
             }
         }
@@ -1315,7 +1144,7 @@ extension BookDetailViewModel {
         timer?.resume()
     }
     @objc public func pollAudiobookReadingLocation() {
-        // Position polling is now handled by AudiobookPlaybackModel in BookService
+        // Position polling is now handled by AudiobookPlaybackModel
         // This legacy polling can interfere with the new system, so disable it
         timer?.cancel()
         timer = nil

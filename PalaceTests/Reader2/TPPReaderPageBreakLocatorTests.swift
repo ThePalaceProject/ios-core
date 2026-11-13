@@ -1,25 +1,12 @@
-//
 //  TPPReaderPageBreakLocatorTests.swift
-//  The Palace Project
 //
-//  Tests the REAL TPPReaderPageBreakLocator — the print-page component of the
-//  DAISY nav-310 "Where am I?" announcement (PP-4527).
-//
-//  Why this type exists: the shipped code asked
-//  `publication.locate(link).locations.totalProgression` for every page-list
-//  entry, but Readium's DefaultLocatorService never sets totalProgression on a
-//  locator built from a Link. Measured on device 2026-09-18:
-//  "entries=182 resolved=0 nil=182" — the page number could never appear, for
-//  any title, at any position.
-//
-//  Why these tests look like this: a first draft made the SELECTION decision
-//  inside the injected JavaScript and asserted only that the JS string CONTAINED
-//  certain substrings. Mutation scored it 0/12 — quoting logic is not executing
-//  it. Selection moved into Swift, and the score went to 18% because the
-//  COLLECTION logic was still only quoted. So the collector is now executed for
-//  real against a stub DOM via JavaScriptCore, and the selection boundaries are
-//  driven with explicit candidates.
-//
+//  Tests the real TPPReaderPageBreakLocator, the print-page part of the DAISY
+//  nav-310 "Where am I?" announcement (PP-4527). Readium's DefaultLocatorService
+//  never sets totalProgression on a locator built from a Link, so the earlier
+//  approach resolved 0 of 182 page-list entries on device. The collector runs
+//  for real against a stub DOM in JavaScriptCore, and the selection logic
+//  (in Swift) is driven with explicit candidates, because asserting on the
+//  JavaScript source text does not exercise it.
 
 import XCTest
 import JavaScriptCore

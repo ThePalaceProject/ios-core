@@ -2,7 +2,7 @@ import XCTest
 import PalaceAuth
 
 /// App-bundle boundary + behavior tests for the package-local `Effect` mirror
-/// in `PalaceAuth` (WS2 / Contract B).
+/// in `PalaceAuth`.
 ///
 /// This class exercises `PalaceAuth`'s `Effect` *as the app target compiles it*
 /// — proving the app-side consumer (`TPPSignInBusinessLogic`, which calls
@@ -39,7 +39,7 @@ final class EffectBoundaryTests: XCTestCase {
 
     func test_task_runsClosureAndThreadsTheCallersEnvironment() async {
         // Reads the environment marker: proves `run` is invoked with the
-        // caller's environment. Kills a mutant that swaps `.task` for `.none`
+        // caller's environment. Catches a regression that swaps `.task` for `.none`
         // or discards the passed environment.
         let effect = Effect<Int, ProbeEnv>.task { env in env.marker * 2 }
         let result = await effect.run(ProbeEnv(marker: 21))

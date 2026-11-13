@@ -88,11 +88,45 @@ PY
 # True when the ledger records the given version. Matching is deliberately
 # literal: the entry must name the exact version string so a copy-pasted entry
 # for an older bump does not satisfy a newer one.
+#
+# The match is restricted to entry headings ("## ...") rather than the whole
+# file. Both the ledger's own preamble and readium-upgrade-validation.md say the
+# token must appear "in the heading", but the check used to be an unanchored
+# whole-file grep, which is strictly weaker than what it documented: any passing
+# mention satisfied it. That was not hypothetical — the fork entry's body reads
+# "Readium 3.11.0 + the upstream fix-issue-579 series", so a later move to a
+# genuine upstream 3.11.0 would have passed the gate on the strength of a
+# different entry's prose. A false green inside the gate built to prevent false
+# greens. Headings are where an entry declares what it is about, so that is
+# where the token has to be. (PP-5091)
+#
+# The token must also stand as a whole token in that heading, not merely as a
+# substring of a longer one. A fork heading reads
+# "## 3.11.0-palace.1 — …/swift-toolkit @ 58413f868…", and "3.11.0" is a
+# substring of "3.11.0-palace.1" — so a plain substring test would let a move to
+# upstream 3.11.0 be satisfied by the fork's entry, which describes different
+# code. Version and revision strings are made of [0-9A-Za-z._+-], so a match
+# counts only when neither neighbouring character is one of those.
 ledger_records_version() {
   local ledger="$1" version="$2"
   [ -f "$ledger" ] || return 1
   [ -n "$version" ] || return 1
-  grep -Fq -- "$version" "$ledger"
+  python3 - "$ledger" "$version" <<'PY'
+import re, sys
+ledger, token = sys.argv[1], sys.argv[2]
+boundary = r'[0-9A-Za-z._+-]'
+pattern = re.compile(
+    r'(?:^|(?<!' + boundary + r'))' + re.escape(token) + r'(?!' + boundary + r')'
+)
+try:
+    with open(ledger, errors='replace') as fh:
+        for line in fh:
+            if line.startswith('## ') and pattern.search(line):
+                sys.exit(0)
+except OSError:
+    sys.exit(1)
+sys.exit(1)
+PY
 }
 
 MODE=""
@@ -167,7 +201,9 @@ cat >&2 <<EOF
 
 BLOCKED: the Readium pin moved to version '${NEW_VERSION:-unknown}'
 (revision ${NEW_REVISION:-unknown}) with no money-path validation entry in
-${LEDGER} naming the ${REQUIRED_KIND} '${REQUIRED_TOKEN:-unknown}'.
+${LEDGER} whose '## ' heading names the ${REQUIRED_KIND}
+'${REQUIRED_TOKEN:-unknown}'. Naming it only in an entry's body does not count —
+that is how a stale entry's prose ends up satisfying a later pin move.
 
 Readium renders and decrypts borrowed content, so a version bump can break
 borrow, download, fulfillment, or playback without any compile error. The

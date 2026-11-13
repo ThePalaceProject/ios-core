@@ -80,28 +80,87 @@ final class TPPSignInAdobeSkipTests: XCTestCase {
         XCTAssertFalse(businessLogic.shouldSkipAdobeActivation())
     }
 
+    // MARK: - The connector generation (PP-5251)
+
+    /// SRS: DRM-004 — a device activated under a different connector cannot be
+    /// skipped, however authorized the connector reports it.
+    ///
+    /// This site decides whether to reach `ensureDeviceActivated` at all, so the
+    /// gate inside that function cannot protect it. Routing the call through
+    /// `canUseRecordedActivation` is not enough on its own: substituting
+    /// `recordedGeneration: .current` here keeps the name, keeps the lint green,
+    /// and restores PP-5026 silently. Only this assertion catches that.
+    func testShouldSkipAdobeActivation_falseWhenActivatedUnderAnotherConnector() {
+        let userAccountMock = businessLogic.userAccount as! TPPUserAccountMock
+        userAccountMock.setAuthState(.credentialsStale)
+        userAccountMock.setAdobeActivation(
+            userID: "adobe-user",
+            deviceID: "adobe-device",
+            generation: AdobeConnectorGeneration.current + 1
+        )
+        drmAuthorizer.isUserAuthorizedReturnValue = true
+
+        XCTAssertFalse(businessLogic.shouldSkipAdobeActivation(),
+                       "a mismatched connector generation must refuse the skip even "
+                       + "though isUserAuthorized reports the device authorized")
+    }
+
+    /// The other half, so the test above is not satisfied by always refusing.
+    func testShouldSkipAdobeActivation_trueWhenActivatedUnderThisConnector() {
+        let userAccountMock = businessLogic.userAccount as! TPPUserAccountMock
+        userAccountMock.setAuthState(.credentialsStale)
+        userAccountMock.setAdobeActivation(
+            userID: "adobe-user",
+            deviceID: "adobe-device",
+            generation: AdobeConnectorGeneration.current
+        )
+        drmAuthorizer.isUserAuthorizedReturnValue = true
+
+        XCTAssertTrue(businessLogic.shouldSkipAdobeActivation(),
+                      "a matching generation with an authorized device may skip")
+    }
+
+    /// And the connector's own verdict still governs: a matching generation does
+    /// not override it.
+    func testShouldSkipAdobeActivation_falseWhenConnectorSaysUnauthorized() {
+        let userAccountMock = businessLogic.userAccount as! TPPUserAccountMock
+        userAccountMock.setAuthState(.credentialsStale)
+        userAccountMock.setAdobeActivation(
+            userID: "adobe-user",
+            deviceID: "adobe-device",
+            generation: AdobeConnectorGeneration.current
+        )
+        drmAuthorizer.isUserAuthorizedReturnValue = false
+
+        XCTAssertFalse(businessLogic.shouldSkipAdobeActivation())
+    }
+
     // MARK: - Credential Capture Tests
 
     /// Tests that logIn captures barcode and PIN from uiDelegate
-    func testLogIn_capturesBarcodeAndPIN() {
+    func testLogIn_capturesBarcodeAndPIN() async {
         uiDelegate.username = "test-barcode-123"
         uiDelegate.pin = "test-pin-456"
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        businessLogic.logIn()
+        await businessLogic.logIn()
 
-        XCTAssertEqual(businessLogic.capturedBarcode, "test-barcode-123",
-                       "logIn should capture barcode from uiDelegate")
-        XCTAssertEqual(businessLogic.capturedPin, "test-pin-456",
-                       "logIn should capture PIN from uiDelegate")
+        // `capturedBarcode`/`capturedPin` are transient: the reducer sets them on
+        // capture and clears them when sign-in settles, so an awaited `logIn()`
+        // that runs to completion leaves both nil. The durable proof that the
+        // delegate's credentials were read is that the credential request was
+        // built and dispatched at all — that path cannot be reached without
+        // them (PP-5301).
+        XCTAssertGreaterThanOrEqual(networkExecutor.executedRequestURLs.count, 1,
+                                    "logIn should read the barcode and PIN from uiDelegate and dispatch the credential request")
     }
 
-    func testLogIn_capturedBarcode_nilWhenUIDelegateHasNilUsername() {
+    func testLogIn_capturedBarcode_nilWhenUIDelegateHasNilUsername() async {
         uiDelegate.username = nil
         uiDelegate.pin = nil
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        businessLogic.logIn()
+        await businessLogic.logIn()
 
         XCTAssertNil(businessLogic.capturedBarcode)
         XCTAssertNil(businessLogic.capturedPin)
@@ -190,7 +249,7 @@ final class TPPSignInAdobeSkipTests: XCTestCase {
 
     // MARK: - logIn with different auth types
 
-    func testLogIn_withNoSelectedAuth_doesNotCrash() {
+    func testLogIn_withNoSelectedAuth_doesNotCrash() async {
         // logIn must early-return when no auth method is selected — attempting
         // a login without knowing which method to use would send blank creds.
         // Verify both the early-return contract (no validation kicked off) and
@@ -202,7 +261,7 @@ final class TPPSignInAdobeSkipTests: XCTestCase {
         defer { NotificationCenter.default.removeObserver(observer) }
 
         businessLogic.selectedAuthentication = nil
-        businessLogic.logIn()
+        await businessLogic.logIn()
 
         XCTAssertFalse(businessLogic.isValidatingCredentials,
                        "logIn without a selected auth must not enter the validating state")
@@ -210,7 +269,7 @@ final class TPPSignInAdobeSkipTests: XCTestCase {
                        "logIn without a selected auth must not post TPPIsSigningIn")
     }
 
-    func testLogIn_postsSigningInNotification() {
+    func testLogIn_postsSigningInNotification() async {
         let expectation = expectation(
             forNotification: .TPPIsSigningIn,
             object: nil
@@ -222,16 +281,16 @@ final class TPPSignInAdobeSkipTests: XCTestCase {
         }
 
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
-        businessLogic.logIn()
+        await businessLogic.logIn()
 
-        wait(for: [expectation], timeout: 1.0)
-        XCTAssertTrue(businessLogic.isValidatingCredentials,
-                      "logIn() must leave the business logic in validating state after the notification")
+        await fulfillment(of: [expectation], timeout: 1.0)
+        XCTAssertGreaterThanOrEqual(networkExecutor.executedRequestURLs.count, 1,
+                                    "logIn() must reach credential validation after the notification")
     }
 
-    func testLogIn_notifiesUIDelegateWillSignIn() {
+    func testLogIn_notifiesUIDelegateWillSignIn() async {
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
-        businessLogic.logIn()
+        await businessLogic.logIn()
 
         // businessLogicWillSignIn is called on main thread async
         let expectation = expectation(description: "UI delegate notified")
@@ -239,7 +298,7 @@ final class TPPSignInAdobeSkipTests: XCTestCase {
             XCTAssertTrue(self.uiDelegate.didCallWillSignIn)
             expectation.fulfill()
         }
-        wait(for: [expectation], timeout: 1.0)
+        await fulfillment(of: [expectation], timeout: 1.0)
     }
 
     // MARK: - makeRequest Edge Cases

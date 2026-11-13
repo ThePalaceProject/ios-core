@@ -1,19 +1,9 @@
 //
-//  OfflineQueueSpy.swift
-//  PalaceTests
-//
-//  Records what `TPPAnnotations` hands to the offline retry queue.
-//
-//  PP-4987 made `.queuedForRetry` reachable in production, which turned "the
-//  write reached the queue" into a load-bearing claim: PP-4965 removes the
-//  error report for a queued write on exactly that basis. Before this spy the
-//  claim was unassertable — `addToOfflineQueue` reached
-//  `AppContainer.production().networkQueue` directly, so tests could only
-//  prove that nothing was REPORTED, never that anything was STORED.
-//
-//  It also keeps the cross-device suite out of the app's real `simplified.db`:
-//  once the branch went live those tests began writing durable rows a later
-//  reachability event could replay.
+//  Records what `TPPAnnotations` hands to the offline retry queue. PP-4987 made
+//  `.queuedForRetry` reachable, and PP-4965 drops the error report for a queued
+//  write on that basis, so tests need to assert the write was stored, not only
+//  that nothing was reported. Also keeps the cross-device suite out of the real
+//  `simplified.db`.
 //
 
 import Foundation

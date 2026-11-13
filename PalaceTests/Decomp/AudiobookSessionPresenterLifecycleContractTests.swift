@@ -2,74 +2,14 @@
 //  AudiobookSessionPresenterLifecycleContractTests.swift
 //  PalaceTests
 //
-//  PRE-WAVE decomposition pin pack for
-//  `Palace/Audiobooks/AudiobookSessionManager.swift` (2,761 LOC — the biggest
-//  file in the app). Target of the god-class decomposition campaign, Wave 6
-//  (see docs/architecture/god-class-decomposition-plan.md §3a-1 + §5 row
-//  "AudiobookSessionManager").
-//
-//  WHY THIS FILE EXISTS (and why it is NOT a duplicate of the existing suite):
-//
-//  The existing audiobook tests
-//  (`AudiobookSessionManagerPresenterMigrationTests`,
-//  `AudiobookFirstOpenHangTests`, `AudiobookPositionRestoreTests`, …) are
-//  thorough, but they assert on call COUNTS and final published STATE
-//  (`adoptBookCallCount == 1`, `presenter.currentBook == B`,
-//  `adoptedBookIdentifiersInOrder == [A, B]`). None of them locks the
-//  *relative ORDER of the calls within a single open* as a byte-equal JSON
-//  snapshot.
-//
-//  That gap is exactly the regression class `ContractSnapshot.swift` was
-//  built to catch (see its header): 3.1.0's Phase-7 extraction of
-//  MyBooksDownloadCenter leaked FOUR silent call-SEQUENCE regressions
-//  (F-011/F-014/F-016/F-017) that the per-case count/unit tests were blind to.
-//  AudiobookSessionManager is the NEXT god-class extraction, and §5's general
-//  contract is explicit: "no extraction PR merges unless the target's pre-wave
-//  test pack existed BEFORE the move and passes identically AFTER it —
-//  'identically' means byte-equal JSON under __Snapshots__/."
-//
-//  WHAT THIS PINS — the reachable subset of §5's "session-state contract
-//  (spy … recording bind/play/teardown call ORDER)":
-//
-//  The `bind → present` and `teardown → dismiss` sequencing that the Wave-6
-//  Shell keeps (per §3a-1, toolkit binding glue stays in the Shell; the
-//  orchestration decision logic moves to `AudiobookOpenReducer`). These
-//  snapshots drift loudly if the extraction reorders the presenter-facing
-//  calls — e.g. moving `presentOnFirstOpen()` (which renders the mini-player
-//  chrome off `presenter.currentBook`) BEFORE `adoptBook(_:)` would render a
-//  nil-book / blank first frame. That reorder passes EVERY existing count
-//  assertion (both calls still fire exactly once) and drifts ONLY this
-//  snapshot.
-//
-//  SEAM — the toolkit-manager half of §5's ask is NOT reachable without DRM /
-//  the toolkit graph:
-//    The true bind/play/teardown ORDER into the toolkit `AudiobookManager`
-//    (`manager.saveLocation` → `manager.pause` → `manager.unload` in
-//    `stopPlayback`, and `manager.statePublisher`/`positionPublisher`
-//    subscription order in `bind`) CANNOT be contract-snapshotted from a unit
-//    test. Although `PalaceAudiobookToolkit.AudiobookManager` is a `public
-//    protocol` (a spy could conform), there is NO injection seam to bind a
-//    spy: `bind(loaded:for:startPlaying:)` is `private`, the `manager`
-//    property is `private(set)`, and `bind` takes a `LoadedAudiobook` whose
-//    `audiobook: Audiobook` + `playbackModel: AudiobookPlaybackModel` are
-//    concrete toolkit classes over a full Manifest graph that is impractical
-//    to construct from XCTest (documented in
-//    `AudiobookPositionAdapterContractTests` and `PresenterMigrationTests`).
-//    // SEAM: to contract-snapshot the toolkit-manager teardown order, the
-//    // Wave-6 extraction must expose a bindable seam — e.g. an injectable
-//    // `manager` (protocol-typed `AudiobookManaging`) or an internal
-//    // `bind(loaded:)` overload accepting a spy `AudiobookManager` + a
-//    // test-constructable `LoadedAudiobook`. Until then that ordering stays
-//    // sim-verified (simdrive), as does LCP first-open reliable-start (DRM).
-//
-//  ASSERTION FORM: inline `CallLog` method-order equality
-//  (`XCTAssertEqual(log.snapshot().map(\.method), [...])`), NOT the file-based
-//  `ContractSnapshot.assert`. The expected sequence is stated explicitly in each
-//  test — derived from AND verified against the production call order in
-//  `AudiobookSessionManager.pushSessionToPresenter` / `dismissPlayerOnPhone` —
-//  so the pack is GREEN on its first CI run (no external `__Snapshots__/`
-//  baseline to record, no records-then-fails first pass). Wave 6 must keep the
-//  stated sequence identical; a reorder drifts the array and fails loudly.
+//  Pins the presenter-facing call ORDER within a single audiobook open
+//  (`bind → present`, `teardown → dismiss`) in `AudiobookSessionManager`.
+//  Existing suites assert call counts and final state; a reorder such as
+//  `presentOnFirstOpen()` before `adoptBook(_:)` (a blank first frame) passes
+//  them and fails only here. See docs/architecture/god-class-decomposition-plan.md.
+//  The toolkit `AudiobookManager` teardown order is not reachable: `bind` is
+//  private and `LoadedAudiobook` needs a full toolkit graph, so it stays sim-verified.
+//  Expected sequences are stated inline (CallLog method-order equality).
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

@@ -3,22 +3,10 @@
 //  PalaceAuth
 //
 //  Public protocol seams that decouple PalaceAuth from main-target types.
-//  Conformances live in the main target via single-purpose extension files.
-//
-//  Sized per recon: Account = 1 read + 6 writes, AccountDetails = 4 reads.
-//  This impl ships the slim slice that supports the files actually moved
-//  in this PR (impl 1's TPPSAMLHelper / TPPUserAccountFrontEndValidation,
-//  plus this impl's seam shims). Future SignInLogic moves may grow this.
-//
-//  **Protocol-gravity-inversion (recon Risk 4) was scoped OUT of this impl.**
-//  Moving `TPPCurrentLibraryAccountProvider`, `TPPUserAccountResolving`,
-//  `TPPLibraryAccountsProvider`, `TPPSignedInStateProvider`,
-//  `TPPUserAccountProvider`, `NYPLUniversalLinksSettings`, and
-//  `NYPLFeedURLProvider` into PalaceAuth would require also moving the
-//  `Account` / `AccountDetails` / `TPPUserAccount` / `TPPSettings` slice
-//  shapes (and rewriting every callsite that takes the concrete return types
-//  to take the seam types instead). That cascade is the integrator's scope.
-//  See transcript section "Deferred work for integrator" for the full audit.
+//  Conformances live in the main target. Only the slice the moved SignInLogic
+//  files use is exposed; the provider protocols (`TPPUserAccountResolving`,
+//  `TPPLibraryAccountsProvider`, ...) stay in the main target because moving
+//  them would drag `Account` / `TPPUserAccount` along.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

@@ -2,20 +2,9 @@
 //  ReadiumPDFLoadingView.swift
 //  Palace
 //
-//  Shown while the LCP open + first-page render is in flight. Replaces
-//  the silent "blank page" the user used to stare at while PDFNavigator
-//  walked the PDF cross-ref table through the LCP decrypt layer on a
-//  large Marketplace container (hundreds of `Successfully decrypted
-//  2064 -> 2048` calls — visible in the log).
-//
-//  Design intent: dark, cinematic, honest. The book title floats large
-//  and faded as a watermark behind a darker overlay; the foreground
-//  shows the cover thumbnail, the current pipeline phase, a live
-//  decrypted-blocks counter, and an animated linear progress bar. We
-//  don't know the denominator (total blocks needed to render page 1
-//  varies wildly), so the bar is indeterminate — but the live counter
-//  proves forward motion on every block decrypted, which is the
-//  honest signal we DO have.
+//  Shown while an LCP PDF is opened and decrypted to disk, which can take a
+//  while on large containers. Title watermark behind a dark overlay,
+//  with the cover, the current pipeline phase and a progress bar in front.
 //
 
 import SwiftUI
@@ -39,14 +28,20 @@ struct ReadiumPDFLoadingView: View {
             .ignoresSafeArea()
 
             // Title as a faded watermark behind the foreground content.
-            // Large display weight, low opacity — present but not loud.
+            // Large display weight, low opacity — present but not loud. Sized
+            // to the screen rather than to body copy: it already shrinks to 50%
+            // to fit four lines, and the same title is repeated below in a
+            // Dynamic-Type .headline.
+            // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - fixed display geometry
             Text(book.title)
                 .font(.system(size: 56, weight: .heavy, design: .serif))
+                // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
                 .foregroundStyle(.white.opacity(0.08))
                 .multilineTextAlignment(.center)
                 .lineLimit(4)
                 .minimumScaleFactor(0.5)
                 .padding(.horizontal, 24)
+                .accessibilityHidden(true)
 
             VStack(spacing: 24) {
                 Spacer()
@@ -56,8 +51,13 @@ struct ReadiumPDFLoadingView: View {
                     .shadow(color: .black.opacity(0.6), radius: 12, y: 6)
 
                 VStack(spacing: 6) {
+                    // The enclosing ZStack combines its children and supplies
+                    // one label, so this Text is not its own element: `.isHeader`
+                    // here lands on the whole loading overlay.
+                    // accesslint:disable A11Y.SWIFTUI.HEADING_STRUCTURE
                     Text(book.title)
                         .font(.headline)
+                        // accesslint:enable A11Y.SWIFTUI.HEADING_STRUCTURE
                         .foregroundStyle(.white.opacity(0.95))
                         .multilineTextAlignment(.center)
                         .lineLimit(2)
@@ -94,24 +94,20 @@ struct ReadiumPDFLoadingView: View {
     @ViewBuilder
     private var coverThumbnail: some View {
         if let image = book.coverImage {
-            Image(uiImage: image).resizable().scaledToFill()
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .accessibilityHidden(true)
         } else {
-            // The cover image is loaded lazily by `TPPBookCoverRegistry`
-            // and published onto `book.coverImage`. If it hasn't landed
-            // yet we show a soft placeholder rather than spinning up an
-            // AsyncImage — the cover detail view also drives that
-            // registry, so by the time the user reaches the reader the
-            // image is usually already in memory.
+            // Placeholder until `book.coverImage` lands; it is usually already
+            // in memory from the detail view.
             Color.white.opacity(0.08)
         }
     }
 }
 
-/// SwiftUI bridge to the @MainActor-isolated `LCPPDFOpenProgress.shared`.
-/// `ReadiumPDFLoadingView` can't observe the singleton directly because
-/// `LCPPDFOpenProgress` is `@MainActor`-isolated and `View.body` is not.
-/// This wrapper mirrors the published fields onto a plain
-/// `ObservableObject` that the view subscribes to via @StateObject.
+/// Mirrors `LCPPDFOpenProgress.shared`'s published fields onto an
+/// `ObservableObject` the view can hold as a `@StateObject`.
 @MainActor
 private final class ProgressBridge: ObservableObject {
     @Published var statusText: String = NSLocalizedString("Loading…", comment: "")
@@ -150,18 +146,15 @@ private final class ProgressBridge: ObservableObject {
         statusText = Self.statusText(phase: center.phase, percent: center.percentComplete)
     }
 
-    /// User-facing status. Show a percentage once we're past the
-    /// startup phases — common users care that progress is happening,
-    /// not which AES block is being decrypted. Once we're near max,
-    /// switch to a "Finishing…" string so the user understands the
-    /// bar is about to flip to the reader, not stuck.
+    /// User-facing status: a percentage after the startup phases, then
+    /// "Finishing…" near the end so the bar does not look stuck.
     private static func statusText(phase: LCPPDFOpenProgress.Phase, percent: Int) -> String {
         switch phase {
         case .idle:
             return NSLocalizedString("Loading…", comment: "")
         case .preparing, .openingPublication:
             return NSLocalizedString("Preparing book…", comment: "")
-        case .decryptingContent, .extractingToDisk, .loadingFirstPage:
+        case .decryptingContent, .extractingToDisk:
             if percent >= 99 {
                 return NSLocalizedString("Finishing up…", comment: "")
             }

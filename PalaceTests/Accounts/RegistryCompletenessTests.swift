@@ -20,7 +20,7 @@ import PalaceCatalog
 
 // `PalaceWiringTestCase` per `TearDownRequiredLintTests`: everything under
 // PalaceTests/ takes the base so the tearDown cancel + main-hop flush fire, unless
-// explicitly allowlisted with a wall-failure note.
+// explicitly allowlisted.
 final class RegistryCompletenessTests: PalaceWiringTestCase {
 
     // MARK: - Fixtures

@@ -27,10 +27,21 @@
       "output.downloadProgress" : "0.0",
       "output.isManagingHold" : "false",
       "output.localBookStateOverride" : "nil",
-      "output.processingButtons" : "download,get,reserve,retry,returning",
+      "output.processingButtons" : "",
+      "output.showHalfSheet" : "false"
+    },
+    "method" : "cancelTapped.unregistered"
+  },
+  {
+    "args" : {
+      "output.bookState" : "downloading",
+      "output.downloadProgress" : "0.0",
+      "output.isManagingHold" : "false",
+      "output.localBookStateOverride" : "nil",
+      "output.processingButtons" : "returning",
       "output.showHalfSheet" : "true"
     },
-    "method" : "cancelTapped"
+    "method" : "cancelTapped.downloading"
   },
   {
     "args" : {

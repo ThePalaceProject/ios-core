@@ -1,4 +1,5 @@
 import PalaceBookRegistry
+import PalaceUtilities
 //
 //  OverdriveDownloadHandler.swift
 //  Palace
@@ -196,10 +197,10 @@ final class OverdriveDownloadHandler: @unchecked Sendable {
             TPPErrorLogger.logError(error, summary: summary, metadata: [
                 responseHeadersKey: responseHeaders ?? nA,
                 acquisitionURLKey: url?.absoluteString ?? nA,
-                bookKey: book.loggableDictionary,
+                bookKey: book.loggableDictionary(),
                 bookRegistryStateKey: state.stringValue()
             ])
-            alertPresenter.failDownloadWithAlert(for: book, withMessage: nil)
+            alertPresenter.failDownloadWithAlert(for: book, withMessage: DownloadFailureDetail.message(for: error))
             return
         }
 
@@ -216,7 +217,7 @@ final class OverdriveDownloadHandler: @unchecked Sendable {
             TPPErrorLogger.logError(withCode: .overdriveFulfillResponseParseFail, summary: summaryWrongHeaders, metadata: [
                 responseHeadersKey: responseHeaders ?? nA,
                 acquisitionURLKey: url?.absoluteString ?? nA,
-                bookKey: book.loggableDictionary,
+                bookKey: book.loggableDictionary(),
                 bookRegistryStateKey: state.stringValue()
             ])
             alertPresenter.failDownloadWithAlert(for: book, withMessage: nil)

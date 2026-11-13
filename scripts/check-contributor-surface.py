@@ -44,6 +44,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -63,6 +64,14 @@ _DENY = [
     (r"\bSpecterQA\b", "SpecterQA (deprecated private tooling)"),
     (r"(?<![\w-])/(?:swarm|forge-review|rigorous-fix|intent)\b",
      "private maintainer skill invocation"),
+    # Reviewer AGENTS, named without a leading slash. The skill-invocation
+    # pattern above requires "/", so `forge-architect-reviewer` slipped past it
+    # entirely — which is how .claude/skills/clean-code/SKILL.md came to instruct
+    # every contributor's agent to spawn `forge-blast-radius-reviewer`, an agent
+    # definition that is not on a clean clone. Found 2026-09-23 by the CHECK C
+    # test, after a hand-written proof appeared to catch it but was actually
+    # matching `mcp__forgeos__` on the same line.
+    (r"\bforge-[\w-]*reviewer\b", "private forge reviewer agent"),
     (r"\.forgeos/", "private .forgeos/ path"),
     (r"\.simdrive/", "private .simdrive/ path"),
 ]
@@ -127,6 +136,61 @@ def check_settings(settings_path: Path) -> list[str]:
     return violations
 
 
+def check_agent_surface(root: Path) -> list[str]:
+    """CHECK C — private-tooling leak guard over TRACKED skills and agents.
+
+    CHECK A guards docs, which a contributor reads. This guards the files a
+    contributor's agent EXECUTES, which is strictly worse when it leaks.
+
+    A skill or agent definition cannot degrade gracefully. A shell script can
+    `command -v simdrive` and skip; a markdown instruction file has no
+    conditional — it simply tells the agent to call `mcp__forgeos__*` or spawn
+    `forge-architect-reviewer`, neither of which exists on a clean clone. The
+    run does not fail fast; it proceeds partway and then fails confusingly,
+    after the contributor has already spent the tokens.
+
+    That is exactly what happened in PP-5234: a contributor invoked a shipped
+    maintainer skill on a genuine critical-path change, and it consumed most of
+    a session before anyone recognised what it was doing. The skill files were
+    tracked while CHECK A blocked merely NAMING them — the gate's stated intent
+    ("that tooling lives outside the repo on purpose") was true of the docs and
+    false of the tooling itself.
+
+    Scans only files git TRACKS, so a maintainer's local, git-ignored skills are
+    invisible here — which is the intended arrangement, not an oversight.
+    """
+    violations: list[str] = []
+    try:
+        tracked = subprocess.run(
+            ["git", "-C", str(root), "ls-files", ".claude/skills", ".claude/agents"],
+            capture_output=True, text=True, check=True,
+        ).stdout.split("\n")
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        # No git, or not a repo: make no claim rather than a false pass.
+        return ["CHECK C could not enumerate tracked files (git unavailable)"]
+
+    for rel in (t.strip() for t in tracked):
+        if not rel:
+            continue
+        path = root / rel
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        for lineno, line in enumerate(text.split("\n"), 1):
+            if _LEAK_OK.search(line):
+                continue
+            for pattern, label in _DENY:
+                if pattern.search(line):
+                    violations.append(
+                        f"{rel}:{lineno}: tracked agent-facing file references "
+                        f"{label} — absent on a clean clone, and a skill cannot "
+                        f"check for it and degrade"
+                    )
+                    break
+    return violations
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", default=".", help="repo root (default: cwd)")
@@ -147,7 +211,8 @@ def main(argv: list[str] | None = None) -> int:
         else root / ".claude" / "settings.json"
     )
 
-    violations = check_docs(doc_paths) + check_settings(settings_path)
+    violations = (check_docs(doc_paths) + check_settings(settings_path)
+                  + check_agent_surface(root))
 
     if violations:
         print("Contributor-surface check FAILED:\n", file=sys.stderr)
@@ -164,7 +229,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     print("Contributor-surface check passed: no private-tooling leaks in docs, "
-          "committed settings.json carries no git-ignored hook refs.")
+          "committed settings.json carries no git-ignored hook refs, "
+          "no tracked skill/agent references private tooling.")
     return 0
 
 

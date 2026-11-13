@@ -64,6 +64,9 @@ final class NavigationCoordinator: ObservableObject {
             // on the next audiobook open.
             if path.count < oldValue.count {
                 isTopRouteAudio = false
+                // Every way a route leaves (back button, swipe-back, pop to root,
+                // a programmatic pop) shrinks the path through this setter.
+                backOutLCPPDFRoutesNoLongerOnStack()
             }
         }
     }
@@ -88,28 +91,17 @@ final class NavigationCoordinator: ObservableObject {
 
     private var audioModelById: [String: AudiobookPlaybackModel] = [:]
     private var pdfContentById: [String: (TPPPDFDocument, TPPPDFDocumentMetadata)] = [:]
-    /// `@Published` so SwiftUI views observing the coordinator
-    /// re-render when the publication arrives. Pushed BEFORE the
-    /// publication opens — the reader view shows a loading state until
-    /// this dict gains an entry for the route's book id.
-    @Published private var readiumPDFById: [String: (Publication, TPPPDFDocumentMetadata)] = [:]
-    /// Pre-loaded TOC + page count for the Readium-backed PDF, so the
-    /// side panels (TOC view, preview grid) can render synchronously
-    /// even though Readium's `tableOfContents()` and `positions()` are
-    /// async. Populated by `ReaderService.openPDF` after the publication
-    /// opens; dropped by `removeReadiumPDF` and on cleanup.
-    @Published private var readiumPDFTOCById: [String: (toc: [TPPPDFLocation], pageCount: Int)] = [:]
-    /// Books whose LCP PDF open is in progress. Pushed when the user taps
-    /// Read, cleared when the **navigator emits its first
-    /// `locationDidChange`** — i.e. page 1 has actually rendered, not
-    /// merely "the publication object exists". `libraryService.openBook`
-    /// returns in ~100ms on a fast device but Readium then has to walk
-    /// the PDF cross-ref table through the LCP content protection layer
-    /// (the hundreds of `decrypt 2064 -> 2048` calls), which can take
-    /// minutes on large Marketplace containers. Without this we'd hide
-    /// the loading view at T2 and show a blank navigator for the rest of
-    /// the open.
-    @Published private var readiumPDFPending: Set<String> = []
+    /// Books whose LCP PDF is still being decrypted to disk. Set when the
+    /// `.pdf` route is pushed; cleared when the extracted file reaches PDFKit,
+    /// when the open is torn down, or when the route leaves the stack.
+    /// `@Published` because `pdfContentById` is not: clearing this flag is what
+    /// re-renders the route from the loading view to the reader.
+    @Published private var lcpPDFExtractPending: Set<String> = []
+    /// Pending LCP PDF routes pushed through `pushLCPPDFExtractRoute`: the path
+    /// depth the route sits at, and what to run if it leaves before the extract
+    /// completes. Depth rather than identity because `NavigationPath` elements
+    /// cannot be read back.
+    private var pendingLCPPDFRoutes: [String: (depth: Int, onBackOut: () -> Void)] = [:]
     private var catalogFilterStatesByURL: [String: CatalogLaneFilterState] = [:]
 
     private let maxStoredItems = 100
@@ -254,7 +246,7 @@ final class NavigationCoordinator: ObservableObject {
     private func scheduleCleanupIfNeeded() {
         let totalItems = bookById.count + searchBooksById.count + pdfControllerById.count +
             epubControllerById.count + epubPublicationById.count + audioModelById.count +
-            pdfContentById.count + readiumPDFById.count + catalogFilterStatesByURL.count
+            pdfContentById.count + catalogFilterStatesByURL.count
 
         if totalItems > maxStoredItems {
             cleanupTask?.cancel()
@@ -288,12 +280,6 @@ final class NavigationCoordinator: ObservableObject {
         epubPublicationById.removeAll()
         audioModelById.removeAll()
         pdfContentById.removeAll()
-        // LCP PDF publications hold LCP content-protection state, an
-        // HTTP-server endpoint, and decrypted page caches. Dropping them
-        // on cleanup is necessary to avoid unbounded memory growth from
-        // back-to-back opens.
-        readiumPDFById.removeAll()
-        readiumPDFTOCById.removeAll()
         catalogFilterStatesByURL.removeAll()
 
         Log.info(#file, "🧹 NavigationCoordinator: Cleaned up cached items (weak controllers preserved if still alive)")
@@ -375,67 +361,72 @@ final class NavigationCoordinator: ObservableObject {
         pdfContentById[route.id]
     }
 
-    /// Stores a Readium `Publication` + its metadata for LCP-protected PDFs.
-    /// The `.pdf` route resolver prefers the Readium path when a publication
-    /// is present, falling back to the legacy PDFKit path otherwise.
-    func storeReadiumPDF(publication: Publication, metadata: TPPPDFDocumentMetadata, forBookId id: String) {
-        readiumPDFById[id] = (publication, metadata)
-        scheduleCleanupIfNeeded()
+    /// What the `.pdf` route shows for a book.
+    enum PDFRouteContent {
+        /// LCP PDF still being decrypted to disk: show the loading view.
+        case extracting(TPPBook)
+        /// A PDFKit document is ready.
+        case reader(TPPPDFDocument, TPPPDFDocumentMetadata)
+        case empty
     }
 
-    func resolveReadiumPDF(for route: BookRoute) -> (Publication, TPPPDFDocumentMetadata)? {
-        readiumPDFById[route.id]
+    /// The pending extract wins over a stored document so a re-open of a book
+    /// whose earlier document is still cached shows the loader, not stale pages.
+    func pdfRouteContent(for route: BookRoute) -> PDFRouteContent {
+        if isLCPPDFExtractPending(for: route), let book = resolveBook(for: route) {
+            return .extracting(book)
+        }
+        if let (document, metadata) = resolvePDF(for: route) {
+            return .reader(document, metadata)
+        }
+        return .empty
     }
 
-    /// Stores the pre-loaded TOC + page count for a Readium-backed PDF.
-    /// Loaded asynchronously by `ReaderService.openPDF` before the route
-    /// pushes so the side panels can stay synchronous.
-    func storeReadiumPDFTableOfContents(_ toc: [TPPPDFLocation], pageCount: Int, forBookId id: String) {
-        readiumPDFTOCById[id] = (toc: toc, pageCount: pageCount)
+    /// Marks an LCP PDF extract as in progress. The `.pdf` route shows the
+    /// loading view until the extract completes or the open is torn down.
+    func markLCPPDFExtractPending(forBookId id: String) {
+        lcpPDFExtractPending.insert(id)
     }
 
-    func resolveReadiumPDFTableOfContents(for route: BookRoute) -> (toc: [TPPPDFLocation], pageCount: Int)? {
-        readiumPDFTOCById[route.id]
+    /// Marks the extract pending and pushes its `.pdf` route. `onBackOut` runs
+    /// once if the route leaves the stack (back button, swipe-back, pop to
+    /// root) while the extract is still pending. The loader-to-reader switch
+    /// keeps the route on the stack, so it does not run `onBackOut`.
+    func pushLCPPDFExtractRoute(forBookId id: String, onBackOut: @escaping () -> Void) {
+        markLCPPDFExtractPending(forBookId: id)
+        push(.pdf(BookRoute(id: id)))
+        pendingLCPPDFRoutes[id] = (depth: path.count, onBackOut: onBackOut)
     }
 
-    /// Drops the cached `Publication` + metadata for an LCP-protected PDF so
-    /// the LCP content-protection state, HTTP-server endpoint, and decrypted
-    /// page caches can be released. Call from the reader view's `.onDisappear`
-    /// when the user backs out — without this, every open accumulates a new
-    /// publication and the app eventually OOMs on a large LCP textbook.
-    ///
-    /// Intentionally does NOT drop `readiumPDFTOCById`: the TOC + page count
-    /// are pure metadata (a few KB) and re-loading them via Readium 3's
-    /// async `tableOfContents()` / `positions()` requires re-opening the
-    /// publication, which is exactly what we just released. Keeping the
-    /// snapshot keyed by book id lets a re-open populate side panels
-    /// instantly before the publication finishes its second open.
-    func removeReadiumPDF(forBookId id: String) {
-        readiumPDFById.removeValue(forKey: id)
-        readiumPDFPending.remove(id)
+    /// Runs the back-out for every pending LCP PDF route the path no longer
+    /// reaches, and clears its pending flag.
+    private func backOutLCPPDFRoutesNoLongerOnStack() {
+        let departed = pendingLCPPDFRoutes.filter { $0.value.depth > path.count }
+        for (id, route) in departed {
+            pendingLCPPDFRoutes.removeValue(forKey: id)
+            lcpPDFExtractPending.remove(id)
+            route.onBackOut()
+        }
     }
 
-    /// Marks an LCP PDF open as in progress. The reader view (pushed
-    /// IMMEDIATELY by `ReaderService.openPDF`) shows a loading state for
-    /// any pending book id whose first page hasn't rendered yet.
-    func markReadiumPDFPending(forBookId id: String) {
-        readiumPDFPending.insert(id)
+    /// Hands the extracted PDF to the route: stores the PDFKit document, then
+    /// clears the pending flag, whose publish re-renders the route.
+    func completeLCPPDFExtract(document: TPPPDFDocument, metadata: TPPPDFDocumentMetadata, forBookId id: String) {
+        storePDF(document: document, metadata: metadata, forBookId: id)
+        clearLCPPDFExtractPending(forBookId: id)
     }
 
-    /// Called by `ReadiumPDFViewController` when the PDFNavigator emits
-    /// its first `locationDidChange` — i.e. page 1 has actually rendered.
-    /// Removes the book from `readiumPDFPending` so the host view drops
-    /// the loading overlay.
-    func markReadiumPDFFirstPageRendered(forBookId id: String) {
-        readiumPDFPending.remove(id)
+    /// Clears the pending flag without a document, for failed or abandoned
+    /// opens. The route then shows nothing rather than the loading view.
+    func clearLCPPDFExtractPending(forBookId id: String) {
+        lcpPDFExtractPending.remove(id)
+        pendingLCPPDFRoutes.removeValue(forKey: id)
     }
 
-    /// `true` while the LCP open + first-page render is still in flight.
-    /// The host view shows `ReadiumPDFLoadingView` while this returns
-    /// true; once the navigator emits its first locationDidChange,
-    /// `markReadiumPDFFirstPageRendered` flips it off.
-    func isReadiumPDFPending(for route: BookRoute) -> Bool {
-        readiumPDFPending.contains(route.id)
+    /// `true` from the push of an LCP PDF route until its extract completes,
+    /// the open is torn down, or the route leaves the stack.
+    func isLCPPDFExtractPending(for route: BookRoute) -> Bool {
+        lcpPDFExtractPending.contains(route.id)
     }
 
     // MARK: - Catalog Filter State Management

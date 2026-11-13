@@ -2,23 +2,12 @@
 //  PoolResponsivenessProbeTests.swift
 //  PalaceTests
 //
-//  Unit self-tests for the WS-0 class-4 pool-responsiveness GATE — the opt-in
-//  `PalaceTestCase.assertRuntimeResponsive` seam that converts a silent
-//  cross-test cooperative-pool hang into an ATTRIBUTED `tearDown` failure
+//  Self-tests for `PalaceTestCase.assertRuntimeResponsive`, the opt-in gate that
+//  turns a cross-test cooperative-pool hang into an attributed `tearDown` failure
 //  (docs/architecture/runtime-quiescence-gate-backlog.md, Deliverable A).
-//
-//  These exercise the probe's OWN decision logic — probe → pure detector →
-//  `XCTFail` — in isolation, via an injected responsiveness stub, so the wiring
-//  is proven RED (a saturated pool trips the gate) AND GREEN (a responsive pool
-//  does not) WITHOUT staging a real cross-test leak. That is the same
-//  synthetic-input, both-directions self-test discipline `RuntimeQuiescenceGateTests`
-//  applies to the defer-flag gate, and the green-board contract (#4) requires:
-//  an inert gate satisfies "it compiles" AND "the suite is green," so the ONLY
-//  trustworthy evidence is a run where a planted violation made it RED.
-//
-//  The live-pool probe itself (`measureCooperativePoolProbe` clean vs saturated)
-//  is covered by `RuntimeQuiescenceGateTests`; this file covers the GATE layer
-//  that decides + attributes on top of that probe.
+//  An injected responsiveness stub proves the gate goes RED on a saturated pool
+//  and stays GREEN on a responsive one, without staging a real leak. The live
+//  probe itself is covered by `RuntimeQuiescenceGateTests`.
 //
 //  Test-target-only. Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -34,8 +23,7 @@ final class PoolResponsivenessProbeTests: PalaceTestCase {
     /// The decisive wiring proof: an injected "pool did NOT schedule the probe"
     /// stub MUST make `assertRuntimeResponsive` record exactly one attributed
     /// failure, whose message names the cooperative pool and the remediation. If
-    /// this ever passes WITHOUT a recorded failure, the gate is inert (the exact
-    /// fake-gate failure the WS-0 wall-failure documents).
+    /// this ever passes WITHOUT a recorded failure, the gate is inert.
     func testAssertRuntimeResponsive_saturatedStub_recordsAttributedFailure() {
         var captured: [RuntimeQuiescenceAuditor.Violation] = []
 
@@ -83,7 +71,7 @@ final class PoolResponsivenessProbeTests: PalaceTestCase {
 
     /// Exercises the REAL default probe path (no stub) on a clean pool: the
     /// high-priority detached Task schedules well within budget, so there is no
-    /// violation. This kills a mutation that hard-codes the default probe to
+    /// violation. This catches a default probe hard-coded to
     /// `false` (which would make the gate a permanent false-positive) — the stub
     /// tests alone cannot catch that, because they replace the default.
     func testAssertRuntimeResponsive_realProbeOnCleanPool_isResponsive() {
@@ -115,7 +103,7 @@ final class PoolResponsivenessProbeTests: PalaceTestCase {
     /// destabilize the ~7k-execution suite before a zero-false-positive audit
     /// promotes it. Opt-in is per-class via overriding
     /// `enforcesPoolResponsiveness`. This class does NOT override it, so it must
-    /// read `false`. Kills a mutation that flips the base default to `true`
+    /// read `false`. Catches the base default flipping to `true`
     /// (which would silently arm the wall-clock gate suite-wide).
     func testEnforcesPoolResponsiveness_isOffByDefault() {
         XCTAssertFalse(

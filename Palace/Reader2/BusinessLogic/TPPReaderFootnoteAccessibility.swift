@@ -9,11 +9,9 @@
 //  the Readium manifest — so they are surfaced to VoiceOver by annotating the
 //  rendered DOM (see TPPEPUBViewController), not by parsing `publication`.
 //
-//  This type is the pure, dependency-free core: it classifies an element's
-//  `epub:type` / ARIA `role` into a footnote Role and composes the VoiceOver
-//  label for that role. It owns no UIKit/Readium state so it is unit-testable in
-//  isolation; the WKWebView injection that applies these labels is a thin mirror
-//  built by `annotationJavaScript()`.
+//  This type is the pure core: it classifies `epub:type` / ARIA `role` into a
+//  footnote Role and composes the VoiceOver label; `annotationJavaScript()`
+//  applies the same rule in the DOM.
 //
 
 import Foundation
@@ -83,14 +81,11 @@ enum TPPReaderFootnoteAccessibility {
   static let epubOPSNamespace = "http://www.idpf.org/2007/ops"
 
   /// JavaScript that annotates inline footnote elements in the rendered Readium
-  /// WKWebView with `aria-label`s, so VoiceOver speaks the role + marker. It is a
-  /// thin mirror of `accessibilityLabel(role:marker:)` — the Swift composer is
-  /// the spec (and is unit-tested); this applies the same rule in the DOM, where
-  /// the per-element marker text is known. Idempotent: re-running only re-labels.
+  /// WKWebView with `aria-label`s, mirroring `accessibilityLabel(role:marker:)`.
+  /// Idempotent: re-running only re-labels.
   ///
-  /// Two DOM details this MUST get right, both of which silently label nothing
-  /// when got wrong (see `TPPReaderFootnoteAccessibilityDOMTests`, which executes
-  /// this script in a real `WKWebView` against both parse modes):
+  /// Two DOM details that label nothing when wrong (exercised in a real
+  /// `WKWebView` by `TPPReaderFootnoteAccessibilityDOMTests`):
   ///
   /// 1. A CSS attribute selector with no namespace component matches ONLY
   ///    attributes in no namespace, so `[epub\:type]` matches nothing in an

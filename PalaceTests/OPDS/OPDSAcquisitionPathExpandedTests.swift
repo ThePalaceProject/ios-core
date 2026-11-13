@@ -155,9 +155,8 @@ final class OPDSAcquisitionPathExpandedTests: XCTestCase {
   /// `supportedTypes()` and `audiobookTypes()` enumerate the MIME types the
   /// app can fulfill. Lock them as a set, including EPUB membership and
   /// the audiobook/ebook split (audiobook types must NOT all leak into
-  /// supportedTypes — they're a distinct fulfilment path). A mutant that
-  /// returned the same set from both methods would fail the symmetric-
-  /// difference assertion.
+  /// supportedTypes — they're a distinct fulfilment path). Returning the
+  /// same set from both methods fails the symmetric-difference assertion.
   func test_supportedTypes_andAudiobookTypes_areNonEmptyAndDistinguishable() {
     let supported = TPPOPDSAcquisitionPath.supportedTypes()
     let audiobook = TPPOPDSAcquisitionPath.audiobookTypes()
@@ -165,15 +164,15 @@ final class OPDSAcquisitionPathExpandedTests: XCTestCase {
     XCTAssertGreaterThan(supported.count, 0, "Must have at least one supported type")
     XCTAssertGreaterThan(audiobook.count, 0, "Must have at least one audiobook type")
 
-    // EPUB membership in supportedTypes — guards against an accidental
-    // empty-array mutant that still passes the count check.
+    // EPUB membership in supportedTypes — guards against a wrong array
+    // that still passes the count check.
     XCTAssertTrue(
       supported.contains(where: { ($0 as? String)?.contains("epub") ?? false }),
       "supportedTypes() MUST contain at least one epub MIME — guards a missing-EPUB regression")
 
     // The two type sets must not be byte-identical (audiobook fulfillment
-    // is a distinct path). A mutant that aliased the two methods to the
-    // same backing array would fail this. Cast per-element since the
+    // is a distinct path). Aliasing the two methods to the same backing
+    // array fails this. Cast per-element since the
     // arrays come back as NSArray-bridged [Any], not [String].
     let supportedStrings = Set(supported.compactMap { $0 as? String })
     let audiobookStrings = Set(audiobook.compactMap { $0 as? String })
@@ -188,10 +187,9 @@ final class OPDSAcquisitionPathExpandedTests: XCTestCase {
   // MARK: - Nil Handling
 
   /// Both `TPPOPDSFeed(xml: nil)` and `TPPOPDSLink(xml: nil)` short-circuit
-  /// to nil. Pair the two parsers in one test so a mutant that drops the
-  /// nil-check on one but not the other fails immediately. Includes the
-  /// positive case (valid XML produces a non-nil feed) so an "always nil"
-  /// mutant is also caught.
+  /// to nil. Pair the two parsers in one test so dropping the nil-check on
+  /// one but not the other fails immediately. Includes the positive case
+  /// (valid XML produces a non-nil feed) so "always nil" is also caught.
   func test_initWithNilXML_returnsNilOnFeedAndLink() {
     XCTAssertNil(TPPOPDSFeed(xml: nil),
                  "Feed must be nil when initialised with nil XML")
@@ -214,8 +212,8 @@ final class OPDSAcquisitionPathExpandedTests: XCTestCase {
   /// `NYPLOPDSAcquisitionRelationString` is a string-conversion helper that
   /// emits the OPDS link-relation URI for each acquisition relation case.
   /// Lock the openAccess and borrow conversions together AND assert they
-  /// are distinct strings — a mutant that returned the same string from
-  /// both cases would fail the inequality.
+  /// are distinct strings — returning the same string from both cases
+  /// fails the inequality.
   func test_acquisitionRelationString_distinctStringsForOpenAccessAndBorrow() {
     let openAccess = NYPLOPDSAcquisitionRelationString(.openAccess)
     let borrow = NYPLOPDSAcquisitionRelationString(.borrow)

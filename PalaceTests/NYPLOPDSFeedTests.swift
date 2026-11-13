@@ -21,8 +21,8 @@ class TPPOPDSFeedTests: XCTestCase {
   }
 
   /// Init contract: nil XML produces nil; valid XML produces a non-nil
-  /// feed. Pair both branches so a mutant that always-returns nil on init
-  /// fails on the positive case from setUp.
+  /// feed. Pair both branches so an init that always returns nil fails on
+  /// the positive case from setUp.
   func testInit_nilXMLYieldsNil_validXMLYieldsParsedFeed() {
     XCTAssertNil(TPPOPDSFeed(xml: nil),
                  "Nil XML must short-circuit to nil")
@@ -32,10 +32,8 @@ class TPPOPDSFeedTests: XCTestCase {
 
   /// `main.xml` is a known-shape fixture. Lock the parsed feed-level
   /// fields (identifier, title, type, link count, entries-array presence)
-  /// in one body so a mutant that breaks any single field's parse fails
-  /// here without forcing six near-identical tests. The whole test runs
-  /// against the same parsed instance, so it's also faster than the prior
-  /// six setup→assert loops.
+  /// in one body so a broken parse of any single field fails here without
+  /// six near-identical tests.
   func testFeedFromMainFixture_parsesAllTopLevelFields() {
     XCTAssertEqual(feed.identifier, "http://localhost/main",
                    "Identifier must come from the <id> element verbatim")

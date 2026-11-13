@@ -46,7 +46,9 @@ final class CarPlayTemplateManager: NSObject {
 
     // MARK: - Properties
 
-    private weak var interfaceController: CPInterfaceController?
+    /// Every template operation and stack query goes through the navigator,
+    /// which always hands CarPlay a completion handler (PP-5276).
+    private let navigator: CarPlayTemplateNavigator
     private let imageProvider: CarPlayImageProvider
     private let playerBridge: CarPlayAudiobookBridge
     private var cancellables = Set<AnyCancellable>()
@@ -63,7 +65,7 @@ final class CarPlayTemplateManager: NSObject {
     // surfaces a single failure via TWO channels — its async openAudiobook result AND
     // sessionManager.errorPublisher — which races a second presentTemplate(alert) call
     // through handlePlaybackError. CarPlay rejects a second modal while one is
-    // presented; with completion: nil the rejection raises NSException at
+    // presented; with a nil completion the rejection raises NSException at
     // CPInterfaceController.m:481 (TF crash 9A269135 on 3.1.0 build 476, iOS 26.4.2).
     // Dedupe at the present site; non-nil completion handlers below catch the
     // rejection in the closure instead of letting CarPlay raise.
@@ -75,7 +77,7 @@ final class CarPlayTemplateManager: NSObject {
     private let bookRegistry: TPPBookRegistryProvider
 
     init(interfaceController: CPInterfaceController, accountsManager: AccountsManager = AppContainer.production().accountsManager, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry) {
-        self.interfaceController = interfaceController
+        self.navigator = CarPlayTemplateNavigator(controller: interfaceController)
         self.imageProvider = CarPlayImageProvider(imageLoader: AppContainer.production().imageLoader)
         self.playerBridge = CarPlayAudiobookBridge()
         self.accountsManager = accountsManager
@@ -134,11 +136,7 @@ final class CarPlayTemplateManager: NSObject {
             Log.error(#file, "CarPlay: Failed to create library template")
             return
         }
-        interfaceController?.setRootTemplate(libraryTemplate, animated: true) { _, error in
-            if let error = error {
-                Log.warn(#file, "CarPlay: setRootTemplate(library) failed: \(error)")
-            }
-        }
+        navigator.setRoot(libraryTemplate, operation: "setRootTemplate(library)")
 
         Log.info(#file, "CarPlay root template configured")
 
@@ -178,14 +176,10 @@ final class CarPlayTemplateManager: NSObject {
 
         // Workaround: If the interface controller supports it, we can try to
         // replace the root template. This will cause a brief UI reset.
-        if let controller = interfaceController {
+        if navigator.isAttached {
             let newLibraryTemplate = createLibraryTemplate()
             self.libraryTemplate = newLibraryTemplate
-            controller.setRootTemplate(newLibraryTemplate, animated: true) { _, error in
-                if let error = error {
-                    Log.warn(#file, "CarPlay: setRootTemplate(new library) failed: \(error)")
-                }
-            }
+            navigator.setRoot(newLibraryTemplate, operation: "setRootTemplate(new library)")
             Log.info(#file, "🚗 CarPlay library template replaced with new name: '\(libraryName)'")
         }
     }
@@ -310,11 +304,9 @@ final class CarPlayTemplateManager: NSObject {
             return
         }
 
-        // PHASE 1 (swarm_81b5099e Bucket A): the authentication check now
-        // awaits Account.awaitReady() (under the hood in CarPlayAuthHelper)
-        // so we no longer race the cold-launch authentication_document
-        // fetch. Wrap downstream guards in the same Task so the alert
-        // sequencing stays linear with the await.
+        // The authentication check awaits account readiness (see
+        // CarPlayAuthHelper); later guards share the Task so alerts stay
+        // ordered after the await.
         Task { [weak self] in
             guard let self else { return }
             let authenticated = await self.isUserAuthenticated()
@@ -355,16 +347,14 @@ final class CarPlayTemplateManager: NSObject {
             // AudiobookSessionManager.openAudiobook() handles stopping existing playback internally.
 
             // Pop to root to clear any stacked CarPlay templates (only if not already at root)
-            if let controller = self.interfaceController, controller.templates.count > 1 {
-                controller.popToRootTemplate(animated: false, completion: nil)
-            }
+            self.navigator.popToRootIfStacked()
 
             // Mark as loading to prevent duplicate selections
             self.isLoadingBook = true
 
             // Start playback through the bridge with enhanced error handling
             // Note: switchToNowPlaying will be called automatically via playbackStatePublisher
-            // when playback actually begins (after BookService finishes position sync)
+            // when playback actually begins (after AudiobookSessionManager finishes position sync)
             // openAudiobook() will stop any existing playback before starting the new book
             self.playerBridge.playAudiobook(book) { [weak self] result in
                 self?.isLoadingBook = false
@@ -381,7 +371,7 @@ final class CarPlayTemplateManager: NSObject {
     }
 
     /// Checks if the user is authenticated with the current library.
-    /// PHASE 1: awaits the Account.LoadState readiness gate so the
+    /// Awaits the Account.LoadState readiness gate so the
     /// answer reflects loaded credentials, not pre-load defaults.
     /// Note: If tokens need refresh, the app's auth layer handles this automatically.
     /// CarPlay cannot show sign-in UI - users must sign in via the phone app.
@@ -391,33 +381,11 @@ final class CarPlayTemplateManager: NSObject {
 
     /// Handles specific playback errors with appropriate UI
     private func handlePlaybackError(_ error: CarPlayPlaybackError) {
-        switch error {
-        case .authenticationRequired:
-            showErrorAlert(
-                title: Strings.CarPlay.Error.authRequired,
-                message: Strings.CarPlay.Error.authMessage
-            )
-        case .networkError:
-            showErrorAlert(
-                title: Strings.CarPlay.Error.offline,
-                message: Strings.CarPlay.Error.offlineMessage
-            )
-        case .drmError:
-            showErrorAlert(
-                title: Strings.CarPlay.Error.playbackFailed,
-                message: Strings.CarPlay.Error.drmMessage
-            )
-        case .notDownloaded:
-            showErrorAlert(
-                title: Strings.CarPlay.Error.notDownloaded,
-                message: Strings.CarPlay.Error.downloadRequired
-            )
-        case .unknown:
-            showErrorAlert(
-                title: Strings.CarPlay.Error.playbackFailed,
-                message: Strings.CarPlay.Error.tryAgain
-            )
+        guard let content = error.alertContent else {
+            Log.info(#file, "CarPlay: open superseded by a stop or a newer open — no alert")
+            return
         }
+        showErrorAlert(title: content.title, message: content.message)
     }
 
     private func isFullyDownloaded(_ book: TPPBook) -> Bool {
@@ -430,14 +398,14 @@ final class CarPlayTemplateManager: NSObject {
     // MARK: - Error Handling
 
     private func showErrorAlert(title: String, message: String) {
-        guard let interfaceController = interfaceController else { return }
+        guard navigator.isAttached else { return }
 
         // Dedupe: the dual-channel error path (async openAudiobook result + errorPublisher)
         // can race a second presentTemplate while the first alert is in-flight or visible.
         // CarPlay rejects the second present and raises NSException at
         // CPInterfaceController.m:481 if completion is nil. Suppress here AND catch in
         // the completion handler below.
-        guard !isPresentingAlert, interfaceController.presentedTemplate == nil else {
+        guard !isPresentingAlert, !navigator.hasPresentedTemplate else {
             Log.info(#file, "CarPlay: Suppressing duplicate error alert — modal already presented")
             return
         }
@@ -448,22 +416,18 @@ final class CarPlayTemplateManager: NSObject {
             titleVariants: [title],
             actions: [
                 CPAlertAction(title: Strings.Generic.ok, style: .default) { [weak self] _ in
-                    self?.interfaceController?.dismissTemplate(animated: true) { _, error in
-                        if let error = error {
-                            Log.warn(#file, "CarPlay: dismissTemplate(alert) failed: \(error)")
-                        }
+                    self?.navigator.dismiss(operation: "dismissTemplate(alert)") { _ in
                         self?.isPresentingAlert = false
                     }
                 }
             ]
         )
 
-        interfaceController.presentTemplate(alert, animated: true) { [weak self] _, error in
-            if let error = error {
-                // CarPlay rejected the present (typically because another modal slipped
-                // in between our guard and this call). Logged, NOT raised. Clear the flag
-                // so the next attempt isn't blocked by a stuck `isPresentingAlert`.
-                Log.warn(#file, "CarPlay: presentTemplate(errorAlert) failed: \(error)")
+        navigator.present(alert, operation: "presentTemplate(errorAlert)") { [weak self] error in
+            // CarPlay rejected the present (typically because another modal slipped
+            // in between our guard and this call). Clear the flag so the next
+            // attempt isn't blocked by a stuck `isPresentingAlert`.
+            if error != nil {
                 self?.isPresentingAlert = false
             }
         }
@@ -473,7 +437,7 @@ final class CarPlayTemplateManager: NSObject {
     /// hasn't been opened yet (cold start from CarPlay). iOS doesn't allow CarPlay
     /// apps to programmatically open the phone app, so we ask the user to do it manually.
     private func showOpenAppAlert() {
-        guard let interfaceController = interfaceController else { return }
+        guard navigator.isAttached else { return }
 
         let alert = CPAlertTemplate(
             titleVariants: [
@@ -482,17 +446,13 @@ final class CarPlayTemplateManager: NSObject {
                 Strings.CarPlay.OpenApp.messageShortest
             ],
             actions: [
-                CPAlertAction(title: Strings.Generic.ok, style: .default) { _ in
-                    interfaceController.dismissTemplate(animated: true, completion: nil)
+                CPAlertAction(title: Strings.Generic.ok, style: .default) { [navigator] _ in
+                    navigator.dismiss(operation: "dismissTemplate(openAppAlert)")
                 }
             ]
         )
 
-        interfaceController.presentTemplate(alert, animated: true) { _, error in
-            if let error = error {
-                Log.warn(#file, "CarPlay: Failed to present open app alert: \(error)")
-            }
-        }
+        navigator.present(alert, operation: "presentTemplate(openAppAlert)")
     }
 
     // MARK: - Now Playing Template
@@ -577,7 +537,7 @@ final class CarPlayTemplateManager: NSObject {
         let section = CPListSection(items: items)
         let chapterTemplate = CPListTemplate(title: Strings.CarPlay.chapters, sections: [section])
 
-        interfaceController?.pushTemplate(chapterTemplate, animated: true, completion: nil)
+        navigator.push(chapterTemplate, operation: "pushTemplate(chapterList)")
     }
 
     private func createChapterItem(chapter: Chapter, index: Int) -> CPListItem {
@@ -595,7 +555,7 @@ final class CarPlayTemplateManager: NSObject {
 
         item.handler = { [weak self] _, completion in
             self?.playerBridge.skipToChapter(at: index)
-            self?.interfaceController?.popTemplate(animated: true, completion: nil)
+            self?.navigator.pop(operation: "popTemplate(chapterList)")
             completion()
         }
 
@@ -639,14 +599,15 @@ final class CarPlayTemplateManager: NSObject {
         }
 
         Log.info(#file, "CarPlay: Pushing Now Playing template")
-        interfaceController?.pushTemplate(nowPlayingTemplate, animated: true) { [weak self] _, error in
-            if let error = error {
+        navigator.push(nowPlayingTemplate, operation: "pushTemplate(nowPlaying)") { [weak self] error in
+            if let error {
+                // Error level so the failure reaches the on-device error log.
                 Log.error(#file, "CarPlay: Failed to push Now Playing: \(error)")
-            } else {
-                Log.info(#file, "CarPlay: Now Playing template pushed successfully")
-                self?.isShowingNowPlaying = true
-                // NowPlayingCoordinator handles the Now Playing state via AudiobookSessionManager
+                return
             }
+            Log.info(#file, "CarPlay: Now Playing template pushed successfully")
+            self?.isShowingNowPlaying = true
+            // NowPlayingCoordinator handles the Now Playing state via AudiobookSessionManager
         }
     }
 
@@ -654,14 +615,13 @@ final class CarPlayTemplateManager: NSObject {
         Log.debug(#file, "CarPlay: switchToNowPlayingIfNeeded called")
 
         // Only push if we're not already showing Now Playing
-        guard let controller = interfaceController else {
+        guard navigator.isAttached else {
             Log.warn(#file, "CarPlay: No interface controller")
             return
         }
 
         // Check if Now Playing is already the top template
-        let topTemplate = controller.topTemplate
-        if let top = topTemplate, top is CPNowPlayingTemplate {
+        if navigator.isNowPlayingOnTop {
             Log.debug(#file, "CarPlay: Already showing Now Playing, skipping push")
             return
         }
@@ -681,8 +641,7 @@ final class CarPlayTemplateManager: NSObject {
             guard let self = self else { return }
 
             // Double-check we're not already showing Now Playing
-            if let topTemplate = self.interfaceController?.topTemplate,
-               topTemplate is CPNowPlayingTemplate {
+            if self.navigator.isNowPlayingOnTop {
                 Log.debug(#file, "CarPlay: Already showing Now Playing after delay, skipping")
                 self.isPushingNowPlaying = false
                 return
@@ -737,10 +696,7 @@ final class CarPlayTemplateManager: NSObject {
                 Log.error(#file, "CarPlay: Received playback error: \(error)")
                 self?.handlePlaybackError(error)
                 // Pop back to library if we're showing Now Playing
-                if let controller = self?.interfaceController,
-                   controller.topTemplate is CPNowPlayingTemplate {
-                    controller.popTemplate(animated: true, completion: nil)
-                }
+                self?.navigator.popNowPlayingIfOnTop()
             }
             .store(in: &cancellables)
     }
@@ -771,7 +727,7 @@ extension CarPlayTemplateManager: CPInterfaceControllerDelegate {
                 guard let self = self else { return }
 
                 // If templates count is 1 (only root/library), user backed out to library
-                if let templateCount = self.interfaceController?.templates.count, templateCount <= 1 {
+                if let templateCount = self.navigator.templateCount, templateCount <= 1 {
                     Log.info(#file, "CarPlay: User returned to library - keeping playback active")
                     self.isShowingNowPlaying = false
                     // Don't stop playback when user returns to library!

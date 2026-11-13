@@ -1,26 +1,11 @@
-//
 //  TPPNetworkResponderSizeLimitTests.swift
-//  PalaceTests
 //
-//  PP-4769 Issue #2 (crash 898c0776 — EXC_BREAKPOINT inside `__DataStorage.init`
-//  bridging a giant response body NSData→Data under iPad memory pressure).
-//
-//  These tests drive the SHARED data-task completion path
-//  (`TPPNetworkExecutor` → `TPPNetworkResponder`) through `HTTPStubURLProtocol`
-//  and prove the bounded response-size guard:
-//   • a body over `maxResponseBodyBytes` fails cleanly with
-//     `TPPErrorCode.responseTooLarge` and does NOT surface the buffered body,
-//   • a normal-size body still succeeds unchanged (no false positive),
-//   • the cap boundary is inclusive-safe (a body exactly at the cap succeeds;
-//     one byte over fails).
-//
-//  The cap is lowered on the executor's responder for the test so the oversize
-//  path is driven deterministically without allocating a real 100 MB body —
-//  `maxResponseBodyBytes` is a documented internal test seam (mirrors
-//  `TPPNetworkExecutor.tokenRefreshWatchdogSeconds`).
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
-//
+//  PP-4769 (crash 898c0776, EXC_BREAKPOINT bridging a very large response body
+//  NSData -> Data under iPad memory pressure). Pins the response-size guard on the
+//  shared data-task path: a body over `maxResponseBodyBytes` fails with
+//  `TPPErrorCode.responseTooLarge` without surfacing the body, a normal body
+//  succeeds, and a body exactly at the cap succeeds while one byte over fails.
+//  The cap is lowered via its internal test seam so no 100 MB body is allocated.
 
 import XCTest
 @testable import Palace
@@ -172,8 +157,8 @@ final class TPPNetworkResponderSizeLimitTests: XCTestCase {
     // MARK: - Boundary — at cap succeeds, one over fails
 
     /// A body exactly AT the cap must still succeed (the guard fires only when
-    /// the projected size STRICTLY EXCEEDS the cap). Kills an off-by-one mutant
-    /// that would flip `>` to `>=` and start refusing legitimate at-limit
+    /// the projected size STRICTLY EXCEEDS the cap). Catches an off-by-one
+    /// regression that would flip `>` to `>=` and start refusing legitimate at-limit
     /// responses.
     func testResponse_exactlyAtCap_succeeds() {
         let atCap = body(ofSize: Int(testCap))
@@ -208,7 +193,7 @@ final class TPPNetworkResponderSizeLimitTests: XCTestCase {
     /// Content-Length header, so it only exercises the running-total branch —
     /// leaving the declared-length branch's off-by-one (`declared > cap` →
     /// `declared >= cap`) unpinned. Here the declared length equals the cap, so
-    /// the original allows it (success) while the `>=` mutant refuses it.
+    /// the correct `>` allows it (success) while `>=` would refuse it.
     func testResponse_declaredContentLengthExactlyAtCap_succeeds() {
         let declared = testCap // exactly at the cap
         let atCap = body(ofSize: Int(testCap))

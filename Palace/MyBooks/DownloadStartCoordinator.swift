@@ -2,33 +2,13 @@
 //  DownloadStartCoordinator.swift
 //  Palace
 //
-//  Owns the four borrow/start entry points lifted out of MBDC:
-//
-//    - `startBorrow(for:attemptDownload:borrowCompletion:)` — wraps
-//      `delegate.borrowAsync(...)` and releases the download-coordinator
-//      slot when the result is `.holding` (server returned a hold) or
-//      when borrowAsync threw. Without these releases, downloads get
-//      stuck in the queue because the slot is never freed.
-//
-//    - `startDownload(for:withRequest:)` (public @objc shim)
-//      — preserved on MBDC as a 1-line @objc Task wrapper since it's
-//      called from app code (BookDetailView etc.). The async path is
-//      `startDownloadAsync(...)` here.
-//
-//    - `startDownloadAsync(for:withRequest:)` — the main orchestrator:
-//      duplicate-start guard, state classification (returns early on
-//      .downloading / terminal states; preprocesses .unregistered via
-//      the dispatcher), capacity check (enqueues at the cap), throttle
-//      delay, slot registration, and routing to either the credential
-//      prompt or the per-state dispatcher.
-//
-//    - `startDownloadIfAvailable(book:)` — pattern-matches book
-//      availability (limited / unlimited / ready start, others stay
-//      put) and forwards to startDownload.
-//
-//  borrowAsync itself stays on MBDC (it lives in MBDC+Async.swift and
-//  is too tangled to lift in this commit). The coordinator forwards
-//  to it via `delegate.borrowAsync(...)`.
+//  Borrow/start entry points:
+//    - `startBorrow`: runs `delegate.borrowAsync` and releases the coordinator
+//      slot on a `.holding` result or a throw, or the queue stalls.
+//    - `startDownloadAsync`: duplicate-start guard, state classification,
+//      capacity check (enqueue at the cap), throttle delay, slot registration,
+//      then the credential prompt or the per-state dispatcher.
+//    - `startDownloadIfAvailable`: starts limited / unlimited / ready books.
 //
 
 import Foundation
@@ -38,12 +18,8 @@ import PalaceBookRegistry
 
 // MARK: - Delegate
 
-/// Surface the coordinator needs MBDC to expose. `borrowAsync` is the
-/// big one — it stays on MBDC for now because lifting borrowAsync's
-/// 200+ LOC out of MBDC+Async is its own job. The other dependencies
-/// (startDispatcher, credentialPromptCoordinator, queueOrchestrator)
-/// live in MBDC and are passed to the coordinator at init time, not
-/// through this delegate, so the protocol surface stays small.
+/// Callbacks into MyBooksDownloadCenter. Other collaborators are passed at
+/// init so this surface stays small.
 protocol DownloadStartCoordinatorDelegate: AnyObject {
     func borrowAsync(_ book: TPPBook, attemptDownload: Bool) async throws -> TPPBook
     func schedulePendingStartsIfPossible()
@@ -51,41 +27,23 @@ protocol DownloadStartCoordinatorDelegate: AnyObject {
 
 // MARK: - DownloadStartCoordinator
 
-/// - Sendable invariant (Swift 6 `complete`-mode): every stored dependency is a
-///   `let` bound at init (`stateManager`, `bookRegistry`, `userAccountProvider`,
-///   `currentAccountIdProvider`, `errorActivityTracker`, `queueOrchestrator`,
-///   and the three closure-injected per-state handlers). The only mutable member
-///   is `weak var delegate`, assigned exactly once during owner
-///   (`MyBooksDownloadCenter`) construction and never reassigned (weak-ref reads
-///   + ARC zeroing are atomic). `startBorrow` / `startDownloadAsync` hop into
-///   `Task { }`, touching only the actor-serialized
-///   `stateManager.downloadCoordinator` and the injected closures. The captured
-///   account-id (a `String`) is snapshotted into a `let` at start so the
-///   library-swap window stays closed — no auth-host scoping is broadened here.
-///   `@unchecked` only because the stored service types are not themselves
-///   `Sendable`.
-/// Sendable carrier for the non-Sendable `(() -> Void)?` `borrowCompletion`
-/// closure captured by the `sending` `Task` closure in `startBorrow`. Boxing
-/// lets the `Task` capture a Sendable carrier instead of the raw closure,
-/// clearing the "passing closure as a 'sending' parameter" diagnostic WITHOUT
-/// marking `borrowCompletion` `@Sendable` — which would ripple onto every
-/// caller closure (`TokenRefreshInterceptor`, `DownloadStartDispatcher`,
-/// `DownloadAuthRetryHandler`) that captures `[weak delegate]`/`[weak self]`
-/// and mutates non-Sendable state.
-/// INVARIANT — the boxed closure is invoked at most once, inside the single
-/// `startBorrow` `Task` (both the success and `catch` terminal paths of
-/// `startBorrowAsync`), never concurrently; its own thread-affinity is the
-/// caller's contract (unchanged).
-///
-/// `internal` (not `private`) so the joinable `startBorrowAsync` seam — which
-/// takes the box rather than the raw closure to preserve the single boxing at
-/// the `Task` boundary — is `await`-able from the test target under
-/// `@testable import`. No production behavior depends on the access level.
+/// Sendable carrier for the non-Sendable `borrowCompletion` closure captured by
+/// the `Task` in `startBorrow`. Marking the closure `@Sendable` instead would
+/// ripple onto every caller closure that mutates non-Sendable state.
+/// Invariant: invoked at most once, inside the single `startBorrow` Task.
+/// `internal` so tests can await `startBorrowAsync`.
 final class BorrowCompletionBox: @unchecked Sendable {
     let call: (() -> Void)?
     init(_ call: (() -> Void)?) { self.call = call }
 }
 
+/// - Sendable invariant: every stored dependency is a `let` bound at init. The
+///   only mutable member is `weak var delegate`, assigned once during
+///   `MyBooksDownloadCenter` construction. Task bodies touch only the
+///   actor-serialized `stateManager.downloadCoordinator` and the injected
+///   closures; the account id is snapshotted at start so a library switch
+///   cannot change it. `@unchecked` because the stored service types are not
+///   `Sendable`.
 final class DownloadStartCoordinator: @unchecked Sendable {
 
     weak var delegate: DownloadStartCoordinatorDelegate?
@@ -137,9 +95,9 @@ final class DownloadStartCoordinator: @unchecked Sendable {
     /// not the current account at request-build time.
     static let capturedNoAccountSentinelUUID = "__no_account_selected__"
 
-    /// Module-A designated init: accepts a `processWithCredentials` closure
-    /// that takes the captured accountId as its 4th argument so the
-    /// dispatcher can pin bearer auth to the originally-selected library.
+    /// `processWithCredentials` takes the captured accountId as its 4th
+    /// argument so the dispatcher can pin bearer auth to the library that was
+    /// selected when the download started.
     init(
         stateManager: DownloadStateManager,
         bookRegistry: TPPBookRegistryProvider,
@@ -162,13 +120,9 @@ final class DownloadStartCoordinator: @unchecked Sendable {
         self.requestCredentials = requestCredentials
     }
 
-    /// Legacy convenience init used by pre-Module-A tests that constructed
-    /// the coordinator with a 3-arg `processWithCredentials` closure (no
-    /// accountId). Adapts to the 4-arg internal shape by dropping the
-    /// captured accountId at the call boundary. `currentAccountIdProvider`
-    /// defaults to a nil reader; the resulting captured id is the sentinel,
-    /// which is appropriate for tests that don't exercise captured-accountId
-    /// semantics (they assert routing only).
+    /// Convenience init for tests that assert routing only: a 3-arg
+    /// `processWithCredentials` (the captured accountId is dropped) and a nil
+    /// account reader, so the captured id is the sentinel.
     convenience init(
         stateManager: DownloadStateManager,
         bookRegistry: TPPBookRegistryProvider,
@@ -220,18 +174,10 @@ final class DownloadStartCoordinator: @unchecked Sendable {
         }
     }
 
-    /// Behavior-identical `async` body of `startBorrow`. The fire-and-forget
-    /// entry point above is `Task { await startBorrowAsync(...) }`; callers
-    /// already inside an `async` context (and tests) can `await` it directly
-    /// to JOIN the slot-release + reschedule + completion side effects instead
-    /// of polling a wall-clock deadline for the detached Task to settle (which
-    /// starves under CI oversubscription and blows the executionTimeAllowance).
-    ///
-    /// Takes the `BorrowCompletionBox` (not the raw closure) so the sole
-    /// caller keeps its single boxing at the `Task` boundary; the ordered
-    /// side effects — borrowAsync → post-state read → registerCompletion →
-    /// activeCount → schedulePendingStartsIfPossible → completion — are
-    /// verbatim what the previous inline Task ran.
+    /// The `async` body of `startBorrow`, awaitable so async callers and tests
+    /// can join the slot-release, reschedule and completion side effects
+    /// instead of polling. Takes the box so boxing happens once, at the `Task`
+    /// boundary.
     func startBorrowAsync(
         for book: TPPBook,
         attemptDownload shouldAttemptDownload: Bool,

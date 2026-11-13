@@ -11,6 +11,7 @@ import PalaceLogging
 import PalaceNetwork
 import PalaceCatalog
 import PalaceAuth
+import PalaceUtilities
 
 private struct TPPNetworkTaskInfo {
     var progressData: Data
@@ -62,6 +63,9 @@ private struct TPPNetworkTaskInfo {
 /// including `fallbackCredentialsProvider`, a non-`Sendable` closure written once
 /// in `init` and only invoked (never reassigned), and
 /// `wasSuppliedCredentialsProvider`, a `Bool` captured at init (PP-4969).
+/// `dispatchBrowserReauth` is replaced only by tests before any task runs. `owner`
+/// is a `weak var` set once by the owning executor's init, before any task runs,
+/// and only read thereafter.
 /// Documented invariant, not a bare waiver. (Critical-path: isolation via existing
 /// locks only — no broadening of the 401/auth decision.)
 class TPPNetworkResponder: NSObject, @unchecked Sendable {
@@ -98,6 +102,27 @@ class TPPNetworkResponder: NSObject, @unchecked Sendable {
     /// "died" from "never had one" and deciding to cancel instead of substitute,
     /// which is a behavior change on a credential path and needs its own ticket.
     private weak var credentialsProvider: NYPLBasicAuthCredentialsProvider?
+
+    /// The executor that sends this responder's tasks. A 401 is refreshed and
+    /// retried through it, with its accounts manager, so the retry is rebuilt
+    /// where the caller's completion is stored and for the accounts that
+    /// executor was given. Weak because the executor owns this responder. When
+    /// nil (the executor was released, or the responder was built on its own)
+    /// a 401 completes without a refresh and a 2xx heals nothing.
+    private(set) weak var owner: TPPNetworkExecutor?
+
+    /// Starts browser re-authentication (SAML web sheet, OIDC session) for
+    /// the selected library after a 401. Replaced only by tests, before any
+    /// request runs; the container is read only when it is called.
+    var dispatchBrowserReauth: @Sendable (ReauthReason) -> Void = { reason in
+        let coordinator = AppContainer.production().authCoordinator
+        Task { _ = await coordinator.refreshCredentialsIfNeeded(reason: reason) }
+    }
+
+    /// Called once by the executor that owns this responder, from its init.
+    func bind(to executor: TPPNetworkExecutor) {
+        owner = executor
+    }
 
     /// Tracks URLs that have been retried after a 401 to prevent infinite retry loops.
     /// Key is the URL absoluteString, value is the number of retry attempts.
@@ -271,6 +296,18 @@ class TPPNetworkResponder: NSObject, @unchecked Sendable {
         }
     }
 
+    /// Fails a queued retry that will not be resent: clears the URL's retry
+    /// mark, so its next 401 can refresh again, then removes the completion
+    /// registered for `taskID` and calls it with `error` and `response`.
+    func failRetry(taskID: TaskID, url: URL?, error: NSError, response: URLResponse? = nil) {
+        clearRetry(url: url)
+        var info: TPPNetworkTaskInfo?
+        taskInfoQueue.sync {
+            info = self.taskInfo.removeValue(forKey: taskID)
+        }
+        info?.completion(.failure(error, response))
+    }
+
     /// Test seam: the bytes accumulated for `taskID` so far, or nil if no task
     /// info is registered under that id.
     ///
@@ -421,10 +458,15 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
         // Check for 401 BEFORE removing taskInfo, so completion can be preserved for retry
         // Use URL-based retry tracking instead of associated objects (which don't work on structs)
         let requestURL = task.originalRequest?.url
+        // A released owner means the caller that built this task is gone, so
+        // the 401 completes as-is: refreshing through another executor would
+        // retry a task whose completion that executor does not hold.
         if let http = task.response as? HTTPURLResponse,
            http.statusCode == 401,
            canRetry(url: requestURL),
-           handleExpiredTokenIfNeeded(for: http, with: task) {
+           let owner,
+           handleExpiredTokenIfNeeded(for: http, with: task, networkExecutor: owner,
+                                      dispatchBrowserReauth: dispatchBrowserReauth) {
             // Mark this URL as retried to prevent infinite loops
             markRetried(url: requestURL)
             // Don't remove taskInfo - it will be transferred to the retry task via updateCompletionId
@@ -545,8 +587,10 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
                 // or other unauthenticated discovery calls.
                 let sentAuthHeader = (task.originalRequest?.value(forHTTPHeaderField: "Authorization") != nil)
                     || (task.currentRequest?.value(forHTTPHeaderField: "Authorization") != nil)
-                if sentAuthHeader {
-                    let user = AppContainer.production().accountsManager.currentUserAccount
+                if sentAuthHeader, let accounts = owner?.accountsManager {
+                    // Heal the library the request was sent for; the patron
+                    // may have switched libraries while it was in flight.
+                    let user = accounts.userAccount(forRequestOf: task)
                     if user.authState == .credentialsStale {
                         Log.info(#file, "Authenticated request \(taskID) returned \(http.statusCode) — server accepted credentials, reconciling authState credentialsStale → loggedIn")
                         user.setAuthState(.loggedIn)
@@ -591,103 +635,34 @@ extension TPPNetworkResponder: URLSessionDataDelegate {
 
         info.completion(result)
     }
+}
 
-    private func logTaskCompletion(taskID: Int, startDate: Date, metadata: inout [String: Any]) {
-        let elapsed = Date().timeIntervalSince(startDate)
-        metadata["elapsedTime"] = elapsed
-        Log.info(#file, "Task \(taskID) completed (\(metadata["currentRequest"] ?? "nil")), elapsed time: \(elapsed) sec")
-    }
-
-    private func handleNoTaskInfo(for task: URLSessionTask, with networkError: Error?, logMetadata: inout [String: Any]) {
-        logMetadata["NYPLNetworkResponder context"] = "No task info available for task \(task.taskIdentifier). Completion closure could not be called."
-        TPPErrorLogger.logNetworkError(
-            networkError,
-            code: .noTaskInfoAvailable,
-            summary: "Network layer error: task info unavailable",
-            request: task.originalRequest,
-            response: task.response,
-            metadata: logMetadata)
-    }
-
-    private func handleHTTPResponse(_ httpResponse: HTTPURLResponse, for task: URLSessionTask, currentTaskInfo: TPPNetworkTaskInfo, logMetadata: inout [String: Any]) -> Bool {
-        guard httpResponse.isSuccess() else {
-            logMetadata["response"] = httpResponse
-            var err: NSError = NSError()
-            var code: TPPErrorCode = .responseFail
-            var summary: String = Strings.Error.connectionFailed
-            logMetadata[NSLocalizedDescriptionKey] = Strings.Error.unknownRequestError
-
-            if httpResponse.statusCode == 401 {
-                let snap = AppContainer.production().accountsManager.currentUserAccount.credentialSnapshot()
-                // Atomic check-and-increment under `retriedURLsLock` (matches the
-                // reset in `clearAllRetries`) so the token-refresh budget can't race
-                // across concurrent 401 delegate callbacks.
-                let shouldRefreshToken: Bool = retriedURLsLock.withLock {
-                    if (snap.authDefinition?.isToken ?? false) && tokenRefreshAttempts < 2 {
-                        tokenRefreshAttempts += 1
-                        return true
-                    }
-                    return false
-                }
-                if shouldRefreshToken {
-                    return handleExpiredTokenIfNeeded(for: httpResponse, with: task)
-                }
-
-                logMetadata[NSLocalizedDescriptionKey] = Strings.Error.invalidCredentialsErrorMessage
-                code = TPPErrorCode.invalidCredentials
-                summary = Strings.Error.invalidCredentialsErrorMessage
-            }
-
-            err = NSError(domain: "Api call with failure HTTP status",
-                          code: code.rawValue,
-                          userInfo: logMetadata)
-
-            currentTaskInfo.completion(.failure(err, task.response))
-            TPPErrorLogger.logNetworkError(code: code,
-                                           summary: summary,
-                                           request: task.originalRequest,
-                                           metadata: logMetadata)
-            return false
-        }
-
-        return true
-    }
-
-    private func handleProblemDocument(for task: URLSessionTask, with responseData: Data, currentTaskInfo: TPPNetworkTaskInfo, networkError: Error?, logMetadata: [String: Any]) {
-        let errorWithProblemDoc = task.parseAndLogError(fromProblemDocumentData: responseData,
-                                                        networkError: networkError,
-                                                        logMetadata: logMetadata)
-        currentTaskInfo.completion(.failure(errorWithProblemDoc, task.response))
-    }
-
-    private func handleNetworkError(_ networkError: Error, for task: URLSessionTask, currentTaskInfo: TPPNetworkTaskInfo, logMetadata: [String: Any]) {
-        currentTaskInfo.completion(.failure(networkError as TPPUserFriendlyError, task.response))
-        TPPErrorLogger.logNetworkError(
-            networkError,
-            summary: "Network task completed with error",
-            request: task.originalRequest,
-            response: task.response,
-            metadata: logMetadata)
+private extension TPPLibraryAccountsProvider {
+    /// The user account for the library `task` was dispatched for, or the
+    /// current one when the task carries no dispatch stamp.
+    func userAccount(forRequestOf task: URLSessionTask) -> TPPUserAccount {
+        guard let stamped = TaskProvenance.account(of: task) else { return currentUserAccount }
+        return userAccount(for: stamped)
     }
 }
 
 private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
                                        with task: URLSessionTask,
-                                       networkExecutor: TPPNetworkExecutor = AppContainer.production().networkExecutor) -> Bool {
+                                       networkExecutor: TPPNetworkExecutor,
+                                       dispatchBrowserReauth: (ReauthReason) -> Void) -> Bool {
     // Skip DELETE requests - intentionally don't refresh tokens for deletes
     // This prevents refresh loops when revoking/returning items
     if task.originalRequest?.httpMethod == "DELETE" {
         return false
     }
 
-    // Use atomic snapshot to prevent TOCTOU races during account switches.
-    // Previously this used TPPUserAccount.sharedAccount() which resolves to
-    // whatever account is current at call time — if the user switched accounts
-    // between sending the request and receiving the 401, the wrong account's
-    // credentials would be checked/marked stale.
-    let accountsManager = AppContainer.production().accountsManager
-    let accountId = accountsManager.currentAccountId
-    let snapshot = accountsManager.currentUserAccount.credentialSnapshot()
+    // Resolve the library the request was dispatched for, not the one
+    // selected now: a 401 for library A that arrives after the patron switched
+    // to B must not mark B stale or refresh B's token. The current library is
+    // the fallback only for a task that carries no dispatch stamp.
+    let accountsManager = networkExecutor.accountsManager
+    let accountId = TaskProvenance.account(of: task) ?? accountsManager.currentAccountId
+    let snapshot = accountsManager.userAccount(forRequestOf: task).credentialSnapshot()
 
     guard snapshot.hasCredentials else {
         return false
@@ -695,45 +670,24 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
 
     let authDef = snapshot.authDefinition
 
-    // swarm_66819d80 Module C: route the 401 decision through the typed
-    // `AuthErrorClassifier`. The classifier owns the cross-domain carve-out
-    // logic (delegates to URLResponse+TPPAuthentication.isSameDomain), so
-    // we no longer call `indicatesAuthenticationNeedsRefresh` here — the
-    // classifier outcome IS the decision.
+    // The 401 decision is `AuthErrorClassifier`'s (it owns the cross-domain
+    // carve-out). This site keeps the task-layer concerns: the per-task
+    // refresh budget (2) in the caller, `refreshTokenAndResume` to retry this
+    // task, and the /patrons/me bypass for browser auth (the IdP cookie
+    // expires before the bearer token, so a /patrons/me 401 must not mark
+    // credentials stale; 3.0.2 hotfix).
     //
-    // What stays at this site (the responder's task-layer concerns):
-    //   - The per-task token-refresh budget in the calling
-    //     `urlSession(_:task:didCompleteWithError:)` (caps refresh attempts
-    //     per task at 2).
-    //   - The task-scoped `refreshTokenAndResume` which retries THIS task
-    //     after the silent token refresh. The coordinator doesn't drive
-    //     task-resumption — that's a network-executor concern.
-    //   - The /patrons/me bypass for browser-auth 401s. (Browser auth has
-    //     TWO surfaces — bearer token + IdP cookie — and the IdP cookie
-    //     expires faster than the bearer in Gorgon. Marking credentials
-    //     stale on a /patrons/me poll while the bearer is still good drove
-    //     the cross-launch credentials-stale loop fixed on the 3.0.2
-    //     hotfix branch.)
+    // Browser auth dispatches to the coordinator (single-flight, cooldown,
+    // telemetry); the non-browser branch refreshes inline because only the
+    // responder can re-run this URLSessionTask.
     //
-    // What changes (Pass 3 reviewer fixup ARCH-3): the classifier outcome
-    // now ROUTES the action, instead of being computed and discarded. The
-    // browser-auth markCredentialsStale call is replaced by an async
-    // coordinator dispatch — the coordinator owns markCredentialsStale
-    // internally and threads the refresh through its single-flight +
-    // cooldown + telemetry. The non-browser branch keeps its inline
-    // markCredentialsStale + refreshTokenAndResume because the task-resume
-    // semantics are responder-owned (the coordinator's silent path can
-    // refresh the token but won't re-run THIS URLSessionTask).
-    // Wire the classifier with the current account's auth-surface hosts so
-    // Rule 4b (foreign-host 401 → .ok) short-circuits a 401 from a host
-    // outside the current account's surface (e.g. a lingering A1QA playtimes
-    // upload to gorgon.staging while the active account is Icarus on
-    // minotaur.dev). See wall-failure
-    // 2026-06-05-pr1018-icarus-cross-host-logout.md.
+    // The classifier gets the request account's auth-surface hosts so a 401
+    // from a foreign host (e.g. a lingering upload to another library's
+    // server) is ignored instead of logging the patron out (PR #1018).
+    let requestAccount = accountId.flatMap { accountsManager.account($0) } ?? accountsManager.currentAccount
+    let requestAccountHosts = requestAccount?.authSurfaceHosts
     let classifier = AuthErrorClassifier(
-        currentAccountHostsProvider: {
-            AppContainer.production().accountsManager.currentAccount?.authSurfaceHosts
-        }
+        currentAccountHostsProvider: { requestAccountHosts }
     )
     let outcome = classifier.classify(
         response: response,
@@ -766,6 +720,14 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
                 return false
             }
 
+            // Browser re-authentication acts on the selected library. A 401
+            // for a library the patron has since switched away from completes
+            // as-is rather than marking stale, or prompting for, the new one.
+            guard accountId == accountsManager.currentAccountId else {
+                Log.info(#file, "Browser-auth 401 for a library that is no longer selected — not dispatching coordinator")
+                return false
+            }
+
             // Browser-auth action endpoint 401 → dispatch through the
             // AuthCoordinator. The coordinator marks credentials stale
             // internally before dispatching the IdP-appropriate refresh
@@ -774,14 +736,11 @@ private func handleExpiredTokenIfNeeded(for response: HTTPURLResponse,
             // wouldn't be re-driven by the coordinator anyway; downstream
             // user-action paths see the credentials-stale state and surface
             // the modal on the next interaction.
-            let coordinator = AppContainer.production().authCoordinator
             let reason: ReauthReason = (authDef?.isSaml == true)
                 ? .samlSessionExpired
                 : (authDef?.isOidc == true ? .oidcRefreshFailed : .invalidCredentials)
             Log.info(#file, "Server returned 401 for browser-based auth on action endpoint — dispatching coordinator with reason=\(reason) (was: inline markCredentialsStale)")
-            Task {
-                _ = await coordinator.refreshCredentialsIfNeeded(reason: reason)
-            }
+            dispatchBrowserReauth(reason)
             return false
         }
 
@@ -951,23 +910,6 @@ extension TPPNetworkResponder: URLSessionTaskDelegate {
             return injected()
         }
         return AppContainer.production().accountsManager.currentUserAccount
-    }
-
-    func refreshToken(userAccount: TPPUserAccount = AppContainer.production().accountsManager.currentUserAccount) async throws {
-        guard let tokenURL = userAccount.authDefinition?.tokenURL,
-              let username = userAccount.username,
-              let password = userAccount.pin
-        else { return }
-
-        let tokenRequest = TokenRequest(url: tokenURL, username: username, password: password)
-        let result = await tokenRequest.execute()
-
-        switch result {
-        case .success(let tokenResponse):
-            userAccount.setAuthToken(tokenResponse.accessToken, barcode: username, pin: password, expirationDate: tokenResponse.expirationDate)
-        case .failure(let error):
-            throw error
-        }
     }
 }
 

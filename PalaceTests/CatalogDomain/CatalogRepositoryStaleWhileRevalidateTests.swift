@@ -2,23 +2,13 @@
 //  CatalogRepositoryStaleWhileRevalidateTests.swift
 //  PalaceTests
 //
-//  Deep, mutation-killing tests for CatalogRepository's stale-while-revalidate
-//  pattern and `cachedFeed(for:)` freshness windows. Time is driven via an
-//  injected `now: @escaping () -> Date` clock seam — never via Task.sleep.
-//
-//  Coverage targets (each test pins one behavior; comments name the
-//  mutant each kills):
-//   • Fresh cache (< 10 min) → returns cached data, no network.
-//   • Boundary at 10 min: 600s old is fresh, 601s is stale.
-//   • Stale-but-usable (10 min - 24 hr) → returns cache AND triggers
-//     a background refresh that updates the cache.
-//   • Boundary at 24 hr: 86400s is still stale-but-usable, 86401s is too old.
-//   • Too old (> 24 hr) → hits network, cache replaced with network result.
-//   • Network failure with cached fallback → returns cached feed.
-//   • Network failure with NO cache → throws.
-//   • `cachedFeed(for:)` 24h boundary: <=86400 returns feed, >86400 returns nil.
-//   • Concurrent stale reads → both get cache, refresh observed in cache.
-//   • Explicit invalidate → next read fetches from network.
+//  CatalogRepository stale-while-revalidate and `cachedFeed(for:)` windows,
+//  driven by an injected `now` clock (never Task.sleep):
+//   • < 10 min fresh (600s fresh, 601s stale); 10 min–24 hr returns cache
+//     AND refreshes in the background; > 24 hr (86401s) hits network.
+//   • Network failure falls back to cache, or throws with no cache.
+//   • `cachedFeed(for:)`: <=86400 returns feed, >86400 returns nil.
+//   • Concurrent stale reads both get cache; invalidate forces network.
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //
@@ -52,7 +42,7 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite
+        // Per-test isolated UserDefaults suite
         // for the `lastAppLaunchKey` heuristic — no `.standard` writes.
         // Each test starts with a fresh empty suite (lastLaunch defaults
         // to .distantPast inside checkStaleCacheStatus, which gives
@@ -203,11 +193,9 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
 
     // MARK: - Too-old / expired-beyond-24h
 
-    /// Mutant killed: flipping `> 86400` to `>= 86400` in `isTooOld` would
-    /// treat 86401s as identical to 86400s, but combined with the previous
-    /// boundary test this would mis-classify. More directly: a mutant that
-    /// removes the network-fetch branch entirely would return cached
-    /// "Original" instead of "FromNetwork".
+    /// Past 24 hours the network result must replace the cache; without the
+    /// network-fetch branch this returns cached "Original" instead of
+    /// "FromNetwork".
     func testLoadTopLevelCatalog_PastTwentyFourHours_FetchesFromNetworkAndReplacesCache() async throws {
         api.stubbedFeeds[testURL] = CatalogAPIMock.makeMockFeed(title: "Original")
         let sut = makeRepository()
@@ -351,11 +339,9 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
 
     // MARK: - Concurrent stale reads
 
-    /// Mutant killed: making the background-refresh branch a no-op (no
-    /// Task.detached fired) — the cache would stay stale forever and
-    /// no fresh value would ever land. Also kills mutants that drop the
-    /// detached refresh inside the `cachedEntry, isStaleButUsable || ...`
-    /// branch.
+    /// Without the detached background refresh in the
+    /// `cachedEntry, isStaleButUsable || ...` branch the cache would stay
+    /// stale forever.
     ///
     /// Note: the repository itself does not dedupe concurrent
     /// background refreshes — that is `DefaultCatalogAPI`'s job
@@ -405,8 +391,8 @@ final class CatalogRepositoryStaleWhileRevalidateTests: XCTestCase {
         // concurrent refreshes finishes last.
         await sut._awaitAllBackgroundRefreshesForTesting()
 
-        // The refresh fired (mutation kill: a no-op'd background branch never
-        // bumps the count past 1). Deterministic now that the Task has joined.
+        // The refresh fired (a no-op background branch never bumps the
+        // count past 1). Deterministic now that the Task has joined.
         XCTAssertGreaterThanOrEqual(api.fetchFeedCallCount, 2,
                                     "Both concurrent stale reads must trigger a background refresh")
 

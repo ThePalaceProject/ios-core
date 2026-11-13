@@ -17,6 +17,10 @@ protocol TPPReaderSettingsDelegate: AnyObject {
     func setUIColor(for appearance: EPUBPreferences)
 }
 
+// Never presented: the type exists as a namespace for the factory below, and
+// the `UIHostingController` that factory returns is the screen that gets a
+// title.
+// accesslint:disable A11Y.UIKIT.SCREEN_TITLE
 class TPPReaderSettingsVC: UIViewController {
     static func makeSwiftUIView(preferences: EPUBPreferences, delegate: TPPReaderSettingsDelegate) -> UIViewController {
         let readerSettings = TPPReaderSettings(preferences: preferences, delegate: delegate)
@@ -25,3 +29,4 @@ class TPPReaderSettingsVC: UIViewController {
         return controller
     }
 }
+// accesslint:enable A11Y.UIKIT.SCREEN_TITLE

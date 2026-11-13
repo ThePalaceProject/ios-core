@@ -2,10 +2,9 @@
 //  PreferencesNotifications.swift
 //  PalacePreferences
 //
-//  The two settings-change notification names TPPSettings posts. Moved here
-//  from the app target's NSNotification+TPP.swift in Wave 1a (the Layer-0
-//  package cannot reach app-target declarations). String values are wire
-//  format — never change them.
+//  The settings-change notification names TPPSettings posts, declared here
+//  because this package cannot reach app-target declarations. Observers match
+//  on the string values: never change them.
 //
 
 import Foundation

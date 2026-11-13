@@ -13,6 +13,7 @@ import PalaceLogging
 import PalaceNetwork
 import PalaceAuth
 import PalaceBookRegistry
+import os
 
 @MainActor
 class AccountDetailViewModel: NSObject, ObservableObject {
@@ -31,8 +32,17 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
     // MARK: - Published Properties
 
-    @Published var usernameText = ""
-    @Published var pinText = ""
+    @Published var usernameText = "" {
+        didSet { let typed = usernameText; typedCredentials.withLock { $0.username = typed } }
+    }
+    @Published var pinText = "" {
+        didSet { let typed = pinText; typedCredentials.withLock { $0.pin = typed } }
+    }
+
+    /// Copy of the two fields above for `NYPLBasicAuthCredentialsProvider`,
+    /// whose getters URLSession calls off the main thread (PP-5465).
+    private nonisolated let typedCredentials = OSAllocatedUnfairLock(
+        initialState: (username: "", pin: ""))
     @Published var isLoading = false
     @Published var isLoadingAuth = false
     @Published var isPINHidden = true
@@ -73,8 +83,8 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         businessLogic.libraryAccount
     }
 
-    /// Wave 1c: caller-snapshotted context for the report-issue composer.
-    var problemReportContext: (patronIdentifier: String?, libraryName: String?, libraryUUID: String?) {
+    /// Caller-snapshotted context for the report-issue composer.
+    var problemReportContext: SupportReportContext {
         accountsManager.problemReportContext(forLibrary: selectedAccount?.uuid)
     }
 
@@ -106,6 +116,12 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         return result
     }
 
+    /// Whether the page shows the single browser sign-in prompt instead of the
+    /// account list. Only browser-based auths have that prompt.
+    var shouldShowSignInPrompt: Bool {
+        !isSignedIn && businessLogic.selectedAuthentication?.isBrowserBased == true
+    }
+
     var libraryName: String {
         selectedAccount?.name ?? ""
     }
@@ -116,9 +132,9 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
     // MARK: - Initialization
 
-    /// When true, signIn() proceeds even if the user has stale credentials
-    /// (instead of showing sign-out confirmation). Set by SignInModalView for
-    /// re-auth flows triggered by 401 responses.
+    /// When true, stale credentials count as signed out, so the page offers
+    /// sign-in and signIn() proceeds instead of confirming sign-out. Set by
+    /// SignInModalView for re-auth flows triggered by 401 responses.
     var forceReauthMode: Bool = false
 
     convenience init(libraryAccountID: String, appContainer: AppContainer) {
@@ -165,7 +181,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         )
 
         let snapshot = self.credentialSnapshotProvider(libraryAccountID)
-        self.isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
+        self.isSignedIn = Self.showsSignedIn(snapshot, forceReauthMode: false)
 
         super.init()
 
@@ -216,7 +232,10 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         // two subscribers below that already receive on main.
         NotificationCenter.default.publisher(for: .TPPUserAccountDidChange)
             .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.accountDidChange() }
+            .sink { [weak self] notification in
+                guard let self, self.concernsThisLibrary(notification) else { return }
+                self.accountDidChange()
+            }
             .store(in: &cancellables)
 
         // Listen for account switches to refresh sign-in state
@@ -349,7 +368,16 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
         if let selectedAuth = businessLogic.selectedAuthentication, isSignedIn {
             workingSection = cellsForAuthMethod(selectedAuth)
-        } else if !isSignedIn && selectedUserAccount.needsAuth {
+        } else if !isSignedIn && businessLogic.libraryCollectsCredentials {
+            // Whether to offer credential fields is a question about the
+            // LIBRARY this page is bound to, which Settings opens for any
+            // library the patron taps. `TPPUserAccount.needsAuth` answered it
+            // from the auth definition stored at sign-in, so it was false for
+            // exactly the libraries the form exists for: the ones the patron
+            // has not signed into yet (PP-5390). A library the patron HAS
+            // signed into already took this arm, so the rows below — the
+            // method list, the password-reset link — are what that page has
+            // always shown; they now appear on a first sign-in too.
             if businessLogic.isSamlPossible() {
                 workingSection.append(.infoHeader(Strings.AccountDetail.signInMessage(libraryName: libraryName)))
             }
@@ -428,18 +456,22 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         // Browser-based auth (OAuth, OIDC) opens directly without
         // on-device credential collection. SAML goes through samlHelper
         // (also a WebView, but routed via the default logIn() switch).
+        // This view model is the outermost UI boundary: SwiftUI actions are
+        // synchronous closures, so the sign-in is started in a `Task` here
+        // rather than pushing `async` further out into the views. Inside the
+        // Task the work runs on the main actor by construction (PP-5301).
         if businessLogic.selectedAuthentication?.isOauth == true ||
            businessLogic.selectedAuthentication?.isOidc == true {
-            businessLogic.logIn()
+            Task { await businessLogic.logIn() }
             return
         }
 
         guard canSignIn else { return }
 
         if let tokenURL = selectedUserAccount.authDefinition?.tokenURL {
-            businessLogic.logIn(with: tokenURL)
+            Task { await businessLogic.logIn(with: tokenURL) }
         } else {
-            businessLogic.logIn()
+            Task { await businessLogic.logIn() }
         }
     }
 
@@ -549,7 +581,7 @@ class AccountDetailViewModel: NSObject, ObservableObject {
 
     func selectSAMLIDP(_ idp: OPDS2SamlIDP) {
         businessLogic.selectedIDP = idp
-        businessLogic.logIn()
+        Task { await businessLogic.logIn() }
     }
 
     func openRegistration() {
@@ -584,16 +616,45 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         presented.dismiss(animated: true)
     }
 
+    /// `.TPPUserAccountDidChange` carries the account that changed; a change
+    /// to another library's account (a token refresh, say) is not this page's.
+    private func concernsThisLibrary(_ notification: Notification) -> Bool {
+        guard let changed = (notification.object as? TPPUserAccount)?.libraryUUID else { return true }
+        return changed == libraryAccountID
+    }
+
+    /// While signed out the fields hold what the patron is typing, so they are
+    /// rewritten only when the signed-in state changes. While signed in they
+    /// show the stored credentials and follow every change.
     private func accountDidChange() {
         let snapshot = credentialSnapshotProvider(libraryAccountID)
 
-        let newSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
+        let newSignedIn = Self.showsSignedIn(snapshot, forceReauthMode: forceReauthMode)
 
-        if isSignedIn != newSignedIn {
+        let stateChanged = isSignedIn != newSignedIn
+        if stateChanged {
             Log.debug(#file, "isSignedIn: \(isSignedIn)->\(newSignedIn), authState=\(snapshot.authState)")
         }
 
-        isSignedIn = newSignedIn
+        if stateChanged || newSignedIn {
+            applySignedInState(newSignedIn, snapshot: snapshot)
+        } else {
+            setupTableData()
+            loadBarcodeIfNeeded()
+        }
+    }
+
+    /// Whether the page presents the stored credentials as a signed-in account.
+    /// In the re-auth sheet, credentials the server refused count as signed out
+    /// so the patron gets an editable form (PP-5449). Elsewhere they still show
+    /// as signed in so Sign Out stays reachable (PP-3784).
+    static func showsSignedIn(_ snapshot: TPPUserAccount.CredentialSnapshot, forceReauthMode: Bool) -> Bool {
+        guard snapshot.hasCredentials, snapshot.authState != .loggedOut else { return false }
+        return !(forceReauthMode && snapshot.authState == .credentialsStale)
+    }
+
+    private func applySignedInState(_ signedIn: Bool, snapshot: TPPUserAccount.CredentialSnapshot) {
+        isSignedIn = signedIn
 
         if isSignedIn {
             usernameText = snapshot.barcode ?? ""
@@ -613,14 +674,14 @@ class AccountDetailViewModel: NSObject, ObservableObject {
         showingAlert = true
     }
 
+    /// Re-reads the credentials when the page appears and applies them only
+    /// if the signed-in state changed; otherwise the page is left as it is.
     func refreshSignInState() {
-        let wasSignedIn = isSignedIn
-
         let snapshot = credentialSnapshotProvider(libraryAccountID)
-        isSignedIn = snapshot.hasCredentials && snapshot.authState != .loggedOut
+        let signedIn = Self.showsSignedIn(snapshot, forceReauthMode: forceReauthMode)
 
-        if wasSignedIn != isSignedIn {
-            setupTableData()
+        if signedIn != isSignedIn {
+            applySignedInState(signedIn, snapshot: snapshot)
         }
     }
 }
@@ -799,18 +860,24 @@ extension AccountDetailViewModel: @preconcurrency TPPSignInOutBusinessLogicUIDel
         let title: String
         let message: String
 
+        // Each arm resolves its own copy. The title used to be a bare
+        // identifier localized below, after the arm was chosen; with no `en`
+        // table that lookup returned the identifier, and a lookup on a
+        // variable has no literal call site to carry a `value:` fallback. The
+        // error arm also localized `error.localizedDescription`, which would
+        // translate a system message that happened to match a table key.
         if httpStatusCode == 401 {
-            title = "Unexpected Credentials"
-            message = "Your username or password may have changed since the last time you logged in.\n\nIf you believe this is an error, please contact your library."
+            title = Strings.Error.signOutUnexpectedCredentialsTitle
+            message = Strings.Error.signOutUnexpectedCredentialsMessage
         } else if let error {
-            title = "SettingsAccountViewControllerLogoutFailed"
+            title = Strings.Error.signOutFailedTitle
             message = error.localizedDescription
         } else {
-            title = "SettingsAccountViewControllerLogoutFailed"
-            message = NSLocalizedString("An unknown error occurred while trying to sign out.", comment: "")
+            title = Strings.Error.signOutFailedTitle
+            message = Strings.Error.signOutUnknownError
         }
 
-        showError(title: NSLocalizedString(title, comment: ""), message: NSLocalizedString(message, comment: ""))
+        showError(title: title, message: message)
     }
 
     func businessLogicDidFinishDeauthorizing(_ logic: TPPSignInBusinessLogic) {
@@ -840,17 +907,16 @@ extension AccountDetailViewModel: @preconcurrency TPPSignInOutBusinessLogicUIDel
 
 // MARK: - NYPLBasicAuthCredentialsProvider
 
-extension AccountDetailViewModel: @preconcurrency NYPLBasicAuthCredentialsProvider {
-    // `@preconcurrency`: this type is @MainActor, but the protocol's requirements
-    // are non-isolated, so the @MainActor witnesses 'cross into main actor-isolated
-    // code' under Swift 6. The conformance's callers (sign-in business logic / UIKit
-    // input providers) deliver on the main thread by contract, so relaxing the
-    // isolation check here is behavior-preserving. No logic change.
-    var username: String? {
-        usernameText.isEmpty ? nil : usernameText
+extension AccountDetailViewModel: NYPLBasicAuthCredentialsProvider {
+    // `nonisolated`: the network layer answers a basic-auth challenge on a
+    // URLSession delegate thread, so these read the lock-protected copy rather
+    // than the @MainActor text fields (PP-5465).
+    nonisolated var username: String? {
+        let typed = typedCredentials.withLock { $0.username }
+        return typed.isEmpty ? nil : typed
     }
 
-    var pin: String? {
-        pinText.isEmpty ? "" : pinText
+    nonisolated var pin: String? {
+        typedCredentials.withLock { $0.pin }
     }
 }

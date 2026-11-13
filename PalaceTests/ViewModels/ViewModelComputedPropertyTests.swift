@@ -25,7 +25,7 @@ final class BookCellModelComputedPropertyTests: XCTestCase {
     var mockRegistry: TPPBookRegistryMock!
     var mockImageCache: MockImageCache!
     var cancellables: Set<AnyCancellable>!
-    /// Per-test isolated AppContainer (swarm_47883816 work package A).
+    /// Per-test isolated AppContainer.
     var appContainer: AppContainer!
 
     override func setUp() {
@@ -68,11 +68,8 @@ final class BookCellModelComputedPropertyTests: XCTestCase {
     // this for itself. It briefly inherited a `false` protocol default, which
     // turned a required multi-gigabyte wait into a blank sheet on My Books.
     //
-    // Tested here because review found this property uncovered — the fifth
-    // instance in one change of a pure rule being covered while the code
-    // computing its input was not. `palace_mutate` cannot generate the relevant
-    // mutant either (it does not mutate unary `!`), so nothing mechanical
-    // covers it.
+    // Tested here directly: the pure rule was covered but the code computing
+    // its input was not.
 
     func testContentRequiredBeforePlayback_isTrueWhenLCPStreamingIsOff() {
         let book = createBook(title: "Streaming Off")
@@ -666,7 +663,7 @@ final class BookButtonMapperViewModelTests: XCTestCase {
 final class CatalogLaneMoreFilterStateTests: XCTestCase {
 
     private var cancellables: Set<AnyCancellable> = []
-    /// Per-test isolated AppContainer (swarm_47883816 work package A).
+    /// Per-test isolated AppContainer.
     private var appContainer: AppContainer!
 
     override func setUp() {
@@ -686,7 +683,8 @@ final class CatalogLaneMoreFilterStateTests: XCTestCase {
             title: "Test",
             url: URL(string: urlString)!,
             bookRegistry: appContainer.bookRegistry,
-            bookCellModelCache: appContainer.bookCellModelCache
+            bookCellModelCache: appContainer.bookCellModelCache,
+            api: appContainer.catalogAPI
         )
     }
 
@@ -830,7 +828,8 @@ final class CatalogLaneMoreFilterStateTests: XCTestCase {
             title: "Fiction",
             url: url,
             bookRegistry: appContainer.bookRegistry,
-            bookCellModelCache: appContainer.bookCellModelCache
+            bookCellModelCache: appContainer.bookCellModelCache,
+            api: appContainer.catalogAPI
         )
 
         XCTAssertEqual(viewModel.url, url)
@@ -849,7 +848,7 @@ final class BookCellModelRegistryBindingTests: XCTestCase {
     var mockRegistry: TPPBookRegistryMock!
     var mockImageCache: MockImageCache!
     var cancellables: Set<AnyCancellable>!
-    /// Per-test isolated AppContainer (swarm_47883816 work package A).
+    /// Per-test isolated AppContainer.
     var appContainer: AppContainer!
 
     override func setUp() {
@@ -978,7 +977,7 @@ final class BookCellModelRegistryBindingTests: XCTestCase {
 @MainActor
 final class SettingsViewModelComputedPropertyTests: XCTestCase {
 
-    /// Per-test isolated AppContainer (swarm_47883816 work package A).
+    /// Per-test isolated AppContainer.
     var appContainer: AppContainer!
 
     override func setUp() {
@@ -1058,7 +1057,7 @@ final class SettingsViewModelComputedPropertyTests: XCTestCase {
 @MainActor
 final class FacetViewModelLogoDelegateTests: XCTestCase {
 
-    /// Per-test isolated AppContainer (swarm_47883816 work package A).
+    /// Per-test isolated AppContainer.
     var appContainer: AppContainer!
 
     override func setUp() {
@@ -1074,12 +1073,25 @@ final class FacetViewModelLogoDelegateTests: XCTestCase {
     func testLogoDidUpdate_SetsLogo() {
         let viewModel = FacetViewModel(groupName: "Test", facets: [.author, .title], accountsManager: appContainer.accountsManager)
         let testImage = UIImage(systemName: "book.fill")!
+        XCTAssertNil(viewModel.logo, "precondition: the view model starts with no logo")
 
-        // Directly test the delegate method
-        if let account = appContainer.accountsManager.currentAccount {
-            viewModel.logoDidUpdate(in: account, to: testImage)
-            XCTAssertNotNil(viewModel.logo)
-        }
+        viewModel.logoDidUpdate(in: stubAccount(), to: testImage)
+
+        XCTAssertEqual(viewModel.logo, testImage,
+                       "the delegate callback must publish the logo it was handed")
+    }
+
+    /// A minimal `Account` to pass to the delegate. `logoDidUpdate` stores the
+    /// image and ignores the account, so any account exercises the callback;
+    /// this previously read `accountsManager.currentAccount`, which is `nil` for
+    /// a container built by the test factory, so the assertion never ran.
+    private func stubAccount() -> Account {
+        let publication = OPDS2Publication(
+            links: [OPDS2Link(href: "https://example.com/catalog", rel: "http://opds-spec.org/catalog")],
+            metadata: OPDS2Publication.Metadata(id: "facet-logo-fixture", title: "Facet Logo Fixture"),
+            images: nil
+        )
+        return Account(publication: publication, imageCache: MockImageCache())
     }
 
     func testAccountScreenURL_WithValidHomePageURL() {

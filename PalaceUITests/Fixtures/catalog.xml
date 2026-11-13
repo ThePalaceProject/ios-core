@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opds="http://opds-spec.org/2010/catalog" xmlns:schema="http://schema.org/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:simplified="http://librarysimplified.org/terms/">
+  <id>https://palace-fixtures.test/library/</id>
+  <title>Fixture Public Library</title>
+  <updated>2026-01-01T00:00:00Z</updated>
+  <link href="https://palace-fixtures.test/library/" rel="self" type="application/atom+xml;profile=opds-catalog;kind=acquisition"/>
+  <link href="https://palace-fixtures.test/library/" rel="start" type="application/atom+xml;profile=opds-catalog;kind=acquisition"/>
+  <entry schema:additionalType="http://schema.org/EBook">
+    <id>urn:palace-fixtures:book:quiet-harbors</id>
+    <title>A Field Guide to Quiet Harbors</title>
+    <author><name>June Calloway</name></author>
+    <summary type="html">A short open-licence book written for the Palace UI journeys.</summary>
+    <updated>2026-01-01T00:00:00Z</updated>
+    <published>2026-01-01T00:00:00Z</published>
+    <dcterms:language>en</dcterms:language>
+    <dcterms:publisher>Palace Fixtures</dcterms:publisher>
+    <link href="https://palace-fixtures.test/library/works/quiet-harbors/borrow" rel="http://opds-spec.org/acquisition/borrow" type="application/atom+xml;type=entry;profile=opds-catalog">
+      <opds:indirectAcquisition type="application/epub+zip"/>
+      <opds:availability status="available"/>
+      <opds:copies available="1" total="1"/>
+    </link>
+  </entry>
+</feed>

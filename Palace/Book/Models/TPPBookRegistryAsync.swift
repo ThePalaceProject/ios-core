@@ -18,6 +18,10 @@ import PalaceBookRegistry
 /// from the existing DispatchQueue-based synchronization.
 extension TPPBookRegistry {
 
+    /// How long `syncAsync` waits for the current account's details. Matches
+    /// the registry sync's own readiness wait (HelpSpot #18414).
+    static let syncReadinessTimeout: TimeInterval = 30
+
     // MARK: - Async State Access
 
     /// Async version of book(forIdentifier:)
@@ -40,21 +44,22 @@ extension TPPBookRegistry {
     /// - Returns: Tuple of (errorDocument, hasNewBooks)
     /// - Throws: PalaceError if sync fails
     ///
-    /// PHASE 1 (swarm_81b5099e Bucket A): blocks on `Account.awaitReady()`
-    /// before reading `loansUrl`. Pre-Phase-1 this read `currentAccount?
-    /// .loansUrl` directly and threw `.accountNotFound` whenever the auth
-    /// document hadn't finished loading — same systemic race as the
-    /// audiobook open path. The async function already had network-fetch
-    /// timeouts via `OPDSFeedService.fetchFeed`; per the ADR's single-
-    /// timeout policy we do NOT wrap awaitReady() in withTimeout here.
-    func syncAsync(accountsManager: AccountsManager = AppContainer.production().accountsManager) async throws -> (errorDocument: [AnyHashable: Any]?, hasNewBooks: Bool) {
+    /// Waits up to `readinessTimeout` for the account's details before reading
+    /// `loansUrl`, so a sync that starts before the auth document has loaded
+    /// waits instead of throwing `.accountNotFound`. The wait is bounded because
+    /// an auth document that never loads would otherwise hold the caller (the
+    /// post-return sync, whose completion ends the return) forever.
+    func syncAsync(
+        accountsManager: AccountsManager = AppContainer.production().accountsManager,
+        readinessTimeout: TimeInterval = TPPBookRegistry.syncReadinessTimeout
+    ) async throws -> (errorDocument: [AnyHashable: Any]?, hasNewBooks: Bool) {
         guard let currentAccount = accountsManager.currentAccount else {
             throw PalaceError.authentication(.accountNotFound)
         }
 
         let details: AccountDetails
         do {
-            details = try await currentAccount.awaitReady()
+            details = try await currentAccount.awaitReady(timeout: readinessTimeout)
         } catch {
             Log.warn(#file, "syncAsync: awaitReady failed for \(currentAccount.uuid): \(error)")
             throw PalaceError.authentication(.accountNotFound)
@@ -64,8 +69,9 @@ extension TPPBookRegistry {
             throw PalaceError.authentication(.accountNotFound)
         }
 
+        let container = AppContainer.production()
         do {
-            let feed = try await AppContainer.production().opdsFeedService.fetchFeed(
+            let feed = try await container.opdsFeedService.fetchFeed(
                 from: loansURL,
                 resetCache: true,
                 useToken: true
@@ -75,7 +81,12 @@ extension TPPBookRegistry {
             // `SendableErrorDocument` carrier so the `[AnyHashable: Any]?` value
             // can cross the `@MainActor` → nonisolated actor-hop safely; unbox
             // here on the nonisolated side to preserve the public tuple shape.
-            let result = await processLoansSync(feed: feed)
+            let downloadCenter = container.downloadCenter
+            let result = await processLoansSync(
+                feed: feed,
+                sideloadedIdentifiers: container.sideloadedBookRegistry.identifiers,
+                deleteLocalContent: { downloadCenter.deleteLocalContent(for: $0) }
+            )
             return (result.errorDocument.value, result.hasNewBooks)
 
         } catch let error as PalaceError {
@@ -84,18 +95,20 @@ extension TPPBookRegistry {
         }
     }
 
-    /// Processes a loans feed for sync.
+    /// Processes a loans feed for sync. Removals follow
+    /// `LoansFeedReconciliation`, the same rule `BookRegistrySync.sync` uses.
     ///
     /// Returns the error document inside a `SendableErrorDocument` carrier so the
     /// non-Sendable `[AnyHashable: Any]?` can cross the `@MainActor` → nonisolated
-    /// boundary back to `syncAsync` under Swift 6 `complete`. (The value is always
-    /// `nil` on this path — reconciliation surfaces failures by throwing, not via
-    /// an error document — but boxing keeps the crossing sound and future-proof.)
+    /// boundary under Swift 6. The value is currently always `nil` on this path.
     @MainActor
-    private func processLoansSync(feed: TPPOPDSFeed) async -> (errorDocument: SendableErrorDocument, hasNewBooks: Bool) {
+    func processLoansSync(
+        feed: TPPOPDSFeed,
+        sideloadedIdentifiers: Set<String>,
+        deleteLocalContent: (String) -> Void
+    ) async -> (errorDocument: SendableErrorDocument, hasNewBooks: Bool) {
         var changesMade = false
 
-        // Process entries - use public API
         var newBooks: [TPPBook] = []
         for entry in feed.entries {
             guard let opdsEntry = entry as? TPPOPDSEntry,
@@ -105,29 +118,29 @@ extension TPPBookRegistry {
             newBooks.append(book)
         }
 
-        // Check what changed - compare with current books
         let currentBooks = self.allBooks
         let currentIds = Set(currentBooks.map { $0.identifier })
-        let newIds = Set(newBooks.map { $0.identifier })
+        let removedIds = LoansFeedReconciliation.identifiersToRemove(
+            localIdentifiers: currentIds,
+            feedIdentifiers: Set(newBooks.map { $0.identifier }),
+            unparsedEntryIdentifiers: feed.unparsedEntryIdentifiers,
+            sideloadedIdentifiers: sideloadedIdentifiers
+        )
 
-        // Books to add/update
         for book in newBooks {
             if currentIds.contains(book.identifier) {
-                // Update existing
                 _ = self.updatedBookMetadata(book)
             } else {
-                // Add new - derive initial state from book availability
                 let initialState = TPPBookRegistryRecord.deriveInitialState(for: book)
                 self.addBook(book, state: initialState)
             }
             changesMade = true
         }
 
-        let removedIds = currentIds.subtracting(newIds)
         for identifier in removedIds {
             let state = self.state(for: identifier)
             if state == .downloadSuccessful || state == .used {
-                AppContainer.production().downloadCenter.deleteLocalContent(for: identifier)
+                deleteLocalContent(identifier)
             }
             self.setState(.unregistered, for: identifier)
             self.removeBook(forIdentifier: identifier)

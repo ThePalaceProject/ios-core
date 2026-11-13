@@ -2,18 +2,10 @@
 //  AuthOutcome.swift
 //  PalaceAuth
 //
-//  Discrete, IdP-agnostic outcome of an auth-related HTTP response.
-//
-//  Produced by `AuthErrorClassifier.classify(...)` from the (response,
-//  problem-document, body, originalRequestURL) tuple alone — the classifier
-//  knows nothing about the active IdP. `AuthCoordinator` is the consumer
-//  that maps `AuthOutcome` to a re-auth mechanism for the current
-//  authentication type.
-//
-//  Catalogued against `docs/3.2.0-auth-idp-catalog.md` (38 grounded rows +
-//  11 UNKNOWN-pending-recording). Adding a new case to any of these enums
-//  must update both the catalog and the property-test invariants in
-//  `AuthErrorClassifierPropertyTests`.
+//  Discrete, IdP-agnostic outcome of an auth-related HTTP response, produced
+//  by `AuthErrorClassifier` and mapped to a re-auth mechanism by
+//  `AuthCoordinator`. A new case here must also update
+//  `docs/3.2.0-auth-idp-catalog.md` and `AuthErrorClassifierPropertyTests`.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

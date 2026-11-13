@@ -1,37 +1,13 @@
-//
 //  AlertPresentationRawGuardLintTests.swift
-//  PalaceTests
 //
-//  Structural regression guard for the fe741015 CACommit crash family
-//  (NSInternalInconsistencyException — "A view controller not containing an
-//  alert controller was asked for its contained alert controller", the #1 crash
-//  on 3.1.0). See PalaceTests/RegressionGuards/UIAlertCACommitGuardTests.swift
-//  for the mechanism guard and
-//  .forgeos/wall-failures/2026-06-29-fe741015-guard-tested-wrong-surface.md for
-//  the narrative.
-//
-//  Why a STRUCTURAL guard here (not a behavioral one)
-//  ==================================================
-//  The crash is a *deferred* CA-commit throw — UIKit defers the alert's own
-//  transition into the next `_UIAfterCACommitBlock`, so it cannot be
-//  deterministically reproduced in a unit test (that in-action reproduction is
-//  simdrive's job — see the wall-failure). What a unit test CAN lock down is the
-//  invariant the fix establishes: the launch/book-open alert sites that raced the
-//  transition must NEVER present a `UIAlertController` raw — they must route
-//  through a coordinator-waiting guarded presenter
-//  (`TPPPresentationUtils.safelyPresent` or
-//  `TPPAlertUtils.presentFromViewControllerOrNil`), both of which wait on the
-//  presenter's `transitionCoordinator` before presenting.
-//
-//  The prior fix (#1125) hardened the main launch alert paths but left three raw
-//  `present(alert)` sites bypassing the guard — the LCP-PDF runaway abort, the
-//  Readium module-error alert, and the sync-reading-position prompt's
-//  nil-coordinator branch. This lint makes reintroducing a raw alert present at
-//  any of those sites structurally impossible: if the suite runs, the rule runs
-//  (a `--no-verify` hook flag cannot bypass it). Mirrors RuntimeQuiescenceLintTests.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Structural guard for the fe741015 CA-commit crash family ("A view controller
+//  not containing an alert controller was asked for its contained alert
+//  controller", the top crash on 3.1.0); UIAlertCACommitGuardTests holds the
+//  mechanism guard. The crash cannot be reproduced in a unit test, so this lint
+//  pins that the launch/book-open alert sites present through
+//  `TPPPresentationUtils.safelyPresent` or `presentFromViewControllerOrNil`,
+//  not a raw `present(alert)`. Extends #1125 to the LCP-PDF abort, Readium
+//  module-error and sync-position sites.
 
 import Foundation
 import XCTest

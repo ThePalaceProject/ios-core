@@ -294,7 +294,7 @@ final class ChapterScrubberModelTests: XCTestCase {
     /// is three orders of magnitude above that, so ordinary test-host load
     /// cannot flip it; only a regression to a linear scan (or an accidental
     /// `await` on the drag path) would. The measured cost is printed so a
-    /// reviewer can see the real headroom rather than infer it.
+    /// reader of the log can see the real headroom rather than infer it.
     func testTarget_OnALongBook_CostsFarLessThanAFrame() {
         let model = makeLongBookModel()
         let updates = 1_000

@@ -2,39 +2,13 @@
 //  ChapterScrubberView.swift
 //  The Palace Project
 //
-//  PP-5006: the drag-to-navigate control for the EPUB reader, behind the
-//  "EPUB Chapter Scrubber" Testing-menu flag.
-//
-//  Shape: a rail at rest, a card in hand.
-//
-//  At rest the control is a hairline progress rail and a small thumb — no text,
-//  no tick marks, nothing that competes with the page. The reader's existing
-//  position label sits just below it and says where you are. While a finger is
-//  down, a card rises above the rail carrying the chapter and the page/percent
-//  of the place the drag would land; the card may cover page text freely,
-//  because the patron is not reading at that moment.
-//
-//  The rail carries NO text deliberately. What the reader states at rest — and
-//  how each figure is labelled — is PP-5005's open design question, owned by a
-//  designer. Keeping the persistent object wordless means this prototype can
-//  ship without pre-empting that decision.
-//
-//  There are no chapter tick marks. An earlier draft drew one per chapter; on a
-//  338-page novel with ~35 chapters that is a mark every ten points, which
-//  reads as a ruler rather than as structure, and chapters sharing one spine
-//  file collapse into an illegible smudge. Chapter structure is delivered
-//  instead where it can be read: the card names the chapter, a haptic marks
-//  crossing into a new one, and VoiceOver steps chapter by chapter.
-//
-//  The control owns NO navigation. While the finger is down it moves only its
-//  own thumb and card; it asks its owner to navigate exactly once, on release
-//  (`onCommit`). That split is what makes "cancelling a drag returns the patron
-//  to their original position" free rather than an undo feature: nothing has
-//  moved yet, so a cancelled drag only has to put the thumb back.
-//
-//  All position arithmetic lives in `ChapterScrubberModel`, which is pure and
-//  synchronous. Nothing here awaits anything, so a drag cannot be stalled by a
-//  Readium position lookup regardless of how long the book is.
+//  PP-5006: drag-to-navigate control for the EPUB reader, behind the "EPUB
+//  Chapter Scrubber" Testing-menu flag. At rest: a wordless hairline rail (what
+//  to state at rest is PP-5005's open design question) with no chapter ticks,
+//  which become illegible on long books. While dragging, a card shows the target
+//  chapter and page. The control navigates only once, on release (`onCommit`),
+//  so a cancelled drag just puts the thumb back. Position math lives in the pure,
+//  synchronous `ChapterScrubberModel`, so a drag never waits on Readium.
 //
 
 import UIKit
@@ -50,16 +24,12 @@ final class ChapterScrubberView: UIControl {
     /// adjustment. The owner navigates here, and only here.
     var onCommit: ((Target) -> Void)?
 
-    /// Fires when a drag crosses into a different chapter — the one moment in a
-    /// scrub worth marking. The owner decides what that means (the reader plays
-    /// a preference-gated haptic); the control does not reach for a singleton
-    /// to do it itself.
+    /// Fires when a drag crosses into a different chapter; the owner decides
+    /// what that means (the reader plays a preference-gated haptic).
     var onChapterCrossed: (() -> Void)?
 
-    /// Fires when a drag starts and ends. The reader uses it to hide its own
-    /// position label for the duration: the card states where the drag would
-    /// land while the label states where the patron still is, and showing both
-    /// at once reads as a contradiction.
+    /// Fires when a drag starts and ends, so the reader can hide its position
+    /// label, which would contradict the card during the drag.
     var onScrubbingChanged: ((Bool) -> Void)?
 
     // MARK: - State
@@ -318,10 +288,8 @@ final class ChapterScrubberView: UIControl {
         layoutCard(above: trackView.frame.minY)
     }
 
-    /// The card is CENTRED on the control, not pinned to the thumb. A card that
-    /// chases the finger makes the patron's eyes chase it too, and at the ends
-    /// of the track it would have to be clamped anyway; a fixed position lets
-    /// the eyes park in one place and read.
+    /// The card is centred on the control rather than following the thumb, so
+    /// the patron's eyes can stay in one place.
     private func layoutCard(above railTop: CGFloat) {
         guard cardView.alpha > 0 || isScrubbing else { return }
 
@@ -402,11 +370,9 @@ final class ChapterScrubberView: UIControl {
 
     // MARK: - Touch tracking
     //
-    // The `UIControl` overrides do nothing but unwrap the touch. The scrub
-    // itself is driven by the four `…Scrub` methods below, which take plain
-    // coordinates — so the state machine (does a cancel restore the position?
-    // does a release commit exactly once?) is exercisable without fabricating
-    // a `UITouch`.
+    // The `UIControl` overrides only unwrap the touch; the `…Scrub` methods
+    // below take plain coordinates so the state machine is testable without a
+    // `UITouch`.
 
     override func beginTracking(_ touch: UITouch, with event: UIEvent?) -> Bool {
         beginScrub(atX: touch.location(in: self).x)

@@ -10,7 +10,7 @@ import UIKit
 import os
 import PalaceCatalog
 
-/// Wave 1c (cycle 2): ErrorHandling must not name Accounts types. The
+/// ErrorHandling must not name Accounts types. The
 /// composition root (TPPAppDelegate) registers a provider for the one
 /// account-derived field the device context needs. Registration pattern
 /// mirrors Log.crashlyticsBridge (PalaceLogging/Log.swift).

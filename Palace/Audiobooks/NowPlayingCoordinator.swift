@@ -19,6 +19,17 @@ import UIKit
 import PalaceLogging
 import PalaceBookRegistry
 
+// MARK: - NowPlayingInfoCenterWriting
+
+/// The two `MPNowPlayingInfoCenter` properties the coordinator writes.
+/// Injected so tests count writes without touching the shared system center.
+protocol NowPlayingInfoCenterWriting: AnyObject {
+    var nowPlayingInfo: [String: Any]? { get set }
+    var playbackState: MPNowPlayingPlaybackState { get set }
+}
+
+extension MPNowPlayingInfoCenter: NowPlayingInfoCenterWriting {}
+
 // MARK: - NowPlayingCoordinator
 
 /// Coordinates all updates to MPNowPlayingInfoCenter.
@@ -41,16 +52,39 @@ public final class NowPlayingCoordinator {
         /// Tuned just above the toolkit's `.background` 15s cadence with
         /// enough slack for one missed tick.
         static let dryStreamThreshold: TimeInterval = 30.0
+
+        /// Longest gap between background writes while nothing has changed.
+        /// Well under `dryStreamThreshold`, so a healthy stream never looks dry.
+        static let backgroundKeepAliveInterval: TimeInterval = 10.0
+
+        /// A background elapsed time further than this from the extrapolated
+        /// value is a seek or skip, not timer jitter, and is written at once.
+        static let backgroundSeekTolerance: TimeInterval = 1.0
     }
+
+    /// Fields MediaPlayer cannot extrapolate; a change to any of them is
+    /// written immediately in the background.
+    private static let nonExtrapolatedKeys = [
+        MPMediaItemPropertyTitle,
+        MPMediaItemPropertyArtist,
+        MPMediaItemPropertyAlbumTitle,
+        MPMediaItemPropertyPlaybackDuration,
+        MPNowPlayingInfoPropertyPlaybackRate,
+        MPNowPlayingInfoPropertyDefaultPlaybackRate
+    ]
 
     // MARK: - Properties
 
-    private let nowPlayingInfoCenter = MPNowPlayingInfoCenter.default()
+    private let nowPlayingInfoCenter: NowPlayingInfoCenterWriting
 
     private var currentInfo: [String: Any] = [:]
     private var currentArtwork: MPMediaItemArtwork?
     private var lastUpdateTime: Date = .distantPast
     private var lastIsPlaying: Bool = false
+    /// When the last write landed (injected clock), and the elapsed time and
+    /// rate it carried, so background ticks can be checked against the
+    /// position MediaPlayer extrapolates on its own.
+    private var lastWrite: (at: Date, elapsed: TimeInterval, rate: Double)?
     private var pendingUpdate: Task<Void, Never>?
     /// Foreground-notification observer token. Held in a nonisolated
     /// `@unchecked Sendable` box so the nonisolated `deinit` can remove it
@@ -97,8 +131,10 @@ public final class NowPlayingCoordinator {
     init(
         applicationStateProvider: @escaping () -> UIApplication.State,
         dryStreamLogger: @escaping (_ summary: String, _ metadata: [String: Any]?) -> Void,
-        now: @escaping () -> Date = { Date() }
+        now: @escaping () -> Date = { Date() },
+        infoCenter: NowPlayingInfoCenterWriting = MPNowPlayingInfoCenter.default()
     ) {
+        self.nowPlayingInfoCenter = infoCenter
         self.applicationStateProvider = applicationStateProvider
         self.dryStreamLogger = dryStreamLogger
         self.now = now
@@ -183,6 +219,8 @@ public final class NowPlayingCoordinator {
 
         // Apply immediately (no debounce for state changes)
         currentInfo = info
+        lastIsPlaying = playing
+        recordWrite(info)
         nowPlayingInfoCenter.nowPlayingInfo = info
         nowPlayingInfoCenter.playbackState = playing ? .playing : .paused
 
@@ -203,6 +241,7 @@ public final class NowPlayingCoordinator {
         }
 
         currentInfo = info
+        recordWrite(info)
         nowPlayingInfoCenter.nowPlayingInfo = info
 
         Log.debug(#file, "Playback rate updated: \(rateValue)x")
@@ -234,6 +273,7 @@ public final class NowPlayingCoordinator {
         var info = currentInfo
         info[MPMediaItemPropertyArtwork] = artwork
         currentInfo = info
+        recordWrite(info)
         nowPlayingInfoCenter.nowPlayingInfo = info
 
         Log.debug(#file, "Artwork updated")
@@ -246,6 +286,7 @@ public final class NowPlayingCoordinator {
 
         currentInfo = [:]
         currentArtwork = nil
+        lastWrite = nil
         nowPlayingInfoCenter.nowPlayingInfo = nil
         nowPlayingInfoCenter.playbackState = .stopped
 
@@ -269,10 +310,16 @@ public final class NowPlayingCoordinator {
         // The main-queue scheduler stalls during suspend, so debounced
         // DispatchWorkItems can vanish — the coordinator's currentInfo and
         // the system MPNowPlayingInfoCenter diverge and the patron sees
-        // stale info briefly on foreground return. In background the only
-        // writers are the toolkit's 15s timer + remote-command handlers,
-        // neither of which needs coalescing.
+        // stale info briefly on foreground return.
         if applicationStateProvider() != .active {
+            // PP-4970: playback ticks arrive four times a second; skip the
+            // ones whose elapsed time MediaPlayer extrapolates from the rate.
+            guard backgroundWriteIsNeeded(info, isPlaying: isPlaying) else {
+                // Keep the latest values so a direct write (pause, rate,
+                // artwork) carries the current position, not the last written one.
+                currentInfo = info
+                return
+            }
             performUpdate(info, isPlaying: isPlaying)
             return
         }
@@ -310,10 +357,38 @@ public final class NowPlayingCoordinator {
         }
     }
 
+    /// MediaPlayer advances the lock-screen time from the last written elapsed
+    /// time and rate, so a background write is needed only when something it
+    /// cannot extrapolate has changed, or the keep-alive interval has passed.
+    private func backgroundWriteIsNeeded(_ info: [String: Any], isPlaying: Bool) -> Bool {
+        guard let last = lastWrite, isPlaying == lastIsPlaying else { return true }
+        for key in Self.nonExtrapolatedKeys where info[key] as? AnyHashable != currentInfo[key] as? AnyHashable {
+            return true
+        }
+        let sinceLastWrite = now().timeIntervalSince(last.at)
+        if sinceLastWrite >= Configuration.backgroundKeepAliveInterval {
+            return true
+        }
+        let elapsed = info[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? Double ?? 0
+        let extrapolated = last.elapsed + sinceLastWrite * last.rate
+        return abs(elapsed - extrapolated) > Configuration.backgroundSeekTolerance
+    }
+
+    /// Every write to the system center sets the base the background skip
+    /// extrapolates from.
+    private func recordWrite(_ info: [String: Any]) {
+        lastWrite = (
+            at: now(),
+            elapsed: info[MPNowPlayingInfoPropertyElapsedPlaybackTime] as? Double ?? 0,
+            rate: info[MPNowPlayingInfoPropertyPlaybackRate] as? Double ?? 0
+        )
+    }
+
     private func performUpdate(_ info: [String: Any], isPlaying: Bool) {
         currentInfo = info
         lastUpdateTime = Date()
         lastIsPlaying = isPlaying
+        recordWrite(info)
 
         nowPlayingInfoCenter.nowPlayingInfo = info
         nowPlayingInfoCenter.playbackState = isPlaying ? .playing : .paused

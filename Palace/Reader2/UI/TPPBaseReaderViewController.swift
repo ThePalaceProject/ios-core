@@ -64,10 +64,15 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
     var navigator: UIViewController & Navigator
     private var tocBarButton: UIBarButtonItem?
     private var bookmarkBarButton: UIBarButtonItem?
+    // `makeNavigationBarButtons()` sets this button's `accessibilityLabel` on
+    // creation and `updateBookmarkButton(withState:)` re-sets it on every
+    // toggle; the declaration itself carries no title to read.
+    // accesslint:disable A11Y.UIKIT.BUTTON_MISSING_LABEL
     /// The bookmark bar button is hosted as a custom-view `UIButton` so the
     /// add-confirmation bounce can animate its view (a plain `UIBarButtonItem`
     /// exposes no animatable view). Same asset art / target-action as before.
     private var bookmarkButton: UIButton?
+    // accesslint:enable A11Y.UIKIT.BUTTON_MISSING_LABEL
     private(set) var stackView: UIStackView!
     private(set) var navigatorContainer: UIView!
     private(set) lazy var positionLabel = UILabel()
@@ -254,6 +259,17 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
 
         setUpChapterScrubberIfEnabled()
 
+        // The navigator's web view owns every tap gesture the reader has, and
+        // it starts `fixedTopInset` below the container, so a tap in either
+        // letterbox reached no handler at all — including the top strip the
+        // toolbar occupies, which left the patron tapping a visible control
+        // with no effect (PP-5394). `shouldReceive` keeps this recognizer away
+        // from the web view and the scrubber, so neither has to arbitrate.
+        let letterboxTap = UITapGestureRecognizer(target: self,
+                                                  action: #selector(handleLetterboxTap))
+        letterboxTap.delegate = self
+        navigatorContainer.addGestureRecognizer(letterboxTap)
+
         // Book title label - positioned below status bar using safe area
         // Previously at 20px from container top, which overlapped the status bar
         // Using view's safe area (not container) so label moves with status bar but doesn't affect navigator
@@ -403,7 +419,10 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         // navigation bar exactly as a plain image bar button item would be.
         let button = UIButton(type: .system)
         button.setImage(img, for: .normal)
-        button.frame = CGRect(x: 0, y: 0, width: 24, height: 24)
+        // A UIBarButtonItem's custom view is its whole tap target, so this
+        // frame is the hit area: 44pt is the HIG minimum. The 24pt artwork
+        // stays centred at its natural size inside it.
+        button.frame = CGRect(x: 0, y: 0, width: 44, height: 44)
         button.addTarget(self, action: #selector(toggleBookmark), for: .touchUpInside)
         button.accessibilityLabel = currentLocationIsBookmarked ? Strings.TPPBaseReaderViewController.removeBookmark : Strings.TPPBaseReaderViewController.addBookmark
         bookmarkButton = button
@@ -556,6 +575,10 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         }
     }
 
+    @objc private func handleLetterboxTap() {
+        toggleNavigationBar()
+    }
+
     func toggleNavigationBar() {
         navigationBarHidden = !navigationBarHidden
         // Fade the overlay chrome (book title + position) in lockstep with the
@@ -657,10 +680,42 @@ class TPPBaseReaderViewController: UIViewController, Loggable {
         return !navigationBarHidden
     }
 
+    /// Pure decision for the navigation bar's visibility.
+    ///
+    /// Pairs with `overlayLabelsHidden`: between them the patron always has one
+    /// of the two — the immersive chrome while the bar is away, the bar itself
+    /// otherwise. VoiceOver keeps the bar regardless of the tracked value,
+    /// because the bar carries the only reachable Back control.
+    static func navigationBarShouldHide(navigationBarHidden: Bool,
+                                        voiceOverRunning: Bool) -> Bool {
+        navigationBarHidden && !voiceOverRunning
+    }
+
     func updateNavigationBar(animated: Bool = true) {
-        let hidden = navigationBarHidden && !UIAccessibility.isVoiceOverRunning
+        let hidden = Self.navigationBarShouldHide(
+            navigationBarHidden: navigationBarHidden,
+            voiceOverRunning: UIAccessibility.isVoiceOverRunning)
         navigationController?.setNavigationBarHidden(hidden, animated: animated)
         setNeedsStatusBarAppearanceUpdate()
+    }
+
+    /// Return the reader to its immersive state through the tracked value, so
+    /// the next tap toggles from what is actually on screen.
+    ///
+    /// Renders unconditionally: `navigationBarHidden`'s `didSet` does not fire
+    /// when the value is already `true`, which is the first-appearance case, and
+    /// routing through the tracked value is what keeps the VoiceOver rule in
+    /// play — a direct `setNavigationBarHidden(true,` would hide the bar from a
+    /// patron whose only Back control it is.
+    func resetNavigationBarToHidden(animated: Bool = false) {
+        navigationBarHidden = true
+        updateNavigationBar(animated: animated)
+        // The chrome has to come back with it. It faded out when the bar was
+        // tapped in, and nothing else re-renders it, so a reset that moved only
+        // the bar would leave the patron with no chrome AND no bar — the one
+        // combination `navigationBarShouldHide` and `overlayLabelsHidden` exist
+        // to rule out.
+        updateOverlayLabelsVisibility(animated: animated)
     }
 
     override var preferredStatusBarUpdateAnimation: UIStatusBarAnimation {
@@ -933,7 +988,7 @@ extension TPPBaseReaderViewController: NavigatorDelegate {
                 }
 
                 if let position = locator.locations.position {
-                    return String(format: Strings.TPPBaseReaderViewController.pageOf, position) + "\(positions.count)" + chapterTitle
+                    return String(format: Strings.TPPBaseReaderViewController.pageOf, position, positions.count) + chapterTitle
                 } else if let progression = locator.locations.totalProgression {
                     return "\(progression)%" + chapterTitle
                 } else {
@@ -1083,4 +1138,15 @@ extension TPPBaseReaderViewController: @preconcurrency TPPReaderPositionsDelegat
 extension TPPBaseReaderViewController {
     /// Allow this view controller to become first responder for keyboard input
     override var canBecomeFirstResponder: Bool { true }
+}
+
+extension TPPBaseReaderViewController: UIGestureRecognizerDelegate {
+
+    /// Only taps that reached the container itself are letterbox taps; a tap on
+    /// the web view or the chapter scrubber belongs to that child.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldReceive touch: UITouch) -> Bool {
+        ReaderLetterboxTapGate.isLetterboxTap(touchedView: touch.view,
+                                              container: navigatorContainer)
+    }
 }

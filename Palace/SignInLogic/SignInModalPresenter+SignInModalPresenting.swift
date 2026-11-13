@@ -7,8 +7,6 @@
 //  adapter on a small helper class keeps the actor + protocol design
 //  intact without changing the existing static-API callers.
 //
-//  Module C of swarm_66819d80.
-//
 
 import Foundation
 import PalaceAuth
@@ -42,12 +40,9 @@ final class CoordinatorSignInModalPresenter: NSObject, SignInModalPresenting {
         let userAccount = accountsManager.userAccount(for: libraryID)
 
         return await withCheckedContinuation { continuation in
-            // swarm_d8f11437 Module A wave 4 — migrated to AppContainer-
-            // injected sheet presenter. The userAccount reference is
-            // captured BEFORE the presentation so the post-dismiss
-            // `hasCredentials()` re-check pins the same account regardless
-            // of library swaps during the modal flow (invariant preserved
-            // from the static-API era).
+            // `userAccount` is captured before presenting so the post-dismiss
+            // `hasCredentials()` re-check reads the same account even if the
+            // library changes during the modal flow.
             AppContainer.production().signInModalSheetPresenter
                 .presentSignInModalForCurrentAccount {
                     let hasCreds = userAccount.hasCredentials()

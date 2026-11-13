@@ -2,15 +2,10 @@
 //  LoadingOverlayModifier.swift
 //  Palace
 //
-//  Backwards-compatible wrappers over the unified skeleton system
-//  (`Skeleton.swift`, PP-4752). These types predate the system; they now
-//  delegate to it so every skeleton in the app shares one base color, one
-//  shimmer cadence + diagonal direction, and one set of radii by construction.
-//
-//  Prefer the new API in new code:
-//    * `SkeletonBox` / `SkeletonText` / `SkeletonCover` / `SkeletonCircle`
-//    * `.shimmering(active:)`
-//    * `.skeleton(_:placeholder:)`
+//  Backwards-compatible wrappers that delegate to the unified skeleton system
+//  (`Skeleton.swift`, PP-4752). In new code prefer `SkeletonBox` /
+//  `SkeletonText` / `SkeletonCover` / `SkeletonCircle`, `.shimmering(active:)`
+//  and `.skeleton(_:placeholder:)`.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

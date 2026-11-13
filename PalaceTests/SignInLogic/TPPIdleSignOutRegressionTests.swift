@@ -1,23 +1,11 @@
-//
 //  TPPIdleSignOutRegressionTests.swift
-//  PalaceTests
 //
-//  Regression tests for PP-3819: Device gets into weird state after being
-//  left idle.
-//
-//  Root cause: After the app is idle for hours, the auth token expires.
-//  When the user then signs out, the server returns 401. The previous code:
-//  1. Called removeAll() prematurely, wiping the licensor before DRM
-//     deauthorization could use it.
-//  2. Called removeAll() a second time in completeLogOutProcess(), causing
-//     double notifications and UI state corruption (disappearing tab bar).
-//  3. Showed a confusing "Unexpected Credentials" error for the expected 401.
-//  4. Had a race condition: the async DRM deauthorization callback could fire
-//     after the user had already re-authenticated, wiping their fresh
-//     credentials and breaking borrow/read functionality.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  PP-3819: after hours idle the token expires and sign-out gets a 401. Pins
+//  that sign-out keeps the licensor until DRM deauthorization has used it, calls
+//  removeAll() once (a second call in completeLogOutProcess() caused duplicate
+//  notifications and a disappearing tab bar), treats the 401 as expected rather
+//  than "Unexpected Credentials", and ignores a late deauthorization callback
+//  that arrives after the patron has signed in again.
 
 import XCTest
 @testable import Palace
@@ -110,7 +98,7 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
     /// PP-3819: When the sign-out request returns 401 (token expired during
     /// idle), we should proceed with local cleanup silently instead of showing
     /// the confusing "Unexpected Credentials" error dialog.
-    func testSignOut401_doesNotShowUnexpectedCredentialsError() {
+    func testSignOut401_doesNotShowUnexpectedCredentialsError() async {
         signInUser()
         XCTAssertTrue(businessLogic.userAccount.hasCredentials())
 
@@ -119,8 +107,8 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
         let exp = expectation(description: "Sign-out completes")
         uiDelegate.didFinishDeauthorizingHandler = { exp.fulfill() }
 
-        businessLogic.performLogOut()
-        wait(for: [exp], timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertFalse(uiDelegate.didCallSignOutError,
                        "401 on sign-out should NOT trigger error callback — it's expected after idle")
@@ -129,15 +117,15 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
     }
 
     /// Non-401 errors (e.g. 500) should still show an error to the user.
-    func testSignOut500_showsErrorToUser() {
+    func testSignOut500_showsErrorToUser() async {
         signInUser()
         networkExecutor.forceFailureStatusCode = 500
 
         let exp = expectation(description: "Sign-out completes")
         uiDelegate.didFinishDeauthorizingHandler = { exp.fulfill() }
 
-        businessLogic.performLogOut()
-        wait(for: [exp], timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertTrue(uiDelegate.didCallSignOutError,
                       "Non-401 errors should still show error to user")
@@ -148,7 +136,7 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
 
     /// Even though we don't show an error, the user's credentials must be
     /// fully cleared after a 401 sign-out.
-    func testSignOut401_clearsCredentials() {
+    func testSignOut401_clearsCredentials() async {
         signInUser()
         XCTAssertTrue(businessLogic.userAccount.hasCredentials(),
                       "Precondition: user should be signed in")
@@ -158,8 +146,8 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
         let exp = expectation(description: "Sign-out completes")
         uiDelegate.didFinishDeauthorizingHandler = { exp.fulfill() }
 
-        businessLogic.performLogOut()
-        wait(for: [exp], timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertFalse(businessLogic.userAccount.hasCredentials(),
                        "Credentials should be cleared after 401 sign-out")
@@ -173,7 +161,7 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
     /// and then again in completeLogOutProcess(). This caused double
     /// notifications that corrupted UI state (disappearing tab bar).
     /// With the fix, removeAll() is only called once in completeLogOutProcess().
-    func testSignOut401_deauthorizesDeviceWithLicensor() {
+    func testSignOut401_deauthorizesDeviceWithLicensor() async {
         signInUser()
         XCTAssertNotNil(businessLogic.userAccount.licensor,
                         "Precondition: licensor should be set")
@@ -183,8 +171,8 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
         let exp = expectation(description: "Sign-out completes")
         uiDelegate.didFinishDeauthorizingHandler = { exp.fulfill() }
 
-        businessLogic.performLogOut()
-        wait(for: [exp], timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertTrue(drmAuthorizer.deauthorizeWasCalled,
                       "DRM device deauthorization should be attempted")
@@ -198,18 +186,18 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
     /// callback is still pending, the stale callback must NOT wipe the new
     /// credentials. This was the primary cause of the "weird state" where
     /// borrow/read stopped working after idle + sign-out + sign-in.
-    func testRaceCondition_signInDuringPendingDeauth_preservesNewCredentials() {
+    func testRaceCondition_signInDuringPendingDeauth_preservesNewCredentials() async {
         signInUser(barcode: "original-barcode", pin: "original-pin")
         drmAuthorizer.shouldDeferDeauthorize = true
         networkExecutor.forceFailureStatusCode = 401
 
         // Step 1: Start sign-out — DRM deauth is now pending (deferred)
-        businessLogic.performLogOut()
+        await businessLogic.performLogOut()
 
         // Drain the main queue so the network mock processes
         let networkProcessed = expectation(description: "Network response processed")
         DispatchQueue.main.async { networkProcessed.fulfill() }
-        wait(for: [networkProcessed], timeout: 2.0)
+        await fulfillment(of: [networkProcessed], timeout: 2.0)
 
         XCTAssertTrue(drmAuthorizer.deauthorizeWasCalled,
                       "DRM deauth should have been initiated")
@@ -255,7 +243,7 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
         drmAuthorizer.completeDeferredDeauthorize()
 
         // Drain main queue for the async businessLogicDidFinishDeauthorizing dispatch
-        wait(for: [deauthComplete], timeout: 5.0)
+        await fulfillment(of: [deauthComplete], timeout: 5.0)
 
         // Step 4: Verify new credentials were NOT wiped
         XCTAssertTrue(businessLogic.userAccount.hasCredentials(),
@@ -268,15 +256,15 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
 
     /// Verify that the guard doesn't prevent normal (non-race) sign-out from
     /// cleaning up credentials.
-    func testNormalSignOut_stillClearsCredentials() {
+    func testNormalSignOut_stillClearsCredentials() async {
         signInUser()
         XCTAssertTrue(businessLogic.userAccount.hasCredentials())
 
         let exp = expectation(description: "Sign-out completes")
         uiDelegate.didFinishDeauthorizingHandler = { exp.fulfill() }
 
-        businessLogic.performLogOut()
-        wait(for: [exp], timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertFalse(businessLogic.userAccount.hasCredentials(),
                        "Normal sign-out should clear credentials")
@@ -284,7 +272,7 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
     }
 
     /// OAuth sign-out after idle (401) also works correctly.
-    func testOAuthSignOut401_clearsTokenCredentials() {
+    func testOAuthSignOut401_clearsTokenCredentials() async {
         signInUserWithToken(token: "my-oauth-token")
         XCTAssertNotNil(businessLogic.userAccount.authToken)
 
@@ -293,8 +281,8 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
         let exp = expectation(description: "OAuth sign-out completes")
         uiDelegate.didFinishDeauthorizingHandler = { exp.fulfill() }
 
-        businessLogic.performLogOut()
-        wait(for: [exp], timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertFalse(businessLogic.userAccount.hasCredentials(),
                        "OAuth credentials should be cleared")
@@ -308,7 +296,7 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
 
     /// Simulates the full PP-3819 scenario: sign-in → idle → sign-out (401)
     /// → sign-in → verify licensor is available for borrow.
-    func testSignOutSignInCycle_licensorPreservedForBorrow() {
+    func testSignOutSignInCycle_licensorPreservedForBorrow() async {
         // Initial sign-in with licensor
         signInUser()
         XCTAssertNotNil(businessLogic.userAccount.licensor)
@@ -317,8 +305,8 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
         networkExecutor.forceFailureStatusCode = 401
         let signOutExp = expectation(description: "Sign-out completes")
         uiDelegate.didFinishDeauthorizingHandler = { signOutExp.fulfill() }
-        businessLogic.performLogOut()
-        wait(for: [signOutExp], timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [signOutExp], timeout: 5.0)
 
         XCTAssertFalse(businessLogic.userAccount.hasCredentials())
 
@@ -340,18 +328,18 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
 
     /// Directly tests that cancelPendingSignOut() prevents completeLogOutProcess
     /// from wiping credentials.
-    func testCancelPendingSignOut_preventsCredentialCleanup() {
+    func testCancelPendingSignOut_preventsCredentialCleanup() async {
         signInUser()
 
         // Simulate: sign-out starts, then sign-in cancels it
         drmAuthorizer.shouldDeferDeauthorize = true
         networkExecutor.forceFailureStatusCode = 401
 
-        businessLogic.performLogOut()
+        await businessLogic.performLogOut()
 
         let networkDrained = expectation(description: "Network drained")
         DispatchQueue.main.async { networkDrained.fulfill() }
-        wait(for: [networkDrained], timeout: 2.0)
+        await fulfillment(of: [networkDrained], timeout: 2.0)
 
         // Cancel the sign-out (as if user signed back in)
         businessLogic.cancelPendingSignOut()
@@ -360,7 +348,7 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
         let deauthDone = expectation(description: "Deauth callback processed")
         uiDelegate.didFinishDeauthorizingHandler = { deauthDone.fulfill() }
         drmAuthorizer.completeDeferredDeauthorize()
-        wait(for: [deauthDone], timeout: 5.0)
+        await fulfillment(of: [deauthDone], timeout: 5.0)
 
         // Credentials should still be intact
         XCTAssertTrue(businessLogic.userAccount.hasCredentials(),
@@ -370,14 +358,14 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
     // MARK: - Test: Multiple rapid sign-out/sign-in cycles
 
     /// Ensures the guard handles rapid sign-out → sign-in → sign-out correctly.
-    func testRapidSignOutSignInCycles_doNotCorruptState() {
+    func testRapidSignOutSignInCycles_doNotCorruptState() async {
         signInUser(barcode: "cycle-1", pin: "pin-1")
 
         // Cycle 1: Sign out successfully
         let exp1 = expectation(description: "First sign-out")
         uiDelegate.didFinishDeauthorizingHandler = { exp1.fulfill() }
-        businessLogic.performLogOut()
-        wait(for: [exp1], timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp1], timeout: 5.0)
         XCTAssertFalse(businessLogic.userAccount.hasCredentials())
 
         // Cycle 2: Sign in again
@@ -389,8 +377,8 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
         networkExecutor.forceFailureStatusCode = 401
         let exp2 = expectation(description: "Second sign-out")
         uiDelegate.didFinishDeauthorizingHandler = { exp2.fulfill() }
-        businessLogic.performLogOut()
-        wait(for: [exp2], timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp2], timeout: 5.0)
         XCTAssertFalse(businessLogic.userAccount.hasCredentials())
 
         // Cycle 4: Sign in one more time
@@ -404,7 +392,7 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
 
     /// When drmAuthorizer is nil (non-DRM library), sign-out should still
     /// complete normally via completeLogOutProcess().
-    func testSignOut_withNoDRMAuthorizer_completes() {
+    func testSignOut_withNoDRMAuthorizer_completes() async {
         let noDrmBL = TPPSignInBusinessLogic(
             libraryAccountID: libraryMock.tppAccountUUID,
             libraryAccountsProvider: libraryMock,
@@ -432,8 +420,8 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
         let exp = expectation(description: "No-DRM sign-out completes")
         uiDelegate.didFinishDeauthorizingHandler = { exp.fulfill() }
 
-        noDrmBL.performLogOut()
-        wait(for: [exp], timeout: 5.0)
+        await noDrmBL.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertFalse(noDrmBL.userAccount.hasCredentials(),
                        "Credentials should be cleared even without DRM authorizer")
@@ -444,15 +432,15 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
 
     /// Regardless of error type or race condition, the UI delegate must always
     /// receive businessLogicDidFinishDeauthorizing so it can reset loading state.
-    func testSignOut_alwaysCallsDidFinishDeauthorizing() {
+    func testSignOut_alwaysCallsDidFinishDeauthorizing() async {
         signInUser()
         networkExecutor.forceFailureStatusCode = 401
 
         let exp = expectation(description: "Deauthorizing finished")
         uiDelegate.didFinishDeauthorizingHandler = { exp.fulfill() }
 
-        businessLogic.performLogOut()
-        wait(for: [exp], timeout: 5.0)
+        await businessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertTrue(uiDelegate.didCallDidFinishDeauthorizing,
                       "businessLogicDidFinishDeauthorizing must always be called")
@@ -460,23 +448,23 @@ final class TPPIdleSignOutRegressionTests: XCTestCase {
 
     /// Even when the stale guard fires, businessLogicDidFinishDeauthorizing
     /// should be called so the UI can reset.
-    func testStaleSignOut_stillCallsDidFinishDeauthorizing() {
+    func testStaleSignOut_stillCallsDidFinishDeauthorizing() async {
         signInUser()
         drmAuthorizer.shouldDeferDeauthorize = true
         networkExecutor.forceFailureStatusCode = 401
 
-        businessLogic.performLogOut()
+        await businessLogic.performLogOut()
 
         let networkDrained = expectation(description: "Network drained")
         DispatchQueue.main.async { networkDrained.fulfill() }
-        wait(for: [networkDrained], timeout: 2.0)
+        await fulfillment(of: [networkDrained], timeout: 2.0)
 
         businessLogic.cancelPendingSignOut()
 
         let exp = expectation(description: "Stale deauth finished")
         uiDelegate.didFinishDeauthorizingHandler = { exp.fulfill() }
         drmAuthorizer.completeDeferredDeauthorize()
-        wait(for: [exp], timeout: 5.0)
+        await fulfillment(of: [exp], timeout: 5.0)
 
         XCTAssertTrue(uiDelegate.didCallDidFinishDeauthorizing,
                       "businessLogicDidFinishDeauthorizing must be called even for stale sign-outs")

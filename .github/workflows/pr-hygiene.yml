@@ -1,0 +1,27 @@
+name: PR Hygiene
+# Checks the PR title and body against the writing conventions in CLAUDE.md.
+# Runs on edits too, so fixing the description clears the check without a push.
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+concurrency:
+  group: pr-hygiene-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+
+jobs:
+  pr-text:
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: false
+          sparse-checkout: scripts/check-pr-hygiene.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - name: PR title and body follow the writing conventions
+        run: python3 scripts/check-pr-hygiene.py --event "$GITHUB_EVENT_PATH"

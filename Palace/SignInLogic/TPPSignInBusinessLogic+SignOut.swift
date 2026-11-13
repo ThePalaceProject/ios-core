@@ -9,6 +9,7 @@
 import Foundation
 import WebKit
 import PalaceLogging
+import PalaceUtilities
 
 /// Sendable carrier for the non-Sendable `() -> Void` sign-out `completion`
 /// closure captured by WebKit's `@Sendable` `removeData` completion closures in
@@ -26,6 +27,32 @@ import PalaceLogging
 private final class SignOutCompletionBox: @unchecked Sendable {
     let call: () -> Void
     init(_ call: @escaping () -> Void) { self.call = call }
+}
+
+/// Runs the end of a sign-out once, for whichever comes first: the Adobe
+/// deauthorization callback or the timeout. The callback arrives on an Adobe
+/// thread, hence the lock; the action itself runs on the main actor.
+private final class SignOutDeauthorizationLatch: @unchecked Sendable {
+    private let lock = NSLock()
+    private var fired = false
+    private let action: @MainActor () -> Void
+
+    init(_ action: @escaping @MainActor () -> Void) { self.action = action }
+
+    /// Runs the action on the first call only.
+    /// - Parameter timedOut: whether this call is the timeout, for the log.
+    func fire(timedOut: Bool) {
+        let first = lock.withLock { () -> Bool in
+            guard !fired else { return false }
+            fired = true
+            return true
+        }
+        guard first else { return }
+        if timedOut {
+            Log.error(#file, "Adobe deauthorization did not answer in time — signing out locally")
+        }
+        Task { @MainActor in self.action() }
+    }
 }
 
 extension TPPSignInBusinessLogic {
@@ -57,6 +84,52 @@ extension TPPSignInBusinessLogic {
     private final class AssocKey: Sendable {}
     private static let signOutSnapshotKey = AssocKey()
     private static let signOutInProgressKey = AssocKey()
+    private static let deauthorizationTimeoutKey = AssocKey()
+    private static let deauthorizationSchedulerKey = AssocKey()
+    private static let networkCacheClearerKey = AssocKey()
+
+    private final class CacheClearerBox {
+        let clear: @MainActor @Sendable () -> Void
+        init(_ clear: @escaping @MainActor @Sendable () -> Void) { self.clear = clear }
+    }
+
+    /// Clears the network executor's cache at sign-out. Tests replace it to
+    /// observe the call.
+    var networkCacheClearer: @MainActor @Sendable () -> Void {
+        get {
+            if let box = objc_getAssociatedObject(self, Unmanaged.passUnretained(Self.networkCacheClearerKey).toOpaque()) as? CacheClearerBox {
+                return box.clear
+            }
+            return { @MainActor @Sendable in AppContainer.production().networkExecutor.clearCache() }
+        }
+        set { objc_setAssociatedObject(self, Unmanaged.passUnretained(Self.networkCacheClearerKey).toOpaque(), CacheClearerBox(newValue), .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+    }
+
+    typealias DeauthorizationTimeoutScheduler = (TimeInterval, @escaping @Sendable () -> Void) -> Void
+
+    private final class SchedulerBox {
+        let schedule: DeauthorizationTimeoutScheduler
+        init(_ schedule: @escaping DeauthorizationTimeoutScheduler) { self.schedule = schedule }
+    }
+
+    /// Arms the deauthorization timeout. Tests replace it to fire the timeout
+    /// on demand instead of waiting on a timer.
+    var deauthorizationTimeoutScheduler: DeauthorizationTimeoutScheduler {
+        get {
+            let box = objc_getAssociatedObject(self, Unmanaged.passUnretained(Self.deauthorizationSchedulerKey).toOpaque()) as? SchedulerBox
+            return box?.schedule ?? { delay, work in
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+            }
+        }
+        set { objc_setAssociatedObject(self, Unmanaged.passUnretained(Self.deauthorizationSchedulerKey).toOpaque(), SchedulerBox(newValue), .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+    }
+
+    /// How long sign-out waits for Adobe device deauthorization before it
+    /// signs the patron out locally anyway. Tests shorten it.
+    var adobeDeauthorizationTimeout: TimeInterval {
+        get { objc_getAssociatedObject(self, Unmanaged.passUnretained(Self.deauthorizationTimeoutKey).toOpaque()) as? TimeInterval ?? 30 }
+        set { objc_setAssociatedObject(self, Unmanaged.passUnretained(Self.deauthorizationTimeoutKey).toOpaque(), newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC) }
+    }
 
     /// The signInGeneration captured when performLogOut() was called.
     private var signOutSnapshot: Int {
@@ -108,7 +181,7 @@ extension TPPSignInBusinessLogic {
     /// Main entry point for logging a user out.
     ///
     /// - Important: Requires to be called from the main thread.
-    func performLogOut() {
+    func performLogOut() async {
         guard !isSignOutInProgress else {
             Log.warn(#file, "Sign-out already in progress — ignoring re-entrant call")
             return
@@ -128,12 +201,12 @@ extension TPPSignInBusinessLogic {
 
         request.timeoutInterval = 45
 
-        let barcode = userAccount.barcode
         // PP-4986: built for `libraryAccountID`, not necessarily the current library.
         // enableTokenRefresh stays FALSE here.
         //
         // Turning it on does fetch a fresher licensor, which is what sign-out
-        // needs to deauthorize. But it also arms `TPPNetworkExecutor:882-899`:
+        // needs to deauthorize. But it also arms the 401 branch inside
+        // `TPPNetworkExecutor.refreshTokenAndResume`:
         // when the proactive refresh itself 401s — an expired card, precisely
         // the case this was meant to help — that path calls
         // `markCredentialsStale()` AND
@@ -148,9 +221,9 @@ extension TPPSignInBusinessLogic {
         // false, and the way it was reached is worth recording: the census
         // grepped the LITERAL `enableTokenRefresh: true`, while the contract is
         // semantic — `GET(useTokenIfAvailable: Bool = true)` and three siblings
-        // forward a defaulted-true straight into the same parameter
-        // (TPPNetworkExecutor:388, 676, 700, 720). That arm is live production
-        // and runs constantly.
+        // forward a defaulted-true straight into the same parameter (the
+        // `executeRequest` calls in `TPPNetworkExecutor`'s GET/PUT/POST/DELETE
+        // helpers). That arm is live production and runs constantly.
         //
         // The revert stands anyway, on the narrower ground that actually holds:
         // prompting re-auth mid-BORROW is already this app's design, so the
@@ -166,13 +239,20 @@ extension TPPSignInBusinessLogic {
         // DOES opt in, because a patron borrowing with a dead token genuinely
         // needs to re-authenticate and a sign-in prompt is the right answer
         // there. Signing out is the one flow where it never is.
-        networker.executeRequest(request, enableTokenRefresh: false, accountId: libraryAccountID) { [weak self] result in
+        // PP-5301: awaited directly rather than wrapped in a `Task`. This
+        // method is `async`, so a Task here would let it return as soon as the
+        // request was *started* — callers awaiting the sign-out would race it.
+        // Both handlers below are main-actor isolated and this method is on a
+        // `@MainActor` type, so the await resumes there: no hop to remember,
+        // which is what let the class recur.
+        do {
+            let result = await networker.execute(
+                request, enableTokenRefresh: false, accountId: libraryAccountID)
             switch result {
             case .success(let data, let response):
-                self?.processLogOut(data: data,
-                                    response: response,
-                                    for: request,
-                                    barcode: barcode)
+                processLogOut(data: data,
+                              response: response,
+                              for: request)
             case .failure(let errorWithProblemDoc, let response):
                 // Do NOT call removeAll() here. Credential cleanup
                 // is handled by completeLogOutProcess() after device
@@ -180,27 +260,26 @@ extension TPPSignInBusinessLogic {
                 // 1. Licensor wiped before deauthorizeDevice() could use it
                 // 2. Double removeAll() → double notification → UI corruption
                 // 3. Race condition with re-authentication
-                self?.processLogOutError(errorWithProblemDoc,
-                                         response: response,
-                                         for: request,
-                                         barcode: barcode)
+                processLogOutError(errorWithProblemDoc,
+                                   response: response,
+                                   for: request)
             }
         }
 
         #else
-        // `performLogOut()` requires the main thread (see doc comment above), so
-        // assert the isolation the now-@MainActor `TPPAlertUtils.alert(...)` call
-        // needs in Swift 6 complete-mode. Matches the sibling `+UI.swift` treatment.
-        MainActor.assumeIsolated {
-            if self.bookRegistry.isSyncing {
-                let alert = TPPAlertUtils.alert(
-                    title: "SettingsAccountViewControllerCannotLogOutTitle",
-                    message: "SettingsAccountViewControllerCannotLogOutMessage")
-                uiDelegate?.present(alert, animated: true, completion: nil)
-                isSignOutInProgress = false
-            } else {
-                completeLogOutProcess()
-            }
+        // No `MainActor.assumeIsolated` here: `performLogOut()` is `async` on a
+        // `@MainActor` type, so this body already holds the isolation that the
+        // `@MainActor` `TPPAlertUtils.alert(...)` call needs, and the assertion
+        // form is unavailable from an async context. Only the noDRM target
+        // compiles this arm, which is why the DRM scheme builds without it.
+        if bookRegistry.isSyncing {
+            let alert = TPPAlertUtils.alert(
+                title: Strings.Error.cannotSignOutTitle,
+                message: Strings.Error.cannotSignOutMessage)
+            uiDelegate?.present(alert, animated: true, completion: nil)
+            isSignOutInProgress = false
+        } else {
+            completeLogOutProcess()
         }
         #endif
     }
@@ -208,8 +287,7 @@ extension TPPSignInBusinessLogic {
     #if FEATURE_DRM_CONNECTOR
     private func processLogOut(data: Data,
                                response: URLResponse?,
-                               for request: URLRequest,
-                               barcode: String?) {
+                               for request: URLRequest) {
         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
 
         let profileDoc: UserProfileDocument
@@ -220,7 +298,6 @@ extension TPPSignInBusinessLogic {
             TPPErrorLogger.logUserProfileDocumentAuthError(
                 error as NSError,
                 summary: "SignOut: unable to parse user profile doc",
-                barcode: barcode,
                 metadata: [
                     "Request": request.loggableString,
                     "Response": response ?? "N/A",
@@ -255,8 +332,7 @@ extension TPPSignInBusinessLogic {
 
     private func processLogOutError(_ errorWithProblemDoc: TPPUserFriendlyError,
                                     response: URLResponse?,
-                                    for request: URLRequest,
-                                    barcode: String?) {
+                                    for request: URLRequest) {
         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
 
         if statusCode == 401 {
@@ -273,7 +349,6 @@ extension TPPSignInBusinessLogic {
                 response: response,
                 metadata: [
                     "AuthMethod": self.selectedAuthentication?.methodDescription ?? "N/A",
-                    "Hashed barcode": barcode?.md5hex() ?? "N/A",
                     "HTTP status code": statusCode])
 
             self.uiDelegate?.businessLogic(self,
@@ -308,16 +383,6 @@ extension TPPSignInBusinessLogic {
             return
         }
 
-        // Deregister FCM token BEFORE removing credentials (DELETE request needs auth)
-        // Also reset the flag so token re-registers on next sign-in
-        if let account = libraryAccountsProvider.account(libraryAccountID) {
-            NotificationService.shared.deleteToken(for: account)
-            account.hasUpdatedToken = false
-        }
-
-        bookDownloadsCenter.reset(libraryAccountID)
-        bookRegistry.reset(libraryAccountID)
-
         // Capture the access token before removeAll() wipes it.
         // CM logout endpoints (OIDC and SAML SLO / PP-3452) require
         // Authorization: Bearer <token>; we need this for the API calls
@@ -328,16 +393,15 @@ extension TPPSignInBusinessLogic {
             return needsToken ? userAccount.authToken : nil
         }()
 
-        userAccount.removeAll()
+        Self.removeLocalLibraryState(libraryAccountID: libraryAccountID,
+                                     accountsProvider: libraryAccountsProvider,
+                                     downloads: bookDownloadsCenter,
+                                     registry: bookRegistry,
+                                     userAccount: userAccount,
+                                     clearNetworkCache: networkCacheClearer)
         selectedIDP = nil
         samlHelper.clearState()
         dispatch(.signOutCompleted)
-
-        // N1: clear the executor's PRIVATE URLCache — the one that actually
-        // serves authenticated feeds. Clearing `URLCache.shared` here was a
-        // no-op for feeds AND a privacy leak (signed-out authenticated
-        // responses could persist in the executor's disk cache).
-        AppContainer.production().networkExecutor.clearCache()
 
         // Clear the IdP session before notifying the UI that sign-out is complete.
         //
@@ -365,6 +429,34 @@ extension TPPSignInBusinessLogic {
         }
     }
 
+    /// The sign-out steps that need only the library's collaborators, so a
+    /// sign-out whose business logic was released still runs them (PP-5449).
+    /// `selectedIDP`, the SAML helper and the reducer state belong to the
+    /// business logic and are released with it.
+    private static func removeLocalLibraryState(libraryAccountID: String,
+                                                accountsProvider: TPPLibraryAccountsProvider,
+                                                downloads: TPPBookDownloadsDeleting,
+                                                registry: TPPBookRegistrySyncing,
+                                                userAccount: TPPUserAccount,
+                                                clearNetworkCache: @MainActor () -> Void) {
+        // Deregister FCM token BEFORE removing credentials (DELETE request needs auth)
+        // Also reset the flag so token re-registers on next sign-in
+        if let account = accountsProvider.account(libraryAccountID) {
+            NotificationService.shared.deleteToken(for: account)
+            account.hasUpdatedToken = false
+        }
+
+        downloads.reset(libraryAccountID)
+        registry.reset(libraryAccountID)
+        userAccount.removeAll()
+
+        // N1: clear the executor's PRIVATE URLCache — the one that actually
+        // serves authenticated feeds. Clearing `URLCache.shared` here was a
+        // no-op for feeds AND a privacy leak (signed-out authenticated
+        // responses could persist in the executor's disk cache).
+        clearNetworkCache()
+    }
+
     /// Routes to the appropriate IdP session-clearing step based on auth type.
     ///
     /// OIDC: authenticated API call to CM end-session endpoint, then WKWebView cleanup.
@@ -384,11 +476,14 @@ extension TPPSignInBusinessLogic {
     private func performFinalSignOutCleanup(cmLogoutAccessToken: String? = nil,
                                             completion: @escaping () -> Void) {
         if selectedAuthentication?.isOidc == true {
+            // Built here rather than inside the closure: the logout callback is
+            // `@Sendable`, so it cannot capture the non-Sendable `completion`
+            // directly. The carrier can cross; the bare closure cannot.
+            let completionBox = SignOutCompletionBox(completion)
             oidcLogOut(accessToken: cmLogoutAccessToken) { [weak self] in
                 guard let self = self else {
                     // self deallocated — still clear WebView data and call completion
                     // to ensure the UI state is reset.
-                    let completionBox = SignOutCompletionBox(completion)
                     DispatchQueue.main.async {
                         let dataStore = WKWebsiteDataStore.default()
                         let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
@@ -401,12 +496,17 @@ extension TPPSignInBusinessLogic {
                     }
                     return
                 }
-                self.clearWebViewData(completion: completion)
+                // `clearWebViewData` is main-actor isolated and this callback
+                // arrives off the main actor. Marking the logout callback
+                // `@Sendable` is what makes the compiler say so (PP-5301).
+                Task { @MainActor in
+                    self.clearWebViewData(completion: completionBox.call)
+                }
             }
         } else if selectedAuthentication?.samlLogoutHref != nil {
+            let completionBox = SignOutCompletionBox(completion)
             samlLogOut(accessToken: cmLogoutAccessToken) { [weak self] in
                 guard let self = self else {
-                    let completionBox = SignOutCompletionBox(completion)
                     DispatchQueue.main.async {
                         let dataStore = WKWebsiteDataStore.default()
                         let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
@@ -419,7 +519,12 @@ extension TPPSignInBusinessLogic {
                     }
                     return
                 }
-                self.clearWebViewData(completion: completion)
+                // `clearWebViewData` is main-actor isolated and this callback
+                // arrives off the main actor. Marking the logout callback
+                // `@Sendable` is what makes the compiler say so (PP-5301).
+                Task { @MainActor in
+                    self.clearWebViewData(completion: completionBox.call)
+                }
             }
         } else {
             clearWebViewData(completion: completion)
@@ -465,6 +570,74 @@ extension TPPSignInBusinessLogic {
     }
 
     #if FEATURE_DRM_CONNECTOR
+    /// The CM logout request for the selected auth method: OIDC end-session or
+    /// SAML logout (PP-3452). Nil for methods without one.
+    private func cmLogoutRequest(accessToken: String?) -> URLRequest? {
+        if selectedAuthentication?.isOidc == true {
+            return oidcLogoutRequest(accessToken: accessToken)
+        }
+        if selectedAuthentication?.samlLogoutHref != nil {
+            return samlLogoutRequest(accessToken: accessToken)
+        }
+        return nil
+    }
+
+    /// The end of a sign-out once deauthorization has answered or timed out.
+    ///
+    /// Holds the user account strongly and the business logic weakly: the view
+    /// model that owns this object can be released while RMSDK works, and the
+    /// credentials must still leave the keychain (PP-5449).
+    private func finishSignOutAfterDeauthorization() -> @MainActor () -> Void {
+        let account = userAccount
+        let generation = signOutSnapshot
+        let accountID = libraryAccountID
+        let accountsProvider = libraryAccountsProvider
+        let registry = bookRegistry
+        let downloads = bookDownloadsCenter
+        let clearNetworkCache = networkCacheClearer
+        let networker = self.networker
+        // Built now: the request reads the selected auth method and the token,
+        // and both are gone once this object is released.
+        let logoutRequest = cmLogoutRequest(accessToken: account.authToken)
+        return { [weak self] in
+            if let self {
+                self.completeLogOutProcess()
+                return
+            }
+            // Same re-sign-in guard as `completeLogOutProcess()`.
+            guard account.signInGeneration == generation else { return }
+            Self.removeLocalLibraryState(libraryAccountID: accountID,
+                                         accountsProvider: accountsProvider,
+                                         downloads: downloads,
+                                         registry: registry,
+                                         userAccount: account,
+                                         clearNetworkCache: clearNetworkCache)
+            if let logoutRequest {
+                Task { @MainActor in
+                    let result = await networker.execute(logoutRequest, enableTokenRefresh: false, accountId: accountID)
+                    if case .failure(let error, _) = result {
+                        Log.info(#file, "Identity-provider logout after a released sign-out: \(error.localizedDescription)")
+                    }
+                }
+            }
+
+            #if DEBUG
+            if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+                return
+            }
+            #endif
+            let dataStore = WKWebsiteDataStore.default()
+            dataStore.removeData(ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
+                                 modifiedSince: .distantPast) {
+                if let cookies = HTTPCookieStorage.shared.cookies {
+                    for cookie in cookies {
+                        HTTPCookieStorage.shared.deleteCookie(cookie)
+                    }
+                }
+            }
+        }
+    }
+
     private func deauthorizeDevice() {
         let licensor = userAccount.licensor
 
@@ -504,11 +677,12 @@ extension TPPSignInBusinessLogic {
         }
 
         if let drmAuthorizer = drmAuthorizer {
+            let latch = SignOutDeauthorizationLatch(finishSignOutAfterDeauthorization())
             drmAuthorizer.deauthorize(
                 withUsername: attempt.username,
                 password: attempt.password,
                 userID: attempt.userID,
-                deviceID: attempt.deviceID) { [weak self] success, error in
+                deviceID: attempt.deviceID) { success, error in
                 if case .notFreed(let reason) = AdobeDeauthorization.outcome(success: success, error: error) {
                     // Not "expected". E_DEACT_USER_MISMATCH explains the cause
                     // and changes nothing about the consequence: the patron is
@@ -526,44 +700,13 @@ extension TPPSignInBusinessLogic {
                         metadata: ["reason": reason,
                                    "licensorWasExpired": licensorWasExpired])
                 }
-
-                // Check if self was deallocated during the DRM callback
-                guard let strongSelf = self else {
-                    // Skip WebKit cleanup in test environments (no UI context)
-                    #if DEBUG
-                    if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
-                        return
-                    }
-                    #endif
-
-                    // Even if self is nil, we need to complete the logout process
-                    // Call static/global cleanup methods directly
-                    DispatchQueue.main.async {
-                        let dataStore = WKWebsiteDataStore.default()
-                        let dataTypes = WKWebsiteDataStore.allWebsiteDataTypes()
-                        dataStore.removeData(ofTypes: dataTypes, modifiedSince: .distantPast) {
-                            if let cookies = HTTPCookieStorage.shared.cookies {
-                                for cookie in cookies {
-                                    HTTPCookieStorage.shared.deleteCookie(cookie)
-                                }
-                            }
-                        }
-                    }
-                    return
-                }
-
-                // Swift 6: the DRM deauthorize completion is `@Sendable` and fires
-                // off the main actor (Adobe deauth thread); `completeLogOutProcess()`
-                // is `@MainActor`-isolated (the whole type is `@MainActor`). Hop onto
-                // the main actor to call it. `strongSelf` is a `@MainActor` class and
-                // therefore Sendable, so the capture is safe. This also corrects the
-                // latent off-main execution of the credential/WebKit cleanup that
-                // Swift 5 did not enforce across the `@Sendable` boundary; the stale-
-                // callback validity check at the top of `completeLogOutProcess()`
-                // remains correct when it runs one main-runloop turn later.
-                Task { @MainActor in
-                    strongSelf.completeLogOutProcess()
-                }
+                latch.fire(timedOut: false)
+            }
+            // RMSDK gives no bound on when, or whether, the callback arrives.
+            // The patron asked to sign out, so after the timeout the local
+            // cleanup runs without it (PP-5449).
+            deauthorizationTimeoutScheduler(adobeDeauthorizationTimeout) {
+                latch.fire(timedOut: true)
             }
         } else {
             self.completeLogOutProcess()

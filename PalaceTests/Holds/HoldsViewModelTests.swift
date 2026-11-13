@@ -20,7 +20,7 @@ final class HoldsViewModelTests: XCTestCase {
 
     private var cancellables: Set<AnyCancellable> = []
     private var mockRegistry: TPPBookRegistryMock!
-    /// Per-test isolated AppContainer (swarm_47883816 work package A) —
+    /// Per-test isolated AppContainer —
     /// replaces AppContainer.production() reads in createViewModel/makeSignedInViewModel.
     private var appContainer: AppContainer!
 
@@ -38,7 +38,9 @@ final class HoldsViewModelTests: XCTestCase {
         super.tearDown()
     }
 
-    private func createViewModel() -> HoldsViewModel {
+    private func createViewModel(
+        accountDidChange: AnyPublisher<Void, Never> = Empty().eraseToAnyPublisher()
+    ) -> HoldsViewModel {
         HoldsViewModel(
             bookRegistry: mockRegistry,
             accountsManager: appContainer.accountsManager,
@@ -46,7 +48,10 @@ final class HoldsViewModelTests: XCTestCase {
             debugSettings: appContainer.debugSettings,
             // S7 seam: 0ms debounce so `_awaitRefreshForTesting()` settles
             // instantly and deterministically instead of racing a 300ms timer.
-            debounceInterval: 0
+            debounceInterval: 0,
+            // A real account-change post also reloads the host app's registry,
+            // whose own sync and registry events can land mid-test.
+            accountDidChange: accountDidChange
         )
     }
 
@@ -86,6 +91,52 @@ final class HoldsViewModelTests: XCTestCase {
         // The `.TPPSyncBegan` observer hops through `.receive(on: .main)` before
         // dispatching `.syncBegan`; draining the main queue lands that hop
         // deterministically — no wall-clock race against dispatch saturation.
+        await drainMainQueueAsync()
+
+        XCTAssertTrue(viewModel.isLoading)
+    }
+
+    /// Every visit to the Reservations tab syncs the registry. With holds already
+    /// on screen the list must stay put; `HoldsView` replaces it with a skeleton
+    /// whenever `isLoading` is true, so raising it here is a visible flash.
+    func testSyncBegan_WithHoldsOnScreen_DoesNotRaiseLoading() async {
+        _ = addHeldBook()
+        let viewModel = createViewModel()
+        XCTAssertEqual(viewModel.visibleBooks.count, 1, "precondition: the held book is on screen")
+
+        NotificationCenter.default.post(name: .TPPSyncBegan, object: nil)
+        await drainMainQueueAsync()
+
+        XCTAssertFalse(viewModel.isLoading, "A refresh behind visible holds must not swap them for a skeleton")
+        XCTAssertEqual(viewModel.visibleBooks.count, 1)
+    }
+
+    /// Once a sync has answered, a later sync on an empty shelf keeps the empty
+    /// state rather than flashing the skeleton over it.
+    func testSyncBegan_AfterFirstSyncAnswered_DoesNotRaiseLoading() async {
+        let viewModel = createViewModel()
+        NotificationCenter.default.post(name: .TPPSyncEnded, object: nil)
+        await drainMainQueueAsync()
+        await viewModel._awaitRefreshForTesting()
+
+        NotificationCenter.default.post(name: .TPPSyncBegan, object: nil)
+        await drainMainQueueAsync()
+
+        XCTAssertFalse(viewModel.isLoading)
+    }
+
+    /// After a library switch, the new account's first sync on an empty shelf
+    /// shows the skeleton again rather than the old account's empty state.
+    func testSyncBegan_AfterAccountChange_RaisesLoading() async {
+        let accountDidChange = PassthroughSubject<Void, Never>()
+        let viewModel = createViewModel(accountDidChange: accountDidChange.eraseToAnyPublisher())
+        NotificationCenter.default.post(name: .TPPSyncEnded, object: nil)
+        await drainMainQueueAsync()
+        await viewModel._awaitRefreshForTesting()
+
+        accountDidChange.send(())
+        await drainMainQueueAsync()
+        NotificationCenter.default.post(name: .TPPSyncBegan, object: nil)
         await drainMainQueueAsync()
 
         XCTAssertTrue(viewModel.isLoading)
@@ -349,6 +400,25 @@ final class HoldsViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.visibleBooks.count, 1, "Filter should be case insensitive")
     }
 
+    /// Same contract as the My Books filter (PP-5021): the apostrophe the keyboard
+    /// types must match the apostrophe the catalogue stored. Wiring test — the
+    /// folding's own unit tests pass whether or not this filter uses it.
+    func testFilterBooks_CurlyApostropheQuery_MatchesStraightApostropheTitle() async {
+        let book1 = TPPBookMocker.snapshotReservedBook(identifier: "book-1", title: "Alice's Adventures")
+        let book2 = TPPBookMocker.snapshotReservedBook(identifier: "book-2", title: "Python Basics")
+
+        mockRegistry.addBook(book1, state: .holding)
+        mockRegistry.addBook(book2, state: .holding)
+
+        let viewModel = createViewModel()
+
+        await viewModel.filterBooks(query: "Alice\u{2019}s")
+
+        XCTAssertEqual(viewModel.visibleBooks.count, 1,
+            "a held title typed correctly on the stock keyboard must still be findable")
+        XCTAssertEqual(viewModel.visibleBooks.first?.identifier, "book-1")
+    }
+
     // MARK: - OpenSearchDescription Tests (Enhanced)
 
     func testOpenSearchDescription_IncludesAllBooks() {
@@ -406,7 +476,7 @@ final class HoldsSyncFailureTests: XCTestCase {
 
     private var cancellables: Set<AnyCancellable> = []
     private var mockRegistry: TPPBookRegistryMock!
-    /// Per-test isolated AppContainer (swarm_47883816 work package A) —
+    /// Per-test isolated AppContainer —
     /// replaces AppContainer.production() reads in createViewModel/makeSignedInViewModel.
     private var appContainer: AppContainer!
 

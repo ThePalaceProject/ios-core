@@ -11,7 +11,7 @@ import Combine
 @testable import Palace
 
 @MainActor
-final class AccountDetailViewModelTests: XCTestCase {
+final class AccountDetailViewModelTests: PalaceTestCase {
 
     private var cancellables: Set<AnyCancellable> = []
 
@@ -384,7 +384,7 @@ final class AccountDetailViewModelTests: XCTestCase {
 // - SAML: User appears logged out when credentials are stale (needs to re-auth via IDP)
 
 @MainActor
-final class AccountDetailCredentialStateTests: XCTestCase {
+final class AccountDetailCredentialStateTests: PalaceTestCase {
 
     private var userAccount: TPPUserAccountMock!
 
@@ -610,7 +610,7 @@ final class AccountDetailCredentialStateTests: XCTestCase {
 // MARK: - PIN Visibility Business Logic Tests
 
 @MainActor
-final class AccountDetailPINVisibilityTests: XCTestCase {
+final class AccountDetailPINVisibilityTests: PalaceTestCase {
 
     /// PP-5057. These tests used to guard on
     /// `accountsManager.currentAccountId` and bail when it was nil. The bail
@@ -783,6 +783,106 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
         XCTAssertEqual(vm.alertMessage, "Try again")
     }
 
+    /// Pins the empty-title convention the server-suppressed-title path relies
+    /// on: when `TPPSignInBusinessLogic.userFacingSignInError` returns `""`
+    /// (the manager sent `show_title: false` on the problem document), the
+    /// alert must render with no title rather than falling back to the
+    /// client's own "Login Failed". A `nil` title keeps that fallback — the
+    /// two must stay distinguishable here or suppression silently breaks.
+    func testBusinessLogicValidationError_EmptyTitle_RendersNoTitleNotLoginFailed() async {
+        let libraryID = seededLibraryID
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
+
+        let err = NSError(domain: "TPPErrorDomain", code: 403)
+        vm.businessLogic(vm.businessLogic, didEncounterValidationError: err,
+                         userFriendlyErrorTitle: "",
+                         andMessage: "Please sign in at your local library instead.")
+
+        XCTAssertTrue(vm.showingAlert)
+        XCTAssertEqual(vm.alertTitle, "",
+                       "A server-suppressed title must not acquire a client-side one.")
+        XCTAssertNotEqual(vm.alertTitle, Strings.Error.loginErrorTitle)
+        XCTAssertEqual(vm.alertMessage, "Please sign in at your local library instead.",
+                       "The library's message must still reach the alert in full.")
+    }
+
+    func testBusinessLogicValidationError_NilTitle_StillFallsBackToLoginFailed() async {
+        let libraryID = seededLibraryID
+        let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
+
+        let err = NSError(domain: "TPPErrorDomain", code: 500)
+        vm.businessLogic(vm.businessLogic, didEncounterValidationError: err,
+                         userFriendlyErrorTitle: nil, andMessage: "Something went wrong")
+
+        XCTAssertEqual(vm.alertTitle, Strings.Error.loginErrorTitle,
+                       "No server title at all is a different case from a suppressed one.")
+    }
+
+    // MARK: - Sign-out failure alert
+    //
+    // Palace ships no `en.lproj/Localizable.strings`, so a key with no
+    // `value:` reaches the alert as an identifier in every language. These pin
+    // each of the three arms' title as English a patron can read.
+
+    func testSignOutError_WithError_ShowsReadableTitleAndTheErrorDescription() async {
+        let vm = AccountDetailViewModel(libraryAccountID: seededLibraryID, appContainer: .production())
+        vm.isLoading = true
+        vm.isSigningOut = true
+
+        let err = NSError(domain: "test", code: 7,
+                          userInfo: [NSLocalizedDescriptionKey: "The server refused the request."])
+        vm.businessLogic(vm.businessLogic, didEncounterSignOutError: err, withHTTPStatusCode: 500)
+
+        XCTAssertFalse(vm.isLoading)
+        XCTAssertFalse(vm.isSigningOut)
+        XCTAssertTrue(vm.showingAlert)
+        XCTAssertEqual(vm.alertTitle, "Sign Out Failed")
+        XCTAssertEqual(vm.alertMessage, "The server refused the request.",
+                       "the error's own description must reach the patron intact")
+    }
+
+    func testSignOutError_WithoutError_ShowsReadableTitleAndUnknownErrorMessage() async {
+        let vm = AccountDetailViewModel(libraryAccountID: seededLibraryID, appContainer: .production())
+        vm.isLoading = true
+        vm.isSigningOut = true
+
+        vm.businessLogic(vm.businessLogic, didEncounterSignOutError: nil, withHTTPStatusCode: 500)
+
+        XCTAssertFalse(vm.isLoading)
+        XCTAssertFalse(vm.isSigningOut)
+        XCTAssertTrue(vm.showingAlert)
+        XCTAssertEqual(vm.alertTitle, "Sign Out Failed")
+        XCTAssertEqual(vm.alertMessage, "An unknown error occurred while trying to sign out.")
+    }
+
+    /// The 401 arm carries its own copy: an expired card is a different
+    /// situation from a failed sign-out, and collapsing the three arms onto one
+    /// title would still pass the two tests above.
+    func testSignOutError_401_KeepsTheUnexpectedCredentialsCopy() async {
+        let vm = AccountDetailViewModel(libraryAccountID: seededLibraryID, appContainer: .production())
+
+        vm.businessLogic(vm.businessLogic, didEncounterSignOutError: nil, withHTTPStatusCode: 401)
+
+        XCTAssertTrue(vm.showingAlert)
+        XCTAssertEqual(vm.alertTitle, "Unexpected Credentials")
+        XCTAssertTrue(vm.alertMessage.hasPrefix("Your username or password may have changed"),
+                      "401 must explain that the card's credentials changed, got: \(vm.alertMessage)")
+    }
+
+    /// A 401 carrying an error must still take the 401 arm: the status check
+    /// comes first, and reordering it would hand the patron the generic
+    /// sign-out-failed copy for an expired card.
+    func testSignOutError_401WithAnError_StillTakesThe401Arm() async {
+        let vm = AccountDetailViewModel(libraryAccountID: seededLibraryID, appContainer: .production())
+
+        let err = NSError(domain: "test", code: 401,
+                          userInfo: [NSLocalizedDescriptionKey: "Unauthorized"])
+        vm.businessLogic(vm.businessLogic, didEncounterSignOutError: err, withHTTPStatusCode: 401)
+
+        XCTAssertEqual(vm.alertTitle, "Unexpected Credentials")
+        XCTAssertNotEqual(vm.alertMessage, "Unauthorized",
+                          "the 401 arm must not fall through to the error's description")
+    }
     func testBusinessLogicValidationError_CancelledErrorClearsPin() async {
         let libraryID = seededLibraryID
         let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
@@ -1004,7 +1104,7 @@ final class AccountDetailPINVisibilityTests: XCTestCase {
 // "Sign Out" action invokes the real sign-out flow.
 
 @MainActor
-final class AccountDetailSignOutConfirmationTests: XCTestCase {
+final class AccountDetailSignOutConfirmationTests: PalaceTestCase {
 
     /// PP-5057. These tests used to guard on
     /// `accountsManager.currentAccountId` and bail when it was nil. The bail
@@ -1068,8 +1168,8 @@ final class AccountDetailSignOutConfirmationTests: XCTestCase {
     }
 
     /// Structural guard: the alert returned by makeSignOutConfirmationAlert
-    /// must offer Sign Out (destructive) and Cancel actions. Catches mutations
-    /// that downgrade the destructive style or drop the cancel action.
+    /// must offer Sign Out (destructive) and Cancel actions. Catches a
+    /// downgraded destructive style or a dropped cancel action.
     func testMakeSignOutConfirmationAlert_HasDestructiveSignOutAndCancelActions() async {
         let libraryID = seededLibraryID
         let vm = AccountDetailViewModel(libraryAccountID: libraryID, appContainer: .production())
@@ -1117,10 +1217,10 @@ private final class SnapshotBox {
 ///     off-main → Swift 6 `dispatch_assert_queue` trap → these tests die.
 ///  2. Makes `accountDidChange()`'s signed-in derivation
 ///     (`hasCredentials && authState != .loggedOut`, barcode/pin population)
-///     mutation-testable by injecting the credential snapshot instead of reading
-///     the keychain.
+///     testable by injecting the credential snapshot instead of reading the
+///     keychain.
 @MainActor
-final class AccountDetailViewModelSignedInDerivationTests: XCTestCase {
+final class AccountDetailViewModelSignedInDerivationTests: PalaceTestCase {
 
     private var cancellables: Set<AnyCancellable> = []
 
@@ -1139,8 +1239,7 @@ final class AccountDetailViewModelSignedInDerivationTests: XCTestCase {
         // network graph via `.production()`, which can round-trip TPPKeychain.
         // Skip on CI hosts where SecItem returns -34018 (no entitlement) — same
         // gate the sibling classes use. The injected snapshot means these tests
-        // are deterministic wherever they DO run (notably local mutation runs,
-        // which are where kill-rate is measured — mutation is local-only).
+        // are deterministic wherever they DO run.
         try KeychainAvailability.skipIfUnavailable()
 
         let (seededAccount, seedCleanup) = seedAccountIfNeeded(
@@ -1271,7 +1370,7 @@ final class AccountDetailViewModelSignedInDerivationTests: XCTestCase {
 
         // hasCredentials stays true, but authState becomes loggedOut. This pins
         // the `authState != .loggedOut` half of the derivation: flip `!=` to `==`
-        // and this book would read as signed-in → assertion fails → mutant killed.
+        // and this book would read as signed-in → assertion fails.
         box.snapshot = makeSnapshot(hasCredentials: true, authState: .loggedOut)
         await postAccountChangeOffMainAndAwaitSignedIn(vm, expected: false)
 
@@ -1290,7 +1389,7 @@ final class AccountDetailViewModelSignedInDerivationTests: XCTestCase {
 
         // Pins the `hasCredentials &&` half: no credentials → signed-out
         // regardless of authState. Flip `&&` to `||` and loggedIn alone would
-        // read as signed-in → assertion fails → mutant killed.
+        // read as signed-in → assertion fails.
         box.snapshot = makeSnapshot(hasCredentials: false, authState: .loggedIn)
         await postAccountChangeOffMainAndAwaitSignedIn(vm, expected: false)
 
@@ -1320,8 +1419,8 @@ final class AccountDetailViewModelSignedInDerivationTests: XCTestCase {
 
         // Signed-in but the snapshot carries nil barcode/pin (token-only auth).
         // Pins the `snapshot.barcode ?? ""` / `snapshot.pin ?? ""` fallthrough:
-        // mutate either default (e.g. `?? "x"`) and these fields would no longer
-        // be empty → assertion fails → mutant killed.
+        // change either default (e.g. `?? "x"`) and these fields would no longer
+        // be empty → assertion fails.
         box.snapshot = makeSnapshot(hasCredentials: true, authState: .loggedIn, barcode: nil, pin: nil)
         await postAccountChangeOffMainAndAwaitSignedIn(vm, expected: true)
 

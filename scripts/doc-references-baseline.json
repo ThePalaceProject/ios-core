@@ -1,30 +1,10 @@
 {
-  "_comment": "Pre-existing dangling doc references, tolerated so the gate could land. Nothing new may be added. Fix an entry and delete its line \u2014 the gate fails on baseline entries that now resolve, so this cannot go stale.",
+  "_comment": "Pre-existing dangling doc references, tolerated so the gate could land. Nothing new may be added. Fix an entry and delete its line — the gate fails on baseline entries that now resolve, so this cannot go stale.",
   "known_dangling": [
-    {
-      "doc": ".claude/skills/intent/SKILL.md",
-      "kind": "source",
-      "target": "Palace/SignInLogic/OAuthCallbackHandler.swift"
-    },
-    {
-      "doc": ".claude/skills/intent/SKILL.md",
-      "kind": "source",
-      "target": "PalaceTests/SignInLogic/OAuthCallbackHandlerTests.swift"
-    },
-    {
-      "doc": ".claude/skills/swarm/SKILL.md",
-      "kind": "workflow",
-      "target": "SWARM_ID/manifest.yaml"
-    },
     {
       "doc": "docs/SystemRequirements.md",
       "kind": "script",
       "target": "scripts/mutate.py"
-    },
-    {
-      "doc": "docs/Testing/3.3.0-REGRESSION-PLAN.md",
-      "kind": "workflow",
-      "target": "recording.yaml"
     },
     {
       "doc": "docs/Testing/REGRESSION_TEST_MATRIX.md",
@@ -130,11 +110,6 @@
       "doc": "docs/Testing/TESTING_POSTURE.md",
       "kind": "workflow",
       "target": "recording.yaml"
-    },
-    {
-      "doc": "docs/Testing/TESTING_POSTURE.md",
-      "kind": "workflow",
-      "target": "ui-testing.yml"
     },
     {
       "doc": "docs/Testing/Test_Patterns.md",
@@ -292,16 +267,6 @@
       "target": "hold-to-loan-lcp.yaml"
     },
     {
-      "doc": "docs/architecture/areas/network/verification-checklist.md",
-      "kind": "source",
-      "target": "PalaceTests/Network/AuthErrorCategoryTests.swift"
-    },
-    {
-      "doc": "docs/architecture/areas/network/verification-checklist.md",
-      "kind": "source",
-      "target": "PalaceTests/Network/CrossDomain401Tests.swift"
-    },
-    {
       "doc": "docs/architecture/areas/reader/verification-checklist.md",
       "kind": "workflow",
       "target": "reader2-back-button.yaml"
@@ -392,16 +357,6 @@
       "target": "Palace/SignInLogic/AuthReducer.swift"
     },
     {
-      "doc": "docs/architecture/phase-3.5-class-scan.md",
-      "kind": "script",
-      "target": "scripts/check-notification-observer-storage.py"
-    },
-    {
-      "doc": "docs/architecture/phase-3.5-class-scan.md",
-      "kind": "workflow",
-      "target": ".simdrive/replays/chaos/lock-screen-engage.yaml"
-    },
-    {
       "doc": "docs/architecture/pp4156-retro-2026-05-04.md",
       "kind": "workflow",
       "target": ".simdrive/journeys/audiobook-download-indicator-stateful.yaml"
@@ -440,46 +395,6 @@
       "doc": "docs/architecture/ws4-mac-validation-runbook.md",
       "kind": "workflow",
       "target": ".simdrive/journeys/ws4-ipad-on-mac-exit-adobe-drm.yaml"
-    },
-    {
-      "doc": "docs/bug-investigation-process.md",
-      "kind": "script",
-      "target": "scripts/build-sim-for-simdrive.sh"
-    },
-    {
-      "doc": "docs/regression-suite/CARPLAY-FEASIBILITY.md",
-      "kind": "script",
-      "target": "scripts/regression-carplay-cell.sh"
-    },
-    {
-      "doc": "docs/regression-suite/CARPLAY-FEASIBILITY.md",
-      "kind": "script",
-      "target": "scripts/regression_xcresult_findings.py"
-    },
-    {
-      "doc": "docs/regression-suite/DESIGN.md",
-      "kind": "script",
-      "target": "scripts/regression-report.sh"
-    },
-    {
-      "doc": "docs/regression-suite/DESIGN.md",
-      "kind": "script",
-      "target": "scripts/run-chaos-pass.sh"
-    },
-    {
-      "doc": "docs/regression-suite/DESIGN.md",
-      "kind": "script",
-      "target": "scripts/simdrive-regress.sh"
-    },
-    {
-      "doc": "tools/ledger/README.md",
-      "kind": "workflow",
-      "target": "codeatlas.yml"
-    },
-    {
-      "doc": "tools/ledger/README.md",
-      "kind": "workflow",
-      "target": "tools/ledger/codeatlas.yml"
     }
   ]
 }

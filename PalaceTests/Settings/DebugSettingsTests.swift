@@ -344,4 +344,72 @@ final class DebugSettingsTests: XCTestCase {
         XCTAssertFalse(settings.isBadgeLoggingEnabled)
         XCTAssertEqual(settings.testHoldsConfiguration, .none)
     }
+
+    // MARK: - PP-4963 — the purge-on-off join
+
+    /// Switching the trace OFF removes the positions it recorded.
+    ///
+    /// This join is the only thing that prunes those markers — nothing else
+    /// does — and it is the sole enforcement of a patron-data claim the file
+    /// makes twice, on a screen reachable in App Store builds through the
+    /// version-number long-press. It had no test: `DebugSettings` hard-coded
+    /// `UserDefaults.standard`, so driving the setter meant writing to the real
+    /// domain, and deleting the `if !newValue` arm left every test green.
+    ///
+    /// The injectable `defaults` exists for this test and nothing else.
+    func testSwitchingTheTraceOff_purgesTheMarkersItRecorded() throws {
+        let suiteName = "pp4963.debugsettings.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let scoped = DebugSettings(defaults: defaults)
+        let store = UserDefaultsLastLivePositionMarkerStore(
+            defaults: defaults, diagnosticsEnabled: { true }
+        )
+
+        scoped.isAudiobookPositionTraceEnabled = true
+        store.save(LastLivePositionMarker(
+            bookID: "book-1", trackKey: "a", timestamp: 42, recordedAt: Date()
+        ))
+        XCTAssertNotNil(defaults.data(forKey: markerKey("book-1")), "precondition")
+
+        scoped.isAudiobookPositionTraceEnabled = false
+
+        // Read the raw bytes: the store's accessor is gated on the same switch
+        // this test has just turned off, so `marker(forBookID:)` would report
+        // nil whether the purge ran or not.
+        XCTAssertNil(defaults.data(forKey: markerKey("book-1")),
+                     "a patron's recorded position must not outlive the switch "
+                     + "that recorded it")
+        XCTAssertFalse(scoped.isAudiobookPositionTraceEnabled)
+    }
+
+    /// And switching it ON does not purge — otherwise turning the trace on
+    /// would discard the markers a device run is about to be read against.
+    func testSwitchingTheTraceOn_keepsExistingMarkers() throws {
+        let suiteName = "pp4963.debugsettings.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let scoped = DebugSettings(defaults: defaults)
+        // Written as an earlier trace run would have written it — with the
+        // switch open. The store declines to write at all once it is closed.
+        let store = UserDefaultsLastLivePositionMarkerStore(
+            defaults: defaults, diagnosticsEnabled: { true }
+        )
+        store.save(LastLivePositionMarker(
+            bookID: "book-1", trackKey: "a", timestamp: 42, recordedAt: Date()
+        ))
+
+        scoped.isAudiobookPositionTraceEnabled = true
+
+        XCTAssertNotNil(defaults.data(forKey: markerKey("book-1")),
+                        "switching the trace on must not discard what it is about "
+                        + "to be read against")
+    }
+
+    private func markerKey(_ bookID: String) -> String {
+        "audiobook.lastLivePosition." + bookID
+    }
+
 }

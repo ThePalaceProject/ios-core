@@ -102,8 +102,8 @@ final class CatalogPreloaderTests: XCTestCase {
         )
 
         // maxPreload=3 caps the recents list at 3, plus the current account = 4 total.
-        // The fourth recent (urlD) must be dropped. Assertions are exact so mutations
-        // to the guard (`<` → `<=`, break → continue, etc.) actually fail.
+        // The fourth recent (urlD) must be dropped. Assertions are exact so
+        // an off-by-one in the guard (`<=`, continue instead of break) fails.
         let preloaded = Set(feedPreloader.preloadedURLs)
         XCTAssertEqual(preloaded, [currentURL, urlA, urlB, urlC])
         XCTAssertFalse(preloaded.contains(urlD), "Fourth recent must be skipped by the maxPreload cap")

@@ -84,7 +84,7 @@ final class BookCellModelActionTests: XCTestCase {
     /// HalfSheetView keys off to show the destructive Retry+Cancel branch.
     /// Original test only checked secondary; this one also pins the
     /// primary button title presence and that the two are distinct
-    /// (catches a copy-paste mutant).
+    /// (catches a copy-paste regression).
     func testReturn_AlertHasBothPrimaryAndDistinctCancelButton() {
         let model = makeModel()
         model.callDelegate(for: .return)
@@ -182,7 +182,7 @@ final class BookCellModelActionTests: XCTestCase {
 
     /// CancelHold confirmation alert must have BOTH primary AND distinct
     /// secondary buttons — same contract as return but for the hold flow.
-    /// Pin both buttons + the inequality so a copy-paste mutant fails.
+    /// Pin both buttons + the inequality so a copy-paste regression fails.
     func testCancelHold_AlertHasBothPrimaryAndDistinctCancelButton() {
         let model = makeHoldModel()
         model.callDelegate(for: .cancelHold)
@@ -223,7 +223,7 @@ final class BookCellModelActionTests: XCTestCase {
     /// `.remove` is a local-only delete that proceeds immediately — no
     /// confirmation alert AND no secondary alert appears later. Pin both
     /// the immediate post-call state AND a follow-up check after a short
-    /// drain to catch a mutant that defers the alert via Task.
+    /// drain to catch a regression that defers the alert via Task.
     func testRemove_doesNotShowAlertImmediatelyOrAfterDrain() {
         let model = makeModel()
         XCTAssertNil(model.showAlert, "Pre-condition: no alert before action")
@@ -233,7 +233,7 @@ final class BookCellModelActionTests: XCTestCase {
         XCTAssertNil(model.showAlert,
                      "Remove (local delete) must NOT show a confirmation alert")
 
-        // Drain main queue to catch a mutant that defers the alert via
+        // Drain main queue to catch a regression that defers the alert via
         // DispatchQueue.main.async or Task { @MainActor }.
         let drain = expectation(description: "main queue drain")
         DispatchQueue.main.async { drain.fulfill() }

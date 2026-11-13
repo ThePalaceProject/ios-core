@@ -23,6 +23,10 @@ protocol LibrariesSectionEnvironment {
     func lookupAccount(_ uuid: String) -> Account?
     func persistAccountIds(_ ids: [String])
     func deleteToken(for account: Account)
+    /// Drops the offline actions queued under `account`. They were made with
+    /// that library's loans and credentials, which survive in the keychain, so
+    /// re-adding the library would otherwise run them against today's shelf.
+    func removeQueuedActions(for account: Account)
     /// Whether the full library catalog has materialized. During the brief
     /// launch-hydration window (`false`) the persisted-account lookup can
     /// resolve to an empty list even though the user HAS configured libraries
@@ -189,6 +193,7 @@ final class LibrariesSectionViewModel: ObservableObject {
     func deleteSecondary(_ account: Account) {
         guard account.uuid != currentAccountUUID else { return }
         environment.deleteToken(for: account)
+        environment.removeQueuedActions(for: account)
         accounts.removeAll { $0.uuid == account.uuid }
         environment.persistAccountIds(accounts.map { $0.uuid })
     }
@@ -204,15 +209,18 @@ struct ProductionLibrariesSectionEnvironment: LibrariesSectionEnvironment {
     private let accountsManager: AccountsManager
     private let settings: TPPSettings
     private let tokenDeleter: (Account) -> Void
+    private let queuedActionRemover: @Sendable (String) -> Void
 
     init(
         accountsManager: AccountsManager,
         settings: TPPSettings,
-        tokenDeleter: @escaping (Account) -> Void = { NotificationService.shared.deleteToken(for: $0) }
+        tokenDeleter: @escaping (Account) -> Void = { NotificationService.shared.deleteToken(for: $0) },
+        queuedActionRemover: @escaping @Sendable (String) -> Void = OfflineQueueService.productionRemoveActions
     ) {
         self.accountsManager = accountsManager
         self.settings = settings
         self.tokenDeleter = tokenDeleter
+        self.queuedActionRemover = queuedActionRemover
     }
 
     func currentAccountUUID() -> String? {
@@ -233,6 +241,10 @@ struct ProductionLibrariesSectionEnvironment: LibrariesSectionEnvironment {
 
     func deleteToken(for account: Account) {
         tokenDeleter(account)
+    }
+
+    func removeQueuedActions(for account: Account) {
+        queuedActionRemover(account.uuid)
     }
 
     func accountsHaveLoaded() -> Bool {

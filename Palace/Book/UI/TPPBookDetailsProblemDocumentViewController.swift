@@ -26,6 +26,9 @@ import PalaceBookModel
     override func viewDidLoad() {
         super.viewDidLoad()
 
+        self.title = NSLocalizedString("Error Details",
+                                       comment: "Screen title for the detailed error report shown for a book")
+
         let margins = self.view.layoutMarginsGuide
 
         if #available(iOS 13, *) {

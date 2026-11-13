@@ -64,7 +64,45 @@ final class AdobeDRMHandler: NSObject {
               let book = delegate.bookRegistry.book(forIdentifier: tag),
               let rights = String(data: rightsData, encoding: .utf8) else { return }
 
+        // A Return leaves the record in the registry at `.unregistered` rather
+        // than removing it, so the lookup above still succeeds and the rest of
+        // this method would shelve the file and take `.unregistered` to
+        // `.downloadSuccessful` — not a legal transition. Asked before the
+        // destination is removed below, so a discard destroys nothing the
+        // patron still has.
+        //
+        // `accountUnchanged: true` because this handler carries no record of the
+        // account the fulfilment started under; the registry's own state is the
+        // only signal here. The residual is the one named on the predicate: a
+        // library switch mid-fulfilment reads as a discard and costs a
+        // re-download on next open.
+        let registryState = delegate.bookRegistry.state(for: book.identifier)
+        guard LocalBookContentService.mayStoreFetchedContent(
+            registryState: registryState,
+            accountUnchanged: true
+        ) else {
+            if let adeptToURL {
+                try? fileManager.removeItem(at: adeptToURL)
+            }
+            if didFinishDownload {
+                Log.info(#file, "Adobe fulfilment for '\(book.title)' landed after the loan ended (state: \(registryState.stringValue())) — discarding it instead of shelving it")
+            } else {
+                // The transfer failed and the loan had already ended. No alert:
+                // a download-failed prompt for a book the patron returned is not
+                // actionable. The failure itself still belongs in the log, which
+                // is where it went before this arm returned early.
+                TPPErrorLogger.logError(withCode: .adobeDRMFulfillmentFail, summary: "Adobe DRM error: did not finish download, and the loan had already ended", metadata: [
+                    "adeptError": adeptError ?? "N/A",
+                    "registryState": registryState.stringValue(),
+                    "book": book.loggableDictionary(),
+                    "AdobeTag": tag
+                ])
+            }
+            return
+        }
+
         var didSucceedCopying = false
+        var copyError: Error?
 
         if didFinishDownload {
             guard let fileURL = delegate.fileUrl(for: book.identifier) else { return }
@@ -80,12 +118,12 @@ final class AdobeDRMHandler: NSObject {
                 TPPErrorLogger.logError(withCode: .adobeDRMFulfillmentFail, summary: "Adobe DRM error: destination file URL unavailable", metadata: [
                     "adeptError": adeptError ?? "N/A",
                     "fileURLToRemove": adeptToURL ?? "N/A",
-                    "book": book.loggableDictionary,
+                    "book": book.loggableDictionary(),
                     "AdobeFulfilmmentID": fulfillmentID ?? "N/A",
                     "AdobeRights": rights,
                     "AdobeTag": tag
                 ])
-                delegate.failDownloadWithAlert(for: book, withMessage: nil)
+                delegate.failDownloadWithAlert(for: book, withMessage: DownloadFailureDetail.message(for: adeptError))
                 return
             }
 
@@ -93,12 +131,13 @@ final class AdobeDRMHandler: NSObject {
                 try fileManager.copyItem(at: adeptToURL, to: destURL)
                 didSucceedCopying = true
             } catch {
+                copyError = error
                 TPPErrorLogger.logError(withCode: .adobeDRMFulfillmentFail, summary: "Adobe DRM error: failure copying file", metadata: [
                     "adeptError": adeptError ?? "N/A",
                     "copyError": error,
                     "fromURL": adeptToURL,
                     "destURL": destURL,
-                    "book": book.loggableDictionary,
+                    "book": book.loggableDictionary(),
                     "AdobeFulfilmmentID": fulfillmentID ?? "N/A",
                     "AdobeRights": rights,
                     "AdobeTag": tag
@@ -108,7 +147,7 @@ final class AdobeDRMHandler: NSObject {
             TPPErrorLogger.logError(withCode: .adobeDRMFulfillmentFail, summary: "Adobe DRM error: did not finish download", metadata: [
                 "adeptError": adeptError ?? "N/A",
                 "adeptToURL": adeptToURL ?? "N/A",
-                "book": book.loggableDictionary,
+                "book": book.loggableDictionary(),
                 "AdobeFulfilmmentID": fulfillmentID ?? "N/A",
                 "AdobeRights": rights,
                 "AdobeTag": tag
@@ -116,7 +155,7 @@ final class AdobeDRMHandler: NSObject {
         }
 
         if !didFinishDownload || !didSucceedCopying {
-            delegate.failDownloadWithAlert(for: book, withMessage: nil)
+            delegate.failDownloadWithAlert(for: book, withMessage: DownloadFailureDetail.message(for: adeptError ?? copyError))
             return
         }
 

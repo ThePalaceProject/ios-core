@@ -5,14 +5,9 @@
 //  Owned by AudiobookSessionManager. Builds an audiobook manager from a TPPBook:
 //  token refresh, vendor-shape dispatch via the AudiobookVendorAdapter chain,
 //  vendor key patching, manifest decoding, AudiobookFactory, DefaultAudiobookManager.
-//  Returns a LoadedAudiobook; the session manager owns its lifetime.
-//
-//  Module D of swarm_5c8ddbd5 collapsed the pre-swarm implicit source-shape
-//  branches (resolveManifestAndDecryptor + fetchOpenAccessManifest, ~150 LOC,
-//  6-deep callbacks) into one linear chain:
-//      let adapter = adapters.first(where: { $0.canHandle(book) })
-//  Chain order: [LCP (#if LCP), LocalFile, BearerToken (MIME-gated), OpenAccess].
-//  See `Vendors/Adapters+Production.swift` for the MIME gate + production wiring.
+//  Returns a LoadedAudiobook; the session manager owns its lifetime. Source
+//  dispatch is the first adapter whose `canHandle` is true, in order
+//  [LCP (#if LCP), LocalFile, BearerToken (MIME-gated), OpenAccess].
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -21,6 +16,7 @@ import Foundation
 import PalaceLogging
 @preconcurrency import PalaceAudiobookToolkit
 import PalaceBookModel
+import PalaceUtilities
 
 /// Errors produced by AudiobookLoader during audiobook preparation.
 enum AudiobookLoadError: Error {
@@ -48,7 +44,27 @@ struct LoadedAudiobook {
     let audiobook: Audiobook
     let decryptor: DRMDecryptor?
     let playbackModel: AudiobookPlaybackModel
+    /// PP-4963 position instrumentation for this session.
+    ///
+    /// A handle, not the owner: `AudiobookBookmarkBusinessLogic` (retained by
+    /// `AudiobookManager.bookmarkDelegate`) keeps it alive. `bind` destructures
+    /// and drops this struct, so ownership here would deallocate the recorder.
+    let positionTrace: AudiobookPositionTraceRecorder
 }
+
+/// The slice of `AudiobookManager` the PP-4963 position trace joins to.
+///
+/// A protocol so `makePositionTrace` can be tested without
+/// `DefaultAudiobookManager`, whose `init` starts timers and remote-command
+/// observers. `AudiobookManager` declares `bookmarkDelegate` get-only, so it
+/// cannot serve either.
+@MainActor
+protocol AudiobookPositionTraceHost: AnyObject {
+    var bookmarkDelegate: AudiobookBookmarkDelegate? { get set }
+    var audiobook: Audiobook { get }
+}
+
+extension DefaultAudiobookManager: @MainActor AudiobookPositionTraceHost {}
 
 @MainActor
 final class AudiobookLoader {
@@ -60,49 +76,98 @@ final class AudiobookLoader {
     /// the default chain via `Self.makeProductionAdapters()`.
     private let adapters: [AudiobookVendorAdapter]
 
-    init(adapters: [AudiobookVendorAdapter]? = nil) {
-        self.adapters = adapters ?? Self.makeProductionAdapters()
+    /// The account whose token gates `load` (PP-5295). Called once per `load`,
+    /// not at init, so the account current at open time is the one checked.
+    /// Tests inject an account so the gate does not depend on whatever the
+    /// shared container's current account holds.
+    private let currentUserAccount: () -> TPPUserAccount
+
+    /// Refreshes the expired token `load` gates on, and the library it
+    /// authenticates as.
+    ///
+    /// Injected rather than read from the shared container so a test can drive
+    /// the two exits the PP-5299 field crash walked. Those exits were
+    /// unreachable from a test while this method resolved both dependencies
+    /// itself, which is why the hop they needed was pinned only on its carrier
+    /// and not here.
+    private let refreshToken: (String?) async -> NYPLResult<Data>
+    private let currentAccountId: () -> String?
+
+    /// Whether the current account's token is valid again. `@Sendable` because
+    /// `awaitTokenReady` polls it from its own `Task`; read per tick, not once,
+    /// so a mid-flight account swap cannot strand the poll on a stale instance.
+    private let isTokenValid: @Sendable () -> Bool
+
+    /// How long `refreshTokenIfNeeded` waits on a refresh that another caller
+    /// already owns, and how often it looks. Passed to `awaitTokenReady`
+    /// explicitly rather than left to that method's defaults, so a test can
+    /// reach the timeout branch without waiting out the production bound.
+    struct TokenReadyPolicy {
+        var timeout: TimeInterval = 10.0
+        var pollInterval: TimeInterval = 0.15
     }
 
-    /// WS-3: re-fulfill loader. Bypasses `LocalFileAdapter` so an already-
-    /// downloaded OverDrive book routes to `BearerTokenAdapter` for a FRESH
-    /// fulfillment (fresh signed URLs) instead of replaying the stale on-disk
-    /// manifest. Used only by the OverDrive expired-URL recovery path.
+    private let tokenReadyPolicy: TokenReadyPolicy
+
+    init(
+        adapters: [AudiobookVendorAdapter]? = nil,
+        currentUserAccount: (() -> TPPUserAccount)? = nil,
+        refreshToken: ((String?) async -> NYPLResult<Data>)? = nil,
+        currentAccountId: (() -> String?)? = nil,
+        isTokenValid: (@Sendable () -> Bool)? = nil,
+        tokenReadyPolicy: TokenReadyPolicy = TokenReadyPolicy()
+    ) {
+        self.tokenReadyPolicy = tokenReadyPolicy
+        self.adapters = adapters ?? Self.makeProductionAdapters()
+        self.currentUserAccount = currentUserAccount
+            ?? { AppContainer.production().accountsManager.currentUserAccount }
+        self.refreshToken = refreshToken
+            ?? { await AppContainer.production().networkExecutor.refreshToken(accountId: $0) }
+        self.currentAccountId = currentAccountId
+            ?? { AppContainer.production().accountsManager.currentAccount?.uuid }
+        self.isTokenValid = isTokenValid
+            ?? { !AppContainer.production().accountsManager.currentUserAccount.authTokenHasExpired }
+    }
+
+    /// Re-fulfill loader (PP-4800). Bypasses `LocalFileAdapter` so an already-
+    /// downloaded book gets a fresh fulfillment (fresh signed URLs) instead of
+    /// replaying the stale on-disk manifest.
     convenience init(forceRefulfill: Bool) {
         self.init(adapters: forceRefulfill ? Self.makeProductionAdapters(excludeLocalFile: true) : nil)
     }
 
     // MARK: - Public API
 
-    /// Load an audiobook end-to-end. Calls completion on the main thread.
-    /// The loader is single-use per instance; create a new loader per open.
-    func load(_ book: TPPBook, completion: @escaping (Result<LoadedAudiobook, AudiobookLoadError>) -> Void) {
-        let finish: (Result<LoadedAudiobook, AudiobookLoadError>) -> Void = { [weak self] result in
-            Task { @MainActor in
-                guard let self else { return }
-                if self.isCancelled {
-                    completion(.failure(.cancelled))
-                    return
-                }
-                completion(result)
-            }
+    /// Load an audiobook end-to-end. The loader is single-use per instance;
+    /// create a new loader per open.
+    ///
+    /// `async` rather than callback-shaped (PP-5301). This type is
+    /// `@MainActor`, so every completion it used to hand the network layer
+    /// inherited main-actor isolation while the executor delivered off it —
+    /// the PP-5299 crash class. Each `await` below resumes here, on the main
+    /// actor, so none of the hops this method used to need can be forgotten.
+    func load(_ book: TPPBook) async -> Result<LoadedAudiobook, AudiobookLoadError> {
+        func settle(_ result: Result<LoadedAudiobook, AudiobookLoadError>) -> Result<LoadedAudiobook, AudiobookLoadError> {
+            isCancelled ? .failure(.cancelled) : result
         }
 
-        refreshTokenIfNeeded(for: book) { [weak self] tokenResult in
-            guard let self else { finish(.failure(.cancelled)); return }
-            if case .failure(let err) = tokenResult {
-                finish(.failure(err))
-                return
-            }
-            self.resolveSource(for: book) { [weak self] resolveResult in
-                guard let self else { finish(.failure(.cancelled)); return }
-                switch resolveResult {
-                case .success(let (json, decryptor)):
-                    self.build(book: book, json: json, decryptor: decryptor, completion: finish)
-                case .failure(let err):
-                    finish(.failure(err))
-                }
-            }
+        // A loader cancelled before `load` is a superseded open, and the result
+        // was already going to be `.cancelled`. Returning here rather than at
+        // the end means it no longer spends a token refresh and a manifest
+        // fetch first — the old shape ran the whole pipeline and discarded it.
+        guard !isCancelled else {
+            return .failure(.cancelled)
+        }
+
+        if case .failure(let err) = await refreshTokenIfNeeded(for: book) {
+            return settle(.failure(err))
+        }
+
+        switch await resolveSource(for: book) {
+        case .success(let (json, decryptor)):
+            return settle(await build(book: book, json: json, decryptor: decryptor))
+        case .failure(let err):
+            return settle(.failure(err))
         }
     }
 
@@ -115,40 +180,33 @@ final class AudiobookLoader {
 
     /// Run the adapter chain. First `canHandle == true` wins; the picked
     /// adapter owns the result. If no adapter matches, surface
-    /// `.manifestFetchFailed` — matches the pre-swarm "no default
-    /// acquisition URL" failure mode.
+    /// `.manifestFetchFailed`.
     private func resolveSource(
-        for book: TPPBook,
-        completion: @escaping (Result<([String: Any], DRMDecryptor?), AudiobookLoadError>) -> Void
-    ) {
+        for book: TPPBook
+    ) async -> Result<([String: Any], DRMDecryptor?), AudiobookLoadError> {
         Log.debug(#file, "🎵 [AUDIOBOOK] Resolving source for: \(book.title) (ID: \(book.identifier))")
         Log.debug(#file, "  Distributor: \(book.distributor ?? "nil")")
 
         guard let adapter = adapters.first(where: { $0.canHandle(book) }) else {
             Log.error(#file, "  ❌ No adapter claimed the book — surfacing .manifestFetchFailed")
-            completion(.failure(.manifestFetchFailed))
-            return
+            return .failure(.manifestFetchFailed)
         }
 
-        Log.debug(#file, "  → Dispatching to \(type(of: adapter))")
-        adapter.resolveManifest(for: book) { result in
-            switch result {
-            case .success(let value):
-                completion(.success((value.json, value.decryptor)))
-            case .failure(let err):
-                completion(.failure(err))
-            }
+        Log.info(#file, "Audiobook \(book.identifier): resolving manifest with \(type(of: adapter))")
+        switch await adapter.resolveManifest(for: book) {
+        case .success(let value):
+            return .success((value.json, value.decryptor))
+        case .failure(let err):
+            return .failure(err)
         }
     }
 
     // MARK: - Token refresh
 
-    private func refreshTokenIfNeeded(for book: TPPBook, completion: @escaping (Result<Void, AudiobookLoadError>) -> Void) {
-        let accountsManager = AppContainer.production().accountsManager
-        let userAccount = accountsManager.currentUserAccount
+    private func refreshTokenIfNeeded(for book: TPPBook) async -> Result<Void, AudiobookLoadError> {
+        let userAccount = currentUserAccount()
         guard userAccount.authTokenHasExpired else {
-            completion(.success(()))
-            return
+            return .success(())
         }
 
         Log.info(#file, "🔄 Auth token expired for audiobook - refreshing before opening")
@@ -160,56 +218,38 @@ final class AudiobookLoader {
             tokenURL: userAccount.authDefinition?.tokenURL
         ) else {
             Log.error(#file, "Cannot refresh token: missing or empty credentials")
-            completion(.failure(.missingCredentialsForTokenRefresh))
-            return
+            return .failure(.missingCredentialsForTokenRefresh)
         }
 
-        AppContainer.production().networkExecutor.refreshTokenAndResume(task: nil, accountId: accountsManager.currentAccount?.uuid) { result in
-            switch result {
-            case .success:
-                Log.info(#file, "✅ Token refresh successful - proceeding to open audiobook")
-                // PP-5299: the executor has delivered this callback from inside
-                // its own Task since at least 3.2.4 — that did not change. What
-                // changed in 3.3.0 is the language mode (876f7637f: SWIFT_VERSION
-                // 5.0 -> 6.0, SWIFT_STRICT_CONCURRENCY = complete), which turns
-                // the dynamic isolation check into an assert instead of a warning.
-                // `completion` continues into @MainActor `resolveSource`, so the
-                // pre-existing off-main delivery became a trap rather than a silent
-                // race. Hop before delivering.
-                RefreshOutcomeDelivery(completion, outcome: .success(())).deliverOnMain()
-            case .failure(let error, _):
-                // PP-4542: the open requested a token but another refresh
-                // (almost always the proactive launch refresh of a near-expiry
-                // token) already held the single-flight slot, so
-                // refreshTokenAndResume(task: nil) returned "Token refresh in
-                // progress" *immediately* instead of queueing+retrying the way
-                // the URLSession-task path does. That hard failure was the
-                // dominant field cause of "Audiobook failed to open — please try
-                // again" (Crashlytics issue 27f5746…: ~45k events / 8.2k users,
-                // since 2.0.4). It is purely a timing race — tap an audiobook in
-                // the first second after launch and it dead-ends. Don't fail:
-                // AWAIT the in-flight refresh and proceed the instant it
-                // populates a valid token.
-                if Self.isRefreshInProgressError(error) {
-                    Log.info(#file, "⏳ A token refresh is already in progress — awaiting it before opening audiobook")
-                    Self.awaitTokenReady { becameValid in
-                        if becameValid {
-                            Log.info(#file, "✅ In-flight token refresh completed — proceeding to open audiobook")
-                            completion(.success(()))
-                        } else {
-                            Log.error(#file, "❌ Timed out awaiting in-flight token refresh")
-                            completion(.failure(.tokenRefreshFailed(underlying: error)))
-                        }
-                    }
-                    return
+        // The executor fires this outcome from inside its own `Task`, so under
+        // the completion-handler form the two exits below ran off the main
+        // actor and had to hop before continuing into `resolveSource`. One
+        // of them did not, and that was the 3.3.0 crash (PP-5299). Awaiting
+        // resumes here instead, on this type's actor.
+        switch await refreshToken(currentAccountId()) {
+        case .success:
+            Log.info(#file, "✅ Token refresh successful - proceeding to open audiobook")
+            return .success(())
+
+        case .failure(let error, _):
+            // PP-4542: another refresh (usually the launch-time proactive
+            // refresh) holds the single-flight slot, and the refresh fails
+            // immediately rather than queueing. Opening an audiobook right
+            // after launch hit this (Crashlytics 27f5746). Wait for the
+            // in-flight refresh instead.
+            if Self.isRefreshInProgressError(error) {
+                Log.info(#file, "⏳ A token refresh is already in progress — awaiting it before opening audiobook")
+                if await Self.awaitTokenReady(timeout: tokenReadyPolicy.timeout,
+                                              pollInterval: tokenReadyPolicy.pollInterval,
+                                              isTokenValid: isTokenValid) {
+                    Log.info(#file, "✅ In-flight token refresh completed — proceeding to open audiobook")
+                    return .success(())
                 }
-                Log.error(#file, "❌ Token refresh failed: \(error.localizedDescription)")
-                // PP-5299: same hop as the success arm above.
-                RefreshOutcomeDelivery(
-                    completion,
-                    outcome: .failure(.tokenRefreshFailed(underlying: error))
-                ).deliverOnMain()
+                Log.error(#file, "❌ Timed out awaiting in-flight token refresh")
+                return .failure(.tokenRefreshFailed(underlying: error))
             }
+            Log.error(#file, "❌ Token refresh failed: \(error.localizedDescription)")
+            return .failure(.tokenRefreshFailed(underlying: error))
         }
     }
 
@@ -225,41 +265,22 @@ final class AudiobookLoader {
     /// Polls the *current* account's token state until a concurrently-running
     /// refresh populates a valid (unexpired) token, or `timeout` elapses.
     /// Re-reads `currentUserAccount` each tick so a mid-flight account-object
-    /// swap can't strand us on a stale instance. Bounded so a failed/stuck
-    /// in-flight refresh can't hang the open forever — on timeout the caller
-    /// surfaces the original error (same as the pre-fix behaviour, just after
-    /// giving the in-flight refresh a chance).
+    /// swap can't strand us on a stale instance. Bounded so a stuck refresh
+    /// cannot hang the open; on timeout the caller surfaces the original error.
     nonisolated static func awaitTokenReady(
-        timeout: TimeInterval = 10.0,
-        pollInterval: TimeInterval = 0.15,
-        completion: @escaping (Bool) -> Void
-    ) {
-        // Structured-concurrency poll (Task.sleep, not recursive GCD) to keep
-        // the audiobook open path off GCD per adr_a265ec76, mirroring the
-        // sibling poll in AudiobookSessionManager.awaitAudiobookContentLocal.
-        //
-        // The `completion` closure is the caller's non-`@Sendable` callback
-        // (it captures the loader's own `completion`), but the poll runs in a
-        // `@Sendable` `Task`. Wrap it in a carrier box (precedent:
-        // `SendableDecryptCompletion` in LCPAudiobooks) so the completion can
-        // cross into the Task WITHOUT forcing `@Sendable` onto this signature —
-        // which would ripple to the single call site inside
-        // `refreshTokenIfNeeded`. The box fires the wrapped closure exactly
-        // once (success XOR timeout), so the invariant holds.
-        let completionBox = TokenReadyCompletionBox(completion)
-        Task {
-            let deadline = Date().addingTimeInterval(timeout)
-            while true {
-                if !AppContainer.production().accountsManager.currentUserAccount.authTokenHasExpired {
-                    await completionBox.fire(true)
-                    return
-                }
-                if Date() >= deadline {
-                    await completionBox.fire(false)
-                    return
-                }
-                try? await Task.sleep(nanoseconds: UInt64(max(0, pollInterval) * 1_000_000_000))
+        timeout: TimeInterval,
+        pollInterval: TimeInterval,
+        isTokenValid: @escaping @Sendable () -> Bool
+    ) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while true {
+            if isTokenValid() {
+                return true
             }
+            if Date() >= deadline {
+                return false
+            }
+            try? await Task.sleep(nanoseconds: UInt64(max(0, pollInterval) * 1_000_000_000))
         }
     }
 
@@ -279,9 +300,8 @@ final class AudiobookLoader {
     private func build(
         book: TPPBook,
         json: [String: Any],
-        decryptor: DRMDecryptor?,
-        completion: @escaping (Result<LoadedAudiobook, AudiobookLoadError>) -> Void
-    ) {
+        decryptor: DRMDecryptor?
+    ) async -> Result<LoadedAudiobook, AudiobookLoadError> {
         Log.debug(#file, "🏗️ [AUDIOBOOK FACTORY] Building audiobook from manifest")
         Log.debug(#file, "  Book: \(book.title) (ID: \(book.identifier))")
         Log.debug(#file, "  Has decryptor: \(decryptor != nil), Has bearer token: \(book.bearerToken != nil)")
@@ -295,8 +315,7 @@ final class AudiobookLoader {
 
         guard let jsonData = try? JSONSerialization.data(withJSONObject: jsonDict, options: []) else {
             Log.error(#file, "  ❌ Failed to serialize JSON dictionary to Data")
-            completion(.failure(.manifestSerializationFailed))
-            return
+            return .failure(.manifestSerializationFailed)
         }
 
         // Resolve the DRM vendor synchronously so the [String: Any] dictionary
@@ -309,56 +328,55 @@ final class AudiobookLoader {
 
         guard let drmVendor else {
             if isCancelled {
-                completion(.failure(.cancelled))
-                return
+                return .failure(.cancelled)
             }
-            finalizeBuild(book: book, jsonData: jsonData, decryptor: decryptor, completion: completion)
-            return
+            return finalizeBuild(book: book, jsonData: jsonData, decryptor: decryptor)
         }
 
-        AudioBookVendorsHelper.updateDrmCertificate(for: drmVendor) { [weak self] error in
-            Task { @MainActor in
-                guard let self else { completion(.failure(.cancelled)); return }
-                if self.isCancelled {
-                    completion(.failure(.cancelled))
-                    return
-                }
-                if let error = error {
-                    Log.error(#file, "  ❌ Vendor completion failed with error: \(error.localizedDescription)")
-                    completion(.failure(.vendorKeyUpdateFailed(underlying: error)))
-                    return
-                }
-
-                self.finalizeBuild(book: book, jsonData: jsonData, decryptor: decryptor, completion: completion)
+        // `updateDrmCertificate` is a completion-handler API that delivers off
+        // the main actor. Awaiting it resumes here rather than needing the
+        // `Task { @MainActor in }` this call site used to wrap it in.
+        let certificateError: NSError? = await withCheckedContinuation { continuation in
+            AudioBookVendorsHelper.updateDrmCertificate(for: drmVendor) { error in
+                continuation.resume(returning: error)
             }
         }
+
+        if isCancelled {
+            return .failure(.cancelled)
+        }
+        if let certificateError {
+            Log.error(#file, "  ❌ Vendor completion failed with error: \(certificateError.localizedDescription)")
+            return .failure(.vendorKeyUpdateFailed(underlying: certificateError))
+        }
+
+        return finalizeBuild(book: book, jsonData: jsonData, decryptor: decryptor)
     }
 
-    // F-004 EXC_BREAKPOINT (Crashlytics, 3.0.0, distributor=Overdrive,
-    // decryptor=nil, bearerToken present) enters here. `internal` (not
-    // `private`) so `AudiobookLoaderFinalizeBuildTests` can drive the decode →
-    // factory → guard chain directly: the zero-track guard below (PP-4768)
-    // returns BEFORE the AppContainer.production() reads further down, so the
-    // failure path is exercisable without touching singletons.
+    // `internal` so tests can drive decode → factory → zero-track guard
+    // (PP-4768); the guard returns before the AppContainer.production() reads.
     func finalizeBuild(
         book: TPPBook,
         jsonData: Data,
-        decryptor: DRMDecryptor?,
-        completion: @escaping (Result<LoadedAudiobook, AudiobookLoadError>) -> Void
-    ) {
+        decryptor: DRMDecryptor?
+    ) -> Result<LoadedAudiobook, AudiobookLoadError> {
         Log.debug(#file, "  Creating audiobook with bearerToken: '\(book.bearerToken ?? "nil")'")
         Log.debug(#file, "  JSON data size: \(jsonData.count) bytes")
 
         let manifest: Manifest
         do {
+            // Unguarded on purpose: `jsonData` has one origin, the
+            // `JSONSerialization.data(withJSONObject:)` earlier in this file,
+            // whose input is a `[String: Any]`. Those keys are already valid
+            // Strings, so this path cannot reach the decoder's key trap. The
+            // delete path reads raw bytes from disk and is guarded (PP-5412).
             manifest = try Manifest.customDecoder().decode(Manifest.self, from: jsonData)
         } catch {
             Log.error(#file, "  ❌ Failed to decode Manifest from JSON: \(error)")
             if let decodingError = error as? DecodingError {
                 logDecodingError(decodingError)
             }
-            completion(.failure(.manifestDecodingFailed(underlying: error)))
-            return
+            return .failure(.manifestDecodingFailed(underlying: error))
         }
 
         Log.debug(#file, "  ✅ Manifest decoded successfully")
@@ -372,34 +390,26 @@ final class AudiobookLoader {
             fulfillURL: book.bearerTokenFulfillURL
         ) else {
             Log.error(#file, "  ❌ AudiobookFactory failed to create audiobook")
-            completion(.failure(.factoryFailed(manifestType: manifest.metadata?.type)))
-            return
+            return .failure(.factoryFailed(manifestType: manifest.metadata?.type))
         }
 
-        // PP-4768 (F-004 residual): the OverDrive / open-access decode exemption
-        // (Manifest.swift, PP-4631) lets a manifest with no metadata and no
-        // readingOrder/spine pass decode when it carries a non-empty
-        // `contentlinks` — the tracks are expected to come from those links. But
-        // `Audiobook.init?` never fails on empty tracks, so if none of the
-        // content links resolve to a playable track (e.g. an unusable href in a
-        // malformed distributor response), the factory returns a NON-nil but
-        // TRACKLESS audiobook. Building a manager from it lets the toolkit player
-        // later trap on unguarded `[0]` track subscripts (EXC_BREAKPOINT,
-        // Crashlytics-attributed to finalizeBuild). Reject it here via the
-        // existing `.factoryFailed` path → "Failed to create audio player.
-        // Please try again." (the PP-3707 retry dialog); no new error case.
+        // PP-4768: a manifest carrying only `contentlinks` can decode yet yield
+        // no playable tracks, and `Audiobook.init?` does not fail on empty
+        // tracks. The toolkit player would later trap on a `[0]` subscript, so
+        // reject a trackless audiobook through `.factoryFailed`.
         guard !audiobook.tableOfContents.allTracks.isEmpty else {
             Log.error(#file, "  ❌ Factory produced a zero-track audiobook — rejecting to avoid a trackless player")
-            completion(.failure(.factoryFailed(manifestType: manifest.metadata?.type)))
-            return
+            return .failure(.factoryFailed(manifestType: manifest.metadata?.type))
         }
 
         Log.debug(#file, "  ✅ Audiobook created successfully by factory")
 
         let metadata = AudiobookMetadata(title: book.title, authors: [book.authors ?? ""])
+        // One container read: `production()` takes its unfair lock per call.
+        let container = AppContainer.production()
         var timeTracker: AudiobookTimeTracker?
         if
-            let libraryId = AppContainer.production().accountsManager.currentAccount?.uuid,
+            let libraryId = container.accountsManager.currentAccount?.uuid,
             let url = book.timeTrackingURL {
             timeTracker = AudiobookTimeTracker(libraryId: libraryId, bookId: book.identifier, timeTrackingUrl: url)
         }
@@ -408,7 +418,7 @@ final class AudiobookLoader {
             tracks: audiobook.tableOfContents.allTracks,
             decryptor: decryptor
         )
-        networkService.downloadOnlyOnWiFi = AppContainer.production().settings.downloadOnlyOnWiFi
+        networkService.downloadOnlyOnWiFi = container.settings.downloadOnlyOnWiFi
 
         let manager = DefaultAudiobookManager(
             metadata: metadata,
@@ -423,8 +433,9 @@ final class AudiobookLoader {
         manager.skipForwardInterval = skipSettings.forwardTimeInterval
         manager.skipBackInterval = skipSettings.backTimeInterval
 
-        let bookmarkLogic = AudiobookBookmarkBusinessLogic(book: book)
-        manager.bookmarkDelegate = bookmarkLogic
+        // PP-4963: watch the save path against the playback clock, so a locked
+        // listen that stops saving becomes an event instead of an absence.
+        let positionTrace = makePositionTrace(book: book, manager: manager)
 
         manager.playbackCompletionHandler = { [weak book, weak manager] in
             guard let book = book, let manager = manager else { return }
@@ -441,12 +452,51 @@ final class AudiobookLoader {
 
         let playbackModel = AudiobookPlaybackModel(audiobookManager: manager)
 
-        completion(.success(LoadedAudiobook(
+        return .success(LoadedAudiobook(
             manager: manager,
             audiobook: audiobook,
             decryptor: decryptor,
-            playbackModel: playbackModel
-        )))
+            playbackModel: playbackModel,
+            positionTrace: positionTrace
+        ))
+    }
+
+    /// Builds the PP-4963 recorder and joins it to the session graph. Separate
+    /// from `finalizeBuild` so the wiring is testable without
+    /// `AppContainer.production()`.
+    ///
+    /// Three joins, in the order they have to happen:
+    ///
+    /// 1. the recorder is constructed for this book;
+    /// 2. `AudiobookBookmarkBusinessLogic` takes it as a `let` and becomes
+    ///    `manager.bookmarkDelegate`, which is the ONLY thing that keeps the
+    ///    recorder alive for the session — the manager retains the delegate and
+    ///    `AudiobookSessionManager` retains the manager, while `LoadedAudiobook`
+    ///    is a struct `bind` destructures and drops;
+    /// 3. the recorder subscribes to the PLAYER's own position signal and to
+    ///    foreground return.
+    ///
+    /// - Parameter recorder: nil in production (one is built for `book`); tests
+    ///   inject one they can observe.
+    /// - Parameter notificationCenter: injectable so a test can drive the
+    ///   foreground subscription without a global `didBecomeActiveNotification`
+    ///   post, which would wake other app observers.
+    @discardableResult
+    func makePositionTrace(
+        book: TPPBook,
+        manager: AudiobookPositionTraceHost,
+        recorder: AudiobookPositionTraceRecorder? = nil,
+        notificationCenter: NotificationCenter = .default
+    ) -> AudiobookPositionTraceRecorder {
+        let positionTrace = recorder ?? AudiobookPositionTraceRecorder(bookID: book.identifier)
+        let bookmarkLogic = AudiobookBookmarkBusinessLogic(book: book, positionTrace: positionTrace)
+        manager.bookmarkDelegate = bookmarkLogic
+        // `observe(player:)` rather than the publisher form: the liveness
+        // signal MUST be the playback clock's, and passing the player makes
+        // anything runloop-fed unrepresentable here.
+        positionTrace.observe(player: manager.audiobook.player,
+                              notificationCenter: notificationCenter)
+        return positionTrace
     }
 
     private func logDecodingError(_ decodingError: DecodingError) {
@@ -468,20 +518,11 @@ final class AudiobookLoader {
 
     // MARK: - Testable predicates
     //
-    // Two deterministic decisions extracted from inline branches so unit
-    // tests can drive them without touching AppContainer.production() or
-    // hitting the network. The predicates correspond to `cmp`-style mutation
-    // points that previously survived every test because no isolated test
-    // could reach them. Each has TRUE/FALSE bifurcation pinned in
-    // AudiobookLoaderPredicateTests.
+    // Pure decisions extracted so tests can drive them without
+    // AppContainer.production() or the network (AudiobookLoaderPredicateTests).
 
     /// True iff all three credential components a token refresh needs are
-    /// present: a non-empty username, a non-empty PIN, and a non-nil
-    /// tokenURL. Pure function over its primitive inputs — no AppContainer,
-    /// no keychain. The branch on `tokenURL != nil` is the kill point for
-    /// the corresponding mutation; tests provide a non-nil URL to assert
-    /// the original returns `true` (mutant flips to `==`, returns `false`,
-    /// test fails the mutant).
+    /// present: a non-empty username, a non-empty PIN, and a non-nil tokenURL.
     nonisolated static func hasRefreshableCredentials(username: String?, pin: String?, tokenURL: URL?) -> Bool {
         guard let username, !username.isEmpty else { return false }
         guard let pin, !pin.isEmpty else { return false }
@@ -507,13 +548,12 @@ final class AudiobookLoader {
     // defensive fallback for CM fulfill responses missing the wrapper MIME.
 
     /// Builds the production adapter chain. `excludeLocalFile` drops the
-    /// `LocalFileAdapter` so an already-downloaded book is NOT served from its
-    /// (possibly stale) on-disk manifest — used by the WS-3 OverDrive re-fulfill
-    /// path so the book routes to `BearerTokenAdapter` for a FRESH fulfillment
-    /// (fresh signed URLs), not a cached-manifest replay.
+    /// `LocalFileAdapter` so the OverDrive re-fulfill path gets a fresh
+    /// fulfillment instead of the possibly stale on-disk manifest.
     private static func makeProductionAdapters(excludeLocalFile: Bool = false) -> [AudiobookVendorAdapter] {
-        let downloadCenter = AppContainer.production().downloadCenter
-        let networkExecutor = AppContainer.production().networkExecutor
+        let container = AppContainer.production()
+        let downloadCenter = container.downloadCenter
+        let networkExecutor = container.networkExecutor
         let manifestNetwork = ProductionAudiobookManifestFetcher(executor: networkExecutor)
 
         var chain: [AudiobookVendorAdapter] = []
@@ -533,8 +573,8 @@ final class AudiobookLoader {
             ))
         }
 
-        // BearerTokenAdapter.canHandle is unconditional; the MIME gate
-        // (BearerTokenMIMEGate) is Module D's chain placement gate.
+        // BearerTokenAdapter.canHandle is unconditional; BearerTokenMIMEGate
+        // decides whether it is placed in the chain.
         let bearerTokenAdapter = BearerTokenAdapter(
             network: manifestNetwork,
             manifestFetcher: ProductionBearerTokenManifestFetcher()
@@ -551,91 +591,5 @@ final class AudiobookLoader {
         ))
 
         return chain
-    }
-}
-
-/// `Sendable` carrier for `awaitTokenReady`'s non-`@Sendable` completion so it
-/// can cross into the poll `Task` without forcing `@Sendable` onto the
-/// `awaitTokenReady` signature (which would ripple to its call site).
-///
-/// - Sendable invariant: `fire(_:)` forwards to the wrapped closure. The poll
-///   loop calls it exactly once (token-ready XOR timeout) from a single Task,
-///   never concurrently. The wrapped closure is otherwise opaque, hence
-///   `@unchecked`. Mirrors `SendableDecryptCompletion` in `LCPAudiobooks`.
-/// - Executor invariant (PP-5299): `fire(_:)` is `@MainActor`. The wrapped
-///   closure continues into `@MainActor` work in the caller, so firing it from
-///   the poll `Task`'s executor trapped at the isolation check instead of
-///   failing anything. Call-once and called-on-which-executor are separate
-///   questions, and only the first was stated when this box was introduced.
-///   `SendableDecryptCompletion` in `LCPAudiobooks` is the same box WITH the hop
-///   (it fires inside `DispatchQueue.main.async`); this one copied the box and
-///   not the hop.
-/// - `internal` so a test can construct it and assert the hop directly. While it
-///   was `private`, nothing pinned `@MainActor` on `fire`, and removing that
-///   attribute leaves `await` as a warning only — it compiles silently.
-struct TokenReadyCompletionBox: @unchecked Sendable {
-    private let completion: (Bool) -> Void
-
-    init(_ completion: @escaping (Bool) -> Void) {
-        self.completion = completion
-    }
-
-    @MainActor
-    func fire(_ becameValid: Bool) {
-        completion(becameValid)
-    }
-}
-
-/// Carries a `refreshTokenIfNeeded` outcome from the network executor's
-/// callback executor to the main actor (PP-5299).
-///
-/// `TPPNetworkExecutor.refreshTokenAndResume` has delivered its callback from
-/// inside its own `Task` since at least 3.2.4 — verified at that tag, line 492.
-/// The delivery executor did NOT change in 3.3.0. What changed is the language
-/// mode (`876f7637f`: `SWIFT_VERSION` 5.0 -> 6.0, `SWIFT_STRICT_CONCURRENCY =
-/// complete`), which promotes the dynamic isolation check from a legacy warning
-/// to an assert. The wrapped completion continues into `@MainActor` work
-/// (`resolveSource`), so what was a silent data race in 3.2.4 became
-/// `dispatch_assert_queue` inside `swift_task_isCurrentExecutorWithFlags`.
-///
-/// The class this belongs to is therefore NOT "callers of the refresh" — it is
-/// every main-actor-isolated closure invoked off-main anywhere in the app. A
-/// second instance shipped in 3.3.0 and was fixed separately; see the comment at
-/// `AudiobookSessionManager.awaitRemotePosition`.
-///
-/// `internal` rather than `private` so a test can construct it and assert the
-/// delivery context directly; `private` left the only exits the field crash
-/// walked untestable.
-///
-/// Both the completion and the outcome are non-`Sendable` — the outcome wraps an
-/// `Error` existential — so they are captured at construction rather than
-/// crossing the `Task` boundary as arguments. Only this box crosses, hence
-/// `@unchecked`.
-///
-/// - Sendable invariant: constructed on the callback's executor, delivered
-///   exactly once on the main actor, never read concurrently.
-struct RefreshOutcomeDelivery: @unchecked Sendable {
-    private let completion: (Result<Void, AudiobookLoadError>) -> Void
-    private let outcome: Result<Void, AudiobookLoadError>
-
-    init(
-        _ completion: @escaping (Result<Void, AudiobookLoadError>) -> Void,
-        outcome: Result<Void, AudiobookLoadError>
-    ) {
-        self.completion = completion
-        self.outcome = outcome
-    }
-
-    /// `Task` rather than `MainActor.run` because the call site is not async.
-    ///
-    /// Returns the hop so a test can join it; emptying the hop's CLOSURE (not this
-    /// method's body, which would not compile and would score as errored rather
-    /// than killed) is the mutation its test catches. Production call sites discard it —
-    /// the delivery is deliberately fire-and-forget there — but without a join a
-    /// test can only wait on a deadline, which starves under parallel simulator
-    /// clones (STARVE-001).
-    @discardableResult
-    func deliverOnMain() -> Task<Void, Never> {
-        Task { @MainActor in completion(outcome) }
     }
 }

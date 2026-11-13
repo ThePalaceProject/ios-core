@@ -1,18 +1,11 @@
 //
 //  AuthErrorClassifierPropertyTests.swift
-//  PalaceAuthTests
 //
-//  Property-based fuzz over `AuthErrorClassifier` using the generator
-//  spec from `docs/3.2.0-auth-idp-catalog.md` § "Property-based
-//  generator inputs". Hand-rolled seeded RNG — no SwiftCheck dep added.
-//
-//  Trial count is 200 per CI run (the lightweight invariant check that
-//  catches any regression in the partition logic). The intent isn't
-//  exhaustive coverage; it's to catch any combination the per-row unit
-//  tests forgot.
-//
-//  Seed is fixed to keep failures reproducible — change it intentionally
-//  if you want a fresh sweep.
+//  Property-based fuzz over `AuthErrorClassifier`, using the generator spec in
+//  `docs/3.2.0-auth-idp-catalog.md` ("Property-based generator inputs") and a
+//  hand-rolled seeded RNG. 200 trials per run catch partition combinations
+//  the per-row unit tests do not cover. The seed is fixed so failures
+//  reproduce; change it deliberately for a fresh sweep.
 //
 
 import XCTest
@@ -51,7 +44,7 @@ final class AuthErrorClassifierPropertyTests: XCTestCase {
     /// Without the 50/50 split, an "always returns .ok" regression in
     /// Rule 4b would silently pass.
     ///
-    /// Wall-failure 2026-06-05-pr1018-icarus-cross-host-logout.md.
+    /// Guards the cross-host logout regression from PR #1018.
     func testInvariant8_foreignHost401_alwaysYieldsOk() {
         var rng = SeededRNG(seed: Self.seed &+ 1)
 

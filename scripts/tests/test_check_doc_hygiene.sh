@@ -19,6 +19,9 @@ for f in \
   ".forgeos/swarms/s1/manifest.yaml" \
   ".forgeos/swarms/s1/architect-review.md" \
   ".forgeos/swarms/s1/contracts/E-Thing.md" \
+  ".forgeos/intent/pp-1234-thing.md" \
+  ".forgeos/wall-failures/2026-01-01-thing.md" \
+  ".forgeos/reviewer-refs/architect-swift-canon.md" \
   "docs/architecture/.arch/facts.json" \
   "docs/architecture/architecture.html" ; do
   blocks "$f" && ok "blocked: $f" || bad "NOT blocked: $f"
@@ -32,8 +35,8 @@ for f in \
   "README.md" \
   "Palace/MyBooks/README.md" \
   "Palace/MyBooks/BorrowReducerCore.swift" \
-  ".forgeos/reviewer-refs/architect-swift-canon.md" \
-  ".forgeos/committed-signing-allowlist.txt" ; do
+  "config/ci/committed-signing-allowlist.txt" \
+  "config/ci/release-waivers/README.md" ; do
   passes "$f" && ok "passed: $f" || bad "FALSE-POSITIVE (blocked): $f"
 done
 

@@ -3,7 +3,7 @@
 //  PalaceTests
 //
 //  Test double for the consolidated FeatureFlagProviding seam
-//  (PalaceFeatureFlags, Wave 1b). Lets tests control which flag branches
+//  (PalaceFeatureFlags). Lets tests control which flag branches
 //  consumers exercise without reaching RemoteFeatureFlags.shared.
 //
 
@@ -26,6 +26,7 @@ final class MockFeatureFlagProvider: FeatureFlagProviding, @unchecked Sendable {
     var isAppRatingPromptEnabled = false
     var isAppRatingForceEligible = false
     var isChapterScrubberEnabled = false
+    var isManagedLibraryConfigurationEnabled = false
 
     /// Per-flag overrides for the raw read; absent flags fall back to the
     /// flag's declared default (mirrors the no-Firebase production fallback).

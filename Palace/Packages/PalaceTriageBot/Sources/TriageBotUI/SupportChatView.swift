@@ -165,11 +165,11 @@ public struct SupportChatView: View {
     private var inputBarConfig: InputBarConfig {
         switch viewModel.state.step {
         case .awaitingDescription, .awaitingFollowUp, .awaitingCategory:
-            return InputBarConfig(isCompositionStep: true, isFollowUpStep: false, placeholder: "Describe what's happening…")
+            return InputBarConfig(isCompositionStep: true, isFollowUpStep: false, placeholder: BotStrings.describeWhatsHappening)
         case .awaitingEscalationFollowUp:
-            return InputBarConfig(isCompositionStep: true, isFollowUpStep: true, placeholder: "Type your answer (or tap Skip)…")
+            return InputBarConfig(isCompositionStep: true, isFollowUpStep: true, placeholder: BotStrings.typeYourAnswer)
         default:
-            return InputBarConfig(isCompositionStep: false, isFollowUpStep: false, placeholder: "Describe what's happening…")
+            return InputBarConfig(isCompositionStep: false, isFollowUpStep: false, placeholder: BotStrings.describeWhatsHappening)
         }
     }
 
@@ -228,7 +228,7 @@ public struct SupportChatView: View {
             // Give the patron a first-class way to keep going. This dispatches
             // the reducer's existing reset action (.userTappedStartOver), which
             // clears state back to a fresh category prompt.
-            BotUI.PrimaryButton(title: "Ask another question", systemImage: "plus.bubble") {
+            BotUI.PrimaryButton(title: BotStrings.askAnotherQuestion, systemImage: "plus.bubble") {
                 viewModel.send(.userTappedStartOver)
             }
             .padding(.horizontal)

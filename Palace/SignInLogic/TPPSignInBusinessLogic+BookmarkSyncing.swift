@@ -11,8 +11,7 @@ import PalaceLogging
 
 extension TPPSignInBusinessLogic {
     @objc func shouldShowSyncButton() -> Bool {
-        // Phase 2 Bucket B (swarm_81b5099e follow-up): state-machine-aware
-        // read. Returns false while details are still loading instead of
+        // State-machine-aware read. Returns false while details are still loading instead of
         // racing a partially-populated `details?`. Bookmark sync is a
         // best-effort silent-failure path per the ADR — denying the sync
         // button until details are confirmed is the right default (the

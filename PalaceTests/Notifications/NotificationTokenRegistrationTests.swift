@@ -1,24 +1,11 @@
-//
 //  NotificationTokenRegistrationTests.swift
-//  PalaceTests
 //
-//  Locks the FCM-token-registration success contract used by
-//  `NotificationService.updateToken`. The pure helper under test
-//  (`shouldMarkTokenRegistered`) decides whether the per-account
-//  `hasUpdatedToken` latch may be set to `true`.
-//
-//  Why this matters (HelpSpot 17680, post-3.0.0):
-//  Prior to the fix, `hasUpdatedToken` was set BEFORE `/patrons/me/`
-//  was even called. When SAML credentials had gone stale, the profile
-//  fetch returned nil, the device-registration endpoint was never
-//  resolved, and the FCM token was never sent to the Circulation
-//  Manager — so the CM had no idea where to push hold-availability
-//  notifications. The flag stayed `true`, blocking every retry until
-//  cold-launch / sign-out / library switch. The fix sets the flag
-//  only when this helper returns `true`.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
-//
+//  Pins `shouldMarkTokenRegistered`, which decides whether
+//  `NotificationService.updateToken` may set the per-account `hasUpdatedToken`
+//  latch. HelpSpot 17680: the latch used to be set before `/patrons/me/` ran, so
+//  with stale SAML credentials the FCM token never reached the Circulation
+//  Manager and hold notifications stopped until cold launch, sign-out or a
+//  library switch. The latch is now set only when this helper returns true.
 
 import XCTest
 @testable import Palace

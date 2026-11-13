@@ -2,9 +2,9 @@
 //  AnnouncementChainTests.swift
 //  PalaceTests
 //
-//  F-013 follow-up: kills the 2 surviving mutants on TPPAnnouncementBusinessLogic
-//  L95 (`if i > 0`) by extracting the index-pair calculation into a pure helper
-//  and exercising it under empty / 1 / 2 / N announcement counts.
+//  Pins TPPAnnouncementBusinessLogic's chaining index-pair calculation
+//  (`if i > 0`), extracted into a pure helper and exercised under
+//  empty / 1 / 2 / N announcement counts.
 //
 
 import XCTest
@@ -21,7 +21,7 @@ final class AnnouncementChainTests: XCTestCase {
     }
 
     /// Single announcement is shown directly with its own dismiss button —
-    /// no chaining needed. Kills the `> 0` → `>= 0` mutant: `>= 0` would
+    /// no chaining needed. A `>= 0` bound would
     /// emit a (-1, 0) pair and crash on `announcements[-1]`.
     func test_chainAttachmentIndices_oneAnnouncement_returnsEmpty() {
         let pairs = TPPAnnouncementBusinessLogic.chainAttachmentIndices(forAnnouncementCount: 1)
@@ -38,8 +38,7 @@ final class AnnouncementChainTests: XCTestCase {
     }
 
     /// Three announcements: chain alerts[0]→alerts[1] and alerts[1]→alerts[2].
-    /// Kills the `> 0` → `< 0` mutant (returns no pairs at all) and the
-    /// `i - 1` index calculation.
+    /// Pins both the `> 0` bound and the `i - 1` index calculation.
     func test_chainAttachmentIndices_threeAnnouncements_returnsTwoChainedPairs() {
         let pairs = TPPAnnouncementBusinessLogic.chainAttachmentIndices(forAnnouncementCount: 3)
         XCTAssertEqual(pairs.count, 2)

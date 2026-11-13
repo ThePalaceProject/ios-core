@@ -10,5 +10,11 @@
       "book" : "reauth-coupling-C1"
     },
     "method" : "presentBorrowErrorAlert"
+  },
+  {
+    "args" : {
+      "book" : "reauth-coupling-C1"
+    },
+    "method" : "publishBorrowError"
   }
 ]

@@ -5,11 +5,9 @@
 //  Accessibility improvements for reduced motion support
 //  Provides animations that respect the Reduce Motion accessibility setting.
 //
-//  The `.accessibleAnimation(_:value:)` view path is a `ViewModifier` that reads
+//  `.accessibleAnimation(_:value:)` reads
 //  `@Environment(\.accessibilityReduceMotion)`, so a mid-session Reduce Motion
-//  toggle is picked up reactively (the old implementation snapshotted
-//  `UIAccessibility.isReduceMotionEnabled` at body-evaluation time and did not
-//  update until the view re-rendered for another reason).
+//  toggle is picked up without waiting for an unrelated re-render.
 //
 
 import SwiftUI

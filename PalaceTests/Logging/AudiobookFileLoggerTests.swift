@@ -166,8 +166,8 @@ final class AudiobookFileLoggerTests: XCTestCase {
 
         let log = sut.retrieveLog(forBookId: testBookId) ?? ""
         // We can't promise all 50 land (no internal lock), but the file must
-        // exist and contain more than one event — a mutant that no-ops
-        // logEvent or only writes the first call would fail.
+        // exist and contain more than one event — a no-op logEvent or one
+        // that only writes the first call fails.
         let markerHits = (0..<writeCount).filter { log.contains("marker-\($0)-payload") }.count
         XCTAssertGreaterThanOrEqual(
             markerHits, 2,
@@ -206,8 +206,8 @@ final class AudiobookFileLoggerTests: XCTestCase {
 
     /// Pins the EXACT 1MB truncation boundary in `retrieveLog`. At
     /// exactly 1,000,000 bytes the `>` comparison must be false (no
-    /// truncation, returns full file). A `>=` mutant would incorrectly
-    /// truncate, yielding the "...[truncated" prefix.
+    /// truncation, returns full file). `>=` would incorrectly truncate,
+    /// yielding the "...[truncated" prefix.
     func testRetrieveLog_atExact1MBBoundary_doesNotTruncate() {
         guard let logsDir = sut.getLogsDirectoryUrl() else {
             XCTFail("logs directory unavailable")
@@ -231,8 +231,8 @@ final class AudiobookFileLoggerTests: XCTestCase {
 
     /// Pins the EXACT 2MB rotation boundary in `logEvent`. At exactly
     /// 2,000,000 bytes the `fileSize > maxLogFileSize` is false (no
-    /// rotation; append in place). A `>=` mutant would erroneously
-    /// rotate, dropping the existing content under the "previous log
+    /// rotation; append in place). `>=` would erroneously rotate,
+    /// dropping the existing content under the "previous log
     /// truncated" prefix.
     func testLogEvent_atExact2MBBoundary_appendsRatherThanRotates() {
         guard let logsDir = sut.getLogsDirectoryUrl() else {
@@ -294,11 +294,11 @@ final class AudiobookFileLoggerTests: XCTestCase {
         )
     }
 
-    // MARK: - LogArchiveExporting seam (Wave 1c)
+    // MARK: - LogArchiveExporting seam
 
     /// The exporter seam must surface the same directory the logger writes to —
-    /// exercised through a real write against the injected temp root (kills a
-    /// `return nil` / wrong-directory mutant; not a conformance tautology).
+    /// exercised through a real write against the injected temp root (catches
+    /// `nil` or a wrong directory).
     func testLogArchiveDirectoryURL_afterLoggingEvent_containsTheWrittenLog() throws {
         sut.logEvent(forBookId: testBookId, event: "playback started")
 

@@ -2,12 +2,12 @@
 //  AccountErrorReportingTests.swift
 //  PalaceTests
 //
-//  Wave 1c (cycle 2): behavior test of the Account error-reporting seam. The
+//  Behavior test of the Account error-reporting seam. The
 //  Account error paths (auth-doc load/parse, logo failure, profile document)
 //  route through an injected `any ErrorReporting` instead of naming
 //  TPPErrorLogger directly. This exercises the seam through a REAL error path
-//  (loadAuthenticationDocument with no auth-document URL) so a reporter-drop
-//  or wrong-code mutant fails.
+//  (loadAuthenticationDocument with no auth-document URL) so a dropped
+//  reporter call or a wrong error code fails.
 //
 
 import XCTest

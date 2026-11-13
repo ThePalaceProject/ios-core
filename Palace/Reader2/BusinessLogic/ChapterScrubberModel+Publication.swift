@@ -4,26 +4,10 @@
 //
 //  PP-5006: builds a `ChapterScrubberModel` from a Readium `Publication`.
 //
-//  Everything expensive happens here, ONCE per opened book, off the drag path.
-//  `positionsByReadingOrder()` walks every spine resource the first time it is
-//  called (the EPUB positions service is an actor that memoizes the result), so
-//  the scrubber asks for it while the reader is idle and then never touches
-//  Readium again until the patron lifts their finger.
-//
-//  The non-obvious part is where a chapter's start progression comes from.
-//  `publication.locate(_ link:)` does NOT carry one — it returns a locator with
-//  `progression: 0.0` relative to the RESOURCE and no `totalProgression` at all.
-//  The book-wide fraction a table-of-contents entry corresponds to has to be
-//  read out of the positions list instead: resolve the entry's href to a
-//  reading-order index, then take the `totalProgression` of that resource's
-//  first position.
-//
-//  The consequence, which is a real limit of the prototype and not a bug:
-//  several table-of-contents entries that point at FRAGMENTS of one spine
-//  resource all resolve to that resource's start. Such entries collapse to a
-//  single tick (see `ChapterScrubberModel.init`). Books that put many chapters
-//  in one XHTML file therefore get a coarser track than their table of contents
-//  suggests.
+//  Runs once per opened book, off the drag path. `publication.locate(_ link:)`
+//  carries no `totalProgression`, so a TOC entry's book-wide start is taken from
+//  the first position of the resource its href points into. Known limit: TOC
+//  entries that point at fragments of one resource collapse to a single tick.
 //
 
 import Foundation
@@ -71,8 +55,7 @@ extension ChapterScrubberModel {
 
     /// Pairs each table-of-contents entry with the book-wide progression of the
     /// resource it points into. Entries whose resource is out of range, or whose
-    /// resource reports no positions, are dropped — a tick with no place to go
-    /// is worse than no tick.
+    /// resource reports no positions, are dropped.
     static func chapters(
         for entries: [TOCEntry],
         firstProgressionByResource: [Double?]

@@ -1,18 +1,9 @@
 //
-//  RegistryDownloadServicingSeamTests.swift
-//  PalaceTests
-//
-//  Pins the app-side `MyBooksDownloadCenter` conformance to the registry's
-//  `RegistryDownloadServicing` seam (god-class-decomposition Wave 2b). The
-//  `#if LCP` license-vs-content probe moved OUT of the package into this
-//  conformance because SPM targets don't inherit the app's LCP define; these
-//  tests lock the build-flavor-INDEPENDENT contract of the two probe methods —
-//  the content-file-existence path (the whole method on noDRM, the non-LCP path
-//  on DRM). The `.lcpl`-license-only branch is LCP-define + fixture gated and is
-//  covered by the byte-identical relocation + noDRM launch verification (see the
-//  wave intent's Deferred stanza).
-//
-//  Copyright © 2025 The Palace Project. All rights reserved.
+//  Pins MyBooksDownloadCenter's conformance to the registry's
+//  `RegistryDownloadServicing` seam. The `#if LCP` license-vs-content probe lives
+//  in the app because SPM targets don't inherit the app's LCP define. These cover
+//  the build-flavor-independent content-file-existence path; the `.lcpl`-only
+//  branch needs the LCP define plus fixtures and is not covered here.
 //
 
 import XCTest

@@ -122,7 +122,7 @@ final class BookmarkBusinessLogicExtendedTests: XCTestCase {
 
     /// `bookmark(at:)` guards both ends of the array — negative indices AND
     /// indices >= count must yield nil. Pair both invalid shapes with a
-    /// valid lookup so a mutant that always-returns-nil OR drops the bounds
+    /// valid lookup so a change that always-returns-nil OR drops the bounds
     /// check fails on the same test.
     func testBookmarkAtIndex_returnsNilForOutOfRangeIndicesAndItemForValid() {
         // Empty registry: every index is out of range.
@@ -202,7 +202,7 @@ final class BookmarkBusinessLogicExtendedTests: XCTestCase {
 
     /// `deleteBookmark(at:)` guards out-of-range indices and leaves the
     /// bookmark list untouched. Pair both invalid shapes plus a valid delete
-    /// so a mutant that always-removes (regardless of bounds) is caught.
+    /// so a change that always-removes (regardless of bounds) is caught.
     func testDeleteBookmarkAtIndex_guardsOutOfRangeAndRemovesOnlyValidIndex() {
         guard let bookmark = createBookmark(progressWithinBook: 0.5) else {
             XCTFail("Failed to create bookmark"); return
@@ -243,7 +243,7 @@ final class BookmarkBusinessLogicExtendedTests: XCTestCase {
     /// one set of asserts rather than three single-statement tests.
     func testReadOnlySurfaces_noBookmarksText_shouldSelect_shouldAllowRefresh() {
         // noBookmarksText delegates to localized Strings — must match the
-        // canonical localization key, not just be non-empty (a mutant that
+        // canonical localization key, not just be non-empty (a change that
         // returns "" would pass the non-empty check).
         XCTAssertEqual(businessLogic.noBookmarksText,
                        Strings.TPPReaderBookmarksBusinessLogic.noBookmarks,
@@ -524,7 +524,7 @@ final class BookmarkExistenceTests: XCTestCase {
 
     /// `isBookmarkExisting(at:)` early-returns nil on a nil location AND on
     /// a nil locator inside a non-nil location. Two distinct branches in
-    /// production — a mutant that drops the optional-binding guard fails on
+    /// production — a change that drops the optional-binding guard fails on
     /// either probe.
     func testIsBookmarkExisting_returnsNilForNilLocationAndForLocationWithoutMatch() {
         XCTAssertNil(businessLogic.isBookmarkExisting(at: nil),

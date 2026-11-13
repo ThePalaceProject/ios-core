@@ -2,14 +2,14 @@
 //  TokenRefreshInterceptorAuthCoordinatorTests.swift
 //  PalaceTests
 //
-//  swarm_66819d80 Module C — caller-migration assertions for
+//  Caller-migration assertions for
 //  `TokenRefreshInterceptor` when wired with an `AuthCoordinator`.
 //
 //  When the coordinator is injected, the SAML + generic browser dispatch
 //  branches inside `handleDownloadFailureWithAuthCheck`,
 //  the `no-active-loan` PP-3716 branch, and `handleProblem` route through
 //  `coordinator.refreshCredentialsIfNeeded(reason:)`. The OIDC silent
-//  reauth path STAYS UNCHANGED (Option A from the contract).
+//  reauth path is unchanged.
 //
 
 import XCTest
@@ -349,7 +349,7 @@ final class TokenRefreshInterceptorAuthCoordinatorTests: XCTestCase {
     /// coordinator → modal pops for the wrong account on every
     /// foreign-library download retry.
     ///
-    /// Wall-failure 2026-06-05-pr1018-icarus-cross-host-logout.md.
+    /// Regression seen in PR #1018 (cross-host logout).
     func testForeignHost_401_SAML_doesNotMarkCredentialsStale_doesNotDispatchCoordinator() async throws {
         let (coordinator, _, modal, userAcctSpy, _) = SpyAuthCoordinatorFactory.make(
             mechanism: .saml,

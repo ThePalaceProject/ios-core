@@ -2,36 +2,84 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>year_suffix_long</key>
+	<key>day_suffix_long</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
-		<string>%#@year@</string>
-		<key>year</key>
+		<string>%#@day@</string>
+		<key>day</key>
 		<dict>
 			<key>NSStringFormatSpecTypeKey</key>
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>d</string>
 			<key>one</key>
-			<string>1 anno</string>
+			<string>1 giorno</string>
 			<key>other</key>
-			<string>%d anni</string>
+			<string>%d giorni</string>
 		</dict>
 	</dict>
-	<key>year_suffix_short</key>
+	<key>day_suffix_short</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
-		<string>%#@year@</string>
-		<key>year</key>
+		<string>%#@day@</string>
+		<key>day</key>
 		<dict>
 			<key>NSStringFormatSpecTypeKey</key>
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>d</string>
 			<key>one</key>
-			<string>1 a</string>
+			<string>1 g</string>
 			<key>other</key>
-			<string>%d a</string>
+			<string>%d g</string>
+		</dict>
+	</dict>
+	<key>hold_status_copies_in_use</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>Lei è al %1$@ posto nella lista d’attesa. %2$#@copies@</string>
+		<key>copies</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%d copia in uso.</string>
+			<key>other</key>
+			<string>%d copie in uso.</string>
+		</dict>
+	</dict>
+	<key>hour_suffix_long</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@hour@</string>
+		<key>hour</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>1 ora</string>
+			<key>other</key>
+			<string>%d ore</string>
+		</dict>
+	</dict>
+	<key>hour_suffix_short</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@hour@</string>
+		<key>hour</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>1 o</string>
+			<key>other</key>
+			<string>%d o</string>
 		</dict>
 	</dict>
 	<key>month_suffix_long</key>
@@ -98,68 +146,36 @@
 			<string>%d s</string>
 		</dict>
 	</dict>
-	<key>day_suffix_long</key>
+	<key>year_suffix_long</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
-		<string>%#@day@</string>
-		<key>day</key>
+		<string>%#@year@</string>
+		<key>year</key>
 		<dict>
 			<key>NSStringFormatSpecTypeKey</key>
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>d</string>
 			<key>one</key>
-			<string>1 giorno</string>
+			<string>1 anno</string>
 			<key>other</key>
-			<string>%d giorni</string>
+			<string>%d anni</string>
 		</dict>
 	</dict>
-	<key>day_suffix_short</key>
+	<key>year_suffix_short</key>
 	<dict>
 		<key>NSStringLocalizedFormatKey</key>
-		<string>%#@day@</string>
-		<key>day</key>
+		<string>%#@year@</string>
+		<key>year</key>
 		<dict>
 			<key>NSStringFormatSpecTypeKey</key>
 			<string>NSStringPluralRuleType</string>
 			<key>NSStringFormatValueTypeKey</key>
 			<string>d</string>
 			<key>one</key>
-			<string>1 g</string>
+			<string>1 a</string>
 			<key>other</key>
-			<string>%d g</string>
-		</dict>
-	</dict>
-	<key>hour_suffix_long</key>
-	<dict>
-		<key>NSStringLocalizedFormatKey</key>
-		<string>%#@hour@</string>
-		<key>hour</key>
-		<dict>
-			<key>NSStringFormatSpecTypeKey</key>
-			<string>NSStringPluralRuleType</string>
-			<key>NSStringFormatValueTypeKey</key>
-			<string>d</string>
-			<key>one</key>
-			<string>1 ora</string>
-			<key>other</key>
-			<string>%d ore</string>
-		</dict>
-	</dict>
-	<key>hour_suffix_short</key>
-	<dict>
-		<key>NSStringLocalizedFormatKey</key>
-		<string>%#@hour@</string>
-		<key>hour</key>
-		<dict>
-			<key>NSStringFormatSpecTypeKey</key>
-			<string>NSStringPluralRuleType</string>
-			<key>NSStringFormatValueTypeKey</key>
-			<string>d</string>
-			<key>one</key>
-			<string>1 o</string>
-			<key>other</key>
-			<string>%d o</string>
+			<string>%d a</string>
 		</dict>
 	</dict>
 </dict>

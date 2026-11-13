@@ -2,26 +2,14 @@
 //  DownloadAccountContext.swift
 //  Palace
 //
-//  Downloads-owned account-context seams (god-class decomposition Wave 3, S2).
-//
-//  These protocols invert the Downloads→Accounts read coupling (the B-side of
-//  the Accounts↔Downloads hub pair) WITHOUT widening PalaceBookRegistry's
-//  `AccountScopeProviding`. The only member Downloads shares with the registry
-//  protocol is `currentAccountID`; everything else here is credential/auth
-//  *capability* the registry must never see. Hanging that on a registry-owned
-//  protocol would make PalaceBookRegistry the accidental home of download-auth
-//  concerns and force every registry consumer to compile against them — so
-//  Wave 3 §2 keeps the surfaces split. PalaceBookRegistry is untouched.
-//
-//  These declarations are app-target today and MOVE INTO PalaceDownloads at 3b
-//  (protocol declared in the consuming/lower package, implemented from above —
-//  the same inversion shape as 2b's `AccountScopeProviding`). What crosses the
-//  boundary is deliberately narrow: value queries (`isSaml`/`needsAuth`/
-//  `reauthStrategy`/`isOidc`) plus the 401-recovery writeback
-//  (`markCredentialsStale`/`setAuthToken`/`setCookies`). What does NOT cross as
-//  named types: `Account`, `AccountDetails`, `AccountsManager`, `TPPUserAccount`
-//  — the `authDefinition` object never crosses (reduced to the 4 value queries),
-//  which is what keeps 3b package-legal without moving `TPPUserAccount`.
+//  Downloads-owned account-context protocols. They invert the Downloads→Accounts
+//  read coupling without widening PalaceBookRegistry's `AccountScopeProviding`,
+//  which must not carry download-auth capability. The surface is deliberately
+//  narrow: value queries (`needsAuth`/`isSaml`/`isOidc`/`reauthStrategy`) plus
+//  the 401-recovery writeback. `Account`, `AccountsManager`, `TPPUserAccount`
+//  and the `authDefinition` object never cross, so these can move into a
+//  package without moving `TPPUserAccount`. See
+//  docs/architecture/god-class-decomposition-plan.md.
 //
 
 import Foundation
@@ -41,9 +29,7 @@ protocol DownloadAccountScopeProviding: Sendable {
     /// Hosts that constitute the current account's auth surface (auth-doc,
     /// catalog, loans, home page), lowercased at the producer. Empty set is the
     /// cold-launch signal (auth doc not yet loaded) — consumers must fall back
-    /// to legacy behavior rather than false-block. Kills the ambient
-    /// `AppContainer.production().accountsManager.currentAccount?.authSurfaceHosts`
-    /// locator reaches in the download 401-classification path (B6).
+    /// to legacy behavior rather than false-block.
     var currentAccountAuthSurfaceHosts: Set<String> { get }
 }
 
@@ -56,9 +42,8 @@ protocol DownloadCredentialsProviding: Sendable {
 }
 
 /// The credential/auth capability surface the download subsystem reads and
-/// writes on a per-library account. `TPPUserAccount` conforms app-side. This is
-/// a *capability* boundary (unlike 2b's value-only registry boundary): the
-/// writeback members are the 401-recovery path and must cross.
+/// writes on a per-library account. `TPPUserAccount` conforms app-side. Unlike
+/// the registry's value-only boundary, the 401-recovery writeback must cross.
 protocol DownloadUserAccount: AnyObject, Sendable {
     // Value queries (replace the `authDefinition` object — it never crosses).
     var needsAuth: Bool { get }
@@ -92,8 +77,7 @@ protocol DownloadUserAccount: AnyObject, Sendable {
 
 /// Package-local mirror of `AccountDetails.Authentication.ReauthStrategy`. The
 /// app-side adapter maps the real enum here via an EXHAUSTIVE switch, so a new
-/// upstream case is a compile error rather than silent `.none` drift (Wave 3
-/// §5 risk 3).
+/// upstream case is a compile error rather than silent `.none` drift.
 enum DownloadReauthStrategy: Equatable, Sendable {
     /// Browser-based sign-in flow (SAML IdP, OIDC provider).
     case browser

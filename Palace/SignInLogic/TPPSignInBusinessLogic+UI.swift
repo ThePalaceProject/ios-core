@@ -8,6 +8,7 @@
 
 import UIKit
 import PalaceBookRegistry
+import PalaceUtilities
 
 extension TPPSignInBusinessLogic {
 
@@ -99,7 +100,9 @@ extension TPPSignInBusinessLogic {
         } else if let drm = drmAuthorizer, drm.workflowsInProgress {
             msg = Strings.TPPSigninBusinessLogic.pendingDownloadMessage
         } else {
-            performLogOut()
+            // `logOutOrWarn()` must return its alert synchronously, so the
+            // sign-out is started in a Task rather than awaited here.
+            Task { await performLogOut() }
             return nil
         }
 
@@ -120,7 +123,7 @@ extension TPPSignInBusinessLogic {
                 UIAlertAction(title: title,
                               style: .destructive,
                               handler: { _ in
-                                self.performLogOut()
+                                Task { await self.performLogOut() }
                               }))
             alert.addAction(
                 UIAlertAction(title: Strings.Generic.wait,

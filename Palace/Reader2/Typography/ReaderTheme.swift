@@ -19,7 +19,16 @@ enum ReaderTheme: String, Codable, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var displayName: String { rawValue }
+    /// Localized. `rawValue` stays English — it is the Codable/persistence value.
+    var displayName: String {
+        switch self {
+        case .light: return Strings.ReaderTypography.themeLight
+        case .dark: return Strings.ReaderTypography.themeDark
+        case .sepia: return Strings.ReaderTypography.themeSepia
+        case .solarized: return Strings.ReaderTypography.themeSolarized
+        case .night: return Strings.ReaderTypography.themeNight
+        }
+    }
 
     /// Background color for the reading area.
     var backgroundColor: UIColor {

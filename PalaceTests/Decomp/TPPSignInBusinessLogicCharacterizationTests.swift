@@ -2,34 +2,13 @@
 //  TPPSignInBusinessLogicCharacterizationTests.swift
 //  PalaceTests
 //
-//  CHARACTERIZATION PACK — blocking prerequisite for the god-class
-//  decomposition of `TPPSignInBusinessLogic` (see
-//  docs/architecture/god-class-decomposition-plan.md §5, row
-//  "TPPSignInBusinessLogic").
-//
-//  This file pins the behavior of the two clusters the plan extracts into
-//  PalaceAuth / PalaceAccounts:
-//    - SignInRequestService  (makeRequest + validateCredentials wiring +
-//      error surfacing) → PalaceAuth
-//    - CredentialStore       (updateUserAccount persistence contract per auth
-//      method) → PalaceAccounts (+ PalaceKeychain)
-//
-//  A second file, TPPSignInCapabilitiesCharacterizationTests.swift, covers the
-//  AuthCapabilities-derivation and Adobe-DRM-activation-skip clusters.
-//
-//  Every test drives a real Arrange→Act→Assert against TODAY's code with a
-//  mutation-killing assertion (flip a conditional / drop an assignment in the
-//  covered code and the test fails). Hermetic: TPPRequestExecutorMock for the
-//  /patrons/me request, TPPUserAccountMock for the keychain seam,
-//  TPPDRMAuthorizingMock for device auth. No live network / keychain.
-//
-//  NOTE (integration): this class already carries broad scattered coverage
-//  (TPPSignInBusinessLogicTests, ...OAuthTests, ...SignOutTests, ...OIDCTests,
-//  ...ExtendedTests, ...StateMachineTests, TPPSAMLSignInTests, TPPSignInAdobe
-//  SkipTests). The "0 dedicated tests" premise in the plan is STALE. This pack
-//  is the *consolidated per-extraction-boundary contract* plus the genuinely
-//  uncovered branches (no-URL validation error, oauth-family barcode fallback,
-//  non-SAML cookie gate). Overlaps are called out in the mission report.
+//  Characterization tests for the two `TPPSignInBusinessLogic` clusters the
+//  decomposition extracts (docs/architecture/god-class-decomposition-plan.md §5):
+//  the sign-in request service (makeRequest, validateCredentials, error surfacing)
+//  and the credential store (updateUserAccount per auth method).
+//  TPPSignInCapabilitiesCharacterizationTests covers capabilities and the Adobe
+//  activation skip. Hermetic: TPPRequestExecutorMock, TPPUserAccountMock and
+//  TPPDRMAuthorizingMock stand in for network, keychain and device auth.
 //
 
 import XCTest
@@ -124,7 +103,7 @@ final class SignInRequestServiceCharacterizationTests: XCTestCase {
     }
 
     // A1 — sign-OUT request for basic auth: URL present, NO bearer header.
-    // Kills a mutant that adds a bearer header for non-token auth on sign-out,
+    // Catches a change that adds a bearer header for non-token auth on sign-out,
     // or that drops the userProfileUrl → returns nil.
     func test_makeRequest_signOut_basicAuth_hasProfileURL_andNoBearerHeader() {
         businessLogic.selectedAuthentication = libraryMock.barcodeAuthentication
@@ -141,9 +120,9 @@ final class SignInRequestServiceCharacterizationTests: XCTestCase {
     // A2 — GAP: validateCredentials when the request cannot be built.
     // Building against a library whose details never loaded makes makeRequest
     // return nil; validateCredentials must surface a validation error to the UI
-    // and fire NO network call. Kills the `guard let req = makeRequest` mutant
+    // and fire NO network call. Catches the `guard let req = makeRequest` regression
     // (removing/negating it would proceed to executeRequest).
-    func test_validateCredentials_whenRequestUnbuildable_surfacesError_andFiresNoNetworkCall() {
+    func test_validateCredentials_whenRequestUnbuildable_surfacesError_andFiresNoNetworkCall() async {
         let recording = RecordingSignInUIDelegate()
         let blogic = TPPSignInBusinessLogic(
             libraryAccountID: "totally-unknown-library",   // resolves to detail-less Account
@@ -159,8 +138,8 @@ final class SignInRequestServiceCharacterizationTests: XCTestCase {
         XCTAssertNil(blogic.makeRequest(for: .signIn, context: "precondition"),
                      "precondition: makeRequest must be nil for a detail-less library")
 
-        blogic.validateCredentials()
-        drainMainQueue()   // the delegate error hop runs via asyncIfNeeded
+        await blogic.validateCredentials()
+        await drainMainQueueAsync()   // the delegate error hop runs via asyncIfNeeded
 
         XCTAssertTrue(networkExecutor.executedRequestURLs.isEmpty,
                       "an unbuildable request must short-circuit BEFORE any network call")
@@ -174,32 +153,39 @@ final class SignInRequestServiceCharacterizationTests: XCTestCase {
 
     // A3 — validateCredentials success path routes makeRequest's URL through the
     // executor. Pins the makeRequest→executeRequest wiring at the /patrons/me
-    // URL. Kills a mutant that fires the wrong URL or skips the request.
-    func test_validateCredentials_basicAuth_firesUserProfileRequest() {
+    // URL. Catches a change that fires the wrong URL or skips the request.
+    func test_validateCredentials_basicAuth_firesUserProfileRequest() async {
         businessLogic.selectedAuthentication = libraryMock.barcodeAuthentication
 
-        businessLogic.validateCredentials()   // executeRequest records URL synchronously
+        await businessLogic.validateCredentials()   // executeRequest records URL synchronously
 
         XCTAssertEqual(networkExecutor.executedRequestURLs.count, 1,
                        "validateCredentials must fire exactly one credential-validation request")
         XCTAssertTrue(networkExecutor.executedRequestURLs.first?.absoluteString.contains(profilePath) ?? false,
                       "the validation request must target the fixture's userProfileUrl (/patrons/me)")
-        XCTAssertTrue(businessLogic.isValidatingCredentials,
-                      "validateCredentials must enter the validating state")
+        XCTAssertEqual(networkExecutor.executedAccountIds, [libraryMock.tppAccountUUID],
+                       "the request must name the library it was built for — a nil "
+                       + "accountId authenticates as whichever library is selected, "
+                       + "which is the PP-4986 defect and is invisible in the response")
+        XCTAssertFalse(businessLogic.isValidatingCredentials,
+                       "the validating flag must be cleared once a successful "
+                       + "validation completes — `await` returns after the success "
+                       + "dispatch, so the in-flight `true` is no longer observable "
+                       + "from here")
     }
 
     // A4 — validateCredentials failure (401) surfaces a validation error and does
     // NOT report didReceiveCredentials. Distinct from the callback-order test:
-    // here we prove the error CONTENT is surfaced (recording delegate). Kills a
-    // mutant that swaps the success/failure arms of the executor result switch.
-    func test_validateCredentials_httpFailure_surfacesValidationError_andNoCredentialsReceived() {
+    // here we prove the error CONTENT is surfaced (recording delegate). Catches a
+    // regression that swaps the success/failure arms of the executor result switch.
+    func test_validateCredentials_httpFailure_surfacesValidationError_andNoCredentialsReceived() async {
         let recording = RecordingSignInUIDelegate()
         businessLogic.uiDelegate = recording
         businessLogic.selectedAuthentication = libraryMock.barcodeAuthentication
         networkExecutor.forceFailureStatusCode = 401
 
-        businessLogic.validateCredentials()
-        drainMainQueue()
+        await businessLogic.validateCredentials()
+        await drainMainQueueAsync()
 
         XCTAssertEqual(recording.validationErrorCount, 1,
                        "a 401 must surface exactly one validation error to the UI")
@@ -258,15 +244,15 @@ final class SignInRequestServiceCharacterizationTests: XCTestCase {
     }
 
     // A17 — validateCredentials SUCCESS arm reports didReceiveCredentials (so the
-    // UI can show its DRM spinner). Positive complement of A4; kills a mutant
+    // UI can show its DRM spinner). Positive complement of A4; catches a regression
     // that drops the businessLogicDidReceiveCredentials call on success.
-    func test_validateCredentials_basicAuthSuccess_reportsDidReceiveCredentials() {
+    func test_validateCredentials_basicAuthSuccess_reportsDidReceiveCredentials() async {
         let recording = RecordingSignInUIDelegate()
         businessLogic.uiDelegate = recording
         businessLogic.selectedAuthentication = libraryMock.barcodeAuthentication
 
-        businessLogic.validateCredentials()
-        drainMainQueue()
+        await businessLogic.validateCredentials()
+        await drainMainQueueAsync()
 
         XCTAssertEqual(recording.didReceiveCredentialsCount, 1,
                        "a successful validation must signal didReceiveCredentials exactly once")
@@ -275,7 +261,7 @@ final class SignInRequestServiceCharacterizationTests: XCTestCase {
     }
 
     // A18 — makeRequest header contract also applies on SIGN-OUT: an OAuth
-    // sign-out carries the Bearer token. Kills a mutant that only attaches the
+    // sign-out carries the Bearer token. Catches a change that only attaches the
     // header on sign-in.
     func test_makeRequest_signOut_oauth_attachesBearer() {
         businessLogic.selectedAuthentication = libraryMock.oauthAuthentication
@@ -355,7 +341,7 @@ final class CredentialStoreCharacterizationTests: XCTestCase {
     }
 
     // A12 — SAML persistence contract: token+patron+COOKIES stored (the isSaml
-    // cookie gate). Kills the `if selectedAuth.isSaml, let cookies` mutant.
+    // cookie gate). Catches the `if selectedAuth.isSaml, let cookies` regression.
     func test_updateUserAccount_saml_persistsTokenPatronAndCookies() {
         let cookie = HTTPCookie(properties: [
             .domain: "idp.example.com", .path: "/", .name: "s", .value: "v"])!
@@ -382,7 +368,7 @@ final class CredentialStoreCharacterizationTests: XCTestCase {
     }
 
     // A14 — GAP: OAuth-family with BOTH token AND barcode/pin persists all three
-    // (the setAuthToken(token, barcode:, pin:) arm). Kills a mutant that drops
+    // (the setAuthToken(token, barcode:, pin:) arm). Catches a change that drops
     // the barcode/pin arguments when a token is present.
     func test_updateUserAccount_oauthFamily_withTokenAndBarcodePin_persistsAll() {
         update(auth: libraryMock.oauthAuthentication,
@@ -396,7 +382,7 @@ final class CredentialStoreCharacterizationTests: XCTestCase {
     }
 
     // A15 — GAP: OAuth-family WITHOUT a token falls back to barcode/pin
-    // (the inner `else if let barcode, let pin` arm). Kills a mutant that drops
+    // (the inner `else if let barcode, let pin` arm). Catches a change that drops
     // the no-token fallback.
     func test_updateUserAccount_oauthFamily_withoutToken_fallsBackToBarcodePin() {
         update(auth: libraryMock.oauthAuthentication, barcode: "bc-y", pin: "pin-y")
@@ -409,7 +395,7 @@ final class CredentialStoreCharacterizationTests: XCTestCase {
     }
 
     // A16 — GAP: a non-SAML auth must NOT persist cookies even when they are
-    // passed. Kills a mutant that widens the cookie gate beyond SAML.
+    // passed. Catches a change that widens the cookie gate beyond SAML.
     func test_updateUserAccount_basicAuth_ignoresCookies() {
         let cookie = HTTPCookie(properties: [
             .domain: "x.example.com", .path: "/", .name: "leak", .value: "no"])!

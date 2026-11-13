@@ -72,12 +72,11 @@ final class TPPCredentialPersistenceTests: XCTestCase {
 
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
 
-        // `TPPRequestExecutorMock.executeRequest` completes via a single
-        // `DispatchQueue.main.async` hop; `finalizeSignIn` runs synchronously
-        // off that hop via `TPPMainThreadRun.asyncIfNeeded`'s on-main fast
-        // path, so draining the main queue once is sufficient to observe the
+        // The double now completes on its own background queue, matching the
+        // executor's `delegateQueue: nil`; `finalizeSignIn` hops to main via
+        // `TPPMainThreadRun.asyncIfNeeded`, so one drain still settles the
         // post-sign-in state.
         await drainMainQueueAsync()
 
@@ -98,7 +97,7 @@ final class TPPCredentialPersistenceTests: XCTestCase {
 
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
 
         // Single main-queue hop (see testFullSignInFlow_credentialsRemainAccessible).
         await drainMainQueueAsync()
@@ -116,7 +115,7 @@ final class TPPCredentialPersistenceTests: XCTestCase {
 
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
 
         // Single main-queue hop (see testFullSignInFlow_credentialsRemainAccessible).
         await drainMainQueueAsync()
@@ -503,7 +502,7 @@ final class TPPSignInAuthStateTransitionTests: XCTestCase {
 
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
         // Single main-queue hop (see TPPCredentialPersistenceTests above).
         await drainMainQueueAsync()
 
@@ -519,7 +518,7 @@ final class TPPSignInAuthStateTransitionTests: XCTestCase {
 
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
         // Single main-queue hop (see TPPCredentialPersistenceTests above).
         await drainMainQueueAsync()
 
@@ -537,7 +536,7 @@ final class TPPSignInAuthStateTransitionTests: XCTestCase {
         uiDelegate.username = "testBarcode"
         uiDelegate.pin = "testPin"
 
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
         // Single main-queue hop (see TPPCredentialPersistenceTests above).
         await drainMainQueueAsync()
 
@@ -616,7 +615,7 @@ final class TPPSignInProfileDocEdgeCaseTests: XCTestCase {
         uiDelegate.pin = "4567"
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
         // Single main-queue hop (see TPPCredentialPersistenceTests above).
         await drainMainQueueAsync()
 
@@ -638,7 +637,7 @@ final class TPPSignInProfileDocEdgeCaseTests: XCTestCase {
         uiDelegate.pin = "myPin"
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
         // Single main-queue hop (see TPPCredentialPersistenceTests above).
         await drainMainQueueAsync()
 
@@ -655,7 +654,7 @@ final class TPPSignInProfileDocEdgeCaseTests: XCTestCase {
         uiDelegate.pin = "drmPin"
         businessLogic.selectedAuthentication = libraryAccountMock.barcodeAuthentication
 
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
         // Single main-queue hop (see TPPCredentialPersistenceTests above).
         await drainMainQueueAsync()
 
@@ -818,14 +817,17 @@ final class TPPCapturedCredentialsTests: XCTestCase {
         // Simulate: logIn captures credentials, then UI delegate is cleared
         // before finalizeSignIn reads them. This happens in production when
         // executeTokenRefresh fires accountDidChange → ViewModel clears fields.
-        businessLogic.logIn()
+        // Clear the delegate at dispatch, which is after logIn() captures the
+        // credentials and before the success path persists them. Clearing it
+        // once `await logIn()` has returned is too late: the awaited call runs
+        // the whole sign-in, so persistence has already read the delegate and
+        // the assertions below would hold even if the capture never happened.
+        networkExecutor.onExecuteRequest = { [uiDelegate] _ in
+            uiDelegate?.username = nil
+            uiDelegate?.pin = nil
+        }
 
-        // Clear the UI delegate's credentials (simulating accountDidChange clearing ViewModel)
-        uiDelegate.username = nil
-        uiDelegate.pin = nil
-
-        // Single main-queue hop: barcode/basic auth's logIn() resolves to
-        // validateCredentials() (see TPPCredentialPersistenceTests above).
+        await businessLogic.logIn()
         await drainMainQueueAsync()
 
         let user = businessLogic.userAccount
@@ -922,7 +924,7 @@ final class TPPCapturedCredentialsTests: XCTestCase {
         uiDelegate.username = "firstBarcode"
         uiDelegate.pin = "firstPin"
 
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
         // Single main-queue hop (see TPPCredentialPersistenceTests above).
         await drainMainQueueAsync()
 
@@ -934,14 +936,17 @@ final class TPPCapturedCredentialsTests: XCTestCase {
         uiDelegate.username = "secondBarcode"
         uiDelegate.pin = "secondPin"
 
-        businessLogic.logIn()
+        // Clear the delegate at dispatch, which is after logIn() captures the
+        // credentials and before the success path persists them. Clearing it
+        // once `await logIn()` has returned is too late: the awaited call runs
+        // the whole sign-in, so persistence has already read the delegate and
+        // the assertions below would hold even if the capture never happened.
+        networkExecutor.onExecuteRequest = { [uiDelegate] _ in
+            uiDelegate?.username = nil
+            uiDelegate?.pin = nil
+        }
 
-        // Clear UI delegate to simulate intermediate notification
-        uiDelegate.username = nil
-        uiDelegate.pin = nil
-
-        // Single main-queue hop: barcode/basic auth's logIn() resolves to
-        // validateCredentials() (see TPPCredentialPersistenceTests above).
+        await businessLogic.logIn()
         await drainMainQueueAsync()
 
         XCTAssertEqual(businessLogic.userAccount.barcode, "secondBarcode",

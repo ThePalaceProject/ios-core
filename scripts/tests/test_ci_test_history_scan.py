@@ -237,3 +237,123 @@ def test_scanModeCleanVerdict_alsoCarriesTheWindow():
     line = cth.scan_clean_verdict_line({"oldest": "2026-08-21T16:02",
                                         "newest": "2026-08-21T19:10", "hours": 3.1})
     assert "3.1 hours" in line and "widen" in line.lower()
+
+
+# ------------------------------- the floor follows the workflow being read
+
+def journey_log() -> str:
+    """The UI Journeys workflow runs three tests, serially, so its log is real at 3 lines."""
+    return "\n".join(
+        f"Test Case '-[PalaceUITests.{c} {m}]' passed ({s} seconds)."
+        for c, m, s in (("AudiobookCloseMidLoadJourneyTests", "testClosing", "167.137"),
+                        ("ResumeReadingJourneyTests", "testReadingPosition", "80.247"),
+                        ("SignInAndBorrowJourneyTests", "testSignInThenBorrow", "51.462")))
+
+
+@pytest.fixture
+def fake_runs(monkeypatch):
+    """Serve one run whose log is whatever the test sets, without calling gh."""
+    served = {"log": ""}
+    run = {"databaseId": 1, "createdAt": "2026-10-14T00:31:00Z", "headSha": "fa1a9aed00",
+           "headBranch": "develop", "conclusion": "success", "attempt": 1}
+    monkeypatch.setattr(cth, "runs", lambda *a, **k: [run])
+    monkeypatch.setattr(cth, "run_meta", lambda *a, **k: dict(run))
+    monkeypatch.setattr(cth, "log_for", lambda *a, **k: served["log"])
+    return served
+
+
+def test_lookup_readsAUIJourneysRunInsteadOfRefusingIt(fake_runs, capsys):
+    fake_runs["log"] = journey_log()
+    cth.main(["x", "SignInAndBorrowJourneyTests", "--workflow", "UI Journeys", "--repo", "o/r"])
+    out = capsys.readouterr().out
+    assert "REFUSED" not in out
+    assert "passed 51.462s" in out
+
+
+def test_scan_readsAUIJourneysRunInsteadOfRefusingIt(fake_runs, capsys):
+    fake_runs["log"] = journey_log()
+    cth.main(["x", "--scan", "--workflow", "UI Journeys", "--repo", "o/r"])
+    out = capsys.readouterr().out
+    assert "REFUSED" not in out
+    assert "3 executions / 3 tests" in out
+
+
+def test_lookup_readsAUIJourneysRunNamedByItsWorkflowFile(fake_runs, capsys):
+    """gh accepts the workflow file name too; the floor must follow either spelling."""
+    fake_runs["log"] = journey_log()
+    cth.main(["x", "SignInAndBorrowJourneyTests", "--workflow", "ui-journeys.yml", "--repo", "o/r"])
+    out = capsys.readouterr().out
+    assert "REFUSED" not in out
+    assert "passed 51.462s" in out
+
+
+def test_uiJourneysStillRefusesALogWithNoResults(fake_runs, capsys):
+    fake_runs["log"] = "##[group]Run actions/checkout@v4\n"
+    cth.main(["x", "SignInAndBorrowJourneyTests", "--workflow", "UI Journeys", "--repo", "o/r"])
+    assert "REFUSED" in capsys.readouterr().out
+
+
+def test_unitTestsStillRefusesAThreeResultLog(fake_runs, capsys):
+    """A three-line Unit Tests log is a truncated download, not a measured run."""
+    fake_runs["log"] = journey_log()
+    cth.main(["x", "SignInAndBorrowJourneyTests", "--repo", "o/r"])
+    assert "REFUSED" in capsys.readouterr().out
+
+
+def test_minResultsOverridesTheWorkflowFloor(fake_runs, capsys):
+    fake_runs["log"] = journey_log()
+    cth.main(["x", "SignInAndBorrowJourneyTests", "--min-results", "3", "--repo", "o/r"])
+    out = capsys.readouterr().out
+    assert "REFUSED" not in out and "passed 51.462s" in out
+
+
+@pytest.mark.parametrize("bad", ["0", "-1"])
+def test_minResultsBelowOneIsRejected(bad):
+    """A floor of 0 would read an empty download as a clean run."""
+    with pytest.raises(SystemExit):
+        cth.main(["x", "SomeTests", "--min-results", bad, "--repo", "o/r"])
+
+
+# ------------------------- a window where no log could be read is not a finding
+
+@pytest.fixture
+def two_runs(monkeypatch):
+    """Serve two runs whose logs the test sets by run id, without calling gh."""
+    logs = {1: "", 2: ""}
+    found = [{"databaseId": i, "createdAt": f"2026-10-14T0{i}:00:00Z", "headSha": f"{i}" * 10,
+              "headBranch": "develop", "conclusion": "success", "attempt": 1} for i in (1, 2)]
+    monkeypatch.setattr(cth, "runs", lambda *a, **k: found)
+    monkeypatch.setattr(cth, "log_for", lambda repo, run_id, *a, **k: logs[run_id])
+    return logs
+
+
+def test_lookup_whenEveryRunIsRefused_saysNothingWasReadable_notNeverRan(two_runs, capsys):
+    cth.main(["x", "SomeTests", "--repo", "o/r"])
+    out = capsys.readouterr().out
+    assert "never ran" not in out
+    assert "no run in the scanned window could be read (2 refused, 0 readable)" in out
+
+
+def test_lookup_whenSomeRunWasReadable_stillReportsNeverRan(two_runs, capsys):
+    """A readable run without the test is real evidence that it did not run there."""
+    two_runs[2] = clean_log(200)
+    cth.main(["x", "SomeTests", "--repo", "o/r"])
+    out = capsys.readouterr().out
+    assert "VERDICT: SomeTests never ran in the scanned window." in out
+    assert "could be read" not in out
+
+
+def test_scan_whenEveryRunIsRefused_saysNothingWasReadable_notClean(two_runs, capsys):
+    cth.main(["x", "--scan", "--repo", "o/r"])
+    out = capsys.readouterr().out
+    assert "no run in the scanned window could be read (2 refused, 0 readable)" in out
+    assert "no masked failures" not in out
+
+
+def test_scan_whenSomeRunWasReadable_keepsTheCleanVerdict(two_runs, capsys):
+    two_runs[2] = clean_log(200)
+    cth.main(["x", "--scan", "--repo", "o/r"])
+    out = capsys.readouterr().out
+    assert "could be read" not in out
+    assert cth.scan_clean_verdict_line(cth.window_span([{"createdAt": "2026-10-14T01:00:00Z"},
+                                                        {"createdAt": "2026-10-14T02:00:00Z"}])) in out

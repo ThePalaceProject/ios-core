@@ -81,13 +81,10 @@ public enum TPPBookState: Int, CaseIterable, Sendable {
 //
 // This table is the declared legal-transition set for the book lifecycle and is
 // ENFORCED at the single mutation seam `TPPBookRegistry.setState` via
-// `canTransition` (swarm_8ce6f5ae WS3 / state-management doctrine): a transition
-// not listed here trips an `assertionFailure` in DEBUG and a telemetry log in
-// RELEASE — but the transition is STILL applied (state is never dropped).
-//
-// Because the seam now enforces this set, ADDING a transition here IS a behavior
-// change (it legalizes a path that previously asserted); removing one makes a
-// live path illegal. Keep it in sync with the real call sites.
+// `canTransition`: a transition not listed here trips an `assertionFailure` in
+// DEBUG and a telemetry log in RELEASE, but is still applied (state is never
+// dropped). Adding a transition legalizes a path that used to assert; removing
+// one makes a live path illegal. Keep it in sync with the real call sites.
 public extension TPPBookState {
 
     /// All transitions the book lifecycle is documented to allow.
@@ -112,6 +109,24 @@ public extension TPPBookState {
         .init(from: .downloadNeeded, to: .SAMLStarted),
         .init(from: .downloadNeeded, to: .unregistered),
         .init(from: .downloadNeeded, to: .downloadFailed),
+        // A loan that is not downloaded yet becomes a hold again when the
+        // loans feed reports it as reserved or ready (sync merge, PP-5360).
+        .init(from: .downloadNeeded, to: .holding),
+        // Content arriving for a record that load-time reconciliation parked
+        // here. `BookRegistrySync.armDecision` sends a book holding only its
+        // `.lcpl` license to `.downloadNeeded` and schedules the `.lcpa` fetch,
+        // and its own `.downloadNeeded` + content-present cell then reconciles
+        // to `.downloadSuccessful`. Two callers perform that promotion through
+        // this seam once the content is on disk:
+        // `LCPFulfillmentHandler.fulfillLCPLicense`'s audiobook completion arm
+        // (via `markDownloadSuccessful`, only when `storeBook` reports
+        // `.stored`) and `LocalBookContentService`'s re-download, which guards
+        // on the state already being `.downloadNeeded`.
+        //
+        // Reconciliation reaches `record.state` directly rather than through
+        // `setState`, so it never consulted this table and nothing reported the
+        // disagreement; the callers above did, and asserted in DEBUG.
+        .init(from: .downloadNeeded, to: .downloadSuccessful),
         // From .downloading
         .init(from: .downloading, to: .downloadSuccessful),
         .init(from: .downloading, to: .downloadFailed),
@@ -122,6 +137,8 @@ public extension TPPBookState {
         .init(from: .downloadFailed, to: .downloadNeeded),
         .init(from: .downloadFailed, to: .downloading),
         .init(from: .downloadFailed, to: .unregistered),
+        // Same sync-merge move for a loan whose download failed (PP-5360).
+        .init(from: .downloadFailed, to: .holding),
         // From .downloadSuccessful
         .init(from: .downloadSuccessful, to: .used),
         .init(from: .downloadSuccessful, to: .returning),

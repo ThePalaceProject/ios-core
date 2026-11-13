@@ -2,7 +2,7 @@
 //  BorrowOperationAuthCoordinatorTests.swift
 //  PalaceTests
 //
-//  swarm_66819d80 Module C — caller-migration assertions for
+//  Caller-migration assertions for
 //  `BorrowOperation` when wired with an `AuthCoordinator`.
 //
 //  When the coordinator is injected, the SAML / OAuth-intermediary
@@ -10,7 +10,7 @@
 //  `coordinator.refreshCredentialsIfNeeded(reason:)` instead of the
 //  closure-injected `presentSignInModal`. The OIDC silent-reauth path
 //  retains its `attemptOIDCSilentReauth` body — only the failure
-//  fallback routes through the coordinator (Option A from the contract).
+//  fallback routes through the coordinator.
 //  The per-book circuit breaker (`hasBorrowReauthBeenAttempted`) STAYS.
 //
 
@@ -30,7 +30,7 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
     private var book: TPPBook!
 
     private var fetchBookResult: Result<TPPBook, Error>!
-    private var alertCalls: [(title: String, message: String, book: TPPBook, hasRetryAction: Bool)] = []
+    private var alertCalls: [(title: String, message: String, bookId: String, hasRetryAction: Bool)] = []
     private var signInModalCompletions: [() -> Void] = []
     private var oidcReauthResult: Bool = false
 
@@ -82,8 +82,9 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
                 }
             },
             presentBorrowErrorAlert: { [weak self] title, message, _, _, b, retryAction in
-                self?.alertCalls.append((title, message, b, retryAction != nil))
+                self?.alertCalls.append((title, message, b.identifier, retryAction != nil))
             },
+            publishBorrowError: { _ in },
             presentSignInModal: { [weak self] completion in
                 self?.signInModalCompletions.append(completion)
             },
@@ -104,7 +105,7 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
     func testCoordinator_SAML_authError_routesThroughCoordinator_skipsLegacyPresentSignInModal() async throws {
         let (coordinator, _, modal, userAcctSpy, _) = SpyAuthCoordinatorFactory.make(
             mechanism: .saml,
-            stubModalResult: false   // user cancels — avoids retry-loop on persistent fetchBook failure
+            stubModalResult: true   // sign-in succeeds; the one retry fails and shows an error (PP-5359)
         )
         makeOperation(coordinator: coordinator)
 
@@ -135,13 +136,12 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
 
     // MARK: - OAuth-intermediary (Clever) borrow auth error → coordinator routes through modal
 
-    /// Use `stubModalResult: false` (user cancels) so the retry doesn't
-    /// loop on the still-failing fetchBook — we want to assert the FIRST
-    /// dispatch routed through the coordinator, not the retry semantics.
+    /// Sign-in succeeds and the single retry fails again; the assertion is
+    /// that the first dispatch routed through the coordinator.
     func testCoordinator_OAuthIntermediary_authError_routesThroughCoordinator() async throws {
         let (coordinator, _, modal, _, _) = SpyAuthCoordinatorFactory.make(
             mechanism: .oauthIntermediary,
-            stubModalResult: false   // user cancels — no retry loop
+            stubModalResult: true   // the retry runs once (PP-5359)
         )
         makeOperation(coordinator: coordinator)
 
@@ -209,7 +209,7 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
     func testCoordinator_OIDC_silentReauthFails_fallsBackToCoordinator() async throws {
         let (coordinator, _, modal, _, _) = SpyAuthCoordinatorFactory.make(
             mechanism: .oidc,
-            stubModalResult: false   // user cancels modal — avoids retry-loop
+            stubModalResult: true   // the retry runs once (PP-5359)
         )
         makeOperation(coordinator: coordinator)
 
@@ -254,11 +254,6 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
     ///  - Attempt 2: SAML 401 → `handleBorrowAuthErrorIfNeeded` sees the
     ///    breaker armed and returns `.showGenericError` → coordinator is
     ///    NOT called again, fall-through alert fires instead.
-    ///
-    /// Reviewer-fixup (QA-1, swarm_66819d80 Pass 3): prior version of this
-    /// test only ran attempt 1 and asserted modal=1 — second-attempt
-    /// half was just comments. This rewrite drives both attempts and
-    /// pins the breaker contract.
     func testCoordinator_perBookCircuitBreaker_isStillHonored_acrossTwoSeparateAttempts() async throws {
         let (coordinator, _, modal, _, _) = SpyAuthCoordinatorFactory.make(
             mechanism: .saml,
@@ -292,7 +287,7 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
                        "Per-book breaker must short-circuit second attempt — coordinator/modal MUST NOT be invoked again for the same book")
         XCTAssertFalse(alertCalls.isEmpty,
                        "Second attempt with breaker armed must fall through to showBorrowError alert path")
-        XCTAssertEqual(alertCalls.last?.book.identifier, book.identifier,
+        XCTAssertEqual(alertCalls.last?.bookId, book.identifier,
                        "Alert must target the same book that hit the breaker")
         XCTAssertTrue(signInModalCompletions.isEmpty,
                       "Legacy presentSignInModal closure must never fire — coordinator is wired and breaker gates the second attempt")
@@ -355,7 +350,7 @@ final class BorrowOperationAuthCoordinatorTests: XCTestCase {
         // coordinator dispatch (not the coordinator's own cooldown).
         XCTAssertFalse(alertCalls.isEmpty,
                        "Second attempt with armed breaker MUST fall through to showBorrowError — proving the breaker (NOT coordinator cooldown) gated the dispatch")
-        XCTAssertEqual(alertCalls.last?.book.identifier, book.identifier,
+        XCTAssertEqual(alertCalls.last?.bookId, book.identifier,
                        "Alert must target the same book whose breaker is armed")
     }
 }

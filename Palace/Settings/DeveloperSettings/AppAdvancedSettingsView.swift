@@ -4,19 +4,11 @@
 //
 //  Copyright © 2025 The Palace Project. All rights reserved.
 //
-//  App-level "Advanced" screen (PP-4788). Surfaces the SUPPORT-tier developer
-//  content — Send Error Logs (from DEVELOPER TOOLS) and the DATA & RESET section
-//  (Clear Cached Data / Reset This Library / Full Reset) — as an ALWAYS-VISIBLE
-//  screen, split out of the engineering-gated Testing screen.
-//
-//  Named `AppAdvancedSettingsView` to avoid a collision with the account-level
-//  `AdvancedSettingsView` (Palace/Settings/AdvancedSettingsView.swift). Shares
-//  the row builders + action code with `DeveloperSettingsView` via the common
-//  `DeveloperSettingsViewModel`, so there is no duplicated action logic.
-//
-//  Wired into `TPPSettingsView` as the always-visible "Advanced" section (no
-//  gesture required), so support can direct patrons to Send Error Logs / Data &
-//  Reset without the hidden version long-press.
+//  App-level "Advanced" screen (PP-4788): Send Error Logs and Data & Reset,
+//  always visible so support can direct patrons here without the hidden
+//  Testing-screen gesture. Shares actions with `DeveloperSettingsView` via
+//  `DeveloperSettingsViewModel`. Named to avoid colliding with the account-level
+//  `AdvancedSettingsView`.
 //
 
 import SwiftUI

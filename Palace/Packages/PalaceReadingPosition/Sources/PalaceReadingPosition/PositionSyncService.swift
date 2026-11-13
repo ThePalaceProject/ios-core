@@ -2,14 +2,8 @@
 //  PositionSyncService.swift
 //  PalaceReadingPosition
 //
-//  Cross-format position sync service. Records reading positions locally
-//  and offers cross-format sync between EPUB and audiobook formats.
-//
-//  This is the LOCAL-record sync layer. The network-write throttle layer
-//  lives in `RemotePositionWriter`. They are separate concerns and ship
-//  alongside each other in the same SPM.
-//
-//  Migrated from Palace/Platform/ on 2026-05-21 (Swarm 2, Deviation 4).
+//  Records reading positions locally and offers cross-format sync between
+//  EPUB and audiobook. The network-write throttle is `RemotePositionWriter`.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

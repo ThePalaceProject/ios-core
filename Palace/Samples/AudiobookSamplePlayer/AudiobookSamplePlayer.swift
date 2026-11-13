@@ -10,6 +10,18 @@
 import Combine
 import PalaceLogging
 
+/// The playback calls the sample player makes. `AVAudioPlayer` provides them
+/// as is; tests pass a fake so position handling runs without audio.
+protocol SampleAudioEngine: AnyObject {
+    var currentTime: TimeInterval { get set }
+    var duration: TimeInterval { get }
+    @discardableResult func play() -> Bool
+    func pause()
+    func stop()
+}
+
+extension AVAudioPlayer: SampleAudioEngine {}
+
 enum AudiobookSamplePlayerState {
     case initialized
     case loading
@@ -37,12 +49,17 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
         }
     }
 
-    private var sample: AudiobookSample
-    private var player: AVAudioPlayer?
+    private var sample: any Sample & Sendable
+    private var player: (any SampleAudioEngine)?
     private var timer: Timer?
+    private let makeEngine: (Data, AVAudioPlayerDelegate) throws -> any SampleAudioEngine
 
-    init(sample: AudiobookSample) {
+    init(
+        sample: any Sample & Sendable,
+        makeEngine: @escaping (Data, AVAudioPlayerDelegate) throws -> any SampleAudioEngine = AudiobookSamplePlayer.makeAudioPlayer
+    ) {
         self.sample = sample
+        self.makeEngine = makeEngine
         super.init()
 
         configureAudioSession()
@@ -101,11 +118,15 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
         state = .playing
     }
 
-    private func setupPlayer(data: Data) throws {
-        player = try AVAudioPlayer(data: data)
+    nonisolated static func makeAudioPlayer(data: Data, delegate: AVAudioPlayerDelegate) throws -> any SampleAudioEngine {
+        let player = try AVAudioPlayer(data: data)
+        player.delegate = delegate
+        player.volume = 1.0
+        return player
+    }
 
-        player?.delegate = self
-        player?.volume = 1.0
+    private func setupPlayer(data: Data) throws {
+        player = try makeEngine(data, self)
         startTimer()
         player?.play()
         state = .playing
@@ -116,16 +137,21 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
         state = .paused
     }
 
-    func goBack() {
-        guard let player = player, player.currentTime > 0 else { return }
-        timer?.invalidate()
+    nonisolated static let skipBackInterval: TimeInterval = 30
 
-        self.player?.pause()
-        let currentTime = remainingTime
-        let newLocation = min(player.duration, currentTime + 30)
-        remainingTime = newLocation
-        self.player?.play(atTime: remainingTime)
-        startTimer()
+    /// Where the playhead lands after a skip back from `currentTime`: never
+    /// before the start of the preview.
+    nonisolated static func skipBackTarget(from currentTime: TimeInterval) -> TimeInterval {
+        max(0, currentTime - skipBackInterval)
+    }
+
+    /// Moves the playhead back and keeps playing or paused as it was (PP-4027).
+    /// Seeks through `currentTime`: `AVAudioPlayer.play(atTime:)` schedules a
+    /// start on the device clock and does not move the playhead.
+    func goBack() {
+        guard let player else { return }
+        player.currentTime = Self.skipBackTarget(from: player.currentTime)
+        remainingTime = player.duration - player.currentTime
     }
 
     @objc private func setDuration() {
@@ -157,22 +183,30 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
         state = .loading
         Log.debug(#file, "Downloading sample from: \(sample.url.absoluteString)")
 
-        _ = sample.fetchSample { [weak self]  result in
-            guard let self = self else { return }
+        // Awaited, so both arms resume on this `@MainActor` type and neither
+        // needs the `DispatchQueue.main.async` they used to carry (PP-5301).
+        //
+        // `[weak self]` with a re-check after the suspension, matching what the
+        // completion handler did. Holding `self` across the fetch would keep a
+        // dismissed sample player alive to reach `setupPlayer` and start
+        // playing audio for a sheet the patron already closed. Only the sample
+        // itself is held across the await, as the closure did.
+        Task { @MainActor [weak self] in
+            guard let sample = self?.sample else { return }
 
+            let result = await sample.fetchSample()
+
+            guard let self else { return }
             switch result {
             case let .failure(error, _):
-                Log.error(#file, "Sample download failed for \(self.sample.url): \(error.localizedDescription)")
+                Log.error(#file, "Sample download failed for \(sample.url): \(error.localizedDescription)")
                 TPPErrorLogger.logError(error, summary: "Failed to download sample")
-                DispatchQueue.main.async { self.state = .paused }
-                return
+                self.state = .paused
             case let .success(data, _):
-                DispatchQueue.main.async {
-                    do {
-                        try self.setupPlayer(data: data)
-                    } catch {
-                        Log.error(#file, "Sample player setup failed: \(error.localizedDescription)")
-                    }
+                do {
+                    try self.setupPlayer(data: data)
+                } catch {
+                    Log.error(#file, "Sample player setup failed: \(error.localizedDescription)")
                 }
             }
         }
@@ -181,8 +215,9 @@ class AudiobookSamplePlayer: NSObject, ObservableObject {
 
 // `@preconcurrency`: `AVAudioPlayerDelegate` requirements are nonisolated, but
 // AVFoundation delivers this callback on the run loop where the player was
-// created — here always the main run loop (`setupPlayer(data:)` runs inside a
-// `DispatchQueue.main.async`). Satisfying the nonisolated requirement with a
+// created — here always the main run loop (`setupPlayer(data:)` runs inside the
+// `Task { @MainActor }` in `downloadFile()`; it was a `DispatchQueue.main.async`
+// until PP-5301). Satisfying the nonisolated requirement with a
 // main-actor-isolated method is therefore safe; `@preconcurrency` silences the
 // isolation-mismatch warning without changing the (main-thread) call behavior.
 extension AudiobookSamplePlayer: @preconcurrency AVAudioPlayerDelegate {

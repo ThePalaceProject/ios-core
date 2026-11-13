@@ -124,10 +124,9 @@ final class VerbatimTextFieldTests: XCTestCase {
 
     // MARK: - Content sync
     //
-    // These two exist because mechanical mutation reported `!=` -> `==` on both
-    // guards as UNCOVERED — they lived inside `updateUIView`, which needs a
-    // `UIViewRepresentableContext` that has no public initialiser. Testing them
-    // required a seam, not a cleverer assertion.
+    // Both `!=` guards live inside `updateUIView`, which needs a
+    // `UIViewRepresentableContext` that has no public initialiser, so they are
+    // tested through a seam.
 
     func testSyncFieldContent_writesTextWhenItDiffers() {
         let field = UITextField()

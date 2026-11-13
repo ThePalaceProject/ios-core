@@ -47,6 +47,15 @@ struct TPPPDFNavigation<Content>: View where Content: View {
         }
     }
 
+    /// Where the toolbar's Table of Contents button goes.
+    ///
+    /// A constant, not the picker's last selection. The control carries the
+    /// Table of Contents label and announces it to VoiceOver, so reading
+    /// `pickerSelection` sent the patron to page previews whenever that was the
+    /// last segment chosen — including every first tap, since that state starts
+    /// at the first case (PP-5404).
+    static var tableOfContentsButtonDestination: TPPPDFReaderMode { .toc }
+
     @EnvironmentObject var metadata: TPPPDFDocumentMetadata
 
     @Binding var readerMode: TPPPDFReaderMode
@@ -72,7 +81,13 @@ struct TPPPDFNavigation<Content>: View where Content: View {
         HStack {
             ZStack(alignment: .leading) {
                 TPPPDFToolbarButton(icon: "list.bullet") {
-                    readerMode = TPPPDFReaderModeValues(rawValue: pickerSelection)?.readerMode ?? .previews
+                    readerMode = Self.tableOfContentsButtonDestination
+                    // Keep the picker in step. It replaces this button once a
+                    // mode is showing, and leaving it at its initial value made
+                    // it highlight and announce Page Previews over table-of-
+                    // contents content — a divergence the old code could not
+                    // produce, because both read the same state.
+                    pickerSelection = TPPPDFReaderModeValues.toc.rawValue
                     metadata.fetchBookmarks()
                 }
                 .accessibilityLabel(Strings.Generic.tableOfContents)

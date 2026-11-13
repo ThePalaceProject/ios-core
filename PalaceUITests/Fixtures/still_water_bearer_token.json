@@ -1,0 +1,6 @@
+{
+  "token_type": "Bearer",
+  "access_token": "palace-fixtures-still-water",
+  "expires_in": 86400,
+  "location": "https://palace-fixtures.test/library/works/still-water/manifest"
+}

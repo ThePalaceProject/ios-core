@@ -140,6 +140,11 @@ actor DownloadErrorRecovery {
                         return true
                     case .bookRegistry(.bookNotFound):
                         return true  // Book may not be ready yet on slow servers
+                    // Keeps the retry this failure already had: the server's
+                    // no-active-loan answer was retryable as bookNotFound
+                    // before it mapped to loanEnded (PP-5397).
+                    case .bookRegistry(.loanEnded):
+                        return true
                     default:
                         return false
                     }

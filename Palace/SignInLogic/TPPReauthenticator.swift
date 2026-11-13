@@ -29,14 +29,15 @@ protocol Reauthenticator: NSObject {
 /// the hood when no user input is needed.
 /// `Reauthenticating` (PalaceAuth) refines `Sendable`, so the conformer must be
 /// Sendable-honest. The class is `final` with no un-serialized mutable instance
-/// state: the only instance storage is `authenticateCallCountLock` (an
-/// `OSAllocatedUnfairLock`, itself `Sendable`, which serializes the call
-/// counter); the `_testContainerOverride` seam is a `@MainActor`-isolated
+/// state: the only instance storage is two `OSAllocatedUnfairLock`s (each
+/// `Sendable`), serializing the call counter and the test-only task list;
+/// the `_testContainerOverride` seam is a `@MainActor`-isolated
 /// `static` (not instance state). `@unchecked` is required only because the
 /// `NSObject` superclass is not `Sendable` — not because any state is racy.
 //
-// Sendable invariant: the sole mutable instance value (`authenticateCallCount`)
-// is read and written exclusively through `authenticateCallCountLock.withLock`.
+// Sendable invariant: the mutable instance values (`authenticateCallCount`,
+// `pendingAuthenticationTasks`) are read and written exclusively through their
+// locks' `withLock`.
 @objc final class TPPReauthenticator: NSObject, Reauthenticator, @unchecked Sendable {
 
     /// Serializes `authenticateCallCount` so the counter is safe to read from a
@@ -53,11 +54,30 @@ protocol Reauthenticator: NSObject {
         authenticateCallCountLock.withLock { $0 }
     }
 
+    /// Presentation tasks, retained only under XCTest so a test can join them
+    /// instead of waiting on a deadline that starves under parallel CI clones.
+    /// Never populated in production.
+    private let pendingAuthenticationTasks = OSAllocatedUnfairLock(initialState: [Task<Void, Never>]())
+
+    private static let retainsTasksForTesting =
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+
+    /// Awaits every presentation task started by `authenticateIfNeeded` so far.
+    /// Main-actor isolated so a main-actor caller does not hop executors on the
+    /// call itself, which would let the queued tasks run whether or not they
+    /// were retained.
+    @MainActor
+    func _awaitPendingAuthenticationsForTesting() async {
+        for task in pendingAuthenticationTasks.withLock({ $0 }) {
+            await task.value
+        }
+    }
+
     /// Test-only override for the `AppContainer` from which the
     /// `signInModalSheetPresenter` is resolved. Production reads through
     /// `AppContainer.production()`; tests set this to a container built
-    /// via Module B's `withSignInModalSheetPresenter(_:)` modifier so a
-    /// spy presenter can be injected.
+    /// via `withSignInModalSheetPresenter(_:)` so a spy presenter can be
+    /// injected.
     ///
     /// **Scope:** the override is only consulted when XCTest is the host
     /// process (`XCTestConfigurationFilePath` env var is set). In every
@@ -65,12 +85,6 @@ protocol Reauthenticator: NSObject {
     /// is structurally ignored, so the seam cannot leak into user-visible
     /// reauthentication paths even if a developer accidentally writes to
     /// it from non-test code.
-    ///
-    /// swarm_d8f11437 Module A wave 4 — closes wall-failure cs_9a267b63
-    /// (architect rev_bc20951b). Without this seam, the wiring test
-    /// `testReauth_TPPReauthenticator_authenticateIfNeeded_drivesSpyPresenterViaAppContainerSeam`
-    /// cannot drive a spy presenter through the production
-    /// `authenticateIfNeeded` path.
     ///
     /// MUST be reset to nil in test teardown to avoid bleed between tests.
     @MainActor
@@ -96,17 +110,11 @@ protocol Reauthenticator: NSObject {
                                     usingExistingCredentials: Bool,
                                     authenticationCompletion: (@Sendable () -> Void)?) {
         authenticateCallCountLock.withLock { $0 += 1 }
-        Task { @MainActor in
+        let task = Task { @MainActor in
             Log.info(#file, "TPPReauthenticator: Re-authentication requested, using existing credentials: \(usingExistingCredentials)")
 
-            // swarm_18b0d071 Module A wave 3 — proof-of-pattern migration
-            // from the static `SignInModalPresenter` API to the
-            // SwiftUI-observable `SignInModalSheetPresenter` facade.
-            // swarm_d8f11437 Module A wave 4 — completes the migration
-            // for the remaining 9 call sites; the test-only
-            // `_testContainerOverride` seam is consulted ONLY when running
-            // under XCTest (not in dev/sim/TestFlight builds), so the
-            // override cannot leak into user-visible reauthentication.
+            // `_testContainerOverride` is consulted only under XCTest, so it
+            // cannot leak into user-visible reauthentication.
             let container = TPPReauthenticator.isRunningUnderXCTest
                 ? (TPPReauthenticator._testContainerOverride ?? AppContainer.production())
                 : AppContainer.production()
@@ -127,6 +135,9 @@ protocol Reauthenticator: NSObject {
                 Log.info(#file, "TPPReauthenticator: Re-authentication completed")
                 authenticationCompletion?()
             }
+        }
+        if Self.retainsTasksForTesting {
+            pendingAuthenticationTasks.withLock { $0.append(task) }
         }
     }
 }

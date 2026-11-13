@@ -148,9 +148,9 @@ final class BookButtonMapperHoldReadyTests: XCTestCase {
 
     /// `stateForAvailability` is the cache-friendly availability→button-state
     /// mapper. Lock all three branches (Ready, Reserved, nil) in one body
-    /// so a mutant that swaps two branches' return values fails on a
+    /// so a regression that swaps two branches' return values fails on a
     /// distinct row, AND assert that distinct availability inputs yield
-    /// distinct button states (kills constant-return mutants).
+    /// distinct button states (catches a constant-return regression).
     func testStateForAvailability_dispatchesEachAvailabilityToItsExpectedButtonState() {
         let ready = BookButtonMapper.stateForAvailability(
             TPPOPDSAcquisitionAvailabilityReady(since: Date(), until: nil))
@@ -166,7 +166,7 @@ final class BookButtonMapperHoldReadyTests: XCTestCase {
                      "nil availability → nil state (caller falls back to default rendering)")
 
         // Distinct inputs must yield distinct results — guards a
-        // constant-return mutant the per-branch tests can't catch alone.
+        // constant-return regression the per-branch tests can't catch alone.
         XCTAssertNotEqual(ready, reserved,
                           "Ready and Reserved must dispatch to distinct button states")
     }

@@ -34,6 +34,11 @@ public protocol TPPBookRegistryProvider: Sendable {
     var isSyncing: Bool { get }
     var state: TPPBookRegistry.RegistryState { get }
     var registryState: TPPBookRegistry.RegistryState { get }
+    /// The library whose records the registry holds: set when a load for that
+    /// library finishes, nil while a load is pending or after the current library
+    /// changes. Until it names the current library, an absent book says nothing
+    /// about that library's shelf.
+    var loadedAccountID: String? { get }
 
     func sync(completion: ((_ errorDocument: [AnyHashable: Any]?, _ newBooks: Bool) -> Void)?)
     func sync()
@@ -53,7 +58,12 @@ public protocol TPPBookRegistryProvider: Sendable {
     func addOrReplaceGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String)
     func addGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String)
     func deleteGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String)
+    /// Replaces, in place, the stored record that `isSameRecord(as: oldLocation)`.
+    /// Does nothing when that record is no longer stored.
     func replaceGenericBookmark(_ oldLocation: TPPBookLocation, with newLocation: TPPBookLocation, forIdentifier: String)
+    /// Removes the one stored record that `isSameRecord(as: location)`, leaving
+    /// other records at the same position alone.
+    func deleteGenericBookmark(identicalTo location: TPPBookLocation, forIdentifier bookIdentifier: String)
     func addBook(_ book: TPPBook, location: TPPBookLocation?, state: TPPBookState, fulfillmentId: String?, readiumBookmarks: [TPPReadiumBookmark]?, genericBookmarks: [TPPBookLocation]?)
     func removeBook(forIdentifier bookIdentifier: String)
     /// Server-authority-aware removal. `serverAuthoritative: true` marks the
@@ -86,6 +96,10 @@ public protocol TPPBookRegistryProvider: Sendable {
 }
 
 public extension TPPBookRegistryProvider {
+    /// Registries that do not track their load report none, so callers that gate
+    /// on it treat them as not loaded.
+    var loadedAccountID: String? { nil }
+
     /// Default forwards to the non-authoritative removal. Only registries that
     /// PERSIST to disk (the concrete `TPPBookRegistry`) override these to thread the
     /// flag into `BookRegistrySync.save`'s server-authority gate (HelpSpot #18414).
@@ -227,12 +241,8 @@ private final class BoolWithDelay: @unchecked Sendable {
 /// `var accountDidChangeCancellable` is written once during `init`'s
 /// `setupAccountDidChangeObserver()` (on the constructing thread, before the
 /// instance escapes) and only read/torn-down thereafter, so it carries no
-/// cross-thread write race. This is a documented invariant, not a bare waiver.
-// De-objc (god-class decomp Wave 2b prep): dropped `@objcMembers` + `NSObject`
-// superclass + `@objc` on `RegistryState`. The entire ObjC surface is vestigial —
-// zero `.m`/`.h` references to the class, the notifications, or `TPPBookRegistrySyncing`;
-// zero selector/`NSClassFromString` dispatch (verified at branch tip). Removing NSObject
-// also removes the two `super.init()` calls below.
+/// cross-thread write race.
+// Not an NSObject: no Objective-C code references this class or its notifications.
 public class TPPBookRegistry: @unchecked Sendable {
     public static let syncFailureErrorDocumentKey = "TPPBookRegistrySyncFailureErrorDocument"
 
@@ -248,8 +258,7 @@ public class TPPBookRegistry: @unchecked Sendable {
 
     // MARK: - External dependencies
 
-    /// Value-only account scope (god-class decomposition Wave 2b — the Book→Accounts
-    /// inversion). The facade reads only `currentAccountID` (synchronously, at every
+    /// Value-only account scope. The facade reads only `currentAccountID` (synchronously, at every
     /// mutation dispatch — the PP-4129 capture discipline) and subscribes to
     /// `accountDidChangePublisher`; no Account/AccountsManager type crosses the boundary.
     private let accountScope: any AccountScopeProviding
@@ -283,6 +292,7 @@ public class TPPBookRegistry: @unchecked Sendable {
                 // (`heldBooks`, `myBooks`, `allBooks`, `state(for:)` derived from
                 // the subject) to see an empty list until the new load completes.
                 self.store.registrySubject.send([:])
+                self.setLoadedAccountID(nil)
                 self.state = .loading
                 // Chain sync() off load's completion so it never runs against an
                 // empty in-memory store. Previously this used an `asyncAfter(+1s)`
@@ -321,6 +331,21 @@ public class TPPBookRegistry: @unchecked Sendable {
 
     private var _state: RegistryState = .unloaded
 
+    /// Guarded by `stateLock`, like `_state`.
+    private var _loadedAccountID: String?
+
+    // PUBLIC_INTENT: TPPBookRegistryProvider requirement read by the app's offline queue.
+    public var loadedAccountID: String? {
+        stateLock.lock(); defer { stateLock.unlock() }
+        return _loadedAccountID
+    }
+
+    private func setLoadedAccountID(_ accountID: String?) {
+        stateLock.lock()
+        _loadedAccountID = accountID
+        stateLock.unlock()
+    }
+
     /// Transition ordering is IDENTICAL to the pre-lock `didSet`: write `_state`,
     /// derive `syncState.value`, then emit the lifecycle signal — all preserved,
     /// only the `_state` storage is now serialised.
@@ -330,12 +355,9 @@ public class TPPBookRegistry: @unchecked Sendable {
             stateLock.lock()
             _state = newValue
             stateLock.unlock()
-            // Same side effects the former `didSet` performed, in the same order,
-            // now outside the lock. `syncState` is self-synchronised so it needs
-            // no help from `stateLock`. The former async `NotificationCenter.post`
-            // of `.TPPBookRegistryStateDidChange` is replaced by feeding the
-            // Combine `registryStateSubject` (its publisher delivers on `.main`),
-            // completing the dual-write kill (swarm_8ce6f5ae WS3).
+            // Side effects run outside the lock; `syncState` is self-synchronised.
+            // State changes are published only through `registryStateSubject`
+            // (delivered on `.main`), not a notification.
             syncState.value = (newValue == .syncing)
             registryStateSubject.send(newValue)
         }
@@ -424,7 +446,7 @@ public class TPPBookRegistry: @unchecked Sendable {
 
     // MARK: - Init
 
-    /// Construct the app-scoped registry (god-class decomposition Wave 2b init shape).
+    /// Construct the app-scoped registry.
     /// `accountScope` is the value-only account surface (inversion); `dependencies`
     /// carries the lazily-resolved external collaborators (download service, loans
     /// fetcher, sideload set, directory rule, availability hook) — supplied by the
@@ -458,6 +480,7 @@ public class TPPBookRegistry: @unchecked Sendable {
         self.bookmarks = BookmarkManager(
             store: store,
             save: { [weak sync] account in sync?.save(for: account) },
+            savePosition: { [weak sync] account in sync?.save(for: account, scope: .positionOnly) },
             saveSync: { [weak sync] account in sync?.saveSync(for: account) }
         )
         setupAccountDidChangeObserver()
@@ -484,6 +507,7 @@ public class TPPBookRegistry: @unchecked Sendable {
         self.bookmarks = BookmarkManager(
             store: store,
             save: { [weak sync] account in sync?.save(for: account) },
+            savePosition: { [weak sync] account in sync?.save(for: account, scope: .positionOnly) },
             saveSync: { [weak sync] account in sync?.saveSync(for: account) }
         )
         syncEngine.load(account: account) { [weak self] newState in self?.state = newState }
@@ -500,8 +524,17 @@ public class TPPBookRegistry: @unchecked Sendable {
     }
 
     public func load(account: String? = nil, completion: (() -> Void)? = nil) {
+        // The sync engine resolves the same account synchronously in this call.
+        let loadingAccount = account ?? accountScope.currentAccountID
         syncEngine.load(account: account, setState: { [weak self] newState in
-            self?.state = newState
+            guard let self else { return }
+            // Set before the state is published, so a `.loaded` observer reads it.
+            switch newState {
+            case .loaded: self.setLoadedAccountID(loadingAccount)
+            case .loading, .unloaded: self.setLoadedAccountID(nil)
+            case .syncing, .synced: break
+            }
+            self.state = newState
         }, completion: completion)
     }
 
@@ -586,6 +619,7 @@ public class TPPBookRegistry: @unchecked Sendable {
     }
 
     public func reset(_ account: String) {
+        if loadedAccountID == account { setLoadedAccountID(nil) }
         state = .unloaded
         syncEngine.reset(account)
     }
@@ -898,6 +932,12 @@ extension TPPBookRegistry: TPPBookRegistryProvider {
         bookmarks.replaceGenericBookmark(oldLocation, with: newLocation,
                                           forIdentifier: bookIdentifier,
                                           account: accountScope.currentAccountID)
+    }
+
+    // PUBLIC_INTENT: witness for the public TPPBookRegistryProvider requirement, like its generic-bookmark siblings.
+    public func deleteGenericBookmark(identicalTo location: TPPBookLocation, forIdentifier bookIdentifier: String) {
+        bookmarks.deleteGenericBookmark(identicalTo: location, forIdentifier: bookIdentifier,
+                                         account: accountScope.currentAccountID)
     }
 }
 

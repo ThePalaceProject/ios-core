@@ -1,19 +1,11 @@
-//
 //  NetworkResponderAuthChallengeWitnessTests.swift
-//  PalaceTests
 //
-//  PP-4895. The network layer's authentication-challenge callback is the second
-//  of the app's two challenge sites (the other is the download center, see
-//  `DownloadAuthChallengeWitnessTests` for the full write-up of the compiler
-//  defect these tests exist to out-guard).
-//
-//  In short: URLSession invokes an optional delegate method only when the
-//  delegate answers `respondsToSelector:`, and under Xcode 26.2 a ClangImporter
-//  block-type cache collision with WebKit can leave this method unmatched — and
-//  therefore absent from the ObjC runtime — with no error and no crash. So the
-//  registration is asserted directly instead of being assumed from the fact that
-//  the code compiles.
-//
+//  PP-4895. URLSession calls an optional delegate method only when the delegate
+//  answers `respondsToSelector:`. Under Xcode 26.2 a ClangImporter cache
+//  collision with WebKit can leave the network layer's auth-challenge method
+//  unmatched and absent from the ObjC runtime, with no error. These tests assert
+//  the registration directly. See `DownloadAuthChallengeWitnessTests` for the
+//  download-center counterpart and the full write-up.
 
 import XCTest
 import PalaceNetwork
@@ -123,10 +115,9 @@ final class NetworkResponderAuthChallengeWitnessTests: XCTestCase {
     /// Holds the ONLY strong reference to the account-screen provider, so a test
     /// can decide exactly when it dies. The responder itself holds it weakly, and
     /// the whole point of PP-4969 is what happens after it is gone — so lifetime
-    /// has to be explicit here rather than incidental. (A first version of this
-    /// helper returned a `() -> Void` release closure; discarding that closure in
-    /// the "still alive" test silently dropped the last reference and the provider
-    /// died before the assertion. Hence a named box.)
+    /// has to be explicit here rather than incidental. (A `() -> Void` release
+    /// closure is easy to discard by accident, which drops the last reference
+    /// before the assertion. Hence a named box.)
     private final class ProviderBox {
         var provider: MockCredentialsProvider?
     }

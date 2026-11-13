@@ -218,6 +218,26 @@ final class AccountAwareNetworkTests: XCTestCase {
 
     // MARK: - executeTokenRefresh Account Parameter
 
+    /// Executor whose token writes land on a keychain-free mock. With the
+    /// production accounts manager, a successful refresh stores a real token
+    /// (30-60 minute expiry) on the shared current account; once it expires,
+    /// later tests that gate on that account fail (PP-5295).
+    private func makeTokenRefreshExecutor(
+        config: URLSessionConfiguration
+    ) -> (TPPNetworkExecutor, TPPUserAccountMock) {
+        let userAccount = TPPUserAccountMock()
+        let accounts = TPPLibraryAccountMock()
+        accounts.userAccountResolver = { _ in userAccount }
+        let executor = TPPNetworkExecutor(
+            credentialsProvider: nil,
+            cachingStrategy: .ephemeral,
+            sessionConfiguration: config,
+            accountsManager: accounts,
+            delegateQueue: nil
+        )
+        return (executor, userAccount)
+    }
+
     // `wait(for:)` blocks the main thread and deadlocks if the completion handler is
     // dispatched back to the main thread. Use async/await + withCheckedContinuation
     // so the test runner's cooperative thread pool handles the suspension correctly.
@@ -233,12 +253,7 @@ final class AccountAwareNetworkTests: XCTestCase {
             return HTTPStubURLProtocol.StubbedResponse(statusCode: 200, headers: ["Content-Type": "application/json"], body: json)
         }
 
-        let executor = TPPNetworkExecutor(
-            credentialsProvider: nil,
-            cachingStrategy: .ephemeral,
-            sessionConfiguration: config,
-            delegateQueue: nil
-        )
+        let (executor, userAccount) = makeTokenRefreshExecutor(config: config)
 
         let tokenURL = URL(string: "https://example.com/token")!
 
@@ -259,6 +274,8 @@ final class AccountAwareNetworkTests: XCTestCase {
         switch result {
         case .success(let response):
             XCTAssertEqual(response.accessToken, "test")
+            XCTAssertEqual(userAccount.authToken, "test",
+                           "The refreshed token is stored on the injected account")
         case .failure:
             break // May fail due to test environment
         }
@@ -278,12 +295,7 @@ final class AccountAwareNetworkTests: XCTestCase {
             return HTTPStubURLProtocol.StubbedResponse(statusCode: 200, headers: ["Content-Type": "application/json"], body: json)
         }
 
-        let executor = TPPNetworkExecutor(
-            credentialsProvider: nil,
-            cachingStrategy: .ephemeral,
-            sessionConfiguration: config,
-            delegateQueue: nil
-        )
+        let (executor, userAccount) = makeTokenRefreshExecutor(config: config)
 
         let tokenURL = URL(string: "https://example.com/token")!
 
@@ -305,6 +317,8 @@ final class AccountAwareNetworkTests: XCTestCase {
         case .success(let response):
             XCTAssertEqual(response.accessToken, "compat-token",
                            "Backward-compat overload must still return the stubbed token")
+            XCTAssertEqual(userAccount.authToken, "compat-token",
+                           "With no account id the token lands on the provider's current account")
         case .failure(let error):
             XCTFail("Backward-compat executeTokenRefresh should succeed, got: \(error)")
         }

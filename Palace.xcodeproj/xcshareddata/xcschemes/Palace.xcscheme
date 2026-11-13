@@ -50,16 +50,6 @@
             value = "1"
             isEnabled = "YES">
          </EnvironmentVariable>
-         <EnvironmentVariable
-            key = "LYRASIS_BARCODE"
-            value = "01230000000002"
-            isEnabled = "YES">
-         </EnvironmentVariable>
-         <EnvironmentVariable
-            key = "LYRASIS_PIN"
-            value = "Lyrtest123"
-            isEnabled = "YES">
-         </EnvironmentVariable>
       </EnvironmentVariables>
       <CodeCoverageTargets>
          <BuildableReference

@@ -2,28 +2,12 @@
 //  BorrowOperationCleverReauthTests.swift
 //  PalaceTests
 //
-//  Module B of swarm_66819d80 — explicit pinning of the behavior
-//  broadening at substitution sites 4.5 / 4.6 / 4.10. Substituting
-//  `(authDef?.isSaml == true || authDef?.isOidc == true)` with
-//  `authDef?.isBrowserBased == true` is intentional but visible: an
-//  OAuth-intermediary (Clever) library that previously fell through to
-//  the "no automatic recovery" generic-alert path now routes through
-//  the SAML-style browser-reauth modal.
-//
-//  This is the right architectural answer (Clever IS browser-based),
-//  but it's the kind of broadening that would silently regress without
-//  tests written for it. Two tests:
-//
-//    1. BorrowOperation L562 (within `isAuthError` predicate) +
-//       BorrowOperation L613 (`needsBrowserReauth` decision):
-//       OAuth-intermediary auth + auth error + credentials → routes to
-//       the sign-in modal (was: generic alert / no recovery).
-//
-//    2. BookReturnService L302 (`needsBrowserReauth` decision):
-//       OAuth-intermediary auth + auth error + credentials →
-//       `markCredentialsStale()` fires before reauth dispatch (was:
-//       skipped — credentials were left intact and the reauth dispatch
-//       silently reused stale tokens).
+//  Pins the switch from `(isSaml || isOidc)` to `isBrowserBased` for auth-error
+//  recovery, which routes OAuth-intermediary (Clever) libraries through the
+//  browser-reauth path instead of the generic "no automatic recovery" alert:
+//    1. BorrowOperation: auth error + credentials → sign-in modal.
+//    2. BookReturnService: auth error + credentials → `markCredentialsStale()`
+//       before reauth dispatch, so stale tokens are not reused.
 //
 //  Copyright 2026 The Palace Project. All rights reserved.
 //
@@ -45,7 +29,7 @@ final class BorrowOperationCleverReauthTests: XCTestCase {
     private var book: TPPBook!
 
     private let fetchBookResult = LockIsolated<Result<TPPBook, Error>?>(nil)
-    private let alertCalls = LockIsolated<[(title: String, message: String, book: TPPBook, hasRetryAction: Bool)]>([])
+    private let alertCalls = LockIsolated<[(title: String, message: String, bookId: String, hasRetryAction: Bool)]>([])
     private let signInModalCompletions = LockIsolated<[() -> Void]>([])
     private let oidcReauthResult = LockIsolated<Bool>(false)
 
@@ -84,8 +68,11 @@ final class BorrowOperationCleverReauthTests: XCTestCase {
                 }
             },
             presentBorrowErrorAlert: { title, message, _, _, b, retryAction in
-                alertCallsBox.withValue { $0.append((title, message, b, retryAction != nil)) }
+                alertCallsBox.withValue {
+                    $0.append((title, message, b.identifier, retryAction != nil))
+                }
             },
+            publishBorrowError: { _ in },
             presentSignInModal: { completion in
                 signInModalCompletionsBox.withValue { $0.append(completion) }
             },

@@ -2,8 +2,8 @@
 //  PlaybackBootstrapperAudioSessionTests.swift
 //  PalaceTests
 //
-//  Tests for the launch-path audio-session deferral added in swarm_27c181b5
-//  (Startup-AppLifecycle, C3). At app launch `PlaybackBootstrapper.ensureInitialized()`
+//  Tests for the launch-path audio-session deferral. At app launch
+//  `PlaybackBootstrapper.ensureInitialized()`
 //  must register the MPRemoteCommandCenter handlers SYNCHRONOUSLY (CarPlay cold
 //  start needs them before the first transport command) while deferring the
 //  AVAudioSession category configuration off the synchronous launch path (it
@@ -74,7 +74,7 @@ final class PlaybackBootstrapperAudioSessionTests: XCTestCase {
     }
 
     /// `ensureInitialized()` is idempotent: a second call must NOT re-dispatch
-    /// the audio-session configuration. Kills the `guard !isInitialized` mutant.
+    /// the audio-session configuration (the `guard !isInitialized` check).
     func testPlaybackBootstrapper_ensureInitialized_isIdempotent_doesNotRedispatch() {
         let manager = AudiobookSessionManager(appContainer: appContainer)
 

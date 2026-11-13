@@ -31,7 +31,7 @@ INPUT (normalized JSON — the CI wrapper produces this from the Crashlytics API
   can be flattened into this shape by the wrapper without pruning.
 
 TRIAGE LEDGER
-  Default `.forgeos/crash-triage/<release>.txt`, override with --triage-file.
+  Default `config/ci/crash-triage/<release>.txt`, override with --triage-file.
   One `<issue-id> <ticket-or-reason>` per line; blank lines and `#`-comments
   ignored (an id is a hex string, never bare `#...`, so `#` is always a comment
   here — unlike the release-fix waiver which also accepts `#<pr>`). An issue is
@@ -68,7 +68,7 @@ def _load_issues(path: str) -> list[dict]:
 def _load_triaged(path: str | None, release_version: str) -> set[str]:
     if path is None:
         safe = release_version.replace("/", "-")
-        path = os.path.join(".forgeos", "crash-triage", f"{safe}.txt")
+        path = os.path.join("config", "ci", "crash-triage", f"{safe}.txt")
     ids: set[str] = set()
     if not os.path.exists(path):
         return ids
@@ -141,7 +141,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--issues-json", required=True,
                         help="Normalized Crashlytics issue export (list or {issues:[...]}).")
     parser.add_argument("--triage-file", default=None,
-                        help="Triage ledger (default .forgeos/crash-triage/<version>.txt).")
+                        help="Triage ledger (default config/ci/crash-triage/<version>.txt).")
     parser.add_argument("--min-events", type=int, default=1,
                         help="Ignore signatures below this event count (default 1).")
     parser.add_argument("--include-anr", action="store_true",

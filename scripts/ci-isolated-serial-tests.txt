@@ -1,0 +1,69 @@
+# Test classes that run in a SERIAL pass (`-parallel-testing-enabled NO`),
+# outside the 4-clone parallel run. One "Target/Class" per line; `#` starts a
+# comment. Read by scripts/xcode-test-optimized.sh (the single-job CI path and
+# local CI parity) and by scripts/ci-test-shards.py (the sharded CI workflow),
+# so both run the same classes serially. The shard planner refuses a name that
+# matches no enumerated class: xcodebuild ignores an unmatched -only-testing
+# name, and a class named here but misspelt would run in neither pass.
+#
+# Scheduling-sensitive infra tests that must run OUTSIDE the 4-clone parallel
+# run. Under parallel-sim-clone oversubscription (workers > runner cores) the
+# cooperative pool starves so badly that these tests' OWN internal wait
+# timeouts starve too, and they hang to the 120s executionTimeAllowance —
+# even though they pass deterministically when not oversubscribed (they can't
+# be reproduced on a single local clone that owns its pool). They are NOT
+# skipped/weakened: the parallel run `-skip-testing`s them, then a dedicated
+# SERIAL pass runs them FULLY and the results are MERGED back into the result
+# bundle so the fail-gate counts them. Owner decision after CI runs
+# 29805821296 / 29810471358.
+#
+# De-flake convergence (DEFLAKE-PLAN, 2026-07-23): the god-class decomposition
+# campaign needs a green board to land the keystone waves. The recurring red is
+# "clone-wedge collateral" — a leaked cross-test job wedges a per-clone global
+# (cooperative pool / main run loop / the AppContainer.production() singleton
+# graph); a wandering victim then hangs to the 120s executionTimeAllowance and
+# fails all retries because retries rerun in the SAME wedged clone process. Two
+# named classes below are PERMANENT isolations (real WKWebView/WebContent process
+# contention that can't be seam-fixed); the rest are TEMPORARY quarantine until
+# their per-test hermetic-DI/bounded-await fixes land (P1/P2 in DEFLAKE-PLAN),
+# then remove them here. This is the owner-approved serial-isolation mechanism —
+# tests still RUN and still GATE (merged into the result bundle), so this is
+# not a skip-allowlist and does not violate the green-board "no flake memos" rule.
+
+PalaceTests/ImageCacheContinuationTests
+PalaceTests/PoolResponsivenessProbeTests
+# Permanent — real WKWebView + WebContent process spawn under clone contention.
+PalaceTests/SignInWebSheetIntegrationTests
+# Temporary — remove each as its per-test fix lands (DEFLAKE-PLAN §3 / P1-P2):
+PalaceTests/AccountAwareNetworkTests
+PalaceTests/AccountsManagerTests
+PalaceTests/BookmarkDeletionLogTests
+PalaceTests/MultiLibraryTokenIsolationTests
+# Signing the test host (PP-5058) surfaced this one. `measure {}`
+# re-establishes the test-runner connection for its iterations, and a
+# signed app installs more slowly than an unsigned one; under 4 parallel
+# clones the reconnect exceeded its timeout and the runner "hung before
+# establishing connection". Measured: the class's other 6 tests ran and
+# passed in that same run, and only `testRFC1123Performance` was absent
+# from the bundle — 8621 distinct tests against 8622 on the unsigned
+# baseline. Running it serially keeps it gating rather than skipping it.
+PalaceTests/Date_NYPLAdditionsTests
+# Temporary — added 2026-09-02 from run 33669583217, where each of these
+# failed exactly ONE of three iterations. Under `-test-iterations 3` a
+# single stumble relaunches the WHOLE plan, so that run sampled the
+# parallel leg at 2.94x (25,094 executions of 8,531 distinct tests):
+# ~23 of its 35 test-minutes were re-runs, which is what pushed the step
+# past its 60-minute budget. On a 10x-billed macOS runner that is roughly
+# 230 wasted billable minutes per affected run.
+#
+# Load-sensitive, not broken: `ci-test-history.py BookRegistrySyncTests`
+# shows it passing across a dozen runs at 0.01-0.5s, its one failure
+# taking 2.501s — a 100x slowdown, i.e. measuring the machine rather than
+# the code. That is exactly the class this list exists for.
+#
+# Evidence is a SINGLE run for three of these four classes, so this is a
+# quarantine to stop the credit bleed, not a verdict on them. Remove each
+# as its per-test fix lands.
+PalaceTests/BookRegistrySyncTests
+PalaceTests/LCPFulfillmentHandlerTests
+PalaceTests/PalacePreferencesSettingsRoundTripTests

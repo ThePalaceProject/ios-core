@@ -1,30 +1,11 @@
-//
 //  BorrowOperationContractTests.swift
-//  PalaceTests
 //
-//  Contract-snapshot coverage for BorrowOperation. The PR #890 extraction
-//  leaked F-011 (missing `.downloadNeeded` reducer arm) and F-014 (inverted
-//  attemptDownload condition skipping startDownload on the post-borrow
-//  state). Per-case unit tests in PalaceTests/MyBooks/BorrowOperationTests
-//  passed throughout — the regressions slipped because nothing pinned the
-//  *call sequence* into the delegate.
-//
-//  These tests pin the contract: for each (attemptDownload, fetchBook
-//  result, registry pre-state) input, what calls land on the delegate
-//  spy + closure-injected seams (fetchBook, present-alert, present-modal,
-//  attemptOIDCReauth). Future refactors that change which dependency
-//  gets called (or in what order) trip a snapshot diff at PR time.
-//
-//  Notes on coverage scope:
-//  - The "silent-reauth via OIDC" path requires a live `AccountDetails
-//    .Authentication` whose `.isOidc == true`. No test helper constructs
-//    that today (see comment at top of BorrowOperationTests.swift). The
-//    auth-error contract here pins the no-auth-recovery fall-through
-//    that BorrowOperation hits when authDef is nil — the OIDC silent
-//    re-auth branch is integration-tested separately.
-//  - All books use deterministic identifiers (not TPPBookMocker's UUID)
-//    so snapshots stay stable across runs.
-//
+//  Contract snapshots for BorrowOperation: for each (attemptDownload, fetchBook
+//  result, registry pre-state) input, the calls on the delegate spy and injected
+//  seams. F-011 and F-014 (PR #890) changed this call sequence while per-case unit
+//  tests stayed green. The OIDC silent-reauth branch needs an `.isOidc`
+//  authentication that no helper builds, so only the nil-authDef fall-through is
+//  pinned. Identifiers are fixed so snapshots are stable.
 
 import XCTest
 import PalaceCatalog
@@ -109,6 +90,11 @@ final class BorrowOperationContractTests: XCTestCase {
                                args: ["title": title,
                                       "bookId": book.identifier,
                                       "hasRetryAction": "\(retryAction != nil)"])
+            },
+            publishBorrowError: { errorInfo in
+                callLog.record("publishBorrowError",
+                               args: ["bookId": errorInfo.bookId,
+                                      "presentsAlert": "\(errorInfo.presentsAlert)"])
             },
             presentSignInModal: { _ in
                 callLog.record("presentSignInModal", args: [:])
@@ -197,7 +183,7 @@ final class BorrowOperationContractTests: XCTestCase {
             // expected
         }
 
-        await waitForLog(containing: "presentBorrowErrorAlert")
+        await waitForLog(containing: "publishBorrowError")
         ContractSnapshot.assert(log, named: "fetchTimeout_surfacesRetryableAlert")
     }
 
@@ -228,7 +214,7 @@ final class BorrowOperationContractTests: XCTestCase {
             // expected
         }
         // Auth-error → showBorrowError hops via @MainActor.run.
-        await waitForLog(containing: "presentBorrowErrorAlert")
+        await waitForLog(containing: "publishBorrowError")
         ContractSnapshot.assert(log, named: "authError_noAuthDef_fallsThroughToAlert")
     }
 
@@ -238,7 +224,7 @@ final class BorrowOperationContractTests: XCTestCase {
     /// Loan→Hold race, PP-4178), BorrowOperation:
     ///   - registers `.holding` state
     ///   - announces start (via silent service — not in log)
-    ///   - throws `.bookRegistry(.holdCopyUnavailable)`
+    ///   - throws `.holdRequeued(position: 1)` (the reserved fixture's position)
     ///   - does NOT call startDownload regardless of attemptDownload.
     func test_borrowAsync_holdResponse_doesNotCallStartDownload() async {
         let preBorrowBook = Self.makeBook(identifier: "HOLD-PRE", availability: .unlimited)
@@ -247,9 +233,11 @@ final class BorrowOperationContractTests: XCTestCase {
 
         do {
             _ = try await operation.borrowAsync(preBorrowBook, attemptDownload: true)
-            XCTFail("Hold-race response must throw .holdCopyUnavailable")
+            XCTFail("Hold-race response must throw .holdRequeued")
         } catch {
-            // expected
+            guard case .holdRequeued(position: 1)? = error as? PalaceError else {
+                return XCTFail("expected .holdRequeued(position: 1), got \(error)")
+            }
         }
         await yieldSettle()
         ContractSnapshot.assert(log, named: "holdResponse_doesNotCallStartDownload")

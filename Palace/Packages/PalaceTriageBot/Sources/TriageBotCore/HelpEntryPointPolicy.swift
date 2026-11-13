@@ -16,9 +16,8 @@ public enum HelpEntryPoint: String, Sendable, CaseIterable {
 /// Pure decision for whether the shared Help affordance should be visible at a
 /// given entry point. Centralizes the AC-14 kill-switch: when
 /// `isTriageBotEnabled` is off, every entry point vanishes together — no
-/// Settings row and no toolbar Help button. Extracted here so the rule is
-/// mutation-testable in isolation from the SwiftUI hosts (which can't build
-/// under macOS `swift test`).
+/// Settings row and no toolbar Help button. Lives here so the rule is testable
+/// without the SwiftUI hosts, which can't build under macOS `swift test`.
 public enum HelpEntryPointPolicy {
 
     /// - Parameters:

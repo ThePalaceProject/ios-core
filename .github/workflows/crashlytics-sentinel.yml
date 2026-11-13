@@ -1,7 +1,7 @@
 name: Crashlytics Sentinel
 
 # Daily cron that compares the current top-10 FATAL Crashlytics issues against
-# .forgeos/crashlytics-baseline.json. Any signature that newly entered the
+# config/ci/crashlytics-baseline.json. Any signature that newly entered the
 # top 10 opens a GitHub Issue so the team sees fresh crash signatures on day 1
 # instead of weeks later (the F-004 / F-005 lag we hit in 3.0.0).
 #
@@ -103,7 +103,7 @@ jobs:
           cat > "$BODY_FILE" <<EOF
           The Crashlytics sentinel detected one or more signatures that have
           newly entered the top 10 since the last baseline refresh
-          (\`.forgeos/crashlytics-baseline.json\`).
+          (\`config/ci/crashlytics-baseline.json\`).
 
           Investigate each entry below: confirm whether it is a real regression
           (NEW signature) or a previously-known issue whose volume crossed
@@ -175,7 +175,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
-          git add .forgeos/crashlytics-baseline.json
+          git add config/ci/crashlytics-baseline.json
           if git diff --cached --quiet; then
             echo "No baseline changes; nothing to PR."
             exit 0

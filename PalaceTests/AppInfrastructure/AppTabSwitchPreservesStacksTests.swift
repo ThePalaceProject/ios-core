@@ -20,8 +20,8 @@ import SwiftUI
 /// these tests were written to hold. A tab switch must now leave BOTH stacks
 /// alone, so browsing deep into a lane and stepping over to My Books no longer
 /// costs you your place. The assertions below are the inversion, kept in place
-/// rather than deleted so the change of contract is visible: the mutant that
-/// matters is a reset creeping back in, on either side of the switch.
+/// rather than deleted so the change of contract is visible: the regression
+/// that matters is a reset creeping back in, on either side of the switch.
 ///
 /// The way back to a tab's root is now tapping the tab you are already on; that
 /// gesture is covered by `AppTabStackMemoryTests`.

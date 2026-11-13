@@ -2,15 +2,8 @@
 //  DiskBudgetManager.swift
 //  Palace
 //
-//  Owns the LRU eviction state machine for the per-account content
-//  directory. Extracted from MyBooksDownloadCenter so the file-system /
-//  budget logic can be exercised end-to-end with a temp-dir FileManager
-//  and a registry mock, without standing up a full download center.
-//
-//  MyBooksDownloadCenter still exposes the same `enforceContentDiskBudgetIfNeeded`
-//  and `performDiskBudgetEviction` API surface — those methods now delegate
-//  here, so the existing 7 eviction tests + the TPPAppDelegate caller keep
-//  working unchanged.
+//  LRU eviction for the per-account content directory. MyBooksDownloadCenter's
+//  `enforceContentDiskBudgetIfNeeded` / `performDiskBudgetEviction` delegate here.
 //
 
 import Foundation
@@ -21,14 +14,9 @@ import PalaceBookRegistry
 /// Resolves the "is this an iPhone SE/8-class (small) device" flag without
 /// touching the main-actor-isolated `UIScreen.main` from a background thread.
 ///
-/// The production default for `DiskBudgetManager.isSmallDevice` used to read
-/// `UIScreen.main.nativeBounds.height` inline; under Swift 6 `complete`-mode
-/// that is a main-actor-isolated access, and it was in fact already being
-/// evaluated off-main (the eviction entrypoint runs on `TPPAppDelegate`'s
-/// background `monitorQueue`). This holder resolves the pixel height exactly
-/// once, hopping to the main actor when necessary, and caches it under a lock.
-/// Screen native bounds don't change at runtime, so a one-shot cache preserves
-/// the original `<= 1334` threshold behavior exactly.
+/// Eviction runs on `TPPAppDelegate`'s background `monitorQueue`, so this
+/// resolves the native pixel height once (hopping to the main actor if needed)
+/// and caches it under a lock. Native bounds do not change at runtime.
 ///
 /// - Sendable invariant: the only mutable state (`cachedHeight`) is read and
 ///   written solely under `lock`; `@unchecked` because `CGFloat`'s optional

@@ -2,34 +2,14 @@
 //  AdobeDRMCharacterizationTests.swift
 //  PalaceTests
 //
-//  Mutation-killing characterization coverage for the Adobe RMSDK
-//  fulfillment / activation / deauthorization surface. Today the testing
-//  posture for DRM is "Very Low" — only adversarial tests exist and the
-//  characterization gaps mean a regression in error mapping, idempotency,
-//  or sign-out behavior would slip through unnoticed.
-//
-//  Scope of this file (no production-code changes):
-//    1. Activation / deauthorization lifecycle on TPPDRMAuthorizing
-//       (state transitions, idempotency, failure preservation)
-//    2. NYPLADEPTError → PalaceError.drm(DRMError) mapping for every
-//       code surface the production switch routes (authenticationFailed,
-//       tooManyActivations, default → adobeError)
-//    3. Sign-out deauthorize contract: the security-relevant invariant
-//       that signing out wipes the device from Adobe's books (and the
-//       weaker but still load-bearing "credentials cleared even if Adobe
-//       returns an error" path)
-//    4. The expiredDisplayUntilDate AdobeDRMError surface
-//
-//  Hermetic — uses TPPDRMAuthorizingMock only, no real NYPLADEPT,
-//  no network. The mock conforms to the same @objc protocol that
-//  NYPLADEPT does, so the test surface is identical to production.
-//
-//  These tests intentionally exercise BEHAVIOR rather than implementation:
-//  each one is a contract a future refactor must preserve. If a refactor
-//  drops the contract (e.g., authorizeCallCount jumping to 2 on a
-//  double-call, an error code being silently swallowed, a deauthorize
-//  callback that never fires), the test fails — that is the mutant-kill
-//  shape we want.
+//  Characterization tests for Adobe RMSDK activation, deauthorization and error
+//  mapping:
+//    1. activation/deauthorization lifecycle on TPPDRMAuthorizing (idempotency,
+//       failure preservation);
+//    2. NYPLADEPTError → PalaceError.drm(DRMError) for every routed code;
+//    3. sign-out deauthorizes the device, and clears credentials even when Adobe errors;
+//    4. the expiredDisplayUntilDate AdobeDRMError surface.
+//  Hermetic: TPPDRMAuthorizingMock conforms to the same @objc protocol as NYPLADEPT.
 //
 
 import XCTest
@@ -66,9 +46,9 @@ final class AdobeDRMCharacterizationTests: XCTestCase {
     }
 
     func test_isUserAuthorized_returnsFalse_whenFlagSet() {
-        // The flag flip must propagate. A mutant that ignored the flag
+        // The flag flip must propagate. A change that ignored the flag
         // (always returning true) would slip through the no-gate path; this
-        // test trips on that mutation.
+        // test trips on that change.
         drm.isUserAuthorizedReturnValue = false
         XCTAssertFalse(drm.isUserAuthorized("user-1", withDevice: "device-1"),
                        "When the flag is false, the gate must report unauthorized — otherwise PP-3649 burns slots")
@@ -79,7 +59,7 @@ final class AdobeDRMCharacterizationTests: XCTestCase {
         // success=true, error=nil, AND non-nil deviceID/userID. The IDs are
         // load-bearing — production AdobeDRMService persists them to the
         // user account so the next launch's `isUserAuthorized` gate
-        // short-circuits. A mutant that returned success but left the IDs
+        // short-circuits. A change that returned success but left the IDs
         // nil would corrupt the persistence step.
         let exp = expectation(description: "authorize completion")
         let capturedSuccess = LockIsolated<Bool>(false)
@@ -130,7 +110,7 @@ final class AdobeDRMCharacterizationTests: XCTestCase {
         // gate (PP-3649) lives ABOVE this layer (it calls isUserAuthorized
         // first). This test pins the contract at the seam: the mock itself
         // is non-idempotent so production must implement the gate.
-        // A mutant that made the mock idempotent (silently dropping the
+        // A change that made the mock idempotent (silently dropping the
         // second call) would hide a regression in the production gate.
         drm.authorize(withVendorID: "NYPL", username: "u", password: "p") { _, _, _, _ in }
         drm.authorize(withVendorID: "NYPL", username: "u", password: "p") { _, _, _, _ in }
@@ -194,7 +174,7 @@ final class AdobeDRMCharacterizationTests: XCTestCase {
         // must NOT silently swallow the second call. The counter increments
         // both times — the second call is a no-op at the Adobe layer but
         // production code may still log/track it. Pinning this shape
-        // protects against a mutant that early-returns on the second call
+        // protects against a change that early-returns on the second call
         // (would hide a double-sign-out logic bug).
         drm.deauthorize(withUsername: "u", password: "p",
                         userID: "uid", deviceID: "did") { _, _ in }
@@ -210,7 +190,7 @@ final class AdobeDRMCharacterizationTests: XCTestCase {
         // mock's `shouldDeferDeauthorize` flag captures the completion so
         // tests can simulate slow Adobe servers. Pin the deferred path:
         // setting the flag stores the completion AND lets it be invoked
-        // later via completeDeferredDeauthorize(). If a mutant broke
+        // later via completeDeferredDeauthorize(). If a regression broke
         // the deferred branch (e.g., fired immediately anyway), the
         // captured completion would be nil — caught here.
         drm.shouldDeferDeauthorize = true
@@ -242,7 +222,7 @@ final class AdobeDRMCharacterizationTests: XCTestCase {
     func test_reset_clearsAllTrackingState() {
         // The reset() contract: after a test bumps counters / flips flags /
         // sets a deferred completion, calling reset() must restore the mock
-        // to its initial shape. A mutant that forgot one field (e.g., left
+        // to its initial shape. A change that forgot one field (e.g., left
         // authorizeCallCount at its previous value) would leak state into
         // the next test — caught here by asserting EVERY tracked field.
         drm.isUserAuthorizedReturnValue = false
@@ -266,7 +246,7 @@ final class AdobeDRMCharacterizationTests: XCTestCase {
     func test_workflowsInProgress_defaultsFalse() {
         // The "is the SDK busy?" gate. Production code checks this BEFORE
         // initiating a new auth workflow so two concurrent sign-ins don't
-        // race the C++ Adobe library. A mutant that flipped the default
+        // race the C++ Adobe library. A change that flipped the default
         // to true would silently block the first sign-in attempt — pinned
         // here against the default-false contract.
         XCTAssertFalse(drm.workflowsInProgress,
@@ -279,7 +259,7 @@ final class AdobeDRMCharacterizationTests: XCTestCase {
         // Production code constructs NSErrors with the NYPLADEPTErrorDomain
         // and routes them through PalaceError.from(_:). The contract:
         // NYPLADEPTError.authenticationFailed → DRMError.authenticationFailed.
-        // A mutant that flipped the case (e.g., to .adobeError) would lose
+        // A change that flipped the case (e.g., to .adobeError) would lose
         // the specific recovery suggestion ("Please sign out and sign in
         // again") and downgrade to the generic "contact support" message.
         let ns = NSError(domain: NYPLADEPTErrorDomain,
@@ -298,7 +278,7 @@ final class AdobeDRMCharacterizationTests: XCTestCase {
     func test_palaceErrorFrom_tooManyActivationsNSError_mapsToDRMTooMany() throws {
         // Mapping contract: NYPLADEPTError.tooManyActivations → DRMError
         // .tooManyActivations. This case carries a distinct recovery hint
-        // ("Please deauthorize a device and try again"). A mutant that
+        // ("Please deauthorize a device and try again"). A change that
         // collapsed it to .adobeError would lose the user-actionable hint.
         let ns = NSError(domain: NYPLADEPTErrorDomain,
                          code: NYPLADEPTError.tooManyActivations.rawValue,
@@ -320,7 +300,7 @@ final class AdobeDRMCharacterizationTests: XCTestCase {
         //   - .notReady (the morning-log E_ADEPT_NOT_READY)
         //   - .documentExpired
         //   - .deviceNotActivated
-        // A mutant that removed the default arm (or swallowed unknown
+        // A change that removed the default arm (or swallowed unknown
         // codes into .network(.unknown)) would slip through here.
         for code in [NYPLADEPTError.notReady.rawValue,
                      NYPLADEPTError.documentExpired.rawValue,
@@ -341,7 +321,7 @@ final class AdobeDRMCharacterizationTests: XCTestCase {
 
     func test_palaceErrorFrom_nonAdobeDomainNSError_doesNotMisroutToDRM() throws {
         // The reverse contract: an NSError that is NOT in the Adobe domain
-        // must NOT be routed into the DRM bucket. A mutant that dropped the
+        // must NOT be routed into the DRM bucket. A change that dropped the
         // domain check (e.g., `if true {` instead of `if domain == Adobe`)
         // would misroute every NSError into .drm(...), causing the UI to
         // show DRM recovery hints for network errors. Pin the negative.
@@ -361,7 +341,7 @@ final class AdobeDRMCharacterizationTests: XCTestCase {
 
     func test_palaceErrorFrom_passesThroughExistingPalaceError() {
         // Identity contract: if the input is ALREADY a PalaceError, the
-        // mapper returns it unchanged. A mutant that re-wrapped (e.g.,
+        // mapper returns it unchanged. A change that re-wrapped (e.g.,
         // .network(.unknown) on every call) would discard the original
         // case. Pin all three classes the mapper might encounter.
         let drmIn: PalaceError = .drm(.authenticationFailed)
@@ -381,7 +361,7 @@ final class AdobeDRMCharacterizationTests: XCTestCase {
         // CRITICAL security-relevant invariant from TPPSignInBusinessLogic+
         // SignOut.swift:354-359: signing out must call drmAuthorizer
         // .deauthorize with the (clientToken username, clientToken password,
-        // userID, deviceID) tuple. If a mutant swapped the args (e.g.,
+        // userID, deviceID) tuple. If a regression swapped the args (e.g.,
         // passed the user's library barcode instead of the Adobe client
         // token), the Adobe server would reject the deauth and the device
         // would stay activated against this user account — a leak across
@@ -435,7 +415,7 @@ final class AdobeDRMCharacterizationTests: XCTestCase {
         // Resilience contract: even when Adobe rejects the deauthorize call
         // (E_DEACT_USER_MISMATCH is common after a PIN change), the local
         // sign-out flow must still complete — the user must be able to log
-        // out even if the device stays activated against Adobe. A mutant
+        // out even if the device stays activated against Adobe. A regression
         // that early-returned on the failure path (skipping the completion)
         // would leave the UI in a "signing out…" spinner forever.
         final class RejectingMock: TPPDRMAuthorizingMock {
@@ -494,7 +474,7 @@ extension AdobeDRMCharacterizationTests {
     func test_acsmFulfillment_loanNotOnRecord_mapsToAdobeError() {
         // The LoanNotOnRecord error happens when Adobe rejects an ACSM for
         // a book the user returned on another device. Maps via the default
-        // arm to .adobeError. A mutant that promoted it to .authenticationFailed
+        // arm to .adobeError. A change that promoted it to .authenticationFailed
         // would prompt the user to re-sign-in, which would NOT fix the
         // underlying state mismatch.
         let ns = NSError(domain: NYPLADEPTErrorDomain,

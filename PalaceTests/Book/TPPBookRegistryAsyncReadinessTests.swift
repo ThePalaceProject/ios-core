@@ -2,15 +2,12 @@
 //  TPPBookRegistryAsyncReadinessTests.swift
 //  PalaceTests
 //
-//  Readiness contract for `TPPBookRegistry.syncAsync` (swarm_81b5099e
-//  Bucket A). Pre-Phase-1 the function read `currentAccount?.loansUrl`
-//  directly and threw `.authentication(.accountNotFound)` whenever the
-//  auth document hadn't loaded — confusing test/regression signal because
-//  the account WAS found, it just wasn't ready.
-//
-//  Post-Phase-1 the function blocks on `currentAccount.awaitReady()`
-//  before reading loansUrl. The single-timeout policy keeps the upstream
-//  fetch-feed timeout as the only timeout on this path.
+//  Readiness contract for `TPPBookRegistry.syncAsync`. The function used to
+//  read `currentAccount?.loansUrl` directly and throw
+//  `.authentication(.accountNotFound)` whenever the auth document hadn't
+//  loaded, even though the account existed. It now blocks on
+//  `currentAccount.awaitReady()` before reading loansUrl; the upstream
+//  fetch-feed timeout stays the only timeout on this path.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -18,9 +15,10 @@
 import XCTest
 @testable import Palace
 import PalaceBookRegistry
+import PalaceCatalog
 
 @MainActor
-final class TPPBookRegistryAsyncReadinessTests: XCTestCase {
+final class TPPBookRegistryAsyncReadinessTests: PalaceWiringTestCase {
 
     private var libraryMock: TPPLibraryAccountMock!
 
@@ -107,21 +105,21 @@ final class TPPBookRegistryAsyncReadinessTests: XCTestCase {
     /// When the production accountsManager has a currentAccount, exercise
     /// the full migrated syncAsync path: under .detailsFailed, syncAsync
     /// throws `.authentication(.accountNotFound)`. This pins the
-    /// observable surface that pre-Phase-1 callers depended on (so
+    /// observable surface that existing callers depend on (so
     /// `.accountNotFound` keeps meaning "can't sync; try again later").
     func testIntegration_underDetailsFailed_throwsAccountNotFound() async throws {
         // Rationale: integration test pins behavior against the production
         // graph. Fresh test container traps when seeded account is set to
         // .detailsFailed and syncAsync runs through the downstream state
         // machine. Tracked for follow-up.
-        let accountsMgr = AppContainer.production().accountsManager // MIGRATED-DEFERRED: swarm_5b500284 — integration test pins production graph
+        let accountsMgr = AppContainer.production().accountsManager // MIGRATED-DEFERRED: integration test pins production graph
         let (account, cleanup) = seedAccountIfNeeded(on: accountsMgr,
                                                     fixtureId: "test-registry-async-\(UUID().uuidString)")
         defer { cleanup() }
 
         account._setState(.detailsFailed(.authDocumentFetchFailed(underlyingDescription: "test HTTP 503")))
 
-        guard let registry = AppContainer.production().bookRegistry as? TPPBookRegistry else { // MIGRATED-DEFERRED: swarm_5b500284 — integration test pins production graph
+        guard let registry = AppContainer.production().bookRegistry as? TPPBookRegistry else { // MIGRATED-DEFERRED: integration test pins production graph
             throw XCTSkip("Production bookRegistry must be the concrete TPPBookRegistry type")
         }
 
@@ -138,5 +136,53 @@ final class TPPBookRegistryAsyncReadinessTests: XCTestCase {
         } catch {
             XCTFail("Expected PalaceError, got \(type(of: error)): \(error)")
         }
+    }
+
+    // MARK: - Bounded readiness wait
+
+    /// A sync for an account whose details never load ends with
+    /// `.accountNotFound` once the readiness wait runs out. The post-return
+    /// sync awaits this, and the return's completion awaits the sync.
+    func testSyncAsync_whenAccountNeverBecomesReady_throwsAccountNotFoundAfterReadinessWait() async {
+        let manager = makeFreshAccountsManager(defaults: Self.testUserDefaults())
+        let pub = OPDS2Publication(
+            links: [OPDS2Link(href: "https://example.com/catalog", rel: "http://opds-spec.org/catalog")],
+            metadata: OPDS2Publication.Metadata(id: "never-ready-\(UUID().uuidString)", title: "Never Ready"),
+            images: nil)
+        let account = Account(publication: pub, imageCache: MockImageCache())
+        // Run the closure `_seedAccountForTesting` returns: it puts the previous
+        // `TPPCurrentAccountIdentifier` back, so the isolated suite above is also
+        // clean when the next method reads it.
+        let restoreSeed = manager._seedAccountForTesting(account)
+        defer { restoreSeed() }
+        account._setState(.detailsLoading)
+        let registry = TPPBookRegistry(accountsManager: manager, imageLoader: MockImageLoader())
+
+        let sync = Task { @MainActor () -> String in
+            do {
+                _ = try await registry.syncAsync(accountsManager: manager, readinessTimeout: 0.05)
+                return "succeeded"
+            } catch PalaceError.authentication(.accountNotFound) {
+                return "accountNotFound"
+            } catch {
+                return "\(error)"
+            }
+        }
+        // A far deadline that only matters if the wait stops being bounded: the
+        // test then fails here instead of hanging until the runner kills it.
+        let outcome: String? = await withTaskGroup(of: String?.self) { group in
+            group.addTask { await sync.value }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                return nil
+            }
+            let first = await group.next() ?? nil
+            if first == nil { sync.cancel() }
+            group.cancelAll()
+            return first
+        }
+
+        XCTAssertEqual(outcome, "accountNotFound",
+                       "nil means the sync was still waiting on the account after 10 s")
     }
 }

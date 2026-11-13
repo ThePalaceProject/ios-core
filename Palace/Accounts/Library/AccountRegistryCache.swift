@@ -2,20 +2,11 @@
 //  AccountRegistryCache.swift
 //  Palace
 //
-//  god-class decomposition — Wave 3 / 3a-1 (the first in-target collaborator
-//  split out of `AccountsManager`).
-//
-//  The on-disk catalog cache concern: the stale-while-revalidate metadata value
-//  type and the FileManager-backed read/write/staleness/clear operations the
-//  registry loader and launch-preload paths use. Extracted behind an injected
-//  `AccountRegistryCaching` seam so the hub carries no disk-I/O body and the
-//  collaborator is a spy-testable double — the `AccountNetworking` / S3 precedent.
-//  Travels into `PalaceAccounts` with `AccountsManager` at the package move.
-//
-//  `Sendable`: catalog writes/reads run inside the loader's owned-crawl
-//  `@Sendable` Tasks (`spawnOwnedCrawlTask`), so the injected cache must cross that
-//  boundary. `DiskAccountRegistryCache` is a stateless value type, so the
-//  conformance is free.
+//  On-disk catalog cache: stale-while-revalidate metadata and the FileManager
+//  read/write/staleness/clear operations used by the registry loader and launch
+//  preload, behind the injectable `AccountRegistryCaching` protocol.
+//  `Sendable` because the cache is used inside `@Sendable` crawl Tasks;
+//  `DiskAccountRegistryCache` is a stateless value type.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -104,10 +95,8 @@ struct CatalogCacheMetadata: Codable {
 
     /// Pure staleness predicate over an optional metadata + server hint.
     /// Returns `true` when metadata is missing (⇒ refresh) OR when the metadata
-    /// reports staleness against `serverMaxAge`. Lives on the metadata type (it
-    /// is metadata logic) so the nil-metadata → refresh path stays unit-testable
-    /// without touching the file system (F-013). Moved from `AccountsManager` in
-    /// the Wave 3 / 3a-1 disk-cache extraction.
+    /// reports staleness against `serverMaxAge`. Pure, so the nil-metadata path
+    /// is unit-testable without the file system.
     static func isCacheStale(
         metadata: CatalogCacheMetadata?,
         serverMaxAge: TimeInterval?

@@ -1,25 +1,9 @@
 //
-//  BookReturnServiceTests.swift
-//  PalaceTests
-//
-//  Critical-path coverage for the borrow-return state machine extracted
-//  into BookReturnService. CLAUDE.md flags return as a user-money path
-//  requiring branch-level + error-path tests.
-//
-//  Branches covered:
-//    1. Book not in registry → no-op + completion
-//    2. revokeURL == nil + downloaded → local cleanup, registry remove,
-//       sync, announce success
-//    3. revokeURL == nil + not downloaded → cleanup skips file deletion
-//    4. revokeURL + parsing-error-as-success (PalaceError.parsing
-//       .opdsFeedInvalid) → treat OverDrive's quirky XML response as
-//       success
-//    5. revokeURL + no-active-loan / loan-term-limit problem document →
-//       local cleanup, registry remove, announce success
-//    6. revokeURL + invalid-credentials → reauthenticate + retry
-//    7. revokeURL + generic problem document → present alert (we only
-//       assert announceReturnFailed since UIAlertController presentation
-//       is host-VC dependent and out of scope for unit tests)
+//  Every branch of the BookReturnService return state machine: book not in
+//  registry; no revokeURL (downloaded or not); OverDrive's parse-error-as-success;
+//  no-active-loan / loan-term-limit problem docs treated as returned;
+//  invalid-credentials reauth + retry; and generic problem docs, asserted via
+//  announceReturnFailed since alert presentation needs a host view controller.
 //
 
 import XCTest
@@ -126,6 +110,184 @@ final class BookReturnServiceTests: XCTestCase {
         await awaitConditionAsync(timeout: timeout, file: file, line: line, predicate)
     }
 
+    /// Joins every tracked Task of `service` until its retention set is empty.
+    /// A tracked body can launch a further tracked Task (`performPostReturnSyncThen`,
+    /// `launchTrackedMainActorTask`), which a single up-front snapshot misses.
+    /// Throws, rather than falling through to a later assertion that would
+    /// misreport the cause, when work is still pending after `maxRounds` joins;
+    /// a Task that finished but never removed itself fails here too.
+    private func joinAllTrackedTasks(of service: BookReturnService, maxRounds: Int = 8) async throws {
+        var rounds = 0
+        while true {
+            let pending = service.inFlightTasksSnapshotForTesting()
+            // Both halves of the ledger: a slot claimed by a body that never
+            // stored a handle is invisible to the snapshot.
+            if pending.isEmpty, service.outstandingSlotCount == 0 { return }
+            if rounds >= maxRounds {
+                XCTFail("tracked Tasks still pending after \(rounds) join rounds")
+                throw TrackedTaskQuiescenceError.didNotQuiesce(rounds: rounds)
+            }
+            for task in pending { _ = await task.value }
+            rounds += 1
+        }
+    }
+
+    // MARK: - Tracked-task retention
+
+    /// A task that ends on cancellation, or on its own deadline either way.
+    ///
+    /// Bounded deliberately. An unbounded `while !Task.isCancelled` spinner
+    /// turns a cancellation that fails to arrive into a test that hangs rather
+    /// than one that fails, and a hang is reported as no result at all.
+    private func makeCancellableTask() -> Task<Void, Never> {
+        Task {
+            for _ in 0 ..< 200 {
+                if Task.isCancelled { return }
+                try? await Task.sleep(nanoseconds: 10_000_000)
+            }
+        }
+    }
+
+    /// A body that finishes before its handle is stored must not be retained.
+    ///
+    /// The launcher cannot store a handle until `Task.init` returns, and it is
+    /// not actor-isolated, so under load the body ran to completion first. An
+    /// unconditional insert then put a finished Task back into the set it had
+    /// already left, nothing ever removed it again, and the drain helpers above
+    /// reported work that would never settle (PP-5408).
+    func test_whenABodyFinishesBeforeItsHandleIsStored_theTaskIsNotRetained() {
+        let id = service.claimTrackedSlot()
+        service.releaseTracked(id)
+
+        service.retainTracked(id, Task {})
+
+        XCTAssertTrue(
+            service.inFlightTasksSnapshotForTesting().isEmpty,
+            "a Task whose body already finished must not be resurrected into the retention set"
+        )
+        XCTAssertEqual(service.inFlightTaskCount, 0,
+                       "nothing is outstanding once the body has completed")
+    }
+
+    /// A slot is outstanding from the claim, before any handle exists.
+    ///
+    /// This is what closes the window: the slot exists before the Task does, so
+    /// there is no ordering in which the body can outrun its own bookkeeping.
+    /// Asserted on the slot ledger, not `inFlightTaskCount`, which counts
+    /// retained handles and is deliberately still zero here.
+    func test_aClaimedSlot_isOutstandingBeforeAnyHandleIsStored() {
+        XCTAssertEqual(service.outstandingSlotCount, 0, "precondition: nothing outstanding")
+
+        let id = service.claimTrackedSlot()
+
+        XCTAssertEqual(service.outstandingSlotCount, 1,
+                       "a claimed slot is outstanding work even before its handle is stored")
+        XCTAssertEqual(service.inFlightTaskCount, 0,
+                       "no handle has been stored yet, so nothing is retained")
+
+        service.releaseTracked(id)
+    }
+
+    /// Releasing a slot drops the handle retained for it.
+    func test_releasingASlot_dropsTheRetainedHandle() {
+        let id = service.claimTrackedSlot()
+        service.retainTracked(id, Task {})
+        XCTAssertFalse(service.inFlightTasksSnapshotForTesting().isEmpty,
+                       "precondition: the handle is retained")
+
+        service.releaseTracked(id)
+
+        XCTAssertTrue(service.inFlightTasksSnapshotForTesting().isEmpty,
+                      "completion must drop the handle")
+        XCTAssertEqual(service.inFlightTaskCount, 0, "and release the slot")
+    }
+
+    /// Cancelling everything also clears claimed slots.
+    ///
+    /// A body still running when teardown fires is not cancelled in this
+    /// window — it holds no handle for `cancelAllInFlightTasks` to reach — so
+    /// what the ledger owes is to keep it out afterwards. The launchers cancel
+    /// such a body themselves on the refusal; that is pinned separately below.
+    func test_cancelAllInFlightTasks_releasesClaimedSlotsAndRefusesALateRetain() {
+        let id = service.claimTrackedSlot()
+
+        service.cancelAllInFlightTasks()
+
+        XCTAssertEqual(service.outstandingSlotCount, 0, "cancellation must clear claimed slots")
+
+        let stored = service.retainTracked(id, Task {})
+
+        XCTAssertFalse(stored, "a refused handle must be reported so the caller can cancel it")
+        XCTAssertTrue(
+            service.inFlightTasksSnapshotForTesting().isEmpty,
+            "a body whose slot teardown dropped must not re-enter the retention set"
+        )
+    }
+
+    /// One slot's completion must not drop another's.
+    ///
+    /// The ledger is keyed per launch because a tracked body can launch another
+    /// (`performPostReturnSyncThen` does), so the parent's slot is still
+    /// outstanding when the child claims. Were release to clear the whole
+    /// ledger, the parent finishing would drop the child's handle and the child
+    /// would escape `cancelAllInFlightTasks` — writing into the registry after
+    /// a sign-out, which is the thing the retention set exists to prevent.
+    func test_releasingOneSlot_leavesAnotherOutstandingAndRetained() {
+        let parent = service.claimTrackedSlot()
+        let child = service.claimTrackedSlot()
+        service.retainTracked(parent, Task {})
+        let childTask = makeCancellableTask()
+        service.retainTracked(child, childTask)
+        XCTAssertEqual(service.outstandingSlotCount, 2, "precondition: two launches outstanding")
+
+        service.releaseTracked(parent)
+
+        XCTAssertEqual(service.outstandingSlotCount, 1, "only the released slot is gone")
+        XCTAssertEqual(service.inFlightTaskCount, 1, "the other handle is still retained")
+        XCTAssertTrue(service.inFlightTasksSnapshotForTesting().contains(childTask),
+                      "the surviving handle must be the one that was not released")
+
+        service.releaseTracked(child)
+        childTask.cancel()
+    }
+
+    /// Teardown cancels every retained body, not just one.
+    func test_cancelAllInFlightTasks_cancelsEveryRetainedBody() async {
+        let first = service.claimTrackedSlot()
+        let second = service.claimTrackedSlot()
+        let firstTask = makeCancellableTask()
+        let secondTask = makeCancellableTask()
+        service.retainTracked(first, firstTask)
+        service.retainTracked(second, secondTask)
+
+        service.cancelAllInFlightTasks()
+
+        await firstTask.value
+        await secondTask.value
+        XCTAssertTrue(firstTask.isCancelled, "every retained body must be cancelled")
+        XCTAssertTrue(secondTask.isCancelled, "including the second, which a one-shot teardown would miss")
+        XCTAssertEqual(service.outstandingSlotCount, 0, "and both slots released")
+        XCTAssertEqual(service.inFlightTaskCount, 0, "and both handles dropped")
+    }
+
+    /// A body whose handle teardown refused is cancelled by the launcher.
+    ///
+    /// Nothing else can reach it: it is in no retention set, so a later
+    /// teardown has no handle to cancel.
+    func test_whenTeardownRefusesAHandle_theLauncherCancelsThatBody() async {
+        let id = service.claimTrackedSlot()
+        service.cancelAllInFlightTasks()
+        let orphan = makeCancellableTask()
+
+        if !service.retainTracked(id, orphan) {
+            orphan.cancel()
+        }
+
+        await orphan.value
+        XCTAssertTrue(orphan.isCancelled,
+                      "a body that can never be retained must be cancelled where the refusal is seen")
+    }
+
     // MARK: - Branch 1: book not in registry
 
     func testReturnBook_bookNotInRegistry_callsCompletionAndDoesNothing() async throws {
@@ -198,8 +360,8 @@ final class BookReturnServiceTests: XCTestCase {
     }
 
     /// A return for a book that isn't in the registry short-circuits BEFORE the
-    /// cancellation seam (there's nothing to return). Guards against a mutant
-    /// that moves the canceller above the `guard let book` early-out.
+    /// cancellation seam (there's nothing to return). Guards against moving
+    /// the canceller above the `guard let book` early-out.
     func testReturnBook_bookNotInRegistry_doesNotCancelRemoteWrite() async throws {
         final class Recorder: @unchecked Sendable {
             private let lock = NSLock()
@@ -395,7 +557,7 @@ final class BookReturnServiceTests: XCTestCase {
                        "Generic error keeps the book in the registry until user picks an action")
     }
 
-    // MARK: - Task lifecycle (swarm_4e47d4d4 F3 — fire-and-forget retention)
+    // MARK: - Task lifecycle (fire-and-forget retention)
 
     /// The return flow's revokeURL branch (line 154 Task) is the canonical
     /// "hop to cooperative pool then bounce off MainActor for cleanup" path.
@@ -428,17 +590,18 @@ final class BookReturnServiceTests: XCTestCase {
         // pool and cannot auto-remove until we yield the main actor. So the
         // count is deterministically ≥ 1 right now — assert directly instead
         // of polling a wall-clock deadline that starves under CI
-        // oversubscription. Capture the tracked Tasks here so we can JOIN
-        // them below rather than poll the count back to zero.
-        let tracked = service.inFlightTasksSnapshotForTesting()
+        // oversubscription.
         XCTAssertGreaterThanOrEqual(service.inFlightTaskCount, 1,
                        "returnBook must synchronously retain its revokeURL cleanup Task")
 
         await fulfillment(of: [exp], timeout: 3.0)
 
-        // Auto-removal is the last step of the tracked Task body; awaiting
-        // each Task's value joins that removal deterministically — no poll.
-        for task in tracked { _ = await task.value }
+        // The treat-as-success branch launches a second tracked Task
+        // (`performPostReturnSyncThen`) that delivers the completion before it
+        // removes itself, so the count can still read 1 here. Join every
+        // tracked Task, including ones launched after returnBook returned; the
+        // join fails if a finished Task never auto-removes.
+        try await joinAllTrackedTasks(of: service)
         XCTAssertEqual(service.inFlightTaskCount, 0,
                        "After completion, Tasks must auto-remove from the retention set")
     }
@@ -563,37 +726,11 @@ final class BookReturnServiceTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(service.inFlightTaskCount, 1,
                                         "returnBook must synchronously retain its cleanup Task")
 
-            // Join by re-snapshotting: a tracked body can itself launch a
-            // further tracked Task — the `launchTrackedMainActorTask` hop in
-            // `handleRevokeError`'s `.genericFailureAlert` branch
-            // (BookReturnService.swift:602), which in turn calls
-            // `presentReturnFailureAlert` — which a single snapshot taken up
-            // front would never join. Bounded, and every wait is a real
-            // Task join rather than a wall-clock poll.
-            var rounds = 0
-            while true {
-                let pending = service.inFlightTasksSnapshotForTesting()
-                if pending.isEmpty { break }
-                // Checked BEFORE joining, so it fires only when work REMAINS
-                // after `rounds` completed rounds — a true statement. Checking
-                // after the join instead would throw on a round that had just
-                // drained everything, dropping the success ceiling below the
-                // bound the message names.
-                //
-                // THROW rather than break: a `break` falls through to the
-                // `XCTAssertNil(weakSvc)` below, which then fails too and
-                // reports "something still retains BookReturnService" — the
-                // wrong diagnosis, since a still-running body legitimately
-                // pins `self`. Throwing keeps the failure truthful; XCTest
-                // still records two entries (the XCTFail and the thrown
-                // error), both naming this same cause.
-                if rounds >= 8 {
-                    XCTFail("tracked Tasks still pending after \(rounds) join rounds")
-                    throw TrackedTaskQuiescenceError.didNotQuiesce(rounds: rounds)
-                }
-                for task in pending { _ = await task.value }
-                rounds += 1
-            }
+            // The `.genericFailureAlert` branch of `handleRevokeError` launches a
+            // further tracked Task, so join until the set is empty. The helper
+            // throws on a stuck Task instead of letting `XCTAssertNil(weakSvc)`
+            // below misreport a still-running body as a retain cycle.
+            try await self.joinAllTrackedTasks(of: service)
             XCTAssertEqual(service.inFlightTaskCount, 0,
                            "Tracked Tasks must auto-remove once their bodies finish")
         }()
@@ -670,12 +807,8 @@ final class BookReturnServiceTests: XCTestCase {
     // The setUp service has NO coordinator, so this legacy branch is live.
 
     /// SAML (browser-based) + credentials + invalid-credentials revoke error
-    /// must mark credentials stale before reauth (line 476 true branch).
-    ///
-    /// Kills :476 `isBrowserBased == true`→`!= true`: under the mutant the
-    /// SAML account evaluates `isBrowserBased != true` == false →
-    /// `needsBrowserReauth` false → markCredentialsStale is SKIPPED → authState
-    /// stays `.loggedIn`, failing the assertion below.
+    /// must mark credentials stale before reauth. Inverting the
+    /// `isBrowserBased == true` check would skip markCredentialsStale.
     func testReturnBook_SAMLBrowserAuth_invalidCredentials_marksCredentialsStaleBeforeReauth() async throws {
         let bookWithRevoke = makeBookWithRevokeURL()
         registry.addBook(bookWithRevoke, location: nil, state: .downloadSuccessful,
@@ -712,14 +845,9 @@ final class BookReturnServiceTests: XCTestCase {
     }
 
     /// Basic (NON-browser) + credentials + invalid-credentials revoke error
-    /// must NOT mark credentials stale (line 476 false branch) — basic auth
-    /// re-prompts in-app, the existing bearer is not a browser session to
-    /// invalidate. Negative control for the pair.
-    ///
-    /// Kills :476 `isBrowserBased == true`→`!= true` from the other side:
-    /// under the mutant a basic account evaluates `isBrowserBased != true`
-    /// == true → `needsBrowserReauth` true → markCredentialsStale fires →
-    /// authState becomes `.credentialsStale`, failing the assertion below.
+    /// must NOT mark credentials stale — basic auth re-prompts in-app, and the
+    /// existing bearer is not a browser session to invalidate. Negative control
+    /// for the pair.
     func testReturnBook_basicAuth_invalidCredentials_doesNotMarkCredentialsStale() async throws {
         let bookWithRevoke = makeBookWithRevokeURL()
         registry.addBook(bookWithRevoke, location: nil, state: .downloadSuccessful,
@@ -824,7 +952,7 @@ final class BookReturnServiceTests: XCTestCase {
     /// authoritative empty → no resurrect on reload". Used by the
     /// parsing-as-success and no-active-loan paths: they share the `removeBook`
     /// mechanism the no-revokeURL path exercises but reach it via a stubbed revoke
-    /// error. Kills the `serverAuthoritative: true → false` mutant on each.
+    /// error. Fails on each if `serverAuthoritative: true` becomes `false`.
     private func assertConfirmedReturnError_persistsEmpty_noResurrect(
         stubbedError: Error,
         file: StaticString = #file,

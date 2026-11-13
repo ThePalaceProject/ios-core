@@ -2,29 +2,17 @@
 //  RedirectPolicy.swift
 //  Palace
 //
-//  Encapsulates the URLSession willPerformHTTPRedirection decision lifted
-//  out of MyBooksDownloadCenter as part of the Phase 7 decomposition.
-//  Three rules, in order:
-//    1. Cap the redirect chain at `maxRedirectAttempts` (per task) by
-//       consulting the shared DownloadCoordinator counter.
-//    2. Reject HTTPS → non-HTTPS downgrades to prevent transport
-//       stripping during a multi-hop redirect.
-//    3. Otherwise allow the redirect to proceed with the new request.
-//
-//  Auth headers are not re-added — URLSession already strips Authorization
-//  on cross-origin redirects, and bearer-token flows return a JSON
-//  document (not a redirect), so the redirect policy never has to decide
-//  that question.
+//  The download session's willPerformHTTPRedirection decision, in order:
+//  cap the chain at `maxRedirectAttempts` per task, reject HTTPS → non-HTTPS
+//  downgrades, otherwise follow. Auth headers are not re-added: URLSession
+//  strips Authorization on cross-origin redirects, and bearer-token flows
+//  return a JSON document rather than a redirect.
 //
 
 import Foundation
 
-/// - Sendable invariant (Swift 6 `complete`-mode): a value type whose only
-///   stored members are two `@Sendable async` closures and an `Int`, so it is
-///   `Sendable` and can be awaited (`decide`) from any actor — including a
-///   `@MainActor` caller (tests) — without racing. The production closures
-///   capture only the actor-isolated `DownloadCoordinator` (itself `Sendable`);
-///   the `@Sendable` annotation is satisfied there with no widening.
+/// - Sendable: a value type holding two `@Sendable async` closures and an
+///   `Int`; the production closures capture only the `DownloadCoordinator` actor.
 struct RedirectPolicy: Sendable {
     static let defaultMaxRedirectAttempts: Int = 10
 

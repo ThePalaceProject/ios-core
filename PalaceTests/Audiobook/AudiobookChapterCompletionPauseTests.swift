@@ -1,59 +1,13 @@
 //
 //  AudiobookChapterCompletionPauseTests.swift
-//  PalaceTests
 //
-//  PP-4951, piece 3 (app side): a chapter ending is not a pause.
-//
-//  `AudiobookSessionManager.handleManagerState` treated the toolkit's
-//  `.playbackCompleted` signal as "playback stopped" — it set `isPlaying =
-//  false` and moved the session to `.paused`. That signal does not mean the
-//  patron stopped listening; it means one chapter ended and the next is
-//  starting. Nothing on that path calls `player.pause()` and the audio keeps
-//  playing straight through.
-//
-//  On Findaway (every DRM audiobook) the signal fires at EVERY chapter
-//  boundary and always has, so the app has been flipping itself to `.paused`
-//  once per chapter for the whole of every DRM title. It is normally invisible
-//  because the next chapter's `.playbackBegan` arrives immediately after and
-//  puts the state back — but the toolkit documents `FAEPlaybackChapterComplete`
-//  as sometimes arriving several seconds late, and if it lands AFTER the next
-//  chapter's `.playbackBegan` the app is left showing paused while audio plays
-//  on. Unlike the toolkit's `AudiobookPlaybackModel`, which re-syncs from a
-//  0.5s `isPlaying` poll, the session manager has no poll to rescue it.
-//
-//  END OF BOOK still parks the UI, but by a route that differs per player, and
-//  the DRM one is the exception — worth stating because "every player pauses at
-//  end of book" is nearly true and wrong:
-//    * `OpenAccessPlayer` / `LCPStreamingPlayer` send `.bookCompleted` then
-//      `.stopped(beginningPosition)` from `handlePlaybackEnd`.
-//    * `FindawayPlayer.audioEngineAudiobookCompleted` sends `.bookCompleted`
-//      then `.started(beginningPosition)`, and the stop follows indirectly via
-//      `shouldPauseWhenPlaybackResumes` → `performPause`. The direct `pause()`
-//      in `FindawayPlayer` is the track-exhaustion path, NOT the path a
-//      completed Findaway book takes.
-//  Residual, named rather than papered over: `performPause` emits `.stopped`
-//  only when `currentTrackPosition != nil` AND `isPlaying`, and the Findaway
-//  SDK's `isPlaying` is documented as transiently false in the post-seek buffer
-//  window. So "a stop always arrives" is unconditional in prose and conditional
-//  in code. It is not made worse by this change — the old `.completed` pause was
-//  itself overwritten by the `.started` that follows it, so it never protected
-//  this case either.
-//
-//  WHAT THESE TESTS PIN, AND WHAT THEY DO NOT. They drive the mapping from a
-//  real `AudiobookManagerState` to the play-state it implies. An earlier
-//  revision asserted only against the bare signal enum, which left the arm free
-//  to pass the wrong signal — swapping `.chapterCompleted` for `.stopped` at the
-//  call site reintroduced the defect with every test green. Keying the mapping
-//  on the manager state closes that.
-//
-//  Still NOT pinned: `handleManagerState` itself has no test caller anywhere in
-//  PalaceTests, because `currentBook` is `private(set)` and written only on the
-//  open path, so reaching the arm needs the whole auth-gated open flow. Someone
-//  could still re-add `isPlaying = false` directly inside the `.playbackCompleted`
-//  arm, or restore its deleted `playbackStatePublisher.send`, and these tests
-//  would stay green. That gap is recorded at the arm itself rather than closed
-//  with a test-only setter, which would be a production seam opened for a test.
-//
+//  PP-4951 (app side): `.playbackCompleted` means a chapter ended, not that
+//  playback stopped. Findaway emits it at every boundary, sometimes seconds late
+//  (after the next `.playbackBegan`), which left the session showing paused while
+//  audio played. Pinned: the mapping from a real `AudiobookManagerState` to its
+//  play-state, so passing the wrong signal at the call site fails. Not pinned:
+//  `handleManagerState` itself (reaching it needs the auth-gated open flow); that
+//  gap is noted at the arm.
 
 import XCTest
 @testable import Palace

@@ -6,10 +6,7 @@ import PalaceBookModel
 /// Handles server synchronization for the book registry.
 /// Manages syncing loans from the OPDS feed and loading/saving from disk.
 ///
-/// Swift 6 concurrency (Wave 1, `SWIFT_STRICT_CONCURRENCY=targeted`):
-/// `@unchecked Sendable`.
-///
-/// INVARIANT — this type carries no concurrently-mutated shared state:
+/// `@unchecked Sendable`. Invariant: no concurrently-mutated shared state:
 ///   • Every stored dependency (`store`, `accountsManager`,
 ///     `downloadCenterProvider`, `opdsFeedServiceProvider`, the folder/file
 ///     name constants, `diskWriteQueue`, `diskWriteQueueKey`) is an immutable
@@ -25,17 +22,12 @@ import PalaceBookModel
 ///   • `_needsRebuildFromServer` (the INV-1 rebuild flag) is guarded by its own
 ///     `rebuildFlagLock`, so the disk-write queue can read/clear it race-free.
 ///
-/// Marking the type Sendable lets it be captured by the structured-concurrency
-/// (`Task { … }` / `await MainActor.run { … }`) closures in `sync(...)` without
-/// any runtime change — it documents the main-thread confinement the code
-/// already relies on, rather than altering it. See module-3 playbook (#1129):
-/// prefer isolation / `@unchecked Sendable` with a documented invariant over
-/// `nonisolated(unsafe)`.
+/// The conformance lets `sync(...)`'s `Task` / `MainActor.run` closures capture
+/// `self`; it records the existing main-thread confinement (#1129).
 final class BookRegistrySync: @unchecked Sendable {
 
   private let store: BookRegistryStore
-  /// Value-only account scope (god-class decomposition Wave 2b — the Book→Accounts
-  /// inversion). No `Account` / `AccountsManager` / `TPPUserAccount` type crosses
+  /// Value-only account scope. No `Account` / `AccountsManager` / `TPPUserAccount` type crosses
   /// this boundary; the engine reads `currentAccountID`, credential presence, and
   /// the loans URL through it, nothing more.
   private let accountScope: any AccountScopeProviding
@@ -138,12 +130,9 @@ final class BookRegistrySync: @unchecked Sendable {
   /// deterministically via `_awaitScheduledRedownloadsForTesting()`.
   ///
   /// Production behavior is unchanged: same delay, same main-queue delivery, same
-  /// fire-and-forget semantics — only a reference is kept, and only under XCTest. The
-  /// env-var gate (rather than `#if DEBUG`) keeps the scheduling path free of
-  /// conditional compilation, matching `AccountRegistryLoader._trackedCrawlTasks`.
-  private static let _isRunningUnderXCTest =
-    ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-
+  /// fire-and-forget semantics — only a reference is kept, and only under XCTest
+  /// (see `XCTestJoinableTasks`).
+  ///
   /// PER-INSTANCE, deliberately NOT static. A static array is shared by every
   /// `BookRegistrySync` in the test process, so one test's join drains another
   /// test's tasks — the join returns early, its assertion runs before the schedule
@@ -152,8 +141,13 @@ final class BookRegistrySync: @unchecked Sendable {
   /// revision of this seam was static and failed
   /// `test_load_contentMissingEntirely_schedulesTheOrphanRedownload` on CI while
   /// passing locally, where the interleaving happened to be benign.
-  private let _scheduledRedownloadsLock = NSLock()
-  nonisolated(unsafe) private var _scheduledRedownloads: [Task<Void, Never>] = []
+  private let _scheduledRedownloads = XCTestJoinableTasks()
+
+  /// The `Task` each `sync(...)` call spawns, retained under XCTest so a test can
+  /// join the whole sync (readiness wait, feed fetch, final main-actor block)
+  /// instead of waiting on a wall-clock deadline (PP-5296). Per-instance for the
+  /// same reason as `_scheduledRedownloads`.
+  private let _syncTasks = XCTestJoinableTasks()
 
   /// Schedules `body` on the main queue after `delay`, retaining the Task under XCTest.
   private func trackScheduledRedownload(
@@ -165,19 +159,7 @@ final class BookRegistrySync: @unchecked Sendable {
       guard !Task.isCancelled else { return }
       body()
     }
-    guard Self._isRunningUnderXCTest else { return }
-    _scheduledRedownloadsLock.lock()
-    _scheduledRedownloads.append(task)
-    _scheduledRedownloadsLock.unlock()
-  }
-
-  /// Snapshot-then-await without holding the lock across an await (Swift 6 bans it).
-  /// Does NOT clear: a join must be idempotent, so a second call cannot silently
-  /// return early because the first drained the list.
-  private func _snapshotScheduledRedownloadsForTesting() -> [Task<Void, Never>] {
-    _scheduledRedownloadsLock.lock()
-    defer { _scheduledRedownloadsLock.unlock() }
-    return _scheduledRedownloads
+    _scheduledRedownloads.retain(task)
   }
 
   /// How many re-downloads this instance has registered so far.
@@ -189,25 +171,27 @@ final class BookRegistrySync: @unchecked Sendable {
   /// which makes it useless as a regression test — this is a property of the
   /// code and holds on an idle machine.
   func _scheduledRedownloadCountForTesting() -> Int {
-    _scheduledRedownloadsLock.lock()
-    defer { _scheduledRedownloadsLock.unlock() }
-    return _scheduledRedownloads.count
+    _scheduledRedownloads.count
   }
 
   /// Test-only NARROW deterministic JOIN seam: awaits every re-download this
   /// instance scheduled, including its delay, so a test can assert on what was (or
   /// was not) scheduled without a wall-clock deadline.
   func _awaitScheduledRedownloadsForTesting() async {
-    for task in _snapshotScheduledRedownloadsForTesting() {
-      _ = await task.value
-    }
+    await _scheduledRedownloads.awaitAll()
+  }
+
+  /// Test-only join for every `sync(...)` Task this instance started. On return,
+  /// the sync's final `setState` and `completion` have run (both are called inside
+  /// the Task's last main-actor block), or the sync returned before reaching them.
+  func _awaitSyncTasksForTesting() async {
+    await _syncTasks.awaitAll()
   }
 
   func registryUrl(for account: String) -> URL? {
     // The `TPPAccountUUIDs[0]` root-vs-subdir path-layout rule + error logging
-    // lives app-side behind `dependencies.registryDirectory` (god-class decomp
-    // Wave 2b) — the resolved file path is byte-identical (pinned by the migration
-    // tests).
+    // lives app-side behind `dependencies.registryDirectory`; the resolved path
+    // is pinned by the migration tests.
     return dependencies.registryDirectory(account)?
       .appendingPathComponent(registryFolderName)
       .appendingPathComponent(registryFileName)
@@ -515,23 +499,17 @@ final class BookRegistrySync: @unchecked Sendable {
     // The callbacks are still only invoked inside `MainActor.run`, on main.
     let callbacks = SyncCallbacks(setState: setState, completion: completion)
 
-    Task { [weak self] in
+    let syncTask = Task { [weak self] in
       guard let self else { return }
 
-      // PHASE 1 (swarm_81b5099e Bucket A — PP-4407): the loansUrl read used
-      // to happen on the sync `sync()` call frame above. Hoisted into the
-      // Task block so we can await `Account.LoadState` readiness via
-      // `awaitReady()`. Pre-Phase-1 this silently returned on first cold-
-      // launch (details still loading → loansUrl nil → guard bailed →
-      // registry stuck `.loaded` empty until the next sync trigger). Now
-      // we block on terminal state, but BOUNDED by `authReadinessTimeout`
-      // (HelpSpot #18414): a wedged auth-doc fetch used to hang this await
-      // forever. On any `AccountLoadError` — including `.readinessTimedOut` —
-      // we revert state to `.loaded` so this engine's own retry policy
-      // (`waitForLoadThenRunSync` / account-change notifications) drives the
-      // next attempt. This is the ONE bounded readiness await in the app; the
-      // ADR's "no additional timeout" policy applies to consumers that own a
-      // pipeline-level timeout, and registry sync owns none.
+      // PP-4407: await account readiness before reading loansUrl; on a cold
+      // launch the auth document may still be loading and loansUrl is nil.
+      // The wait is bounded by `authReadinessTimeout` (HelpSpot #18414) so a
+      // wedged auth-doc fetch cannot hang sync. On any `AccountLoadError`,
+      // including `.readinessTimedOut`, state reverts to `.loaded` and the
+      // engine's own retry policy (`waitForLoadThenRunSync` / account-change
+      // notifications) drives the next attempt. Registry sync has no
+      // pipeline-level timeout of its own, which is why this await is bounded.
       let loansUrl: URL
       do {
         guard let resolvedLoansUrl = try await accountScope.loansURL(
@@ -561,6 +539,11 @@ final class BookRegistrySync: @unchecked Sendable {
         self?.syncUrl = loansUrl
       }
 
+      // States as they were when the fetch began. A record changed locally
+      // while the feed was in flight (a borrow, say) keeps its newer state
+      // instead of taking one from a feed that predates it (PP-5360).
+      let statesAtFetchStart = self.store.readRegistry { $0.mapValues(\.state) }
+
       let feed: TPPOPDSFeed
       do {
         feed = try await opdsFeedService.fetchFeed(from: loansUrl, resetCache: true)
@@ -586,26 +569,28 @@ final class BookRegistrySync: @unchecked Sendable {
         // re-enters the registry via bookRegistry.book(forIdentifier:) and trips
         // Swift's exclusivity trap — same class of bug as the save() note below.
         var booksToDeleteLocally: [TPPBook] = []
+        // Per-book observers (cells, the shared cell-model cache, detail views)
+        // listen to bookStateSubject, not the registry-wide change, so every
+        // state the merge changes is sent there after the barrier releases.
+        var stateChanges: [(identifier: String, state: TPPBookState)] = []
         self.store.mutateRegistrySync { registry in
-          var recordsToDelete = Set<String>(registry.keys)
-          // Side-loaded books never appear in the loans feed. Exempt them so
-          // reconciliation neither un-registers them (:480-481) nor deletes
-          // their on-disk content (:496-497). See sideloading-plan.md R1.
-          recordsToDelete.subtract(dependencies.sideloadedIdentifiers())
+          let localIdentifiers = Set<String>(registry.keys)
+          var feedIdentifiers = Set<String>()
           for entry in feed.entries {
             guard let opdsEntry = entry as? TPPOPDSEntry,
                   let book = TPPBook(entry: opdsEntry)
             else { continue }
-            recordsToDelete.remove(book.identifier)
+            feedIdentifiers.insert(book.identifier)
 
             if let record = registry[book.identifier] {
-              var nextState = record.state
-              if record.state == .unregistered {
-                book.defaultAcquisition?.availability.match(unavailable:
-                  nil, limited: nil, unlimited: nil,
-                  reserved: { _ in nextState = .holding },
-                  ready: { _ in nextState = .holding }
-                )
+              // Follow the server between Holds and My Books: a hold borrowed on
+              // another device otherwise stayed a hold until sign-out (PP-5360).
+              let unchangedSinceFetch = statesAtFetchStart[book.identifier] == record.state
+              let nextState = unchangedSinceFetch
+                ? TPPBookRegistryRecord.stateAfterServerUpdate(current: record.state, book: book)
+                : record.state
+              if nextState != record.state {
+                stateChanges.append((book.identifier, nextState))
               }
               dependencies.onAvailabilityChange(record, book)
               // Preserve metadata already in the registry if the loans feed's
@@ -634,41 +619,36 @@ final class BookRegistrySync: @unchecked Sendable {
             }
           }
 
-          // Guard against bulk deletion from truncated server responses
-          let localCount = registry.count
-          let feedCount = feed.entries.count
-          let deletionCount = recordsToDelete.count
-          let deletionRatio = localCount > 0 ? Double(deletionCount) / Double(localCount) : 0
-
-          let shouldSkipBulkDeletion = BookRegistrySync.shouldSkipBulkDeletion(
-            localCount: localCount, feedCount: feedCount, deletionCount: deletionCount
+          // Side-loaded books never appear in the loans feed, so they are
+          // exempt; an empty feed or an unreadable entry removes nothing
+          // (sideloading-plan.md R1, PP-5452).
+          let recordsToDelete = LoansFeedReconciliation.identifiersToRemove(
+            localIdentifiers: localIdentifiers,
+            feedIdentifiers: feedIdentifiers,
+            unparsedEntryIdentifiers: feed.unparsedEntryIdentifiers,
+            sideloadedIdentifiers: dependencies.sideloadedIdentifiers()
           )
 
-          let shouldWarnLargeDeletion = localCount > 4
-            && deletionRatio > 0.5
-            && deletionCount > 2
-
-          if shouldSkipBulkDeletion {
-            Log.error(#file, "Sync returned EMPTY feed but \(localCount) local books exist - skipping deletion (possible server issue)")
-          } else if shouldWarnLargeDeletion {
+          let localCount = registry.count
+          let deletionCount = recordsToDelete.count
+          let deletionRatio = localCount > 0 ? Double(deletionCount) / Double(localCount) : 0
+          if localCount > 4 && deletionRatio > 0.5 && deletionCount > 2 {
             Log.warn(#file, "Sync would remove \(deletionCount)/\(localCount) books (\(Int(deletionRatio * 100))%) - proceeding but logging for investigation")
           }
 
-          if !shouldSkipBulkDeletion {
-            recordsToDelete.forEach { identifier in
-              guard let record = registry[identifier] else { return }
+          recordsToDelete.forEach { identifier in
+            guard let record = registry[identifier] else { return }
 
-              let wasDownloaded = record.state == .downloadSuccessful || record.state == .used
+            let wasDownloaded = record.state == .downloadSuccessful || record.state == .used
 
-              if wasDownloaded {
-                Log.info(#file, "Removing expired/returned book '\(record.book.title)' (not in server feed)")
-                booksToDeleteLocally.append(record.book)
-              }
-
-              registry[identifier]?.state = .unregistered
-              registry.removeValue(forKey: identifier)
-              changesMade = true
+            if wasDownloaded {
+              Log.info(#file, "Removing expired/returned book '\(record.book.title)' (not in server feed)")
+              booksToDeleteLocally.append(record.book)
             }
+
+            registry[identifier]?.state = .unregistered
+            registry.removeValue(forKey: identifier)
+            changesMade = true
           }
           // NOTE: do NOT call save(for:) inside the mutateRegistrySync barrier —
           // save() reads the store's snapshot via performSync, which tries to
@@ -692,11 +672,16 @@ final class BookRegistrySync: @unchecked Sendable {
           self.save(for: accountUUID, serverAuthoritative: true)
         }
 
+        for change in stateChanges {
+          self.store.bookStateSubject.send((change.identifier, change.state))
+        }
+
         callbacks.setState(.synced)
         self.syncUrl = nil
         callbacks.completion?(nil, changesMade)
       }
     }
+    _syncTasks.retain(syncTask)
   }
 
   /// Persist the registry for the given account. The caller MUST pass the account
@@ -707,7 +692,13 @@ final class BookRegistrySync: @unchecked Sendable {
   /// would persist A's state to B's registry file and cause cross-account
   /// contamination (PP-4129 regression).
   func save(for account: String) {
-    save(for: account, serverAuthoritative: false)
+    save(for: account, serverAuthoritative: false, scope: .shelf)
+  }
+
+  /// A non-authoritative save whose `scope` says what changed. See
+  /// `RegistrySaveScope`.
+  func save(for account: String, scope: RegistrySaveScope) {
+    save(for: account, serverAuthoritative: false, scope: scope)
   }
 
   /// - Parameter serverAuthoritative: `true` only when the snapshot being
@@ -719,6 +710,10 @@ final class BookRegistrySync: @unchecked Sendable {
   ///   last-good `.bak` with an empty snapshot during the post-corrupt rebuild
   ///   window (INV-1).
   func save(for account: String, serverAuthoritative: Bool) {
+    save(for: account, serverAuthoritative: serverAuthoritative, scope: .shelf)
+  }
+
+  private func save(for account: String, serverAuthoritative: Bool, scope: RegistrySaveScope) {
     guard let registryUrl = registryUrl(for: account) else { return }
 
     let snapshot = store.registrySnapshot()
@@ -763,15 +758,21 @@ final class BookRegistrySync: @unchecked Sendable {
         // Refresh the last-good `.bak` BEFORE overwriting the primary, but only
         // for a good snapshot (non-empty, or a server-authoritative empty) so a
         // transient empty can never clobber the backup.
-        if !isEmpty || serverAuthoritative {
-          try? RegistryFileRecovery.writeBackup(data: registryData, for: registryUrl)
+        // A position-only save leaves the backup to the next shelf save: the
+        // backup exists to recover the SHELF after corruption, and one that is
+        // a few positions behind still recovers it.
+        if scope == .shelf, !isEmpty || serverAuthoritative {
+          try? RegistryFileRecovery.writeBackup(data: registryData, for: registryUrl, beforeWrite: dependencies.beforeRegistryWrite)
         }
+        try dependencies.beforeRegistryWrite(.primary, registryUrl)
         try registryData.write(to: registryUrl, options: .atomic)
         if !isEmpty || serverAuthoritative {
           needsRebuildFromServer = false
         }
-        DispatchQueue.main.async {
-          NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil, userInfo: nil)
+        if scope == .shelf {
+          DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil, userInfo: nil)
+          }
         }
       } catch {
         Log.error(#file, "Error saving book registry: \(error.localizedDescription)")
@@ -825,8 +826,9 @@ final class BookRegistrySync: @unchecked Sendable {
         directoryURL.registryExcludeFromBackup()
         let registryData = try JSONSerialization.data(withJSONObject: registryObject, options: .fragmentsAllowed)
         if !isEmpty {
-          try? RegistryFileRecovery.writeBackup(data: registryData, for: registryUrl)
+          try? RegistryFileRecovery.writeBackup(data: registryData, for: registryUrl, beforeWrite: self.dependencies.beforeRegistryWrite)
         }
+        try self.dependencies.beforeRegistryWrite(.primary, registryUrl)
         try registryData.write(to: registryUrl, options: .atomic)
         if !isEmpty {
           self.needsRebuildFromServer = false
@@ -1087,11 +1089,9 @@ final class BookRegistrySync: @unchecked Sendable {
     return downloadService.isDownloadInFlight(for: book)
   }
 
-  /// Thin delegate over the `contentFileSatisfied` seam (god-class decomp Wave 2b):
-  /// the app-side adapter owns the `#if LCP` license-vs-content probe that used to
-  /// live here — the SPM package never sees the `LCP` compilation condition. Kept as
-  /// an internal method so the white-box `BookRegistrySyncTests` continue to exercise
-  /// this call path through an injected download service.
+  /// Delegates to `contentFileSatisfied`: the app-side adapter owns the `#if LCP`
+  /// license-vs-content probe because SPM packages do not see the `LCP`
+  /// compilation condition.
   func checkIfBookFileExists(for book: TPPBook, account: String) -> Bool {
     return downloadService.contentFileSatisfied(for: book, account: account)
   }
@@ -1152,4 +1152,46 @@ public struct SendableErrorDocument: @unchecked Sendable {
 /// read-off-thread confinement. Mirrors `SendableErrorDocument`.
 private struct SendableRegistryPayload: @unchecked Sendable {
   let value: [String: Any]
+}
+
+/// What a registry save persists. Decides the side effects, not the bytes: both
+/// scopes write the whole registry file.
+enum RegistrySaveScope {
+  /// Anything that can change what is on the shelf. Refreshes the last-good
+  /// backup and posts `TPPBookRegistryDidChange`.
+  case shelf
+  /// Only a reading position moved (PP-5268). Neither refreshes the backup nor
+  /// posts a change: positions are saved every few seconds of playback, and no
+  /// observer of the shelf renders one.
+  case positionOnly
+}
+
+/// Retains fire-and-forget Tasks while running under XCTest so a test can join
+/// them; a no-op outside XCTest, so production keeps no references. The
+/// env-var gate (rather than `#if DEBUG`) keeps the spawning code free of
+/// conditional compilation, matching `AccountRegistryLoader._trackedCrawlTasks`.
+///
+/// `@unchecked Sendable`: `tasks` is only read or written under `lock`.
+private final class XCTestJoinableTasks: @unchecked Sendable {
+  private static let isRunningUnderXCTest =
+    ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+
+  private let lock = NSLock()
+  private var tasks: [Task<Void, Never>] = []
+
+  func retain(_ task: Task<Void, Never>) {
+    guard Self.isRunningUnderXCTest else { return }
+    lock.withLock { tasks.append(task) }
+  }
+
+  var count: Int { lock.withLock { tasks.count } }
+
+  /// Snapshots under the lock, then awaits outside it (Swift 6 forbids holding a
+  /// lock across an await). Does not clear the list: a join must be idempotent,
+  /// so a second call cannot return early because the first drained it.
+  func awaitAll() async {
+    for task in lock.withLock({ tasks }) {
+      _ = await task.value
+    }
+  }
 }

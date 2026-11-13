@@ -1,36 +1,22 @@
 //
-//  AudiobookMorphingPlayerView.swift
-//  Palace
+//  One audiobook player view that reflows between full-screen and a compact
+//  mini bar, Apple Music style. The cover's `matchedGeometryEffect` moves it
+//  between the two positions as the same element instead of crossfading.
 //
-//  A CUSTOM audiobook player that is ONE view reflowing between a full-screen
-//  layout and a compact mini bar — Apple-Music style — rather than crossfading
-//  two separate views. The cover art carries a `matchedGeometryEffect`, so on
-//  expand/minimize it shrinks and slides between the two positions as the SAME
-//  element (no crossfade), which is what makes it read as one view being pulled
-//  down into a smaller one.
-//
-//  Why custom (not the toolkit `AudiobookPlayerView`): the toolkit view owns a
-//  fixed full-screen layout we can't reflow, so morphing it into a mini bar is
-//  impossible — any "resize" ends up crossfading it with a separate bar, which
-//  reads as two views. This view is fully ours, driven off the presenter's
-//  published state + the `AudiobookSessionManaging` actions, so it can genuinely
-//  morph. The toolkit view is kept mounted-but-hidden elsewhere
-//  (`AppTabHostView`) purely to preserve playback wiring.
-//
-//  Scope: cover, title/author, chapter label, a chapter-scoped seek slider
-//  (bound to the presenter's `chapterProgress`, driving `AudiobookSessionManaging.
-//  seek(to:)`), 30s skips, play/pause, a playback-rate chip, a sleep-timer chip,
-//  a bookmark button, and a small Stop. These all route through the
-//  `AudiobookSessionManaging` surface — seek, sleep timer, and bookmarks are
-//  implemented here, no longer deferred.
+//  Custom rather than the toolkit `AudiobookPlayerView`, whose fixed layout
+//  cannot reflow. Driven by the presenter's published state and the
+//  `AudiobookSessionManaging` actions; the toolkit view stays mounted but
+//  hidden in `AppTabHostView` to preserve playback wiring.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
 import AVKit
 import PalaceAudiobookToolkit
+import PalaceLogging
 import SwiftUI
 import UIKit
+import PalaceUtilities
 
 @MainActor
 struct AudiobookMorphingPlayerView: View {
@@ -95,6 +81,12 @@ struct AudiobookMorphingPlayerView: View {
     /// anywhere in this file. That prose is what sent PP-5205's first analysis down the
     /// wrong path, so it is corrected rather than deleted.
     @State private var loadingTimedOut = false
+    /// When the current wait for audio began, and how it is shown (PP-5399).
+    @State private var audioWaitStartedAt: Date?
+    @State private var audioWaitPhase: AudioWaitPhase = .none
+    /// Latched once a download has been observed; the one-way rule and why it
+    /// must be one-way live in `hasSeenDownloading(previous:isDownloading:)`.
+    @State private var hasSeenDownloading = false
 
     /// PP-5205 (F13): the 30s timer, held so a re-arm can CANCEL the prior one.
     ///
@@ -117,9 +109,7 @@ struct AudiobookMorphingPlayerView: View {
     /// instant. The alert takes VoiceOver focus when presented.
     @State private var showStopConfirmation = false
 
-    /// VoiceOver focus target — moved to the title when the full player expands
-    /// (mirrors toolkit `isTitleFocused`).
-    @AccessibilityFocusState private var isTitleFocused: Bool
+    @AccessibilityFocusState private var voiceOverFocus: VoiceOverFocusTarget?
 
     // MARK: - Adaptive control metrics
 
@@ -211,6 +201,47 @@ struct AudiobookMorphingPlayerView: View {
                 }
         }
         .ignoresSafeArea()
+        .onReceive(Self.audioWaitTicker) { sampleAudioWait(at: $0) }
+    }
+
+    /// Samples the wait for audio. Polled rather than observed: `isLoaded` and
+    /// the transport's waiting state are read off the player and not published.
+    private static let audioWaitTicker = Timer.publish(every: 0.2, on: .main, in: .common).autoconnect()
+
+    private func sampleAudioWait(at now: Date) {
+        let waiting = Self.isAwaitingAudio(
+            hasStartedPlayback: presenter.hasStartedPlayback,
+            isLoaded: audiobookSession.isLoaded,
+            transportIsWaitingForData: audiobookSession.transportIsWaitingForData
+        )
+        let next = Self.nextAudioWait(startedAt: audioWaitStartedAt, waiting: waiting, now: now)
+        if next.startedAt != audioWaitStartedAt { audioWaitStartedAt = next.startedAt }
+        guard next.phase != audioWaitPhase else { return }
+        if next.phase == .slow {
+            UIAccessibility.post(notification: .announcement, argument: Strings.Generic.audiobookLoading)
+        }
+        audioWaitPhase = next.phase
+    }
+
+    /// The play/pause glyph, or a spinner while the player waits for audio, so
+    /// the control the patron touched shows the tap was taken.
+    @ViewBuilder
+    private func playPauseContent(glyphSize: CGFloat) -> some View {
+        if audioWaitPhase == .none {
+            abGlyph(presenter.isPlaying ? Self.icPause : Self.icPlay, size: glyphSize)
+        } else {
+            ProgressView().tint(Color(.systemBackground))
+        }
+    }
+
+    /// The button still plays and pauses during a wait, so its label keeps
+    /// saying which; the wait is its value.
+    private var playPauseAccessibilityLabel: String {
+        presenter.isPlaying ? Strings.Generic.pauseAudiobook : Strings.Generic.playAudiobook
+    }
+
+    private var playPauseAccessibilityValue: String {
+        audioWaitPhase == .none ? "" : Strings.Generic.audiobookLoading
     }
 
     /// Total vertical offset of the card, composing three independent effects:
@@ -298,7 +329,15 @@ struct AudiobookMorphingPlayerView: View {
         // "dismissing" the player). Keeping the drag off the controls fixes that.
         .fullScreenCover(isPresented: $showChaptersBookmarks) {
             if let model = presenter.playbackModel {
-                NavigationStack { AudiobookNavigationView(model: model) }
+                NavigationStack {
+                    AudiobookNavigationView(model: model)
+                        // The toolkit view draws its own back button and no
+                        // title, so VoiceOver reached this screen with nothing
+                        // to announce it by. Same string as the control that
+                        // opens it, so the destination matches the door.
+                        .navigationTitle(Strings.Generic.tableOfContents)
+                        .navigationBarTitleDisplayMode(.inline)
+                }
             }
         }
         // Ported stepped speed picker (0.5×–3.0× with ± steppers + presets).
@@ -309,6 +348,10 @@ struct AudiobookMorphingPlayerView: View {
         }
         // Loading spinner → 30s timeout → error+retry, over the whole player.
         .overlay { loadingOverlay }
+        .overlay(alignment: .topLeading) {
+            AudiobookPlayerCloseAboveLoadingOverlay(
+                presenter: presenter, overlayState: loadingOverlayCurrentState, topInset: topSafeInset)
+        }
         // Transient bookmark-added / playback-error toast.
         .overlay(alignment: .bottom) { toastOverlay }
         .accessibilityElement(children: .contain)
@@ -324,17 +367,17 @@ struct AudiobookMorphingPlayerView: View {
                 isBound: audiobookSession.hasActiveManager,
                 fallback: currentRate
             )
-            // Announce the screen transition + move VoiceOver focus to the title
-            // (mirrors toolkit AudiobookPlayerView.onAppear).
             NotificationCenter.default.post(
                 name: Notification.Name("TPPAccessibilityScreenTransition"),
                 object: nil
             )
             UIAccessibility.post(notification: .layoutChanged, argument: nil)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                isTitleFocused = true
-            }
         }
+        .modifier(AudiobookPlayerOpeningFocus(
+            focus: $voiceOverFocus,
+            isExpanded: presenter.isPlayerExpanded,
+            overlayCoversControls: Self.loadingOverlayCoversControls(loadingOverlayCurrentState)
+        ))
         // Re-sync the speed chip when the player binds. `presenter.playbackModel`
         // goes non-nil exactly at bind (`adoptPlaybackModel`), by which point the
         // manager is set and `currentPlaybackRate` returns the toolkit's restored
@@ -433,7 +476,6 @@ struct AudiobookMorphingPlayerView: View {
     /// drag zone.
     private var coverArt: some View {
         coverImageOrPlaceholder
-            .aspectRatio(1, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
             .matchedGeometryEffect(id: Self.coverMatchID, in: morphNamespace)
@@ -463,21 +505,20 @@ struct AudiobookMorphingPlayerView: View {
                 // non-obvious pull-down-to-minimize gesture, so this ✕ is the
                 // discoverable way out. In the slot the Help entry point used to
                 // hold — Help now lives on book-detail + sign-in only.
-                Button { presenter.closePlayer() } label: {
-                    abGlyph(Self.icClose, size: 17)
-                        .frame(width: 44, height: 44)
-                }
-                .buttonStyle(.plain)
-                .tint(.primary)
-                .accessibilityLabel(Strings.Generic.close)
+                // While a loading overlay covers this row, the copy drawn above
+                // it is the one VoiceOver reaches, so this one stays out.
+                AudiobookPlayerCloseButton(presenter: presenter)
+                    .accessibilityHidden(Self.loadingOverlayCoversControls(loadingOverlayCurrentState))
                 Spacer()
                 Button { showChaptersBookmarks = true } label: {
+                    // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - glyph geometry inside a fixed 44pt hit target, not text
                     Image(systemName: "list.bullet")
                         .font(.system(size: 18, weight: .medium))
                         .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                    // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
                 }
-                .buttonStyle(.plain)
-                .tint(.primary)
+                .buttonStyle(.plain).tint(.primary)
                 .accessibilityLabel(Strings.Generic.tableOfContents)
             }
         }
@@ -489,11 +530,24 @@ struct AudiobookMorphingPlayerView: View {
         Capsule()
             .fill(Color.secondary.opacity(0.4))
             .frame(width: 40, height: 5)
-            // Wider invisible hit zone so the pull-down is easy to grab.
+            // Wider invisible hit zone so the pull-down is easy to grab. The
+            // shape reaches 8 pt past the 28 pt frame for a 44 pt target
+            // without changing the layout (PP-5294).
             .frame(width: 140, height: 28)
-            .contentShape(Rectangle())
+            .contentShape(Rectangle().inset(by: -8))
             .gesture(minimizeDrag)
-            .accessibilityHidden(true)
+            // Minimizing is a DRAG, which VoiceOver and Switch Control cannot
+            // perform. While this was `.accessibilityHidden(true)` those
+            // patrons had exactly one exit from the full player — the ✕, which
+            // calls `closePlayer()` and ends the session — so "keep listening
+            // while I browse" was unreachable for them, not just undiscovered.
+            // The mini-bar already exposes the opposite direction
+            // (`expandPlayerHint`); this completes the other half of the morph.
+            .accessibilityElement()
+            .accessibilityLabel(Strings.Generic.minimizePlayer)
+            .accessibilityHint(Strings.Generic.minimizePlayerHint)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { presenter.minimize() }
     }
 
     /// Scrubbable seek bar built on the ported `PalaceSeekSliderView`. The
@@ -520,10 +574,15 @@ struct AudiobookMorphingPlayerView: View {
                     get: { chapterProgressClamped },
                     set: { _ in }
                 ),
-                onChange: { audiobookSession.seek(to: $0) }
+                onChange: { audiobookSession.seek(to: $0) },
+                // PP-5280: VoiceOver swipes step by the patron's skip intervals,
+                // the same distances as the transport's skip buttons.
+                chapterDuration: chapterDuration,
+                forwardStepSeconds: skipForwardInterval,
+                backStepSeconds: skipBackInterval,
+                spokenValue: { seekAccessibilityValue(at: $0) }
             )
             .accessibilityLabel(Strings.Generic.playbackPosition)
-            .accessibilityValue(seekAccessibilityValue)
             // Row under the bar: chapter elapsed · chapter name · chapter time-left
             // (mirrors toolkit `playheadOffsetText` / `chapterTitle` / `timeLeftText`).
             // The title is centered in the FULL row width via a ZStack so it stays
@@ -532,10 +591,13 @@ struct AudiobookMorphingPlayerView: View {
             // edges; the title (subheadline) defines the row height as before, and
             // its horizontal padding keeps it clear of the times.
             ZStack {
-                Text(chapterDisplayTitle)
+                // Dimmed while the chapter it names is not yet playing; on a long
+                // wait it says so instead (PP-5399).
+                Text(audioWaitPhase == .slow ? Strings.Generic.audiobookLoading : chapterDisplayTitle)
                     .font(.subheadline).fontWeight(.semibold)
                     .lineLimit(1).truncationMode(.tail)
                     .padding(.horizontal, 64)
+                    .opacity(audioWaitPhase == .none ? 1 : 0.5)
                 HStack(spacing: 8) {
                     Text(chapterElapsedString)
                         .font(.caption2).foregroundStyle(.secondary).monospacedDigit()
@@ -555,7 +617,10 @@ struct AudiobookMorphingPlayerView: View {
                 .font(.title3).fontWeight(.semibold)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
-                .accessibilityFocused($isTitleFocused)
+                .accessibilityFocused($voiceOverFocus, equals: .title)
+                // The Rotor's headings list is how a patron gets back to the
+                // title after browsing the controls.
+                .accessibilityAddTraits(.isHeader)
             if let authors = presenter.currentBook?.authors, !authors.isEmpty {
                 Text(authors)
                     .font(.subheadline)
@@ -600,13 +665,15 @@ struct AudiobookMorphingPlayerView: View {
             Button(action: { audiobookSession.togglePlayPause() }) {
                 ZStack {
                     Circle().fill(Color.primary)
-                    abGlyph(presenter.isPlaying ? Self.icPause : Self.icPlay, size: metrics.playGlyph * 0.82)
+                    playPauseContent(glyphSize: metrics.playGlyph * 0.82)
                         .foregroundStyle(Color(.systemBackground))
                 }
                 .frame(width: metrics.playButton, height: metrics.playButton)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(presenter.isPlaying ? Strings.Generic.pauseAudiobook : Strings.Generic.playAudiobook)
+            .accessibilityLabel(playPauseAccessibilityLabel)
+            .accessibilityValue(playPauseAccessibilityValue)
+            .accessibilityFocused($voiceOverFocus, equals: .playPause)
             skipCircleButton(asset: Self.icSkipForward, interval: skipForwardInterval,
                              label: Strings.Generic.skipForwardSeconds(skipForwardInterval),
                              glyph: metrics.skipGlyph, diameter: skipButton) {
@@ -619,7 +686,7 @@ struct AudiobookMorphingPlayerView: View {
     /// Asset names for Alissa's revised audiobook icon set (PP-4911), vectorized
     /// from her design exports into template imagesets so they tint by appearance
     /// and stay crisp at any size — replacing the SF Symbols that didn't match.
-    private static let icClose = "ABPlayerClose"
+    static let icClose = "ABPlayerClose"
     private static let icSkipBack = "ABPlayerSkipBack"
     private static let icSkipForward = "ABPlayerSkipForward"
     private static let icPlay = "ABPlayerPlay"
@@ -630,12 +697,18 @@ struct AudiobookMorphingPlayerView: View {
 
     /// A template-rendered custom glyph at a point size. Template rendering tints
     /// it with the surrounding foreground color, matching the old SF Symbols.
+    ///
+    /// Hidden from VoiceOver: every call site draws this inside a control that
+    /// already carries its own `.accessibilityLabel` (close, play/pause, skip,
+    /// AirPlay, sleep, bookmark), so an element here would make VoiceOver
+    /// announce each of those controls twice.
     private func abGlyph(_ name: String, size: CGFloat) -> some View {
         Image(name)
             .renderingMode(.template)
             .resizable()
             .scaledToFit()
             .frame(width: size, height: size)
+            .accessibilityHidden(true)
     }
 
     /// The mini-player skip control: Alissa's arrow glyph with the interval value
@@ -645,12 +718,18 @@ struct AudiobookMorphingPlayerView: View {
         ZStack {
             Circle().fill(Color(.secondarySystemFill))
             abGlyph(asset, size: 25)
+            // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - sized to sit inside the 25pt arrow glyph; the button's label speaks the interval
             Text("\(interval)")
                 .font(.system(size: 7, weight: .semibold, design: .rounded))
                 .monospacedDigit()
+            // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
         }
         .foregroundStyle(.primary)
         .frame(width: 40, height: 40)
+        .frame(width: 40, height: 44)
+        // 2 pt past each side of the 40 pt layout width, into the row's
+        // spacing, for a 44 pt touch target (PP-5294).
+        .contentShape(Rectangle().inset(by: -2))
     }
 
     /// Bottom control row, mirroring the toolkit `controlPanelView`
@@ -676,6 +755,7 @@ struct AudiobookMorphingPlayerView: View {
         return HStack(spacing: metrics.chipSpacing) {
             // Speed → opens the stepped speed sheet. Text, so it stays a pill.
             Button { showSpeedSheet = true } label: {
+                // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - `metrics.fontSize` is the viewport-tier size for this fixed-height four-control row; the speed sheet carries the scalable readout
                 Text(currentRate.displayLabel)
                     .font(.system(size: metrics.fontSize + 2, weight: .semibold, design: .rounded))
                     .monospacedDigit()
@@ -684,6 +764,7 @@ struct AudiobookMorphingPlayerView: View {
                     .background(controlBg)
                     .clipShape(Capsule())
                     .contentShape(Capsule())
+                // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
             }
             .buttonStyle(.plain)
             .accessibilityLabel(Strings.Generic.playbackSpeedValue(currentRate.displayLabel))
@@ -722,9 +803,11 @@ struct AudiobookMorphingPlayerView: View {
                 HStack(spacing: metrics.narrow ? 4 : 6) {
                     abGlyph(Self.icSleep, size: glyph)
                     if audiobookSession.sleepTimerIsActive {
+                        // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - countdown inside the same fixed-height capsule as the row's other controls
                         Text(Self.formatTime(audiobookSession.sleepTimerRemaining))
                             .font(.system(size: metrics.fontSize, weight: .medium, design: .monospaced))
                             .lineLimit(1).minimumScaleFactor(0.6)
+                        // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
                     }
                 }
                 .padding(.horizontal, audiobookSession.sleepTimerIsActive ? metrics.chipPadH : 0)
@@ -779,9 +862,11 @@ struct AudiobookMorphingPlayerView: View {
             )
             VStack(spacing: 6) {
                 HStack(spacing: 8) {
+                    // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - glyph geometry beside a 4pt progress track
                     Image(systemName: "arrow.down.circle.fill")
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
+                    // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
                             Capsule().fill(Color.primary.opacity(0.15)).frame(height: 4)
@@ -792,14 +877,16 @@ struct AudiobookMorphingPlayerView: View {
                         .frame(maxHeight: .infinity)
                     }
                     .frame(height: 4)
+                    // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - pinned to a 34pt gutter so the bar does not reflow digit by digit
                     Text("\(Int(barProgress * 100))%")
                         .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                         .frame(width: 34, alignment: .trailing)
                         .monospacedDigit()
+                    // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
                 }
                 Text(Strings.Generic.audiobookDownloading)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(.caption2, weight: .medium))
                     .foregroundStyle(.secondary)
             }
             .transition(.opacity)
@@ -810,107 +897,6 @@ struct AudiobookMorphingPlayerView: View {
 
     // MARK: - Loading overlay (toolkit `LoadingView` / `LoadingErrorView` parity)
 
-    /// The four mutually-exclusive presentations of the loading overlay. Pulled
-    /// out of `loadingOverlay`'s inline branching so the decision is a pure,
-    /// mutation-testable function (`loadingOverlayState`) instead of a tangle of
-    /// view-side `if`s — matching the `nonisolated static` predicate pattern used
-    /// across the audiobook session code.
-    enum LoadingOverlayState: Equatable, CaseIterable {
-        /// Player is loaded — no overlay.
-        case hidden
-        /// Content is still downloading (the pre-bind PP-4542 `.lcpa` wait, or a
-        /// post-bind track download). Show a determinate "Downloading… NN%" state
-        /// — NOT the shimmer skeleton (which is opaque and occluded the download
-        /// bar, so a healthy multi-minute download read as a hang) and NOT the
-        /// load-error overlay (a download in flight is not a load failure).
-        case downloading
-        /// The 30s load timeout fired while the player was neither loaded nor
-        /// downloading — surface the error + retry.
-        case loadError
-        /// Brief "materializing" shimmer for the load window before we know
-        /// whether content is downloading (or the toolkit is buffering a
-        /// locally-present book). Also the QA `forceSkeletons` inspection state.
-        case skeleton
-        /// PP-5205: mid-session the player is momentarily not loaded — a cross-track
-        /// seek, or iOS evicting the AVPlayer buffer on backgrounding. Draw NOTHING:
-        /// the player underneath keeps its transport controls live. The load timer is
-        /// still armed, so a genuine stall reaches `.loadError`.
-        ///
-        /// No spinner, deliberately. One was tried on-device and read as unexplained
-        /// chrome beside working controls — it cannot say what it is waiting for, and
-        /// for a downloaded book the honest answer ("re-queueing this track from
-        /// streaming to local") is not something to put in front of a patron. If the
-        /// wait is long enough to need explaining, that is the toolkit's lazy requeue
-        /// to fix, not a spinner to add.
-        case awaitingReload
-    }
-
-    /// Pure decision for which loading presentation to show. Kept free of view
-    /// state so it can be unit-tested for every combination.
-    ///
-    /// `forceSkeletons` (the PP-4797 QA override, a compile-time `false` in
-    /// release) always wins so the skeleton can be inspected on the sim — the
-    /// real `!isLoaded` window is shorter than simdrive's observe latency.
-    /// Otherwise: a loaded player shows nothing; an in-flight download shows the
-    /// determinate downloading state (BEFORE the load-error check, so a slow
-    /// download never trips the 30s error); a timed-out non-downloading load
-    /// shows the error; everything else is the transient skeleton.
-    /// PP-5205: `hasStartedPlayback` has NO default. A `= false` would let the call
-    /// site compile unchanged and silently preserve the defect.
-    ///
-    /// Once playback has begun in this session, `isLoaded == false` means "changing
-    /// tracks" or "buffer evicted", NOT "no player yet" —
-    /// `LCPStreamingPlayer.play(at:)` drops it on every cross-track seek (`:204`,
-    /// "Only show loading state for heavy operations"), and
-    /// `AudiobookSessionPresenter:601` records iOS doing the same on backgrounding.
-    /// Taking over the screen there replaced a playing book with a Downloading
-    /// panel and read as though the audio had broken.
-    ///
-    /// Latched, not live: `isPlaying` would re-summon the takeover on every pause —
-    /// the same mistake `AudiobookDownloadProgressPolicy.shouldShowPlayerDownloadBar`
-    /// documents one layer down and already avoids.
-    ///
-    /// `.awaitingReload` rather than `.hidden` is load-bearing. `loadingTimedOut` is
-    /// armed only while the overlay state is a not-usable one, so returning `.hidden`
-    /// would render `EmptyView`, never arm the timer, and make `.loadError`
-    /// UNREACHABLE for the rest of the session — a dead player behind working-looking
-    /// chrome, with no error and no Retry. The latch suppresses the takeover; it must
-    /// never suppress the failure path.
-    nonisolated static func loadingOverlayState(
-        isLoaded: Bool,
-        isDownloading: Bool,
-        loadingTimedOut: Bool,
-        hasStartedPlayback: Bool,
-        forceSkeletons: Bool
-    ) -> LoadingOverlayState {
-        if forceSkeletons { return .skeleton }
-        guard !isLoaded else { return .hidden }
-
-        // MID-SESSION. Never take over the screen — but a genuine stall must still
-        // reach the error, or the latch would hide the failure as well as the
-        // takeover. Kept as its own branch rather than a reordering: an earlier
-        // revision moved the timeout check above `isDownloading` globally and broke
-        // the pre-playback rule that a healthy multi-minute download must not trip
-        // the 30s error. `testLoadingOverlayState_downloadingBeatsSkeletonAndTimeout`
-        // caught it.
-        if hasStartedPlayback {
-            return loadingTimedOut ? .loadError : .awaitingReload
-        }
-
-        // PRE-PLAYBACK — unchanged. The patron is genuinely blocked here, and a
-        // download in flight is healthy progress that outranks the timeout.
-        if isDownloading { return .downloading }
-        if loadingTimedOut { return .loadError }
-        return .skeleton
-    }
-
-    /// Which states arm the load-error timer: the ones meaning "the player is not
-    /// usable yet". Pure so the table can assert it — an arming rule that lives only
-    /// inside a `.onChange` closure cannot be enumerated, and the cell that matters
-    /// (`.awaitingReload` DOES arm) is the one that closes PP-5205's F1 hole.
-    nonisolated static func stateArmsLoadTimeout(_ state: LoadingOverlayState) -> Bool {
-        loadTimeoutAction(for: state) == .arm
-    }
 
     /// Arms the 30s load-error timer, cancelling any prior one.
     ///
@@ -932,10 +918,10 @@ struct AudiobookMorphingPlayerView: View {
         loadingTimedOut = false
         loadTimeoutWorkItem?.cancel()
         let work = DispatchWorkItem {
-            if Self.shouldSurfaceLoadTimeout(
-                isLoaded: audiobookSession.isLoaded,
-                isDownloading: presenter.isDownloading
-            ) {
+            let (isLoaded, isDownloading) = (audiobookSession.isLoaded, presenter.isDownloading)
+            let surfaces = Self.shouldSurfaceLoadTimeout(isLoaded: isLoaded, isDownloading: isDownloading)
+            Log.info(#file, "Player load timer fired (isLoaded: \(isLoaded), isDownloading: \(isDownloading)) — \(surfaces ? "showing the load error" : "no error shown")")
+            if surfaces {
                 loadingTimedOut = true
             }
         }
@@ -955,42 +941,10 @@ struct AudiobookMorphingPlayerView: View {
     /// Whether the 30s load-error timer, once fired, should actually surface the
     /// error. A download in flight is healthy progress, not a load failure, so
     /// the timeout is suppressed while `isDownloading` — the download has its own
-    /// bound (the PP-4542 180s content wait) and must not be short-circuited by
-    /// the view's buffering-window timer.
+    /// bound (the PP-4542 content wait, which ends when the transfer stops) and
+    /// must not be short-circuited by the view's buffering-window timer.
     nonisolated static func shouldSurfaceLoadTimeout(isLoaded: Bool, isDownloading: Bool) -> Bool {
         !isLoaded && !isDownloading
-    }
-
-    /// VoiceOver label for the determinate download overlay. The overlay
-    /// visually shows cover + title + author + progress, but
-    /// `.accessibilityElement(children: .ignore)` collapses those children — so
-    /// the label must carry the title/author itself, or a blind patron hears
-    /// only a bare percentage for the up-to-180s download. Progress is clamped
-    /// so a transiently out-of-range value never announces "-4%" / "142%".
-    nonisolated static func downloadingAccessibilityLabel(
-        title: String?,
-        authors: String?,
-        progress: Double
-    ) -> String {
-        let pct = Int((min(max(progress, 0), 1)) * 100)
-        var parts = ["\(Strings.Generic.audiobookDownloading), \(pct)%"]
-        if let title, !title.isEmpty { parts.append(title) }
-        if let authors, !authors.isEmpty { parts.append(authors) }
-        return parts.joined(separator: ". ")
-    }
-
-    /// Resolves the rate the speed chip should display. Only adopts the session's
-    /// rate once a manager is bound — pre-bind, `currentPlaybackRate` returns the
-    /// default 1.0× (no player yet), which must NOT overwrite the chip, or a
-    /// freshly-reopened book (whose persisted rate the toolkit restores on bind)
-    /// would show 1.0× while playing faster. When bound, the session rate is the
-    /// source of truth. Pure so the sync decision is unit-tested for both phases.
-    nonisolated static func displayRate(
-        sessionRate: PlaybackRate,
-        isBound: Bool,
-        fallback: PlaybackRate
-    ) -> PlaybackRate {
-        isBound ? sessionRate : fallback
     }
 
     /// PP-5205 (A1): the state is bound ONCE and arming is keyed on it via
@@ -1018,6 +972,14 @@ struct AudiobookMorphingPlayerView: View {
             isDownloading: presenter.isDownloading,
             loadingTimedOut: loadingTimedOut,
             hasStartedPlayback: presenter.hasStartedPlayback,
+            // Two predictions, because neither covers the whole window. The
+            // presenter's is decided pre-loader and is the only one that exists
+            // at the first evaluation; the session's needs the playback model
+            // and answers for a chapter the patron selects later.
+            expectsSlowStart: presenter.expectsSlowOpen
+                || audiobookSession.expectsSlowChapterStart,
+            hasSeenDownloading: hasSeenDownloading,
+            transportIsWaitingForData: audiobookSession.transportIsWaitingForData,
             forceSkeletons: DebugSettings.forceSkeletons
         )
     }
@@ -1033,10 +995,14 @@ struct AudiobookMorphingPlayerView: View {
             ZStack {
             Color.black.opacity(0.5).ignoresSafeArea()
             VStack(spacing: 16) {
+                // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - decorative glyph; the title and message beneath it scale
                 Image(systemName: "exclamationmark.triangle")
                     .font(.system(size: 40)).foregroundStyle(.yellow)
+                    .accessibilityHidden(true)
+                // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
                 Text(Strings.Generic.audiobookLoadErrorTitle)
                     .foregroundStyle(.white).font(.headline)
+                    .accessibilityAddTraits(.isHeader)
                 Text(Strings.Generic.audiobookLoadErrorMessage)
                     .foregroundStyle(.white).multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
@@ -1079,6 +1045,21 @@ struct AudiobookMorphingPlayerView: View {
             // it would have been asked about was correct; it was never asked.
             .onAppear { applyLoadTimeoutArming(for: loadingOverlayCurrentState) }
             .onChange(of: loadingOverlayCurrentState) { applyLoadTimeoutArming(for: $0) }
+            // Both panels declare `.transition(.opacity)`, but a transition only
+            // runs inside an animated transaction and nothing animated this
+            // value, so every handover was a hard cut — the explanation popped
+            // to the shimmer and the shimmer popped to the player. Crossfading
+            // the handover is what the declared transitions were always for.
+            .animation(
+                UIAccessibility.isReduceMotionEnabled ? nil : PalaceMotion.gentle,
+                value: loadingOverlayCurrentState
+            )
+            // Latch the first download of this session. Once one has been seen
+            // the pre-download window is over, so a moment of reported-nothing
+            // cannot take the screen back from the shimmer.
+            .onChange(of: presenter.isDownloading) { _, downloading in
+                hasSeenDownloading = Self.hasSeenDownloading(previous: hasSeenDownloading, isDownloading: downloading)
+            }
     }
 
     /// The single arming decision, so the birth hook and the transition hook cannot
@@ -1092,32 +1073,6 @@ struct AudiobookMorphingPlayerView: View {
         case .cancelAndClearLatch:
             cancelLoadTimeout()
             loadingTimedOut = false
-        }
-    }
-
-    /// What reaching `state` must do to the load-error timer and its latch.
-    ///
-    /// One TOTAL function rather than two predicates consulted in sequence. The
-    /// sequence version had a real hole: a reviewer pointed out that deleting the
-    /// latch-clearing line left every test green, because each predicate was asserted
-    /// in isolation and nothing asserted how they COMBINE. A `switch` over this makes
-    /// the combination exhaustive at compile time, and a sixth state a build error
-    /// rather than a silently-inherited default — which is trap 12's shape appearing
-    /// inside trap 12's own fix.
-    enum LoadTimeoutAction: Equatable { case arm, cancel, cancelAndClearLatch }
-
-    nonisolated static func loadTimeoutAction(for state: LoadingOverlayState) -> LoadTimeoutAction {
-        switch state {
-        // Not usable yet: arm. `armLoadTimeout` resets the latch itself.
-        case .skeleton, .downloading, .awaitingReload:
-            return .arm
-        // The player became usable, so a latched failure is genuinely over.
-        case .hidden:
-            return .cancelAndClearLatch
-        // Cancel, but KEEP the latch — clearing here would flicker the error off the
-        // frame it appeared on.
-        case .loadError:
-            return .cancel
         }
     }
 
@@ -1156,22 +1111,39 @@ struct AudiobookMorphingPlayerView: View {
             VStack(spacing: 24) {
                 Spacer(minLength: 24)
                 coverImageOrPlaceholder
-                    .aspectRatio(1, contentMode: .fit)
                     .frame(maxWidth: 240)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
                 titleAuthorFull
                     .padding(.horizontal, 24)
                 VStack(spacing: 10) {
-                    ProgressView(value: Double(min(max(presenter.overallDownloadProgress, 0), 1)), total: 1.0)
-                        .progressViewStyle(.linear)
-                        .tint(.accentColor)
-                        .frame(maxWidth: 260)
+                    // The ARCHIVE's number while a `.lcpa` fetch is what is
+                    // running: no track download is in flight then, so the
+                    // toolkit channel reads ~0 and the bar sits at 0% for the
+                    // whole fetch.
+                    let shownProgress = AudiobookDownloadProgressPolicy.barProgress(
+                        archiveProgress: presenter.archiveProgress,
+                        overallDownloadProgress: presenter.overallDownloadProgress
+                    )
+                    // `SwiftUI.Group`: `MyBooksViewModel`'s `enum Group` shadows it.
+                    SwiftUI.Group {
+                        if Self.downloadBarIsDeterminate(progress: shownProgress) {
+                            ProgressView(
+                                value: Double(min(max(shownProgress, 0), 1)),
+                                total: 1.0
+                            )
+                        } else {
+                            ProgressView()
+                        }
+                    }
+                    .progressViewStyle(.linear)
+                    .tint(.accentColor)
+                    .frame(maxWidth: 260)
                     HStack(spacing: 8) {
                         ProgressView()
                             .controlSize(.mini)
-                        Text("\(Strings.Generic.audiobookDownloading) \(Int(presenter.overallDownloadProgress * 100))%")
-                            .font(.system(size: 13, weight: .medium))
+                        Text("\(Strings.Generic.audiobookDownloading) \(Int(shownProgress * 100))%")
+                            .font(.system(.footnote, weight: .medium))
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
                     }
@@ -1185,70 +1157,18 @@ struct AudiobookMorphingPlayerView: View {
         .accessibilityLabel(Self.downloadingAccessibilityLabel(
             title: presenter.currentBook?.title,
             authors: presenter.currentBook?.authors,
-            progress: Double(presenter.overallDownloadProgress)
+            progress: Double(AudiobookDownloadProgressPolicy.barProgress(
+                archiveProgress: presenter.archiveProgress,
+                overallDownloadProgress: presenter.overallDownloadProgress
+            ))
         ))
     }
 
-    /// Skeleton lockup shown while the audiobook loads — replaces the old
-    /// spinner so a fresh open (which now presents the player IMMEDIATELY, via
-    /// `AudiobookSessionManager`'s pre-loader `presentLoadingShell`) reads as the
-    /// player "materializing" rather than a blank scrim. Mirrors the portrait
-    /// full-player layout (grabber · title · scrubber · cover · transport ·
-    /// bottom chips). Opaque `Color(.systemBackground)` matches the player, which
-    /// follows the system appearance; `SkeletonBox`/`SkeletonCircle` handle the
-    /// shimmer + Reduce-Motion gating internally. Cross-fades out when
-    /// `audiobookSession.isLoaded` flips.
+    /// Shown while the audiobook loads; a fresh open presents the player at once
+    /// (`AudiobookSessionManager.presentLoadingShell`), and this cross-fades out
+    /// when `audiobookSession.isLoaded` flips.
     private var playerLoadingSkeleton: some View {
-        ZStack {
-            Color(.systemBackground).ignoresSafeArea()
-            VStack(spacing: 0) {
-                SkeletonBox(width: 40, height: 5, cornerRadius: 2.5)
-                    .padding(.top, 12)
-
-                Spacer(minLength: 20)
-
-                VStack(spacing: 10) {
-                    SkeletonBox(width: 220, height: 20, cornerRadius: 4)
-                    SkeletonBox(width: 150, height: 14, cornerRadius: 4)
-                }
-
-                VStack(spacing: 10) {
-                    SkeletonBox(height: 4, cornerRadius: 2)
-                    HStack {
-                        SkeletonBox(width: 40, height: 12, cornerRadius: 3)
-                        Spacer()
-                        SkeletonBox(width: 40, height: 12, cornerRadius: 3)
-                    }
-                }
-                .padding(.horizontal, 24)
-                .padding(.top, 22)
-
-                Spacer(minLength: 24)
-
-                SkeletonBox(width: 240, height: 240, cornerRadius: 12)
-
-                Spacer(minLength: 24)
-
-                HStack(spacing: 26) {
-                    SkeletonCircle(size: 40)
-                    SkeletonCircle(size: 52)
-                    SkeletonCircle(size: 72)
-                    SkeletonCircle(size: 52)
-                    SkeletonCircle(size: 40)
-                }
-
-                HStack(spacing: 40) {
-                    SkeletonBox(width: 60, height: 30, cornerRadius: 15)
-                    SkeletonBox(width: 44, height: 30, cornerRadius: 15)
-                    SkeletonBox(width: 60, height: 30, cornerRadius: 15)
-                }
-                .padding(.top, 26)
-                .padding(.bottom, bottomSafeInset + 24)
-            }
-            .padding(.horizontal, 24)
-        }
-        .accessibilityElement()
-        .accessibilityLabel(Strings.Generic.audiobookLoading)
+        AudiobookPlayerLoadingSkeleton(bottomInset: bottomSafeInset)
     }
 
     // MARK: - Toast overlay (toolkit `bookmarkAddedToastView` parity)
@@ -1257,11 +1177,14 @@ struct AudiobookMorphingPlayerView: View {
     private var toastOverlay: some View {
         if showToast {
             HStack(spacing: 10) {
+                // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - decorative glyph; the message beside it scales
                 Image(systemName: Self.toastIsError(toastText)
                       ? "exclamationmark.circle.fill" : "bookmark.fill")
                     .font(.system(size: 16, weight: .semibold))
+                    .accessibilityHidden(true)
+                // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
                 Text(toastText)
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(.subheadline, weight: .medium))
                     .lineLimit(2).multilineTextAlignment(.leading)
             }
             .padding(.horizontal, 16).padding(.vertical, 14)
@@ -1290,9 +1213,11 @@ struct AudiobookMorphingPlayerView: View {
             ZStack {
                 Circle().fill(Color(.secondarySystemFill))
                 abGlyph(asset, size: glyph)
+                // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - derived from `glyph` so the number stays inside the arrow; the button's label speaks the interval
                 Text("\(interval)")
                     .font(.system(size: glyph * 0.27, weight: .semibold, design: .rounded))
                     .monospacedDigit()
+                // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
             }
             .foregroundStyle(.primary)
             .frame(width: diameter, height: diameter)
@@ -1303,10 +1228,26 @@ struct AudiobookMorphingPlayerView: View {
 
     // MARK: - Mini layout
 
+    /// What VoiceOver reads for the mini-player's title/author zone: the book
+    /// alone. What activating it does is the `expandPlayerHint` (PP-5294).
+    private var miniPlayerAccessibilityLabel: String {
+        let title = presenter.currentBook?.title ?? ""
+        if let authors = presenter.currentBook?.authors, !authors.isEmpty {
+            return String(format: Strings.Generic.nowPlayingLabelTitleAndAuthor, title, authors)
+        }
+        return String(format: Strings.Generic.nowPlayingCompactLabel, title)
+    }
+
     private var miniContent: some View {
         // Revised layout (PP-4910): close (✕) at the LEADING edge, then the
         // cover, the marquee title/author, and the rewind / play-pause / forward
         // transport controls at the TRAILING edge. No progress bar.
+        //
+        // The `.onTapGesture` at the foot of this chain catches the gaps
+        // between the controls; the HStack is not an accessibility element of
+        // its own, and `.isButton` on a container propagates to the five child
+        // buttons that already carry their own labels and traits.
+        // accesslint:disable A11Y.SWIFTUI.MISSING_TRAITS
         HStack(spacing: 12) {
             // Close — presents the "Stop Playback?" confirmation rather than
             // stopping instantly, since closing tears the session down.
@@ -1326,6 +1267,10 @@ struct AudiobookMorphingPlayerView: View {
                 .frame(width: 44, height: 44)
                 .clipShape(RoundedRectangle(cornerRadius: 4))
                 .matchedGeometryEffect(id: Self.coverMatchID, in: morphNamespace)
+                // The title/author element beside it names the book; a second
+                // "Book cover" stop in a six-element bar adds a swipe without
+                // adding information.
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 MarqueeText(text: presenter.currentBook?.title ?? "",
@@ -1334,34 +1279,38 @@ struct AudiobookMorphingPlayerView: View {
                     MarqueeText(text: authors, font: .subheadline, color: .secondary)
                 }
             }
-            // Tap the cover/title zone to expand.
-            .contentShape(Rectangle())
+            // Tap the cover/title zone to expand. The shape reaches 3 pt past
+            // the ~39.7 pt text block for a 44 pt target (PP-5294).
+            .contentShape(Rectangle().inset(by: -3))
             .onTapGesture { expand() }
+            // `onTapGesture` gives VoiceOver nothing to activate, so this zone
+            // read as two lines of static text. Collapse the marquee pair into
+            // one button that names the book and performs the expand.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(miniPlayerAccessibilityLabel)
+            .accessibilityHint(Strings.Generic.expandPlayerHint)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { expand() }
 
             Spacer(minLength: 2)
 
-            Button(action: { audiobookSession.skipBack() }) {
-                miniSkipGlyph(asset: Self.icSkipBack, interval: skipBackInterval)
-                    .frame(width: 40, height: 44)
-            }
+            Button { audiobookSession.skipBack() } label: { miniSkipGlyph(asset: Self.icSkipBack, interval: skipBackInterval) }
             .buttonStyle(.plain).tint(.primary)
             .accessibilityLabel(Strings.Generic.skipBackSeconds(skipBackInterval))
 
             Button(action: { audiobookSession.togglePlayPause() }) {
                 ZStack {
                     Circle().fill(Color.primary)
-                    abGlyph(presenter.isPlaying ? Self.icPause : Self.icPlay, size: 25)
+                    playPauseContent(glyphSize: 25)
                         .foregroundStyle(Color(.systemBackground))
                 }
                 .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(presenter.isPlaying ? Strings.Generic.pauseAudiobook : Strings.Generic.playAudiobook)
+            .accessibilityLabel(playPauseAccessibilityLabel)
+            .accessibilityValue(playPauseAccessibilityValue)
 
-            Button(action: { audiobookSession.skipForward() }) {
-                miniSkipGlyph(asset: Self.icSkipForward, interval: skipForwardInterval)
-                    .frame(width: 40, height: 44)
-            }
+            Button { audiobookSession.skipForward() } label: { miniSkipGlyph(asset: Self.icSkipForward, interval: skipForwardInterval) }
             .buttonStyle(.plain).tint(.primary)
             .accessibilityLabel(Strings.Generic.skipForwardSeconds(skipForwardInterval))
         }
@@ -1370,6 +1319,7 @@ struct AudiobookMorphingPlayerView: View {
         // Tap anywhere else / pull up on the bar → expand.
         .contentShape(Rectangle())
         .onTapGesture { expand() }
+        // accesslint:enable A11Y.SWIFTUI.MISSING_TRAITS
         .gesture(expandDrag)
         .alert(Strings.Generic.stopPlaybackTitle, isPresented: $showStopConfirmation) {
             Button(Strings.Generic.stopPlaybackCancel, role: .cancel) { }
@@ -1381,19 +1331,8 @@ struct AudiobookMorphingPlayerView: View {
 
     // MARK: - Shared cover
 
-    @ViewBuilder
     private var coverImageOrPlaceholder: some View {
-        if let cover = presenter.coverImage {
-            Image(uiImage: cover)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-        } else {
-            Image(systemName: "book.closed")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .foregroundStyle(.secondary)
-                .padding(8)
-        }
+        AudiobookCoverArt(image: presenter.coverImage)
     }
 
     // MARK: - Gestures
@@ -1528,35 +1467,6 @@ struct AudiobookMorphingPlayerView: View {
         }
     }
 
-    /// Maps a bookmark-add failure to an app-side localized toast string. The
-    /// toolkit's `BookmarkError` is public but its `localizedDescription` is
-    /// module-internal (unreachable here), so the raw `Error.localizedDescription`
-    /// would surface the useless "operation couldn't be completed" text. Match
-    /// the two known cases to faithful app-side copy; anything else falls back to
-    /// the generic add-failed string. Static + pure so it's unit-testable.
-    static func bookmarkErrorMessage(for error: Error) -> String {
-        switch error {
-        case BookmarkError.bookmarkAlreadyExists:
-            return Strings.Generic.bookmarkAlreadyExists
-        case BookmarkError.bookmarkFailedToSave:
-            return Strings.Generic.bookmarkFailedToSave
-        default:
-            return Strings.Generic.bookmarkAddFailed
-        }
-    }
-
-    /// Whether a toast string represents a failure (error icon) vs. a success
-    /// (bookmark icon). Success is only the bookmark-added string; every failure
-    /// copy — the generic add-failed plus the two mapped `BookmarkError` cases —
-    /// shows the error glyph. Static + pure so it's unit-testable.
-    static func toastIsError(_ text: String) -> Bool {
-        text != Strings.Generic.bookmarkAdded
-            && (text.localizedCaseInsensitiveContains("error")
-                || text == Strings.Generic.bookmarkAddFailed
-                || text == Strings.Generic.bookmarkAlreadyExists
-                || text == Strings.Generic.bookmarkFailedToSave)
-    }
-
     private func presentToast(_ text: String) {
         toastText = text
         withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) { showToast = true }
@@ -1568,21 +1478,6 @@ struct AudiobookMorphingPlayerView: View {
     /// iPhone in a landscape aspect. iPad keeps the portrait lockup.
     static func isLandscapePhone(size: CGSize) -> Bool {
         UIDevice.current.userInterfaceIdiom == .phone && size.width > size.height
-    }
-
-    /// Pure `TimeInterval` -> "MM:SS" / "H:MM:SS" formatter. Negative or
-    /// non-finite inputs render "--:--". `static` so the tests can pin the
-    /// format without spinning up the view body.
-    internal static func formatTime(_ interval: TimeInterval) -> String {
-        guard interval.isFinite, interval >= 0 else { return "--:--" }
-        let totalSeconds = Int(interval)
-        let hours = totalSeconds / 3600
-        let minutes = (totalSeconds % 3600) / 60
-        let seconds = totalSeconds % 60
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
-        }
-        return String(format: "%d:%02d", minutes, seconds)
     }
 
     // MARK: - Derived
@@ -1629,10 +1524,25 @@ struct AudiobookMorphingPlayerView: View {
         "-" + Self.formatTime(max(0, progress.chapterTimeLeft))
     }
 
-    /// Spoken value for the seek slider: percent through the current chapter
-    /// (the scrubber is chapter-scoped) plus the chapter elapsed timecode.
-    private var seekAccessibilityValue: String {
-        "\(Int(chapterProgressClamped * 100))%, \(chapterElapsedString)"
+    /// Length of the current chapter in seconds (elapsed + remaining).
+    private var chapterDuration: TimeInterval {
+        max(0, progress.chapterOffset) + max(0, progress.chapterTimeLeft)
+    }
+
+    /// Spoken value for the seek slider at chapter fraction `fraction`: percent
+    /// through the current chapter (the scrubber is chapter-scoped) plus the
+    /// chapter elapsed timecode. At the live position it reads the live
+    /// timecode; after a VoiceOver step it reads the step's target, so the value
+    /// spoken matches where the seek is going before playback catches up.
+    /// Until the chapter length is known there is no timecode to give, so it
+    /// reads the percentage alone.
+    private func seekAccessibilityValue(at fraction: Double) -> String {
+        let percent = "\(Int(fraction * 100))%"
+        guard chapterDuration > 0 else { return percent }
+        let elapsed = abs(fraction - chapterProgressClamped) < 0.000_001
+            ? chapterElapsedString
+            : Self.formatTime((fraction * chapterDuration).rounded())
+        return "\(percent), \(elapsed)"
     }
 
     // MARK: - Safe-area insets (window, since the overlay ignores safe area)
@@ -1674,30 +1584,6 @@ struct AudiobookMorphingPlayerView: View {
         return Self.wholeBookRemainingText(bookTimeRemaining: bookTimeRemaining, rate: currentRate)
     }
 
-    /// PP-4971: phrase the whole-book figure in wall-clock time at the speed the
-    /// patron is listening at, not in book time.
-    ///
-    /// This is the "how much longer will this take me" number, so it has to
-    /// answer that question — a 2× listener was previously told hours remained
-    /// on a book they were about to finish. The chapter timecode beside the
-    /// scrubber deliberately does NOT get this treatment: it has to keep
-    /// agreeing with the scrubber position and the chapter length.
-    ///
-    /// The rate division itself is `AudiobookPlaybackModel.remainingWallClock`,
-    /// shared with the toolkit player so the two cannot drift apart again.
-    nonisolated static func wholeBookRemainingText(
-        bookTimeRemaining: TimeInterval,
-        rate: PlaybackRate
-    ) -> String {
-        let remaining = AudiobookPlaybackModel.remainingWallClock(
-            bookTimeRemaining: bookTimeRemaining,
-            rate: rate
-        )
-        let hrs = Int(remaining) / 3600
-        let mins = (Int(remaining) % 3600) / 60
-        if hrs > 0 { return String(format: "%d hr %02d min remaining", hrs, mins) }
-        return String(format: "%d min remaining", mins)
-    }
 }
 
 /// SwiftUI wrapper for the system AirPlay/route picker, matching the original
@@ -1718,252 +1604,5 @@ private struct AirPlayRoutePicker: UIViewRepresentable {
     func updateUIView(_ uiView: AVRoutePickerView, context: Context) {
         uiView.tintColor = tint
         uiView.activeTintColor = tint
-    }
-}
-
-// MARK: - PalaceSeekSliderView
-
-/// The audiobook seek scrubber, ported verbatim from the toolkit's
-/// `PlaybackSliderView` (`AudiobookPlayerView.swift`): a thin rounded track that
-/// grows on touch, with a circular thumb that scales up while dragging. It is
-/// ADAPTIVE-colored (`Color(.systemGray4)` track, `Color(.label)` fill + thumb),
-/// so it renders correctly in both light and dark appearance.
-///
-/// Behavior: `value` reflects live playback when idle (display-only fallback);
-/// on touch the thumb/track grow (`withAnimation(.easeOut)`), a
-/// `DragGesture(minimumDistance: 0)` continuously tracks the finger via a
-/// `tempValue`, and on release the position is committed once through `onChange`
-/// (plus a light seek-commit haptic). The caller supplies `accessibilityLabel`
-/// / `accessibilityValue` at the call site.
-@MainActor
-struct PalaceSeekSliderView: View {
-    @Binding var value: Double
-    var onChange: (_ value: Double) -> Void
-
-    @State private var tempValue: Double?
-    @State private var isDragging: Bool = false
-    @State private var isCommitting: Bool = false
-
-    private let trackRest: CGFloat = 4
-    private let trackActive: CGFloat = 6
-    private let thumbRest: CGFloat = 8
-    private let thumbActive: CGFloat = 14
-    private let hitHeight: CGFloat = 44
-
-    private var currentTrackHeight: CGFloat { isDragging ? trackActive : trackRest }
-    private var currentThumbSize: CGFloat { isDragging ? thumbActive : thumbRest }
-
-    var body: some View {
-        GeometryReader { geometry in
-            let width = geometry.size.width
-
-            ZStack(alignment: .leading) {
-                // Background track
-                Capsule()
-                    .fill(Color(.systemGray4))
-                    .frame(height: currentTrackHeight)
-
-                // Progress fill
-                Capsule()
-                    .fill(Color(.label))
-                    .frame(
-                        width: max(currentTrackHeight, progressWidth(in: width)),
-                        height: currentTrackHeight
-                    )
-
-                // Thumb
-                Circle()
-                    .fill(Color(.label))
-                    .frame(width: currentThumbSize, height: currentThumbSize)
-                    .offset(x: thumbOffset(in: width))
-            }
-            .frame(maxHeight: .infinity)
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { gesture in
-                        if !isDragging {
-                            withAnimation(.easeOut(duration: 0.15)) { isDragging = true }
-                        }
-                        let newValue = max(0, min(1, Double(gesture.location.x / width)))
-                        tempValue = newValue
-                    }
-                    .onEnded { _ in
-                        withAnimation(.easeOut(duration: 0.2)) { isDragging = false }
-                        if let finalValue = tempValue {
-                            isCommitting = true
-                            value = finalValue
-                            // Subtle completion haptic on seek commit (toolkit parity).
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            onChange(finalValue)
-                            // HOLD the committed thumb position until the LIVE
-                            // playback value converges to the seek target (see
-                            // `.onChange(of: value)` below). Unlike the toolkit —
-                            // whose binding is not a high-frequency player mirror —
-                            // our `value` reads `progress.playbackProgress`, which
-                            // the player republishes every tick. A fixed 0.1s clear
-                            // let a STALE pre-seek tick overwrite the optimistic
-                            // `value = finalValue` before the async seek landed, so
-                            // the thumb snapped back to the old position while time
-                            // moved forward. We instead keep `tempValue` until the
-                            // seek propagates, with a safety timeout so a failed /
-                            // silent seek can never wedge the thumb.
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                                if isCommitting {
-                                    tempValue = nil
-                                    isCommitting = false
-                                }
-                            }
-                        }
-                    }
-            )
-            // Release the committed-position hold once live playback progress
-            // has caught up to the seek target (the async seek has landed and
-            // the player is now republishing from the new position). Guarded on
-            // `isCommitting` so idle ticks never touch `tempValue`.
-            .onChange(of: value) { newValue in
-                guard isCommitting, let target = tempValue else { return }
-                if abs(newValue - target) <= 0.01 {
-                    tempValue = nil
-                    isCommitting = false
-                }
-            }
-        }
-        .frame(height: hitHeight)
-    }
-
-    private var displayValue: Double {
-        tempValue ?? value
-    }
-
-    private func progressWidth(in totalWidth: CGFloat) -> CGFloat {
-        CGFloat(displayValue) * totalWidth
-    }
-
-    private func thumbOffset(in totalWidth: CGFloat) -> CGFloat {
-        CGFloat(displayValue) * (totalWidth - currentThumbSize)
-    }
-}
-
-// MARK: - PlaybackSpeedSheet
-
-/// Stepped playback-speed picker ported into the app from the toolkit's
-/// internal `SpeedSliderSheet` (0.5×–3.0× slider + ± steppers + preset chips).
-/// The toolkit view is module-internal, so its behavior is re-implemented here
-/// against the public `PlaybackRate` API (`presets`, `nearest`, `convert`,
-/// `displayLabel`).
-@MainActor
-private struct PlaybackSpeedSheet: View {
-    @Binding var playbackRate: PlaybackRate
-
-    @State private var sliderValue: Double = 1.0
-
-    private let step: Double = 0.05
-    private let minRate: Double = 0.5
-    private let maxRate: Double = 3.0
-
-    private var speedLabel: String {
-        PlaybackRate.nearest(to: Float(sliderValue)).displayLabel
-    }
-    private var atMinimum: Bool { sliderValue <= minRate }
-    private var atMaximum: Bool { sliderValue >= maxRate }
-
-    var body: some View {
-        VStack(spacing: 28) {
-            headerRow
-            sliderRow
-            presetChips
-        }
-        .padding(.horizontal, 24)
-        .padding(.top, 24)
-        .padding(.bottom, 36)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(Strings.Generic.playbackSpeed)
-        .onAppear { sliderValue = Double(PlaybackRate.convert(rate: playbackRate)) }
-        .onChange(of: sliderValue) { _, newValue in
-            let nearest = PlaybackRate.nearest(to: Float(newValue))
-            if nearest != playbackRate {
-                playbackRate = nearest
-                UISelectionFeedbackGenerator().selectionChanged()
-            }
-        }
-    }
-
-    private var headerRow: some View {
-        HStack {
-            Text(Strings.Generic.playbackSpeed)
-                .font(.headline)
-            Spacer()
-            Text(speedLabel)
-                .font(.system(size: 22, weight: .semibold, design: .rounded))
-                .monospacedDigit()
-                .contentTransition(.numericText())
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Strings.Generic.playbackSpeedValue(speedLabel))
-    }
-
-    private var sliderRow: some View {
-        HStack(spacing: 16) {
-            stepButton(systemName: "minus", label: Strings.Generic.decreaseSpeed, isDisabled: atMinimum, action: stepDown)
-            Slider(value: $sliderValue, in: minRate...maxRate, step: step)
-                .tint(.accentColor)
-                .accessibilityLabel(Strings.Generic.playbackSpeed)
-                .accessibilityValue(speedLabel)
-            stepButton(systemName: "plus", label: Strings.Generic.increaseSpeed, isDisabled: atMaximum, action: stepUp)
-        }
-    }
-
-    private func stepButton(systemName: String, label: String, isDisabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: 16, weight: .semibold))
-                .frame(width: 40, height: 40)
-                .background(Circle().fill(Color.secondary.opacity(isDisabled ? 0.05 : 0.15)))
-        }
-        .buttonStyle(.plain)
-        .disabled(isDisabled)
-        .accessibilityLabel(label)
-    }
-
-    private var presetChips: some View {
-        HStack(spacing: 8) {
-            ForEach(PlaybackRate.presets, id: \.rawValue) { preset in
-                presetChip(for: preset)
-            }
-        }
-        .accessibilityLabel(Strings.Generic.playbackSpeed)
-    }
-
-    private func presetChip(for preset: PlaybackRate) -> some View {
-        let multiplier = PlaybackRate.convert(rate: preset)
-        let isSelected = abs(sliderValue - Double(multiplier)) < 0.001
-        return Button {
-            withAnimation(.easeOut(duration: 0.1)) { sliderValue = Double(multiplier) }
-        } label: {
-            Text(preset.displayLabel)
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
-                .foregroundStyle(isSelected ? Color(.systemBackground) : Color.primary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(isSelected ? Color.primary : Color.secondary.opacity(0.12))
-                )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(preset.displayLabel)
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
-    }
-
-    private func stepDown() {
-        withAnimation(.easeOut(duration: 0.1)) {
-            sliderValue = max(minRate, ((sliderValue - step) * 100).rounded() / 100)
-        }
-    }
-    private func stepUp() {
-        withAnimation(.easeOut(duration: 0.1)) {
-            sliderValue = min(maxRate, ((sliderValue + step) * 100).rounded() / 100)
-        }
     }
 }

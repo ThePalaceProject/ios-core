@@ -2,32 +2,14 @@
 //  AudiobookPositionAdapterContractTests.swift
 //  PalaceTests
 //
-//  Contract-snapshot tests for `AudiobookBookmarkBusinessLogic.saveListeningPosition`
-//  — the swarm_f4fbef9c Module B wiring that funnels audiobook position
-//  writes through the canonical `PalaceReadingPosition.PositionWriter`.
-//
-//  These tests pin the call ORDER between the SUT, the
-//  `TPPBookRegistryProvider`, and the injected `PositionWriter`:
-//
-//    1. Local-save-first invariant — `registry.setLocation(localBookmark)`
-//       MUST run synchronously, before the async `Task { writer.save(...) }`
-//       hop. This is the swarm_f3b9b087 P0 #4 "user safety net" rule.
-//    2. Writer delegation — `writer.save(snapshot)` runs after the local
-//       save, with `format == .audiobook` and `bookID == self.book.identifier`.
-//    3. Post-save commit — on `.success`, `registry.setLocation(...)` runs
-//       a SECOND time to commit the server-assigned `annotationId`.
-//    4. Guards (`isAtBeginning`, `timestampNewerRace`) — when triggered,
-//       the post-save commit is SUPPRESSED. The snapshot shows only one
-//       `registry.setLocation` instead of two — pins the swarm_f3b9b087 P0
-//       fix predicates.
-//
-//  Pattern matches `BorrowReducerContractTests.swift`. Spies record into a
-//  shared `CallLog`; `ContractSnapshot.assert(...)` writes/compares JSON.
-//
-//  **First run:** records baselines at
-//  `__Snapshots__/AudiobookPositionAdapterContractTests/<scenario>.json`
-//  and FAILS with "snapshot recorded — re-run to verify". Set
-//  `CONTRACT_SNAPSHOT_RECORD=1` to deliberately re-record.
+//  Contract snapshots for `AudiobookBookmarkBusinessLogic.saveListeningPosition`:
+//    1. `registry.setLocation` runs synchronously before the async writer hop, so a
+//       local save survives a failed upload;
+//    2. `writer.save` follows with `format == .audiobook` and the book's identifier;
+//    3. on success, a second `registry.setLocation` commits the server `annotationId`;
+//    4. the `isAtBeginning` and `timestampNewerRace` guards suppress that commit.
+//  First run records `__Snapshots__/AudiobookPositionAdapterContractTests/<scenario>.json`
+//  and fails; set `CONTRACT_SNAPSHOT_RECORD=1` to re-record.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -179,6 +161,7 @@ private final class RecordingRegistry: NSObject, TPPBookRegistryProvider, @unche
     func preloadData(bookIdentifier: String, locations: [TPPBookLocation]) { inner.preloadData(bookIdentifier: bookIdentifier, locations: locations) }
     func addGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) { inner.addGenericBookmark(location, forIdentifier: bookIdentifier) }
     func deleteGenericBookmark(_ location: TPPBookLocation, forIdentifier bookIdentifier: String) { inner.deleteGenericBookmark(location, forIdentifier: bookIdentifier) }
+    func deleteGenericBookmark(identicalTo location: TPPBookLocation, forIdentifier bookIdentifier: String) { inner.deleteGenericBookmark(identicalTo: location, forIdentifier: bookIdentifier) }
     func replaceGenericBookmark(_ oldLocation: TPPBookLocation, with newLocation: TPPBookLocation, forIdentifier bookIdentifier: String) { inner.replaceGenericBookmark(oldLocation, with: newLocation, forIdentifier: bookIdentifier) }
     func removeBook(forIdentifier bookIdentifier: String) { inner.removeBook(forIdentifier: bookIdentifier) }
     func updateAndRemoveBook(_ book: TPPBook) { inner.updateAndRemoveBook(book) }
@@ -285,11 +268,27 @@ final class AudiobookPositionAdapterContractTests: XCTestCase {
         TrackPosition(track: tracks.tracks[trackIndex], timestamp: time, tracks: tracks)
     }
 
-    /// Drive `saveListeningPosition` and wait for the async Task to drain.
-    private func saveAndWait(position: TrackPosition, timeout: TimeInterval = 2.0) {
+    /// Drive `saveListeningPosition`, wait for its completion, and require that
+    /// the completion ran on the main thread: the toolkit's `@MainActor`
+    /// `AudiobookManager` supplies it, like every other bookmark-delegate completion.
+    @discardableResult
+    private func saveAndWait(
+        position: TrackPosition,
+        timeout: TimeInterval = 2.0,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> String? {
         let exp = expectation(description: "saveListeningPosition completes")
-        sut.saveListeningPosition(at: position) { _ in exp.fulfill() }
+        var serverID: String?
+        var deliveredOnMain = false
+        sut.saveListeningPosition(at: position) { id in
+            serverID = id
+            deliveredOnMain = Thread.isMainThread
+            exp.fulfill()
+        }
         wait(for: [exp], timeout: timeout)
+        XCTAssertTrue(deliveredOnMain, "saveListeningPosition completion ran off the main thread", file: file, line: line)
+        return serverID
     }
 
     // MARK: - 1. Local-first → writer.save → registry-second commit
@@ -302,7 +301,7 @@ final class AudiobookPositionAdapterContractTests: XCTestCase {
     ///
     /// Regression caught: swapping #1 and #2 (a refactor that defers the
     /// local save into the async Task) deletes line #1 from the snapshot
-    /// — that's swarm_f3b9b087 P0 #4 regressing.
+    /// and a failed upload would then lose the patron's position.
     func test_audiobookSave_localFirstThenWriter() {
         writer.outcome = .success("server-canonical-id")
         let p = position(trackIndex: 1, time: 100.0)
@@ -312,9 +311,35 @@ final class AudiobookPositionAdapterContractTests: XCTestCase {
         ContractSnapshot.assert(log, named: "audiobookSave_localFirstThenWriter")
     }
 
+    // MARK: - Completion delivery on the writer's nil and error exits
+
+    func test_audiobookSave_whenWriterThrottles_completesOnMainWithNoServerID() {
+        writer.outcome = .throttled
+
+        let serverID = saveAndWait(position: position(trackIndex: 1, time: 100.0))
+
+        XCTAssertNil(serverID)
+    }
+
+    func test_audiobookSave_whenUploadFails_completesOnMainWithNoServerID() {
+        writer.outcome = .failure(NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet))
+
+        let serverID = saveAndWait(position: position(trackIndex: 1, time: 100.0))
+
+        XCTAssertNil(serverID)
+    }
+
+    func test_audiobookSave_whenUploadSucceeds_completesOnMainWithTheServerID() {
+        writer.outcome = .success("server-delivered-id")
+
+        let serverID = saveAndWait(position: position(trackIndex: 1, time: 100.0))
+
+        XCTAssertEqual(serverID, "server-delivered-id")
+    }
+
     // MARK: - 2. isAtBeginning guard — second registry write is suppressed
 
-    /// Pins the swarm_f3b9b087 P0 #4 guard predicate:
+    /// Pins the `isAtBeginning` guard predicate:
     ///   When (incoming trackIndex == 0 AND playbackTime == 0) AND the
     ///   current local bookmark is in a LATER track, the post-save commit
     ///   MUST be suppressed — the snapshot shows ONE `registry.setLocation`
@@ -365,14 +390,14 @@ final class AudiobookPositionAdapterContractTests: XCTestCase {
             self.innerRegistry.setLocation(laterLoc, forIdentifier: self.bookIdentifier)
         }
         let p = position(trackIndex: 0, time: 0)  // strict zero → guard fires
-        saveAndWait(position: p)
+        XCTAssertEqual(saveAndWait(position: p), "server-beginning-id")
 
         ContractSnapshot.assert(log, named: "audiobookSave_preservesIsAtBeginningGuard")
     }
 
     // MARK: - 3. Timestamp-newer race-check — second registry write suppressed
 
-    /// Pins the swarm_f3b9b087 P0 #4 race-check:
+    /// Pins the timestamp-newer race check:
     ///   When the post-save guard reads the current local bookmark and
     ///   finds its timestamp is newer than the sent timestamp by more
     ///   than the 1.0s grace window, the post-save commit MUST be
@@ -416,7 +441,7 @@ final class AudiobookPositionAdapterContractTests: XCTestCase {
         }
 
         let p = position(trackIndex: 0, time: 5.0)
-        saveAndWait(position: p)
+        XCTAssertEqual(saveAndWait(position: p), "server-stale-id")
 
         ContractSnapshot.assert(log, named: "audiobookSave_preservesTimestampNewerRace")
     }

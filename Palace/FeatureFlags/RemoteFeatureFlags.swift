@@ -12,17 +12,37 @@ import FirebaseAnalytics
 import PalaceLogging
 import PalaceFeatureFlags
 
+/// The slice of `FirebaseManager` that `RemoteFeatureFlags` actually consumes.
+///
+/// This exists so a test can PIN the Remote Config side the way it already pins
+/// `UserDefaults`. Before it, every flag getter that fell through its local
+/// override read `FirebaseManager.shared` — a dependency no test could reach —
+/// so a test asserting a flag's default was really asserting whatever Remote
+/// Config value that machine happened to hold. That passes on CI's fresh
+/// simulators, which never fetch, and fails on any device that has run the app
+/// since the flag was switched on (PP-5224).
+///
+/// `FirebaseManager` is `final`, so a protocol is the only available seam.
+protocol RemoteConfigProviding: Sendable {
+    func fetchAndActivateRemoteConfig() async -> Bool
+    func getBoolValue(forKey key: FirebaseManager.RemoteConfigKey, checkingDeviceSpecific: Bool) -> Bool
+    func getDoubleValue(forKey key: FirebaseManager.RemoteConfigKey) -> Double
+    func isEnhancedLoggingEnabled() -> Bool
+    func getDeviceInfo() -> [String: String]
+    func setUserPropertiesForTargeting()
+}
+
+/// Conformance only — every member already exists with these signatures, so
+/// this adds no behaviour and changes no threading.
+extension FirebaseManager: RemoteConfigProviding {}
+
 /// Remote feature flags using Firebase Remote Config.
 ///
 /// NOTE: This class delegates all Firebase RemoteConfig access to FirebaseManager
 /// to prevent race conditions that cause the "recursive_mutex lock failed" crash.
 /// Do NOT access RemoteConfig directly from this class.
-/// `@unchecked Sendable`: `FeatureFlagProviding` (the consolidated Layer-0 seam
-/// this conforms to, from the PalaceFeatureFlags leaf package — Wave 1b) is
-/// `Sendable`. This shared singleton is already accessed app-wide concurrently;
-/// the conformance is honest — its only mutable stored property, `lastFetchTime`,
-/// is accessed exclusively under `lock` (an `NSLock`); every other stored property
-/// is `let`. `final` keeps the assertion subclass-proof.
+/// `@unchecked Sendable` (required by `FeatureFlagProviding`): the only mutable
+/// stored property, `lastFetchTime`, is guarded by `lock`; the rest are `let`.
 final class RemoteFeatureFlags: @unchecked Sendable {
     static let shared = RemoteFeatureFlags()
 
@@ -38,11 +58,34 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     /// across tests. There is NO fallback once injected.
     private let defaults: UserDefaults
 
+    /// Remote Config backing store, injected for the same reason `defaults` is:
+    /// a flag getter that falls through its local override reads THIS, so a test
+    /// that pins only `defaults` is still at the mercy of the machine's fetched
+    /// Remote Config state. Tests pass a stub; there is NO fallback once injected.
+    private let injectedRemoteConfig: RemoteConfigProviding?
+
+    /// Resolves `FirebaseManager.shared` LAZILY, on first read, and this is
+    /// load-bearing rather than stylistic.
+    ///
+    /// `RemoteFeatureFlags.shared` is constructed by `AppContainer.production()`
+    /// inside `applicationDidFinishLaunching`, which runs BEFORE
+    /// `FirebaseApp.configure()`. Binding `FirebaseManager.shared` as a default
+    /// ARGUMENT instead moves that touch to construction time, where
+    /// `FirebaseManager.init` reaches `+[FIRRemoteConfig remoteConfig]` and
+    /// Firebase throws `FIRAppNotConfigured` — the app terminates on launch for
+    /// every user. That is not hypothetical: it is what the first draft of this
+    /// change did, and the test host crashed before a single test ran.
+    ///
+    /// Keep the resolution here, in the getter. Do not "simplify" it back into
+    /// a default argument.
+    private var remoteConfig: RemoteConfigProviding {
+        injectedRemoteConfig ?? FirebaseManager.shared
+    }
+
     // MARK: - Feature Flag Keys
 
-    /// Wave 1b: the typed flag surface moved to the PalaceFeatureFlags leaf
-    /// package. This alias keeps every existing `RemoteFeatureFlags.FeatureFlag`
-    /// reference (tests, comments) compiling unchanged.
+    /// The flag enum lives in the PalaceFeatureFlags package; this alias keeps
+    /// `RemoteFeatureFlags.FeatureFlag` references compiling.
     typealias FeatureFlag = PalaceFeatureFlag
 
     // MARK: - Initialization
@@ -53,8 +96,13 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     /// own `UserDefaults(suiteName:)` to isolate override-key state.
     /// Access stays `internal` (not `public`) — production code uses
     /// `.shared`; only the test target needs the seam.
-    init(defaults: UserDefaults = .standard) {
+    /// `remoteConfig` defaults to `nil`, NOT to `FirebaseManager.shared` — see
+    /// the `remoteConfig` property for why binding the singleton here crashes
+    /// the app on launch.
+    init(defaults: UserDefaults = .standard,
+         remoteConfig: RemoteConfigProviding? = nil) {
         self.defaults = defaults
+        self.injectedRemoteConfig = remoteConfig
     }
 
     // MARK: - Setup
@@ -69,7 +117,7 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     /// Fetch and activate remote config.
     @discardableResult
     func fetchAndActivate() async -> Bool {
-        let success = await FirebaseManager.shared.fetchAndActivateRemoteConfig()
+        let success = await remoteConfig.fetchAndActivateRemoteConfig()
 
         lock.withLock { lastFetchTime = Date() }
 
@@ -96,7 +144,7 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     func isFeatureEnabled(_ feature: FeatureFlag) -> Bool {
         // Delegate to FirebaseManager for thread-safe access
         if let managerKey = feature.managerKey {
-            return FirebaseManager.shared.getBoolValue(
+            return remoteConfig.getBoolValue(
                 forKey: managerKey,
                 checkingDeviceSpecific: feature.supportsDeviceSpecificOverride
             )
@@ -104,7 +152,7 @@ final class RemoteFeatureFlags: @unchecked Sendable {
 
         // For device-specific flags, check via FirebaseManager
         if feature == .enhancedErrorLogging {
-            return FirebaseManager.shared.isEnhancedLoggingEnabled()
+            return remoteConfig.isEnhancedLoggingEnabled()
         }
 
         // Fallback to default
@@ -278,29 +326,15 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     /// persistent mini-player above the tab bar, and the tap-to-resume
     /// routing that wires both to `AudiobookSessionPresenter`.
     ///
-    /// **Default OFF — Firebase-gated (2026-07).** Production users get the
-    /// legacy toolkit player until Firebase Remote Config enables the
-    /// feature; this lets the team turn it on (globally or via a staged /
-    /// condition-based rollout) — and roll it back — without shipping a
-    /// build. The registered Remote Config default is `false`.
+    /// Default off; Firebase Remote Config enables it, so it can be rolled out
+    /// and back without a build.
     ///
-    /// Override precedence — **Firebase wins; the local override can only
-    /// ENABLE.** The local toggle is an opt-IN for previewing ahead of the
-    /// rollout, never an opt-out of it.
+    /// Firebase wins; the local override can only enable (preview ahead of the
+    /// rollout). If the override could disable, a test device that ever
+    /// switched it off would be pinned off and could not verify the rollout.
     ///
-    /// It used to be the reverse (override wins outright), which made the
-    /// rollout unverifiable on the devices that verify it. The dev toggle
-    /// writes `true`/`false` and nothing anywhere removes the key, so a device
-    /// that ever switched it off was pinned off permanently — Firebase could
-    /// never reach it again, and that reads from the inside exactly like "the
-    /// remote flag isn't working". Production patrons were never affected (the
-    /// Feature Flags section is hidden when `showEngineeringTools` is false, so
-    /// nothing writes the key on an App Store build), but TestFlight and dev
-    /// devices are precisely the ones validating a staged rollout.
-    ///
-    /// The decision itself is `resolveRemoteWinsOptIn`, kept pure because a
-    /// unit test cannot make `FirebaseManager.shared` return `true` — the
-    /// remote-ON rows are only assertable through that seam.
+    /// The decision is the pure `resolveRemoteWinsOptIn`, since a unit test
+    /// cannot make `FirebaseManager.shared` return `true`.
     var isInAppPlaybackNavEnabled: Bool {
         Self.resolveRemoteWinsOptIn(
             remote: isFeatureEnabled(.inAppPlaybackNavEnabled),
@@ -354,7 +388,7 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     /// Whether the side-loading capability is enabled: the Settings "Side
     /// Loading" import screen and the catalog side-loaded lane. A test-only
     /// feature for exercising the real reader + DRM stack against local files
-    /// with no OPDS feed (swarm_495a88d9 — PP-2677 / PP-2678 / PP-2679).
+    /// with no OPDS feed (PP-2677 / PP-2678 / PP-2679).
     ///
     /// Defaults OFF in production. There is NO DEBUG auto-enable; the feature
     /// is turned on explicitly via the dev-menu local override, otherwise it
@@ -377,6 +411,34 @@ final class RemoteFeatureFlags: @unchecked Sendable {
         return isFeatureEnabled(.sideLoadingEnabled)
     }
 
+    /// UserDefaults override letting QA or a developer force MDM library
+    /// pre-selection on or off without a Firebase round-trip. Settable from the
+    /// Testing screen's Feature Flags section. Falls through to Remote Config
+    /// when nil.
+    static let managedLibraryConfigurationLocalOverrideKey =
+        "RemoteFeatureFlags.managedLibraryConfigurationLocalOverride"
+
+    /// Whether deploy-time library pre-selection from an MDM's Managed App
+    /// Configuration is enabled (PP-5070 / PP-5217).
+    ///
+    /// **Defaults OFF.** A device with no managed configuration behaves
+    /// identically either way, so this is not protecting unmanaged patrons from
+    /// the feature's effects — it is protecting them from its TIMING. The
+    /// feature changes the first-run path, which every new install takes, and
+    /// that path has not yet been exercised on a real cold launch.
+    ///
+    /// Override precedence:
+    ///   1. UserDefaults local override (dev-menu toggle / QA)
+    ///   2. Firebase Remote Config (default `false`)
+    var isManagedLibraryConfigurationEnabled: Bool {
+        if let override = defaults.object(
+            forKey: Self.managedLibraryConfigurationLocalOverrideKey
+        ) as? Bool {
+            return override
+        }
+        return isFeatureEnabled(.managedLibraryConfigurationEnabled)
+    }
+
     /// UserDefaults override that lets QA / a developer force LCP audiobook
     /// streaming on or off without a Firebase round-trip. Settable from
     /// `TPPDeveloperSettingsTableViewController`. Falls through to the Remote
@@ -389,14 +451,16 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     /// fork (3.11.0 + fix-issue-579); when OFF, the app downloads the full
     /// `.lcpa` before playback (today's behavior).
     ///
-    /// **Default OFF — Firebase-gated.** The default flip to streaming is a
-    /// product decision; production users stay on download-first until Firebase
-    /// Remote Config sets `lcp_audiobook_streaming_enabled = true` (global or
-    /// staged), which the team can roll out and back without shipping a build.
+    /// **Default ON.** Remote Config has carried this at 100% in production
+    /// since the rollout completed, and the in-app fallback now says the same,
+    /// so an environment Firebase does not reach — a simulator, CI, a unit
+    /// test, the first launch before Remote Config returns — resolves the way
+    /// patrons do instead of the opposite way. Firebase can still roll it back
+    /// without shipping a build.
     ///
     /// Override precedence:
-    ///   1. UserDefaults local override (dev-menu toggle / QA) — wins.
-    ///   2. Firebase Remote Config (`isFeatureEnabled`, default `false`).
+    ///   1. UserDefaults local override (dev-menu toggle / QA) — wins, both ways.
+    ///   2. Firebase Remote Config (`isFeatureEnabled`, default `true`).
     var isLCPAudiobookStreamingEnabled: Bool {
         if let override = defaults.object(forKey: Self.lcpAudiobookStreamingLocalOverrideKey) as? Bool {
             return override
@@ -422,6 +486,139 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     /// false; no remote flag — this is a local debug override only.
     var isAppRatingForceEligible: Bool {
       defaults.object(forKey: Self.appRatingForceEligibleLocalOverrideKey) as? Bool ?? false
+    }
+
+    // MARK: - OIDC stub callback (test seam)
+
+#if DEBUG
+    /// UserDefaults key holding a canned OIDC callback URL. When set,
+    /// `oidcLogIn()` delivers it to `handleOIDCCallback` instead of presenting
+    /// an `ASWebAuthenticationSession`.
+    ///
+    /// This exists because the sign-in path above the callback is otherwise
+    /// undrivable: a unit test cannot dismiss a system browser, and a simdrive
+    /// journey lands on a live IdP consent page it has no credentials for. So
+    /// `handleOIDCCallback` is well covered while everything that reaches it is
+    /// not covered at all.
+    ///
+    /// It injects a CALLBACK, not a session. The token still goes through
+    /// `validateCredentials()` against the Circulation Manager, so a fabricated
+    /// token grants no access — this makes the client path exercisable, it does
+    /// not authenticate anyone. DEBUG-only, so it is absent from release builds.
+    static let oidcStubCallbackLocalOverrideKey = "RemoteFeatureFlags.oidcStubCallbackOverride"
+
+    /// Second key a QA driver must set to arm the seam outside XCTest.
+    ///
+    /// Deliberately a UserDefaults key and NOT a launch argument: the simulator
+    /// driver used for UI journeys launches apps with `simctl launch <udid>
+    /// <bundle-id>` and passes no arguments, so a launch-argument gate could not be
+    /// armed by the driver this seam exists to serve — the seam would be reachable
+    /// only from XCTest, which does not need it. The driver can, however, write an
+    /// app's UserDefaults, which is why the arm is a key.
+    static let oidcStubSeamArmedKey = "RemoteFeatureFlags.oidcStubSeamArmed"
+
+    /// The store the seam reads. Tests point this at an isolated suite in
+    /// `setUp` and restore it in `tearDown`.
+    ///
+    /// It exists because `oidcLogIn()` reads the seam with no arguments, so a
+    /// test that drives the real sign-in path cannot pass a scoped store at the
+    /// call site. Without this the override key lands in the app's persistent
+    /// domain on that simulator, where `setUp`/`tearDown` clear it but a crash or
+    /// an interrupted run does not — and a leftover callback key next to a
+    /// leftover armed key is a DEBUG build that signs in without an identity
+    /// provider for whoever picks that simulator up next.
+    /// `nonisolated(unsafe)` follows the existing test-override idiom in this
+    /// codebase (`TPPAnnotations.accountsManagerOverride` and its siblings): a
+    /// value written once from `setUp` before the code under test runs, never
+    /// mutated concurrently. It is additionally inside `#if DEBUG`, so unlike
+    /// those it does not exist in a shipped build.
+    nonisolated(unsafe) static var oidcStubDefaults: UserDefaults = .standard
+
+    /// Whether this process is allowed to use the stub at all.
+    ///
+    /// Three conditions must hold together, not one: a DEBUG build (Release
+    /// configurations carry no DEBUG, so the code is absent from TestFlight), a
+    /// context that explicitly armed it (an XCTest run, or a driver that set
+    /// `oidcStubSeamArmedKey`), and a callback actually set. A developer running
+    /// a DEBUG build from Xcode satisfies none of the last two, so the seam
+    /// stays inert for them.
+    ///
+    /// `environment` and `defaults` are parameters rather than direct
+    /// `ProcessInfo`/`.standard` reads so a test can observe BOTH branches. Read
+    /// from `ProcessInfo` directly, the XCTest branch always wins inside a test
+    /// run and the driver branch is unreachable — the arm that QA depends on
+    /// would be the one arm no test covers.
+    ///
+    /// The eager defaults below are free: this function is declared inside
+    /// `#if DEBUG`, so a shipped build contains neither it nor any call to it, and
+    /// a default argument is only ever evaluated at a call site. `oidcStubCallback`
+    /// is declared unconditionally and therefore cannot do the same — see the note
+    /// on its own parameters.
+    static func isOIDCStubSeamPermitted(
+      environment: [String: String] = ProcessInfo.processInfo.environment,
+      defaults: UserDefaults? = nil
+    ) -> Bool {
+      if environment["XCTestConfigurationFilePath"] != nil { return true }
+      // `?? oidcStubDefaults`, not `.standard`: the seam must have ONE answer to
+      // "which store do I read". A `.standard` default would let a future caller
+      // that omits the argument read the app's real domain instead, and because it
+      // is a default argument the `UserDefaults.standard` lint cannot see it.
+      return (defaults ?? oidcStubDefaults).bool(forKey: oidcStubSeamArmedKey)
+    }
+
+    /// Arm or disarm the seam. Mirrors what the UI-journey driver does when it
+    /// writes the app's defaults, so a test exercises the same key QA writes.
+    static func setOIDCStubSeamArmedForTesting(_ armed: Bool,
+                                               in defaults: UserDefaults? = nil) {
+      let defaults = defaults ?? oidcStubDefaults
+      if armed {
+        defaults.set(true, forKey: oidcStubSeamArmedKey)
+      } else {
+        defaults.removeObject(forKey: oidcStubSeamArmedKey)
+      }
+    }
+
+    /// Set or clear the stub. Separate from a plain `defaults.set` so tests and
+    /// the Developer Settings row cannot drift from the key above.
+    static func setOIDCStubCallbackForTesting(_ url: URL?,
+                                              in defaults: UserDefaults? = nil) {
+      let defaults = defaults ?? oidcStubDefaults
+      if let url {
+        defaults.set(url.absoluteString, forKey: oidcStubCallbackLocalOverrideKey)
+      } else {
+        defaults.removeObject(forKey: oidcStubCallbackLocalOverrideKey)
+      }
+    }
+#endif
+
+    /// The canned OIDC callback URL, or nil when the seam is off.
+    ///
+    /// Declared unconditionally so the sign-in call site needs no `#if` of its
+    /// own — one place owns the gating and the read site stays plain. In release
+    /// builds the body is literally `nil`: the override key is never read and
+    /// the seam cannot be armed.
+    ///
+    /// Static, and reading `defaults` directly rather than through an instance:
+    /// this is DEBUG-only test scaffolding, not product configuration, so it has
+    /// no business travelling through the production flags singleton. Reading it
+    /// as `RemoteFeatureFlags.shared.…` added a `.shared` read on the sign-in
+    /// path, which new code is not supposed to do.
+    static func oidcStubCallback(
+      environment: [String: String]? = nil,
+      defaults: UserDefaults? = nil
+    ) -> URL? {
+#if DEBUG
+      let store = defaults ?? oidcStubDefaults
+      guard isOIDCStubSeamPermitted(
+              environment: environment ?? ProcessInfo.processInfo.environment,
+              defaults: store),
+            let raw = store.string(forKey: oidcStubCallbackLocalOverrideKey),
+            !raw.isEmpty
+      else { return nil }
+      return URL(string: raw)
+#else
+      nil
+#endif
     }
 
     // MARK: - EPUB Chapter Scrubber (PP-5006)
@@ -463,7 +660,7 @@ final class RemoteFeatureFlags: @unchecked Sendable {
     /// threshold). `minBooksCompleted` is allowed to be as low as 1, never 0,
     /// so a positive-only guard is correct for every threshold here.
     private func positiveIntOrFallback(_ key: FirebaseManager.RemoteConfigKey, _ fallback: Int) -> Int {
-        let value = FirebaseManager.shared.getDoubleValue(forKey: key)
+        let value = remoteConfig.getDoubleValue(forKey: key)
         return value > 0 ? Int(value) : fallback
     }
 
@@ -471,12 +668,12 @@ final class RemoteFeatureFlags: @unchecked Sendable {
 
     /// Get device info for Firebase targeting.
     func getDeviceInfo() -> [String: String] {
-        FirebaseManager.shared.getDeviceInfo()
+        remoteConfig.getDeviceInfo()
     }
 
     /// Set user properties for Firebase targeting.
     func setUserPropertiesForTargeting() {
-        FirebaseManager.shared.setUserPropertiesForTargeting()
+        remoteConfig.setUserPropertiesForTargeting()
     }
 }
 
@@ -532,7 +729,7 @@ extension PalaceFeatureFlag {
     }
 }
 
-// Wave 1b: the single consolidated conformance. All app consumers reach
+// The single consolidated conformance. All app consumers reach
 // this instance as `appContainer.featureFlags` (protocol-typed); packages
 // (PalaceCatalog) receive it through their initializers.
 extension RemoteFeatureFlags: FeatureFlagProviding {}

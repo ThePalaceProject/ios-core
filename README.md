@@ -25,6 +25,12 @@ cd ios-core
 ```
 Open `Palace.xcodeproj` and build the `Palace-noDRM` target.
 
+The dependency script downloads Findaway's AudioEngine SDK (a public download from
+`cdn.audioengine.io`) on this path too: `PalaceAudiobookToolkit` weak-links it and
+cannot link without it. The `Palace-noDRM` app does **not** embed the SDK — Findaway
+audiobooks are switched off at runtime — and CI's `NonDRM Build` workflow checks the
+built product for exactly that.
+
 # Building With Adobe DRM
 
 ## Building the Application from Scratch
@@ -47,7 +53,7 @@ Open `Palace.xcodeproj` and build the `Palace-noDRM` target.
 
 Unless the DRM dependencies change (which is very seldom) you shouldn't need to run the `bootstrap-drm.sh` script more than once.
 
-Other 3rd party dependencies come from a mix of Swift Package Manager (Readium 3.x, Firebase, SQLite.swift, PureLayout, snapshot-testing, ULID, std-uritemplate, transifex), git submodules (`ios-audiobooktoolkit`, `ios-tenprintcover`, plus DRM-only submodules), and local Swift packages under `Palace/Packages/` (`PalaceAuth`, `PalaceCatalog`, `PalaceKeychain`, `PalaceLogging`, `PalaceNetwork`).
+Other 3rd party dependencies come from a mix of Swift Package Manager (Readium 3.x, Firebase, SQLite.swift, PureLayout, snapshot-testing, ULID, std-uritemplate), git submodules (`ios-audiobooktoolkit`, `ios-tenprintcover`, plus DRM-only submodules), and local Swift packages under `Palace/Packages/` (`PalaceAuth`, `PalaceCatalog`, `PalaceKeychain`, `PalaceLogging`, `PalaceNetwork`).
 
 To rebuild non-SPM dependencies use the idempotent script:
 ```bash
@@ -74,7 +80,7 @@ Helping a patron whose Palace app is in a stuck state that sign-out + uninstall 
 
 Tests are required for production changes. The full workflow — TDD discipline, the local self-check, and the public/private boundary between outside contributors and maintainer-internal agent tooling — is documented in [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
-CI enforces coverage floors, snapshot tests, and builds for both `Palace` and `Palace-noDRM` targets. Simulator-driven E2E and chaos passes are **not** run by CI — they need a booted simulator and are non-deterministic, so they run locally as part of pre-PR validation. Run `scripts/verify-pr.sh --quick` locally before opening a PR to catch failures before CI does.
+CI runs snapshot tests and builds both `Palace` and `Palace-noDRM` targets. It also checks coverage against floors: an app floor more than 1.5 points below its value, or incomplete coverage data, fails the required `build-and-test` check, and package floors are advisory ([`scripts/README_coverage_floors.md`](./scripts/README_coverage_floors.md)). Simulator-driven E2E and chaos passes are **not** run by CI — they need a booted simulator and are non-deterministic, so they run locally as part of pre-PR validation. Run `scripts/verify-pr.sh --quick` locally before opening a PR to catch failures before CI does.
 
 # Palace License
 

@@ -2,57 +2,14 @@
 //  CatalogCacheKeyAndIsolationTests.swift
 //  PalaceTests
 //
-//  Deep mutation-killing tests for CatalogRepository's cache-key derivation
-//  and cache-isolation invariants that go BEYOND the basic stale-while-
-//  revalidate fresh/stale boundaries (already covered by
-//  CatalogRepositoryStaleWhileRevalidateTests.swift, owned by another agent).
-//
-//  ──────────────────────────────────────────────────────────────────────────
-//  What we pin here
-//  ──────────────────────────────────────────────────────────────────────────
-//
-//   1. Concurrent reads on STALE cache from DIFFERENT URLs:
-//        • Each URL gets its own cached value.
-//        • Stale background refreshes for URL_A don't poison URL_B.
-//        • Concurrent fans-out across N distinct URLs all complete.
-//
-//   2. Cache invalidation on sign-out:
-//        • The repository exposes per-URL `invalidateCache(for:)`. The
-//          sign-out contract (defined by call sites such as
-//          CatalogViewModel) is to call this for every URL whose data
-//          should not leak across user sessions. We pin that calling
-//          `invalidateCache` for every cached URL leaves the repository
-//          serving fresh-from-network on the next read.
-//
-//   3. Cache eviction under memory pressure (FIXED — Gap 3):
-//        • The repository now subscribes to UIApplication.didReceive-
-//          MemoryWarningNotification and drops its in-memory feed +
-//          format-entries maps when one fires. The on-disk URLCache is
-//          NOT touched (content-addressed, intentionally survives memory
-//          pressure). We pin this fixed behaviour so a regression that
-//          re-introduces the leak is caught.
-//
-//   4. Cache-key derivation (FIXED — Gap 2):
-//        • Keys are now scoped by the current account/library UUID, so
-//          the same URL fetched under Library A and Library B occupies
-//          two distinct cache slots. Bearer tokens themselves are still
-//          NOT part of the key — they rotate (refresh/re-auth) while the
-//          library identity is stable, which is the natural isolation
-//          boundary. We pin both: per-account isolation works, and a
-//          single account's bearer-token rotation does NOT bust the
-//          cache.
-//
-//   5. URL canonicalisation traps:
-//        • Trailing-slash and case differences in scheme produce DIFFERENT
-//          cache entries. The repository keys on the raw absoluteString;
-//          it does NOT normalize. We pin both behaviors so a silent
-//          normalization slip can be caught.
-//
-//  ──────────────────────────────────────────────────────────────────────────
-//  HOUSE RULES — production fix lives in CatalogRepository.swift only
-//  (cacheKey helper + memory-warning observer). Clock is via the existing
-//  `init(api:now:)` test seam introduced by the SWR-tests agent; account
-//  isolation uses the new `init(api:accountID:now:)` seam.
+//  CatalogRepository cache-key derivation and isolation, beyond the SWR
+//  freshness boundaries in CatalogRepositoryStaleWhileRevalidateTests:
+//   1. Concurrent stale reads on different URLs stay independent.
+//   2. `invalidateCache(for:)` on every URL forces network on next read.
+//   3. A memory warning drops the in-memory maps (URLCache is untouched).
+//   4. Keys are scoped by account UUID; bearer-token rotation does not
+//      bust the cache.
+//   5. Keys use the raw absoluteString (no URL normalization).
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //
@@ -82,7 +39,7 @@ final class CatalogCacheKeyAndIsolationTests: XCTestCase {
         super.setUp()
         api = CatalogAPIMock()
         testAccountID.value = nil
-        // swarm_cd181acd D-cleanup: per-test isolated UserDefaults suite
+        // Per-test isolated UserDefaults suite
         // for the `lastAppLaunchKey` heuristic — no `.standard` writes.
         // The suite is dropped by `SingletonResetRegistry` when the test
         // finishes.

@@ -2,22 +2,11 @@
 //  AdobeActivationRefreshLicensorTests.swift
 //  PalaceTests
 //
-//  PP-3649, the PRODUCER side.
-//
-//  `AdobeLicensorRefreshTests` pins the pure chooser — given a stored licensor
-//  and a fetch result, which one wins. That is half the fix. The other half is
-//  `ensureDeviceActivated` actually WIRING it: calling the refresh, activating
-//  with what it returned rather than what the keychain held, persisting the
-//  fresh value back, and failing cleanly when the refreshed token is malformed.
-//
-//  None of that had a test. `grep -rn refreshLicensor PalaceTests` returned
-//  nothing, which means every branch this file exercises could have been
-//  deleted with the suite still green — including the one that decides whether
-//  a borrow authenticates with a token minted seconds ago or one minted an hour
-//  ago, which IS the defect.
-//
-//  A helper being correct is not the same as the caller reaching it. That
-//  distinction has its own wall-failure in this repo.
+//  PP-3649, the producer side. `AdobeLicensorRefreshTests` pins the pure chooser;
+//  this file pins that `ensureDeviceActivated` calls the refresh, activates with
+//  the refreshed licensor rather than the stored one, persists it back, and fails
+//  cleanly when the refreshed token is malformed. That branch decides whether a
+//  borrow authenticates with a fresh token or one minted an hour earlier.
 //
 
 import XCTest
@@ -25,8 +14,8 @@ import XCTest
 
 final class AdobeActivationRefreshLicensorTests: XCTestCase {
 
-    /// In-memory account. Deliberately not a real `TPPUserAccount` — CLAUDE.md
-    /// forbids tests touching keychain state — and it RECORDS `setLicensor`
+    /// In-memory account. Deliberately not a real `TPPUserAccount`, so tests
+    /// stay off the keychain, and it RECORDS `setLicensor`
     /// writes, because "did the fresh licensor get persisted back" is one of
     /// the branches under test.
     private final class RecordingAccount: AdobeActivationAccount, @unchecked Sendable {
@@ -36,10 +25,12 @@ final class AdobeActivationRefreshLicensorTests: XCTestCase {
         private var _licensor: [String: Any]?
         private var _setLicensorCalls: [[String: Any]] = []
 
-        init(licensor: [String: Any]?, userID: String? = nil, deviceID: String? = nil) {
+        init(licensor: [String: Any]?, userID: String? = nil, deviceID: String? = nil,
+             generation: Int? = nil) {
             self._licensor = licensor
             self._userID = userID
             self._deviceID = deviceID
+            self._generation = generation
         }
 
         var userID: String? { lock.withLock { _userID } }
@@ -48,8 +39,11 @@ final class AdobeActivationRefreshLicensorTests: XCTestCase {
 
         var setLicensorCalls: [[String: Any]] { lock.withLock { _setLicensorCalls } }
 
-        func setUserID(_ id: String) { lock.withLock { _userID = id } }
-        func setDeviceID(_ id: String) { lock.withLock { _deviceID = id } }
+        private var _generation: Int?
+        var adobeActivationConnectorGeneration: Int? { lock.withLock { _generation } }
+        func setAdobeActivation(userID: String, deviceID: String, generation: Int) {
+            lock.withLock { _userID = userID; _deviceID = deviceID; _generation = generation }
+        }
         func setLicensor(_ licensor: [String: Any]) {
             lock.withLock {
                 _licensor = licensor
@@ -297,8 +291,12 @@ final class AdobeActivationRefreshLicensorTests: XCTestCase {
     /// The already-activated fast path precedes everything, so a borrow on an
     /// activated device must not spend a profile-document round trip.
     func test_ensureDeviceActivated_whenAlreadyAuthorized_neverRefreshes() async throws {
+        // PP-5251: "already authorized" now also requires the recorded connector
+        // to match, so a record stamped older re-activates and this test stops
+        // measuring the skip path it is named for.
         let account = RecordingAccount(licensor: staleLicensor(),
-                                       userID: "user-1", deviceID: "device-1")
+                                       userID: "user-1", deviceID: "device-1",
+                                       generation: AdobeConnectorGeneration.current)
         drm.isUserAuthorizedReturnValue = true
         let refreshed = LockedFlag()
         let fresh = freshLicensor()
@@ -344,15 +342,21 @@ final class AdobeActivationRefreshLicensorTests: XCTestCase {
     /// path. An unresumed continuation there wedges the borrow forever — this
     /// branch has already shipped one ten-hour hang from exactly that shape.
     ///
-    /// This drives a producer that NEVER completes and asserts the call returns.
+    /// This drives a producer that does not answer and asserts the call returns.
     /// A regression hangs this test rather than the whole suite.
+    ///
+    /// The producer waits on a gate rather than a long sleep. A sleep long
+    /// enough to outlast the deadline also outlasts the test, leaving a Task
+    /// running into whichever test comes next (CI rule 2); the gate is opened
+    /// below so the producer finishes inside this one.
     func test_boundedLicensor_whenTheProducerNeverAnswers_returnsNilAtTheDeadline() async {
         let started = Date()
+        let gate = ProducerGate()
 
-        let result = await AdobeDRMService.boundedLicensor(timeout: 0.4) { _ in
-            // Deliberately drops the completion, as a URLSession task that
-            // never calls back would.
-        }
+        let result = await AdobeDRMService.boundedLicensor(timeout: 0.4, awaiting: {
+            await gate.wait()
+            return nil
+        })
 
         let elapsed = Date().timeIntervalSince(started)
         XCTAssertNil(result.licensor, "a fetch that never answers must yield nil, not a value")
@@ -363,6 +367,11 @@ final class AdobeActivationRefreshLicensorTests: XCTestCase {
                                     "returned before the deadline — the timeout is not what released it")
         XCTAssertLessThan(elapsed, 5.0,
                           "returned, but far past the 0.4s deadline — the bound is not honoured")
+
+        // Let the held producer run to completion here rather than leaving it
+        // parked past the test.
+        await gate.open()
+        for _ in 0..<8 { await Task.yield() }
     }
 
     /// The clean path. A deadline exercised only against the hang it detects
@@ -370,9 +379,9 @@ final class AdobeActivationRefreshLicensorTests: XCTestCase {
     func test_boundedLicensor_whenTheProducerAnswers_returnsItWithoutWaiting() async {
         let started = Date()
 
-        let result = await AdobeDRMService.boundedLicensor(timeout: 30) { done in  // FLAKE-003-OK: a deliberately DISTANT deadline. These three cases assert the producer's answer is returned WITHOUT waiting, so the bound has to be far enough away that reaching it would be a real defect; the elapsed-time assertion in each body is what actually caps the wall clock, at 5s.
-            done(["vendor": "v", "clientToken": "a|b"])
-        }
+        let result = await AdobeDRMService.boundedLicensor(timeout: 30, awaiting: {  // FLAKE-003-OK: a deliberately DISTANT deadline. These three cases assert the producer's answer is returned WITHOUT waiting, so the bound has to be far enough away that reaching it would be a real defect; the elapsed-time assertion in each body is what actually caps the wall clock, at 5s.
+            ["vendor": "v", "clientToken": "a|b"]
+        })
 
         XCTAssertEqual(result.licensor?["clientToken"] as? String, "a|b")
         XCTAssertFalse(result.timedOut,
@@ -387,9 +396,9 @@ final class AdobeActivationRefreshLicensorTests: XCTestCase {
     func test_boundedLicensor_whenTheProducerAnswersNil_returnsPromptly() async {
         let started = Date()
 
-        let result = await AdobeDRMService.boundedLicensor(timeout: 30) { done in  // FLAKE-003-OK: a deliberately DISTANT deadline. These three cases assert the producer's answer is returned WITHOUT waiting, so the bound has to be far enough away that reaching it would be a real defect; the elapsed-time assertion in each body is what actually caps the wall clock, at 5s.
-            done(nil)
-        }
+        let result = await AdobeDRMService.boundedLicensor(timeout: 30, awaiting: {  // FLAKE-003-OK: a deliberately DISTANT deadline. These three cases assert the producer's answer is returned WITHOUT waiting, so the bound has to be far enough away that reaching it would be a real defect; the elapsed-time assertion in each body is what actually caps the wall clock, at 5s.
+            nil
+        })
 
         XCTAssertNil(result.licensor)
         XCTAssertFalse(result.timedOut,
@@ -398,18 +407,49 @@ final class AdobeActivationRefreshLicensorTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(started), 5.0)
     }
 
-    /// A completion handler invoked twice would resume a `CheckedContinuation`
-    /// twice — a hard runtime trap, not a recoverable error. The latch is
-    /// load-bearing, not defensive styling, so it gets an assertion.
-    func test_boundedLicensor_whenTheProducerAnswersTwice_doesNotTrap() async {
-        let result = await AdobeDRMService.boundedLicensor(timeout: 30) { done in  // FLAKE-003-OK: a deliberately DISTANT deadline. These three cases assert the producer's answer is returned WITHOUT waiting, so the bound has to be far enough away that reaching it would be a real defect; the elapsed-time assertion in each body is what actually caps the wall clock, at 5s.
-            done(["vendor": "v", "clientToken": "first|token"])
-            done(["vendor": "v", "clientToken": "second|token"])
-        }
+    /// Resuming a `CheckedContinuation` twice is a hard runtime trap, not a
+    /// recoverable error, so the at-most-once latch is load-bearing rather than
+    /// defensive styling.
+    ///
+    /// The old form of this case drove a completion handler invoked twice. An
+    /// `async` producer cannot answer twice — it returns once — so that shape is
+    /// no longer representable here. What remains is a producer that answers
+    /// after the deadline has already claimed the continuation.
+    ///
+    /// The producer waits on a gate this test owns rather than on a sleep. An
+    /// earlier draft raced a 0.2s deadline against a 0.8s producer, which is
+    /// the starvation shape this branch spent its effort removing: on a loaded
+    /// runner the producer can win and redden CI with no defect (STARVE-001).
+    /// With the gate the deadline is the only racer that can win, so both
+    /// assertions below are deterministic under any load.
+    ///
+    /// What this does NOT give is attribution of a latch regression. That same
+    /// earlier draft claimed removing the latch would "crash rather than fail"
+    /// here; it would not. `boundedLicensor` has already returned by then, so
+    /// the second `resume` traps whenever the producer is next scheduled —
+    /// possibly inside another test. Opening the gate and yielding below makes
+    /// that land in this test's scope in the common case, not in every case:
+    /// the primitive does not hand back its producer Task, so there is nothing
+    /// to join.
+    func test_boundedLicensor_whenTheProducerAnswersAfterTheDeadline_keepsTheTimeout() async {
+        let gate = ProducerGate()
 
-        XCTAssertEqual(result.licensor?["clientToken"] as? String, "first|token",
-                       "the first answer wins; the second must be dropped, not resumed")
-        XCTAssertFalse(result.timedOut)
+        let result = await AdobeDRMService.boundedLicensor(timeout: 0.2, awaiting: {
+            await gate.wait()
+            return ["vendor": "v", "clientToken": "late|token"]
+        })
+
+        XCTAssertTrue(result.timedOut,
+                      "the deadline claimed the latch first, so the caller must still be told it timed out")
+        XCTAssertNil(result.licensor,
+                     "an answer that lands after the deadline must be dropped, not resumed into the "
+                     + "continuation the deadline already used")
+
+        // Release the held producer and give it a bounded number of scheduling
+        // points, so its late `finish` runs while this test is still on the
+        // stack rather than during an unrelated one.
+        await gate.open()
+        for _ in 0..<8 { await Task.yield() }
     }
 
     /// The constant the borrow path actually uses must be a real bound.
@@ -429,4 +469,30 @@ private final class LockedFlag: @unchecked Sendable {
     private var flag = false
     var value: Bool { lock.withLock { flag } }
     func set() { lock.withLock { flag = true } }
+}
+
+/// One-shot gate a test opens, so a producer can be held past a deadline
+/// without a sleep. No wall-clock margin means nothing to starve under
+/// parallel simulator clones (STARVE-001).
+private actor ProducerGate {
+    private var waiter: CheckedContinuation<Void, Never>?
+    private var isOpen = false
+
+    func wait() async {
+        if isOpen { return }
+        await withCheckedContinuation { continuation in
+            if isOpen {
+                continuation.resume()
+            } else {
+                waiter = continuation
+            }
+        }
+    }
+
+    func open() {
+        guard !isOpen else { return }
+        isOpen = true
+        waiter?.resume()
+        waiter = nil
+    }
 }

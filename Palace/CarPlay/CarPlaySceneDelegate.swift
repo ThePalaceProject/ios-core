@@ -152,7 +152,8 @@ final class CarPlaySceneDelegate: UIResponder, @preconcurrency CPTemplateApplica
 
         let comingSoonTemplate = CPListTemplate(title: "Palace", sections: [section])
 
-        interfaceController.setRootTemplate(comingSoonTemplate, animated: true, completion: nil)
+        CarPlayTemplateNavigator(controller: interfaceController)
+            .setRoot(comingSoonTemplate, operation: "setRootTemplate(comingSoon)")
     }
 
     private func createCarPlayLogo() -> UIImage? {

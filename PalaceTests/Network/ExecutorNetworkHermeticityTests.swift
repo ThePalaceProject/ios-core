@@ -32,7 +32,7 @@ final class ExecutorNetworkHermeticityTests: PalaceTestCase {
     /// this either succeeds (real response) or times out at the executor's real
     /// request timeout instead of failing immediately with the stub's error.
     func testSharedExecutor_GETToNonStubHost_isBlocked_notRealNetwork() {
-        let executor = AppContainer.production().networkExecutor // MIGRATED-DEFERRED: swarm_47883816 — #3 guard MUST read the production shared executor (a test-container executor wouldn't prove the production path is hermetic)
+        let executor = AppContainer.production().networkExecutor // MIGRATED-DEFERRED: this guard must read the production shared executor (a test-container executor wouldn't prove the production path is hermetic)
         let target = "registry.palaceproject.io/libraries"
         // Positive-proof baseline: interceptions of THIS request before our GET
         // (the host app may have hit it during launch). We assert a strict

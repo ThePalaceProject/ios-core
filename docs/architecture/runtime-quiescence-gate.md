@@ -1,7 +1,7 @@
 <!-- audit-verified -->
 # Runtime-quiescence gate — preventing cross-test cooperative-pool starvation
 
-**Status:** Proposed (awaiting Chairman ratification)
+**Status:** Accepted; implemented in #1066 (`PalaceTests/Support/PalaceTestCase.swift`, `PalaceTests/MetaTests/RuntimeQuiescenceLintTests.swift`).
 **Date:** 2026-06-11
 **Workstream:** WS-0 / M0 (3.2.0 release gate)
 **Scope:** test-target only (`PalaceTests`); zero production-code behaviour change

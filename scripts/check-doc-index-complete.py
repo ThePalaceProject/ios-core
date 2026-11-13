@@ -39,7 +39,6 @@ import sys
 # directory -> the index that must name everything under it.
 INDEXED = {
     "docs/architecture": "docs/architecture/README.md",
-    ".forgeos/wall-failures": ".forgeos/wall-failures/INDEX.md",
 }
 
 

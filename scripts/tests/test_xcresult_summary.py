@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from xcresult_summary import (  # noqa: E402
     failing_classes,
     failing_test_names,
+    gate,
     tally,
     tally_label,
     totals,
@@ -177,3 +178,47 @@ def test_tally_is_unchanged_for_existing_callers():
     # `tally` is still the (passed, failed) pair; totals() was added beside it
     # rather than changing its arity, because other call sites read $1 and $2.
     assert tally(REAL_SUMMARY) == (8454, 1)
+
+
+# MARK: - gate
+# xcodebuild exits 0 when a scheme selects no tests, so its exit status cannot
+# tell "315 passed" from "nothing ran". `gate` is the verdict that can.
+
+def _summary(total, passed, failed=0, skipped=0):
+    return {"totalTestCount": total, "passedTests": passed,
+            "failedTests": failed, "skippedTests": skipped}
+
+
+def test_gate_passes_a_run_that_executed_tests_with_no_failures():
+    ok, message = gate(_summary(315, 314, skipped=1))
+    assert ok
+    assert message == "315 tests (314 passed, 0 failed, 1 skipped)"
+
+
+def test_gate_fails_a_run_that_executed_nothing():
+    ok, message = gate(_summary(0, 0))
+    assert not ok
+    assert "no tests executed" in message
+
+
+def test_gate_fails_a_bundle_whose_summary_has_no_counts_at_all():
+    ok, message = gate({})
+    assert not ok
+    assert "no tests executed" in message
+
+
+def test_gate_fails_a_run_where_every_test_skipped():
+    ok, message = gate(_summary(3, 0, skipped=3))
+    assert not ok
+    assert "no test passed" in message
+
+
+def test_gate_fails_a_single_failure_among_many_passes():
+    ok, message = gate(_summary(315, 314, failed=1))
+    assert not ok
+    assert "1 failed" in message
+
+
+def test_gate_fails_the_real_bundle_because_it_holds_a_failure():
+    ok, _ = gate(REAL_SUMMARY)
+    assert not ok

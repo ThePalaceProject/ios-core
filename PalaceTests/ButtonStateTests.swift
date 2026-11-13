@@ -42,8 +42,8 @@ final class ButtonStateTests: XCTestCase {
 
     /// Borrow state: when previewEnabled and the book has a preview link, the
     /// sample button appears alongside Get; when previewEnabled is false,
-    /// only Get remains. Paired across content types so a mutant that flips
-    /// the previewEnabled check fails on either epub or audiobook.
+    /// only Get remains. Paired across content types so flipping the previewEnabled
+    /// check fails on either epub or audiobook.
     func testCanBorrow_epubButtonsRespectPreviewToggle() {
         let testEpub = testEpub
         testEpub.previewLink = TPPFake.genericSample
@@ -119,7 +119,7 @@ final class ButtonStateTests: XCTestCase {
 
     /// holdingFrontOfQueue without an isHoldReady availability falls back to
     /// manageHold. Assert exact set AND the absence of the get/reserve buttons
-    /// that the next state up adds — guards against a mutant that
+    /// that the next state up adds — guards against a regression that
     /// prematurely surfaces the borrow path before hold-ready is true.
     func testHoldingFrontOfQueue_withoutHoldReady_returnsManageHoldOnly() {
         let result = BookButtonState.holdingFrontOfQueue.buttonTypes(book: testEpub)
@@ -152,8 +152,8 @@ final class ButtonStateTests: XCTestCase {
     }
 
     /// downloadInProgress surfaces only Cancel — no read/listen/retry leakage
-    /// while bytes are still in flight. Lock the absence assertions so a
-    /// mutant that bleeds .read into the in-progress branch fails here.
+    /// while bytes are still in flight. Lock the absence assertions so
+    /// bleeding .read into the in-progress branch fails here.
     func testDownloadInProgress_yieldsOnlyCancelButton() {
         let result = BookButtonState.downloadInProgress.buttonTypes(book: testEpub)
         XCTAssertEqual(Set(result), Set([.cancel]))
@@ -162,8 +162,8 @@ final class ButtonStateTests: XCTestCase {
         XCTAssertFalse(result.contains(.listen))
     }
 
-    /// downloadFailed surfaces Cancel + Retry (matched pair). A mutant that
-    /// drops Retry would silently strand the user with no way to recover.
+    /// downloadFailed surfaces Cancel + Retry (matched pair). Dropping Retry
+    /// would strand the user with no way to recover.
     func testDownloadFailed_yieldsCancelAndRetry() {
         let result = BookButtonState.downloadFailed.buttonTypes(book: testEpub)
         XCTAssertEqual(Set(result), Set([.cancel, .retry]))
@@ -196,8 +196,8 @@ final class ButtonStateTests: XCTestCase {
     }
 
     /// unsupported state must yield zero buttons — no fallback get/read/cancel.
-    /// Pin the specific buttons that the OTHER states surface so a mutant
-    /// flipping unsupported's branch into any neighbour state's buttons fails.
+    /// Pin the specific buttons that the OTHER states surface so routing
+    /// unsupported's branch into any neighbour state's buttons fails.
     func testUnsupported_yieldsEmptyButtonSetAndNoLeakageFromOtherStates() {
         let result = BookButtonState.unsupported.buttonTypes(book: testEpub)
         XCTAssertTrue(result.isEmpty, "unsupported books must surface no actionable buttons")

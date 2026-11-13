@@ -9,7 +9,7 @@ import XCTest
 @testable import Palace
 
 /// Behavior specs for the `sideLoadingEnabled` feature-flag resolution
-/// (swarm_495a88d9, Module B — PP-2679 / PP-2677).
+/// (PP-2679 / PP-2677).
 ///
 /// These tests pin the RESOLUTION PRECEDENCE, not the default value:
 ///   1. UserDefaults local override (either direction) wins.
@@ -90,9 +90,7 @@ final class RemoteFeatureFlagsSideLoadingTests: XCTestCase {
     ///
     /// This pins that the accessor's fallback is the Remote Config seam (so
     /// remote gating actually works) and that no override silently forces it on.
-    /// The override-drop / precedence-inversion mutants are killed by the
-    /// override-direction tests above (override=true must return true even though
-    /// the Remote Config default is false).
+    /// Override precedence is covered by the override-direction tests above.
     func testIsSideLoadingEnabled_noOverride_defersToRemoteConfig() {
         let sut = RemoteFeatureFlags(defaults: defaults)
         XCTAssertNil(defaults.object(forKey: RemoteFeatureFlags.sideLoadingLocalOverrideKey),

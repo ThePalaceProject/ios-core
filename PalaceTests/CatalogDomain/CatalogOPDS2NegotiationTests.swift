@@ -2,39 +2,13 @@
 //  CatalogOPDS2NegotiationTests.swift
 //  PalaceTests
 //
-//  Deep mutation-killing tests for OPDS2 ⇄ OPDS1 negotiation in the catalog
-//  assembly layer (DefaultCatalogAPI + CatalogRepository + OPDSParser).
-//
-//  ──────────────────────────────────────────────────────────────────────────
-//  Negotiation contract under test
-//  ──────────────────────────────────────────────────────────────────────────
-//
-//  When `FeatureFlagProvider.isOPDS2Enabled == true`, the catalog API:
-//    1. Sends `Accept: application/opds+json, application/atom+xml;q=0.9, …`.
-//    2. Receives EITHER an OPDS 2 JSON body or an OPDS 1 Atom body.
-//    3. Routes parsing by inspecting the FIRST BYTE of the body:
-//         • `{` or `[` → OPDS 2 JSON parser.
-//         • `<`        → OPDS 1 XML parser.
-//
-//  When the server returns OPDS 2 but the body fails JSON shape validation
-//  (e.g. missing "metadata"), the parser throws `ParserError.invalidJSON`.
-//  When the server returns OPDS 1 despite OPDS 2 being requested, the parser
-//  silently routes to XML — this is the "fallback" branch.
-//
-//  We exercise BOTH branches and pin the OPDS 2 → OPDS 1 fallback semantic.
-//
-//  ──────────────────────────────────────────────────────────────────────────
-//  House rules
-//  ──────────────────────────────────────────────────────────────────────────
-//   • No production code modified. The parser's first-byte heuristic IS the
-//     negotiation seam. We exercise it through the public API.
-//   • Hermetic. We use `NetworkClientMock`, not the OS URL stack.
-//   • Each test targets at least one mutation:
-//       - flip first-byte check `{` ↔ `<`
-//       - drop OPDS 2 branch (route everything to OPDS 1)
-//       - drop OPDS 1 branch (route everything to OPDS 2)
-//       - swap `Accept` header content
-//       - remove JSON-failure throw
+//  OPDS2 ⇄ OPDS1 negotiation in DefaultCatalogAPI + CatalogRepository +
+//  OPDSParser. With `isOPDS2Enabled`, the API sends
+//  `Accept: application/opds+json, application/atom+xml;q=0.9, …` and routes
+//  parsing on the body's FIRST BYTE: `{`/`[` → OPDS 2 JSON, `<` → OPDS 1 XML.
+//  An OPDS 2 body failing shape validation throws `ParserError.invalidJSON`;
+//  an OPDS 1 reply to an OPDS 2 request falls back to XML. Hermetic via
+//  `NetworkClientMock`.
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //
@@ -132,7 +106,7 @@ final class CatalogOPDS2NegotiationTests: XCTestCase {
     //
     // The `Accept` header tells the server which formats the client will
     // accept. The feature flag drives this string. We pin both flag states
-    // so a mutant that swaps the two strings is detected immediately.
+    // so swapping the two strings is detected immediately.
 
     /// Mutant killed: swapping the OPDS2-enabled accept header with the
     /// OPDS1-only one. Pin: when OPDS 2 is enabled the request must list
@@ -284,7 +258,7 @@ final class CatalogOPDS2NegotiationTests: XCTestCase {
     // MARK: - Parser-level negotiation seam (no network, just bytes)
     //
     // These pin the format-detection contract DIRECTLY on the parser. Any
-    // mutation to the first-byte heuristic must surface here even if the
+    // change to the first-byte heuristic must surface here even if the
     // surrounding API code is rewritten.
 
     /// Mutant killed: flipping `firstChar == "{"` to `firstChar == "<"`

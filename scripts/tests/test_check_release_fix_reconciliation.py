@@ -11,6 +11,9 @@ drives the gate through the scenarios that matter for the 3.2.0 retro:
   - the fix explicitly waived                                          -> pass
   - a non-critical-path fix                                            -> ignored
   - a critical-path refactor with no fix wording                       -> ignored
+
+and the reverse direction (PP-5389): a commit on the release only blocks until
+develop carries it, names its PR or SHA, or a waiver covers it.
 """
 
 from __future__ import annotations
@@ -122,6 +125,87 @@ def test_critical_refactor_without_fix_wording_ignored(repo: Path):
 
 def test_clean_release_passes(repo: Path):
     # develop == release (no new commits) -> nothing to reconcile.
+    res = _run_gate(repo)
+    assert res.returncode == 0, res.stderr
+
+
+def _commit_on_release(repo: Path, path: str, content: str, message: str) -> str:
+    _git(repo, "checkout", "-q", "release")
+    sha = _commit(repo, path, content, message)
+    _git(repo, "checkout", "-q", "develop")
+    return sha
+
+
+def test_release_only_commit_blocks_even_without_fix_wording(repo: Path):
+    # Shape of e84eb80ae (#1717): merged to release/3.4.0 only, subject has no
+    # fix wording, and develop kept the old default until a forward-port.
+    _commit_on_release(repo, "Palace/AppInfrastructure/FirebaseManager.swift",
+                       "// default on\n",
+                       "Default LCP audiobook streaming ON to match the shipped rollout (#1717)")
+    res = _run_gate(repo)
+    assert res.returncode == 1, res.stderr
+    assert "not on develop" in res.stderr
+    assert "#1717" in res.stderr
+
+
+def test_release_commit_cherry_picked_to_develop_is_reconciled(repo: Path):
+    sha = _commit_on_release(repo, "Palace/AppInfrastructure/FirebaseManager.swift",
+                             "// default on\n", "Default streaming ON (#1717)")
+    _git(repo, "cherry-pick", sha)
+    res = _run_gate(repo)
+    assert res.returncode == 0, res.stderr
+
+
+def test_forward_port_naming_the_release_pr_is_reconciled(repo: Path):
+    # A forward-port that needed conflict resolution has a different patch-id;
+    # naming the release PR in its message is what ties the two together.
+    _commit_on_release(repo, "Palace/AppInfrastructure/FirebaseManager.swift",
+                       "// default on\n", "Default streaming ON (#1717)")
+    _commit(repo, "Palace/AppInfrastructure/FirebaseManager.swift",
+            "// default on, adjusted for develop\n",
+            "Forward-port default streaming ON (#1718)\n\nForward-port of #1717.")
+    res = _run_gate(repo)
+    assert res.returncode == 0, res.stderr
+
+
+def test_forward_port_naming_the_release_sha_is_reconciled(repo: Path):
+    sha = _commit_on_release(repo, "Palace/AppInfrastructure/FirebaseManager.swift",
+                             "// default on\n", "Default streaming ON")
+    _commit(repo, "Palace/AppInfrastructure/FirebaseManager.swift",
+            "// default on, adjusted for develop\n",
+            f"Default streaming ON\n\n(cherry picked from commit {sha})")
+    res = _run_gate(repo)
+    assert res.returncode == 0, res.stderr
+
+
+def test_unrelated_pr_number_on_develop_does_not_reconcile(repo: Path):
+    # #17 is a prefix of #1717; only an exact PR number counts as a port.
+    _commit_on_release(repo, "Palace/AppInfrastructure/FirebaseManager.swift",
+                       "// default on\n", "Default streaming ON (#1717)")
+    _commit(repo, "docs/notes.md", "x\n", "Update notes (#17)")
+    res = _run_gate(repo)
+    assert res.returncode == 1, res.stderr
+
+
+def test_release_only_commit_can_be_waived(repo: Path):
+    sha = _commit_on_release(repo, "Palace.xcodeproj/project.pbxproj",
+                             "CURRENT_PROJECT_VERSION = 2;\n", "Bump build number")
+    waiver = repo / "waivers.txt"
+    waiver.write_text(f"{sha[:9]} release-only build bump\n")
+    res = _run_gate(repo, "--waiver-file", str(waiver))
+    assert res.returncode == 0, res.stderr
+    assert "waived" in res.stderr.lower()
+
+
+def test_release_merge_commit_is_not_flagged(repo: Path):
+    # A merge carries no patch of its own; its parents are judged separately.
+    _git(repo, "checkout", "-q", "-b", "side", "release")
+    _commit(repo, "docs/side.md", "x\n", "Side change")
+    _git(repo, "checkout", "-q", "develop")
+    _git(repo, "merge", "-q", "--no-ff", "side", "-m", "Merge side into develop")
+    _git(repo, "checkout", "-q", "release")
+    _git(repo, "merge", "-q", "--no-ff", "side", "-m", "Merge side into release")
+    _git(repo, "checkout", "-q", "develop")
     res = _run_gate(repo)
     assert res.returncode == 0, res.stderr
 

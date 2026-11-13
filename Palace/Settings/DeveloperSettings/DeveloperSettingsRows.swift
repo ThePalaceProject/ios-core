@@ -204,7 +204,7 @@ struct DevRegistryDebuggingRow: View {
                         .minimumScaleFactor(0.5)
                 }
                 VStack(spacing: 0) {
-                    TextField("host, or full https:// URL", text: $input)
+                    TextField("Library registry", text: $input, prompt: Text("host, or full https:// URL"))
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled(true)
                         .frame(minWidth: 120)
@@ -236,6 +236,64 @@ struct DevRegistryDebuggingRow: View {
                 .palaceFont(.body)
                 .foregroundStyle(Color(UIColor.defaultLabelColor()))
                 .frame(width: 125, height: 34)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5)
+                        .stroke(Color(UIColor.defaultLabelColor()), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// The MDM Managed App Configuration row (PP-5070): a free-text field taking
+/// either a registry identifier or an https catalog URL, a status read-out, and
+/// Apply / Forget / Clear buttons.
+///
+/// Three buttons rather than two because the apply-once-per-value rule means
+/// "Apply" alone can only be used once per identifier — "Forget" is what makes
+/// the row usable a second time without reinstalling the app.
+struct DevManagedLibraryRow: View {
+    @Binding var input: String
+    let status: String
+    let onApply: () -> Void
+    let onForget: () -> Void
+    let onClear: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(spacing: 0) {
+                TextField("urn:uuid:… — first is selected, rest are added", text: $input)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled(true)
+                    .font(.system(.body, design: .monospaced))
+                Rectangle()
+                    .fill(Color.gray)
+                    .frame(height: 1)
+            }
+
+            Text(status)
+                .font(.system(.footnote, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityLabel(Text("Current managed configuration: \(status)"))
+
+            HStack(spacing: 12) {
+                borderedButton("Apply", action: onApply)
+                borderedButton("Forget", action: onForget)
+                borderedButton("Clear", action: onClear)
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    private func borderedButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .palaceFont(.body)
+                .foregroundStyle(Color(UIColor.defaultLabelColor()))
+                .frame(minWidth: 84, maxWidth: .infinity)
+                .frame(height: 34)
                 .overlay(
                     RoundedRectangle(cornerRadius: 5)
                         .stroke(Color(UIColor.defaultLabelColor()), lineWidth: 1)

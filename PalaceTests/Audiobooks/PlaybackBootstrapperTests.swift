@@ -15,8 +15,8 @@ import MediaPlayer
 @MainActor
 final class PlaybackBootstrapperTests: XCTestCase {
 
-    /// Locally-constructed session manager — Module B replaced the singleton,
-    /// so each test gets a fresh instance with no pollution to reset.
+    /// Locally-constructed session manager, so each test gets a fresh
+    /// instance with no pollution to reset.
     private var sessionManager: AudiobookSessionManager!
     /// Per-test isolated container — built via `makeTestAppContainer()` so
     /// each test method gets a fresh service graph (no cross-test pollution
@@ -139,7 +139,7 @@ final class AudiobookSessionErrorTests: XCTestCase {
 
     func testAudiobookSessionError_localizedDescription_isCaseSpecificAndPreservesUnknownMessage() {
         // Each case must produce a user-facing string that mentions the relevant
-        // concept. Guards against mutations that swap case strings or collapse
+        // concept. Guards against changes that swap case strings or collapse
         // cases to a generic fallback. The .unknown case must pass its message
         // through verbatim.
         let expectedKeywords: [(AudiobookSessionError, String)] = [
@@ -182,11 +182,10 @@ final class AudiobookSessionErrorTests: XCTestCase {
 
     /// `PlaybackBootstrapper.remoteCommandStatus(hasActiveManager:)` is the pure,
     /// `nonisolated` gate that all six `MPRemoteCommand` handlers now return
-    /// through after the Swift 6 off-main crash fix. Pinning BOTH branches kills
-    /// the gate-inversion mutant on the changed lines — a swapped pair of
-    /// statuses, or a `!hasActiveManager`, fails here. This is the mutation-
-    /// killing coverage that MPRemoteCommand's lack of a public
-    /// invoke-handler-and-read-status API otherwise blocks, achieved without a
+    /// through after the Swift 6 off-main crash fix. Pinning BOTH branches
+    /// catches an inverted gate — a swapped pair of statuses, or a
+    /// `!hasActiveManager`, fails here. MPRemoteCommand has no public
+    /// invoke-handler-and-read-status API, so this is achieved without a
     /// bound-manager fixture by testing the extracted pure gate directly.
     func testRemoteCommandStatus_gatesOnActiveManager() {
         XCTAssertEqual(

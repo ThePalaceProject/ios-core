@@ -3,9 +3,8 @@
 //  PalaceTests
 //
 //  Tests for the audiobook position-write migration onto the unified
-//  `PalaceReadingPosition.PositionWriter` protocol (swarm_f4fbef9c
-//  Module B). Pins the swarm_f3b9b087 P0 conflict-resolution predicates
-//  so they cannot regress under the migration.
+//  `PalaceReadingPosition.PositionWriter` protocol. Pins the
+//  conflict-resolution predicates so they cannot regress under the migration.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -198,7 +197,7 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
     // MARK: - 1. Local-save-first invariant
 
     /// Local registry MUST be written before any async write goes out.
-    /// This is the swarm_f3b9b087 P0 #4 invariant — a crash/background
+    /// A crash/background
     /// between the call and the async hop never loses position state.
     func testSaveListeningPosition_savesLocallyImmediately() {
         let position = position(trackIndex: 1, time: 42.0)
@@ -312,9 +311,9 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
         XCTAssertEqual(spyWriter.savedSnapshots.first?.bookID, bookIdentifier)
     }
 
-    // MARK: - 5. isAtBeginning guard preserved (swarm_f3b9b087 #4)
+    // MARK: - 5. isAtBeginning guard preserved
 
-    /// Pin the swarm_f3b9b087 P0 #4 predicate: when a save is at the
+    /// Pin the isAtBeginning predicate: when a save is at the
     /// STRICT-ZERO beginning (track 0 AND playbackTime == 0) AND a
     /// later-track position already exists locally, the post-save commit
     /// MUST NOT overwrite the later-track bookmark with the "beginning"
@@ -322,8 +321,8 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
     /// local later-track state.
     ///
     /// NOTE: this test was originally authored against the legacy `time
-    /// < 30s` predicate (PR #980). swarm_f3b9b087 P0 #4 tightened the
-    /// predicate to strict-zero (see `AudiobookBookmarkBusinessLogic.swift`
+    /// < 30s` predicate (PR #980), later tightened to strict-zero
+    /// (see `AudiobookBookmarkBusinessLogic.swift`
     /// lines 117–125: "Strict zero is correct"). The input below uses
     /// `time: 0` to match the strict-zero contract. A `time: 5.0` input
     /// would (correctly) bypass the guard under the new predicate.
@@ -350,8 +349,8 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
         }
         // NOTE on test scaffolding: the SUT's `saveListeningPosition` always
         // runs `registry.setLocation(localBookmark)` synchronously BEFORE the
-        // async writer hop (the swarm_f3b9b087 P0 #4 "user safety net"
-        // invariant). To exercise the isAtBeginning guard scenario, we need
+        // async writer hop (the "user safety net" invariant). To exercise
+        // the isAtBeginning guard scenario, we need
         // the registry to read back the later-track bookmark when the
         // POST-SAVE guard runs — not the beginning bookmark the SUT just
         // wrote. We use the spy's onSave hook to restore the later-track
@@ -368,7 +367,7 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
 
         // Act: try to save a strict-zero beginning-of-book position
         // (track 0, time == 0). The legacy `< 30s` window was tightened
-        // to strict-zero by swarm_f3b9b087 P0 #4; any positive time
+        // to strict-zero; any positive time
         // bypasses the guard under the new predicate.
         let beginningPosition = position(trackIndex: 0, time: 0)
         let returned = await saveAndWait(position: beginningPosition)
@@ -395,9 +394,9 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
                           "AnnotationId from the beginning save MUST NOT be committed")
     }
 
-    // MARK: - 6. Timestamp-newer race-check preserved (swarm_f3b9b087 #4)
+    // MARK: - 6. Timestamp-newer race-check preserved
 
-    /// Pin the swarm_f3b9b087 P0 #4 race-check predicate: when a save's
+    /// Pin the race-check predicate: when a save's
     /// timestamp is genuinely OLDER than the current local timestamp, the
     /// post-save commit MUST be suppressed so a stale upload result cannot
     /// overwrite a fresh local position.
