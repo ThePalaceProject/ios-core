@@ -22,6 +22,11 @@ struct BookCoverState {
     /// the image cache's memory copy, and the next cover keeps the color.
     var coverReleased = false
     var thumbnailReleased = false
+    /// A released image stays reachable while something else holds it, such
+    /// as a view that drew it (PP-5581). Getters and a restore use it, so the
+    /// image comes back at the size it was drawn.
+    weak var releasedCover: UIImage?
+    weak var releasedThumbnail: UIImage?
     var colorKeptFromReleasedImage = false
 }
 
@@ -93,20 +98,40 @@ public final class BookCoverStore: @unchecked Sendable {
     }
 
     /// Releases every decoded image outside the `keepRecent` most recently read
-    /// covers, for a memory warning. Loading flags and colors stay.
-    // PUBLIC_INTENT: the app registers this as a memory warning release step.
+    /// covers and the `keeping` identifiers, for a memory warning or a
+    /// background trim. Loading flags and colors stay.
+    // PUBLIC_INTENT: the app's release step passes the playing audiobook.
     public func releaseImages(keeping: Set<String>) {
-        releaseImages()
+        lock.withLock {
+            for identifier in releasableIdentifiersLocked() where !keeping.contains(identifier) {
+                releaseImagesLocked(for: identifier)
+            }
+        }
     }
 
-    /// Makes released images that something else still holds strong again.
-    // PUBLIC_INTENT: the app calls this when it returns to the foreground.
-    public func restoreReleasedImages() {}
-
+    // PUBLIC_INTENT: the app registers this as a memory warning release step.
     public func releaseImages() {
+        releaseImages(keeping: [])
+    }
+
+    /// Makes released images that something else still holds strong again,
+    /// with no change notice: views already show them (PP-5581).
+    // PUBLIC_INTENT: the app calls this when it returns to the foreground.
+    public func restoreReleasedImages() {
         lock.withLock {
-            for identifier in releasableIdentifiersLocked() {
-                releaseImagesLocked(for: identifier)
+            for identifier in Array(entries.keys) {
+                guard var state = entries[identifier]?.state else { continue }
+                if state.coverImage == nil, let cover = state.releasedCover {
+                    state.coverImage = cover
+                    state.coverReleased = false
+                }
+                if state.thumbnailImage == nil, let thumbnail = state.releasedThumbnail {
+                    state.thumbnailImage = thumbnail
+                    state.thumbnailReleased = false
+                }
+                state.releasedCover = nil
+                state.releasedThumbnail = nil
+                entries[identifier]?.state = state
             }
         }
     }
@@ -116,7 +141,7 @@ public final class BookCoverStore: @unchecked Sendable {
     func readCover(for identifier: String) -> (image: UIImage?, released: Bool) {
         lock.withLock {
             guard let state = markUsedLocked(identifier) else { return (nil, false) }
-            return (state.coverImage, state.coverReleased)
+            return (state.coverImage ?? state.releasedCover, state.coverReleased)
         }
     }
 
@@ -124,7 +149,7 @@ public final class BookCoverStore: @unchecked Sendable {
     func readThumbnail(for identifier: String) -> (image: UIImage?, released: Bool) {
         lock.withLock {
             guard let state = markUsedLocked(identifier) else { return (nil, false) }
-            return (state.thumbnailImage, state.thumbnailReleased)
+            return (state.thumbnailImage ?? state.releasedThumbnail, state.thumbnailReleased)
         }
     }
 
@@ -261,8 +286,14 @@ public final class BookCoverStore: @unchecked Sendable {
             change(&entry.state)
             let newCover = entry.state.coverImage.map { $0 !== before.cover } ?? false
             let newThumbnail = entry.state.thumbnailImage.map { $0 !== before.thumbnail } ?? false
-            if newCover { entry.state.coverReleased = false }
-            if newThumbnail { entry.state.thumbnailReleased = false }
+            if newCover {
+                entry.state.coverReleased = false
+                entry.state.releasedCover = nil
+            }
+            if newThumbnail {
+                entry.state.thumbnailReleased = false
+                entry.state.releasedThumbnail = nil
+            }
             if newCover || newThumbnail {
                 // A new image is about to be drawn: count it as read so the
                 // byte limit does not release it first.
@@ -307,8 +338,14 @@ public final class BookCoverStore: @unchecked Sendable {
     private func releaseImagesLocked(for identifier: String) -> Int {
         guard var state = entries[identifier]?.state else { return 0 }
         let released = Self.byteCount(of: [state.coverImage, state.thumbnailImage, state.colorSource])
-        if state.coverImage != nil { state.coverReleased = true }
-        if state.thumbnailImage != nil { state.thumbnailReleased = true }
+        if let cover = state.coverImage {
+            state.coverReleased = true
+            state.releasedCover = cover
+        }
+        if let thumbnail = state.thumbnailImage {
+            state.thumbnailReleased = true
+            state.releasedThumbnail = thumbnail
+        }
         if state.colorSource != nil { state.colorKeptFromReleasedImage = true }
         state.coverImage = nil
         state.thumbnailImage = nil

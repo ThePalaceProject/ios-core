@@ -172,7 +172,15 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
             on: memoryMonitor.memoryEvents,
             sources: .production(networkResponses: { networkExecutor.cacheMemoryUsage })
         )
-        MemoryReleaseCoordinator.shared.registerBookCovers(BookCoverStore.shared)
+        // The playing audiobook's cover is never released (PP-5581). Steps run
+        // on the thread that posted; UIKit and the background trim post on main.
+        MemoryReleaseCoordinator.shared.registerBookCovers(BookCoverStore.shared, keeping: {
+            guard Thread.isMainThread else { return [] }
+            return MainActor.assumeIsolated {
+                let book = AppContainer.production().processServices.audiobookSession?.currentBook
+                return book.map { [$0.identifier] } ?? []
+            }
+        })
 
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }

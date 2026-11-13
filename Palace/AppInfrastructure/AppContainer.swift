@@ -240,6 +240,15 @@ struct AppContainer: @unchecked Sendable {
             }
         )
         services.audiobookSession = session
+        // Screen memory goes while the app is in the background with this
+        // session playing (PP-5581). Built with the session, so launch work
+        // does not change.
+        services.backgroundPlaybackTrimmer = BackgroundPlaybackMemoryTrimmer(
+            isPlaying: session.$isPlaying.eraseToAnyPublisher(),
+            startsInBackground: UIApplication.shared.applicationState == .background,
+            trim: { MemoryReleaseCoordinator.shared.releaseAll(stages: BackgroundPlaybackMemoryTrimmer.stages) },
+            restore: { BookCoverStore.shared.restoreReleasedImages() }
+        )
         return session
     }
 

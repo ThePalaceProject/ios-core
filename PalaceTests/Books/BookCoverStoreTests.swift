@@ -396,11 +396,13 @@ final class BookCoverStoreTests: XCTestCase {
         let cache = CountingCache()
         let book = Self.makeBook("fb-a", cache: cache, store: limited)
         await settle()
-        book.coverImage = solidImage(width: 10, height: 10)
+        autoreleasepool {
+            book.coverImage = solidImage(width: 10, height: 10)
+        }
         let cached = solidImage(width: 10, height: 10)
         cache.set(cached, for: "fb-a", expiresIn: nil)
 
-        limited.releaseImages()
+        autoreleasepool { limited.releaseImages() }
 
         XCTAssertIdentical(book.coverImage, cached)
         XCTAssertNil(limited.state(for: "fb-a").coverImage, "the store holds no copy of its own")
