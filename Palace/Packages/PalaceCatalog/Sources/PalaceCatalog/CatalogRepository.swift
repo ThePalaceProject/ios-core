@@ -1,9 +1,6 @@
 import Foundation
 import os
 import PalaceLogging
-#if canImport(UIKit)
-import UIKit
-#endif
 
 public protocol CatalogRepositoryProtocol: Sendable {
     func loadTopLevelCatalog(at url: URL) async throws -> CatalogFeed?

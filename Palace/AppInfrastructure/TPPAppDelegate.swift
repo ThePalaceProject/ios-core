@@ -912,17 +912,18 @@ final class MemoryPressureMonitor: @unchecked Sendable {
     }
 
     /// This monitor's part of a memory warning: record the event before
-    /// anything is released, empty the response cache's memory part, pause
-    /// downloads, and free disk space when under 256 MB is left.
+    /// anything is released, clear the response cache, pause downloads, and
+    /// free disk space when under 256 MB is left.
     func registerReleaseSteps(on coordinator: MemoryReleaseCoordinator) {
         coordinator.register(self, stage: .record) { monitor in
             monitor.memoryEvents.record(.warning)
         }
         coordinator.register(self, stage: .networkResponses) { monitor in
             monitor.monitorQueue.async {
-                // N1: the executor's PRIVATE URLCache serves feeds. Only its
-                // memory part goes, so catalog pages still load from disk.
-                AppContainer.production().networkExecutor.releaseMemoryCache()
+                // N1: clear the executor's PRIVATE URLCache (feeds live there,
+                // not in `URLCache.shared`). URLCache has no call that drops only
+                // its memory part, so this also empties the disk part, as before.
+                AppContainer.production().networkExecutor.clearCache()
             }
         }
         coordinator.register(self, stage: .downloads) { _ in
