@@ -3,7 +3,7 @@ name: feature-branch-workflow
 type: evolving
 status: active
 created: 2026-11-12
-last_refresh: 2026-11-12
+last_refresh: 2026-11-13
 freshness_window: 365d
 owners: [general]
 description: Feature branches for multi-PR work, and why only their PR into develop runs the macOS CI
@@ -29,8 +29,12 @@ commit.
   multi-PR story. Sub-task branches start from the feature branch.
 - Single-PR work (one bug, one small change, a dependency bump) still targets
   `develop` directly.
-- Keep the feature branch current with `develop` only when GitHub reports a
-  conflict, or right before opening its PR into `develop`.
+- While no feature PR is open, merge `develop` into the feature branch whenever
+  `develop` changes files the feature also changes. No macOS CI runs on the
+  feature branch, so the merge costs nothing and finds conflicts early. Merge,
+  do not rebase, so the sub-task commits keep their `(#N)` subjects.
+- Once the feature PR is open, merge `develop` into it only when GitHub reports
+  a conflict: each push to it runs the full macOS CI.
 - Merge every sub-task PR into the feature branch before the feature PR merges.
   A sub-task PR left open would otherwise have to be retargeted onto `develop`
   (see below).
@@ -88,8 +92,13 @@ sub-task PR merges into the feature branch:
   touches, plus mutation testing on the changed lines for a critical path);
 - get the reviews a PR into `develop` would need.
 
-Before the feature PR opens, run `scripts/verify-pr.sh --quick` on the feature
-tip. The review of the feature PR covers the integration: conflict resolutions
+When about half the sub-task PRs are in, run `scripts/verify-pr.sh --quick`
+on the feature tip. Sub-task gates run only the touched test classes, so this
+finds breakage between sub-tasks before the feature PR does. Before the feature
+PR opens, run it again on the feature tip.
+
+The feature PR's "How verified" section lists each sub-task PR number with its
+one-line test and mutation result, plus the suite result on the feature tip. The review of the feature PR covers the integration: conflict resolutions
 and interactions between the sub-task PRs, not each sub-task again.
 
 ## Why the feature PR uses a merge commit
