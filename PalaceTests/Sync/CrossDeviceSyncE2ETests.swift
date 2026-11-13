@@ -1021,18 +1021,13 @@ final class CrossDeviceSyncE2ETests: XCTestCase {
         XCTAssertTrue(remaining.contains { $0.motivation == TPPBookmarkSpec.Motivation.readingProgress.rawValue },
                       "The audiobook LISTENING POSITION must be PRESERVED on return — matching 3.1.0/3.2.0 and the ebook/PDF path. Deleting a patron's place is a product decision that has not been made; see deleteAllBookmarks for the tag-level evidence that it was never a 3.2.0 regression.")
 
-        // PRE-EXISTING GAP (documented, deliberately NOT changed here): an
-        // AUDIOBOOK user `.bookmark` is also not deleted. Every annotation
-        // Palace writes embeds `"annotationId": ""`, so an `AudioBookmark`
-        // parses with no server linkage and `serverAnnotationId` returns nil.
-        // 3.1.0/3.2.0 dropped these too (their `as? [TPPReadiumBookmark]` array
-        // cast failed wholesale for audiobooks), so this is long-standing
-        // behavior — NOT introduced or altered by 3.2.3. Pinned here so the
-        // real shipped behavior is visible rather than implied; fixing it means
-        // deleting patron data that is currently kept, so it needs the same
-        // product decision as the listening position.
+        // An AUDIOBOOK user `.bookmark` is also kept, as in every shipped
+        // build. Those builds parsed it without its server ID, so nothing was
+        // deleted; since PP-5577 it parses with the ID and `serverAnnotationId`
+        // keeps it explicitly. Deleting it means deleting patron data that is
+        // kept today, so it needs the same product decision as the position.
         XCTAssertTrue(remaining.contains { $0.motivation == TPPBookmarkSpec.Motivation.bookmark.rawValue },
-                      "Pins the PRE-EXISTING audiobook user-bookmark gap (empty embedded annotationId ⇒ no server linkage ⇒ no DELETE). Unchanged since 3.1.0.")
+                      "An audiobook user bookmark is kept on return, as in every shipped build.")
 
         XCTAssertEqual(backend.allAnnotations(forBook: otherBookID).count, 1,
                        "The unrelated OTHER book's bookmark must be untouched (deletion is scoped to the returned book)")

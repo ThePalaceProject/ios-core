@@ -514,16 +514,23 @@ import PalaceUtilities
 
         Task { [weak self] in
             guard let self else { return }
-            await uploadUnsyncedBookmarks()
+            // Fetch before uploading, so a stored unsynced copy of a bookmark
+            // the server already holds takes the server's ID instead of being
+            // posted again (PP-5577).
+            let remoteBookmarks = await fetchServerBookmarks()
+            await uploadUnsyncedBookmarks(serverBookmarks: remoteBookmarks)
 
-            fetchServerBookmarks { [weak self] remoteBookmarks in
-                guard let strongSelf = self else { return }
-
-                strongSelf.updateLocalBookmarks(with: remoteBookmarks) { updatedBookmarks in
-                    strongSelf.finalizeSync(with: updatedBookmarks, completion: completionBox)
-                }
+            updateLocalBookmarks(with: remoteBookmarks) { updatedBookmarks in
+                self.finalizeSync(with: updatedBookmarks, completion: completionBox)
             }
         }
+    }
+
+    private func fetchServerBookmarks() async -> [AudioBookmark] {
+        let box: AudioBookmarkListBox = await withCheckedContinuation { continuation in
+            fetchServerBookmarks { continuation.resume(returning: AudioBookmarkListBox($0)) }
+        }
+        return box.bookmarks
     }
 
     private func fetchLocalBookmarks() -> [AudioBookmark] {
@@ -597,7 +604,14 @@ import PalaceUtilities
     /// position of a synced record by `AudioBookmark.isSimilar`, is that same
     /// bookmark, so it is removed instead of posted again. An unsynced bookmark
     /// with no synced twin is always uploaded, never removed.
-    private func uploadUnsyncedBookmarks() async {
+    ///
+    /// An unsynced bookmark at the position of a bookmark the server holds
+    /// takes that annotation's ID instead of being posted: earlier versions
+    /// stored fetched bookmarks without their server IDs (PP-5577).
+    private func uploadUnsyncedBookmarks(serverBookmarks: [AudioBookmark]) async {
+        let syncedOnServer = annotationsManager.syncIsPossibleAndPermitted
+            ? serverBookmarks.filter { !$0.isUnsynced }
+            : []
         for candidate in fetchStoredBookmarks() where candidate.bookmark.isUnsynced {
             // Re-read each time: an upload earlier in this loop may have synced a
             // record at the same position, or the patron may have deleted this one.
@@ -607,6 +621,12 @@ import PalaceUtilities
             if current.contains(where: { !$0.bookmark.isUnsynced && $0.bookmark.isSimilar(to: candidate.bookmark) }) {
                 Log.info(#file, "Removing unsynced copy of an already-synced bookmark: \(candidate.bookmark.uniqueIdentifier)")
                 registry.deleteGenericBookmark(identicalTo: candidate.record, forIdentifier: book.identifier)
+                continue
+            }
+
+            if let serverCopy = syncedOnServer.first(where: { $0.isSimilar(to: candidate.bookmark) }) {
+                Log.info(#file, "Unsynced bookmark is already on the server; storing its annotation ID: \(candidate.bookmark.uniqueIdentifier)")
+                updateLocalBookmark(candidate, with: AnnotationResponse(serverId: serverCopy.annotationId, timeStamp: nil))
                 continue
             }
 
