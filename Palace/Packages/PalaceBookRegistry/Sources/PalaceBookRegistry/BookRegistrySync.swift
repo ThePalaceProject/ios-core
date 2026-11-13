@@ -1075,40 +1075,11 @@ final class BookRegistrySync: @unchecked Sendable {
   }
 
   /// Sets one book's location in the registry file of `account`, a library
-  /// whose shelf is not in memory, and changes nothing else: no state
-  /// reconciliation, no backup, no recovery work. Those belong to that
-  /// library's own load. Nothing is written when the file is not a valid
-  /// registry or does not hold the book. The rewrite makes the library's
-  /// per-book files untrusted, so its next load reads this file
-  /// (docs/architecture/per-book-registry-storage.md).
+  /// whose shelf is not in memory. See `RegistryLocationPatch`.
   func writeLocation(_ location: TPPBookLocation?, forIdentifier identifier: String, inRegistryOf account: String) {
     guard let url = registryUrl(for: account) else { return }
-    let locationKey = TPPBookRegistryKey.location.rawValue
     runOnDiskWriteQueue {
-      guard case .valid(var records) = RegistryFileRecovery.classify(data: try? Data(contentsOf: url)),
-            let index = records.firstIndex(where: {
-              ($0[TPPBookRegistryKey.book.rawValue] as? [String: Any])?["id"] as? String == identifier
-            })
-      else {
-        Log.info(#file, "Position not saved: \(identifier) is not in the registry file of its library")
-        return
-      }
-      if let location {
-        records[index][locationKey] = location.dictionaryRepresentation
-      } else {
-        records[index].removeValue(forKey: locationKey)
-      }
-      let payload: [String: Any] = [
-        RegistryFileRecovery.schemaVersionKey: RegistryFileRecovery.currentSchemaVersion,
-        TPPBookRegistryKey.records.rawValue: records
-      ]
-      do {
-        let data = try JSONSerialization.data(withJSONObject: payload, options: .fragmentsAllowed)
-        try dependencies.beforeRegistryWrite(.primary, url)
-        try data.write(to: url, options: .atomic)
-      } catch {
-        Log.error(#file, "Error writing a position to another library's registry: \(error.localizedDescription)")
-      }
+      RegistryLocationPatch.write(location, forIdentifier: identifier, registryURL: url, beforeWrite: dependencies.beforeRegistryWrite)
     }
   }
 
