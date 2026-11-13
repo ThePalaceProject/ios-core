@@ -21,8 +21,21 @@ import Foundation
 struct Effect<Action, Environment: Sendable> {
     let run: @Sendable (Environment) async -> Action?
 
+    /// True only for `.none`. A closure cannot be compared, so this is how a
+    /// runner skips scheduling a task that would do nothing.
+    let isNone: Bool
+
+    init(run: @escaping @Sendable (Environment) async -> Action?) {
+        self.init(run: run, isNone: false)
+    }
+
+    private init(run: @escaping @Sendable (Environment) async -> Action?, isNone: Bool) {
+        self.run = run
+        self.isNone = isNone
+    }
+
     static var none: Effect<Action, Environment> {
-        Effect { _ in nil }
+        Effect(run: { _ in nil }, isNone: true)
     }
 
     static func send(_ action: Action) -> Effect<Action, Environment> where Action: Sendable {

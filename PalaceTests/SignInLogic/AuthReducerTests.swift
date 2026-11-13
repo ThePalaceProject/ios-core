@@ -120,6 +120,50 @@ final class AuthReducerTests: XCTestCase {
         XCTAssertEqual(storedExpiration.timeIntervalSince1970, exp.timeIntervalSince1970, accuracy: 0.001)
     }
 
+    // MARK: - Effects
+
+    /// A bearer token is the cue to validate it against the circulation
+    /// manager; the reducer plans that once and ends the chain.
+    func testBearerTokenReceived_ReturnsEffectThatValidatesCredentialsOnce() async {
+        var state = AuthState()
+        let counter = ValidationCounter()
+
+        let effect = AuthReducer.reduce(&state, .bearerTokenReceived(token: "tok", expiration: nil))
+        let followUp = await effect.run(counter.environment)
+
+        XCTAssertFalse(effect.isNone, "A runner skips .none, so the validation effect must not carry the marker")
+        XCTAssertEqual(counter.calls, 1, "The effect must validate the credentials exactly once")
+        XCTAssertNil(followUp, "Validation reports through the business logic, not through a follow-up action")
+    }
+
+    /// Every action but `.bearerTokenReceived` is a pure state transition, so
+    /// dispatching it must not schedule any work.
+    func testEveryActionOtherThanBearerToken_ReturnsNoEffect() async {
+        let actions: [AuthAction] = [
+            .authDocumentLoadStarted,
+            .authDocumentLoadCompleted,
+            .credentialCaptureStarted(barcode: "b", pin: "p"),
+            .credentialsValidationStarted,
+            .credentialsValidationSucceeded,
+            .credentialsValidationFailed(title: "t", message: "m"),
+            .refreshAuthStarted(authType: .oidc, usingExistingCredentials: false),
+            .userAccountUpdated,
+            .signOutCompleted,
+            .errorCleared,
+            .loggingInAfterSignUpFlagSet(true),
+        ]
+        let counter = ValidationCounter()
+
+        for action in actions {
+            var state = AuthState()
+            let effect = AuthReducer.reduce(&state, action)
+            XCTAssertTrue(effect.isNone, "\(action) must return .none")
+            _ = await effect.run(counter.environment)
+        }
+
+        XCTAssertEqual(counter.calls, 0, "No action other than a bearer token may validate credentials")
+    }
+
     // MARK: - Refresh-auth bypass rules
     //
     // These pin the legacy `refreshAuthIfNeeded` behavior:
@@ -292,5 +336,15 @@ final class AuthReducerTests: XCTestCase {
         let result = AuthReducer.classifyValidationError(err, problemDocument: nil)
         XCTAssertEqual(result.title, Strings.Error.invalidCredentialsErrorTitle)
         XCTAssertEqual(result.message, Strings.Error.invalidCredentialsErrorMessage)
+    }
+}
+
+/// Counts how often an `AuthEnvironment` is asked to validate credentials.
+@MainActor
+private final class ValidationCounter {
+    private(set) var calls = 0
+
+    var environment: AuthEnvironment {
+        AuthEnvironment(validateCredentials: { self.calls += 1 })
     }
 }

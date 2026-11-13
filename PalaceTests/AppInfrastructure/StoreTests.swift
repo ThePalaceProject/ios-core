@@ -58,6 +58,15 @@ final class StoreTests: XCTestCase {
                        "Reducer must mutate the inout state directly — that's why we can unit-test it without a Store")
     }
 
+    /// Mirrors the `PalaceAuth` copy: only `.none` carries the marker that lets
+    /// a runner skip scheduling work.
+    func testEffectIsNone_isTrueOnlyForNone() {
+        XCTAssertTrue(Effect<TestAction, TestEnvironment>.none.isNone)
+        XCTAssertFalse(Effect<TestAction, TestEnvironment>.send(.increment).isNone)
+        XCTAssertFalse(Effect<TestAction, TestEnvironment>.task { _ in nil }.isNone)
+        XCTAssertFalse(Effect<TestAction, TestEnvironment>(run: { _ in nil }).isNone)
+    }
+
     // MARK: - Synchronous state mutation
 
     @MainActor

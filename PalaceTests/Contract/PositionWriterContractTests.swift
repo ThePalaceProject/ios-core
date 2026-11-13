@@ -332,19 +332,13 @@ final class PositionWriterContractTests: XCTestCase {
     /// `UIApplication.beginBackgroundTask` / `endBackgroundTask` pair via
     /// `defer`. The pair is invisible to a pure spy adapter (it lives at
     /// the `RemotePositionWriter` level, above the network seam), but the
-    /// *observable* contract is that:
-    ///   (a) `network.post` runs to completion before the `save` call
-    ///       returns, AND
-    ///   (b) the writer is `nil`-safe under teardown — the `weak self`
-    ///       capture inside the iOS-only `endBackgroundTask` branch is
-    ///       reachable from this test surface, not from the SPM bundle.
+    /// *observable* contract is that `network.post` runs to completion
+    /// before the `save` call returns.
     ///
-    /// The `if id != .invalid` guard at `RemotePositionWriter.swift:201` cannot be
-    /// exercised from the SPM macOS runtime, and this scenario does not cover it
-    /// either: an unconditional `endBackgroundTask` still matches the snapshot.
-    /// It does catch removing the `defer` block entirely, which would leak the
-    /// begin call when `network.post` throws. Covering the guard needs an
-    /// injection seam over `UIApplication.shared`.
+    /// The begin/end pairing and expiration are pinned with injected
+    /// `PositionBackgroundTasks` in the package's
+    /// `RemotePositionWriterOwnershipTests`. The `.invalid` guard in
+    /// `PositionBackgroundTasks.application` is not covered by either suite.
     func test_backgroundTask_postCompletes_aroundNetworkPost() async throws {
         let log = CallLog()
         let adapter = SpyPositionNetworkAdapter(log: log)

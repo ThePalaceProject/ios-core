@@ -1,0 +1,107 @@
+[
+  {
+    "args" : {
+
+    },
+    "method" : "announceBorrowStarted"
+  },
+  {
+    "args" : {
+      "bookId" : "BORROW-FAIL",
+      "processing" : "true"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+      "attempt" : "1",
+      "breakerArmed" : "false"
+    },
+    "method" : "fetchBook"
+  },
+  {
+    "args" : {
+      "bookId" : "BORROW-FAIL",
+      "processing" : "false"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "account.markCredentialsStale"
+  },
+  {
+    "args" : {
+      "result" : "true"
+    },
+    "method" : "attemptOIDCReauth"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "announceBorrowStarted"
+  },
+  {
+    "args" : {
+      "bookId" : "BORROW-FAIL",
+      "processing" : "true"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+      "attempt" : "2",
+      "breakerArmed" : "true"
+    },
+    "method" : "fetchBook"
+  },
+  {
+    "args" : {
+      "bookId" : "BORROW-FAIL",
+      "processing" : "false"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "announceBorrowFailed"
+  },
+  {
+    "args" : {
+      "bookId" : "BORROW-FAIL",
+      "breakerArmed" : "true",
+      "hasRetryAction" : "false",
+      "message" : "Borrowing Title-BORROW-FAIL could not be completed.\n\nPlease sign in again.",
+      "originalError" : "nil",
+      "problemDocType" : "nil",
+      "title" : "Borrow Failed"
+    },
+    "method" : "presentBorrowErrorAlert"
+  },
+  {
+    "args" : {
+      "bookId" : "BORROW-FAIL",
+      "hasRetryAction" : "false",
+      "presentsAlert" : "false"
+    },
+    "method" : "publishBorrowError"
+  },
+  {
+    "args" : {
+      "error" : "network(Palace.NetworkError.unauthorized)"
+    },
+    "method" : "borrowThrew"
+  },
+  {
+    "args" : {
+      "authState" : "credentialsStale",
+      "breakerArmed" : "true"
+    },
+    "method" : "end"
+  }
+]

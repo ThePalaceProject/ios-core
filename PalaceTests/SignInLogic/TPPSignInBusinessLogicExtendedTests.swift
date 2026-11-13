@@ -259,7 +259,7 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
 
     func testMakeRequest_forOAuth_hasBearerToken() {
         businessLogic.selectedAuthentication = libraryAccountMock.oauthAuthentication
-        businessLogic.dispatch(.bearerTokenReceived(token: "test-token", expiration: nil))
+        businessLogic.reduceAuthStateForTesting(.bearerTokenReceived(token: "test-token", expiration: nil))
 
         let request = businessLogic.makeRequest(for: .signIn, context: "test")
 
@@ -270,7 +270,7 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
 
     func testMakeRequest_forSAML_hasBearerToken() {
         businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
-        businessLogic.dispatch(.bearerTokenReceived(token: "saml-token", expiration: nil))
+        businessLogic.reduceAuthStateForTesting(.bearerTokenReceived(token: "saml-token", expiration: nil))
 
         let request = businessLogic.makeRequest(for: .signIn, context: "test")
 
@@ -841,7 +841,7 @@ final class TPPSignInBusinessLogicExtendedTests: XCTestCase {
         // clear the in-flight authToken — the persisted store on userAccount
         // is now the only source of truth.
         businessLogic.selectedAuthentication = libraryAccountMock.oauthAuthentication
-        businessLogic.dispatch(.bearerTokenReceived(token: "in-flight-token", expiration: Date()))
+        businessLogic.reduceAuthStateForTesting(.bearerTokenReceived(token: "in-flight-token", expiration: Date()))
         XCTAssertEqual(businessLogic.authToken, "in-flight-token", "precondition")
 
         businessLogic.updateUserAccount(forDRMAuthorization: true,

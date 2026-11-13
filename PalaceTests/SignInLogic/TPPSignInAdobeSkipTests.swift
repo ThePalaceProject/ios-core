@@ -311,7 +311,7 @@ final class TPPSignInAdobeSkipTests: XCTestCase {
         // Seed userAccount directly (no updateUserAccount, which would dispatch
         // .userAccountUpdated and clear the in-flight reducer state).
         businessLogic.userAccount.setAuthToken("old-token", barcode: nil, pin: nil, expirationDate: nil)
-        businessLogic.dispatch(.bearerTokenReceived(token: "fresh-token", expiration: nil))
+        businessLogic.reduceAuthStateForTesting(.bearerTokenReceived(token: "fresh-token", expiration: nil))
 
         let request = businessLogic.makeRequest(for: .signIn, context: "test")
         let authHeader = request?.value(forHTTPHeaderField: "Authorization")
