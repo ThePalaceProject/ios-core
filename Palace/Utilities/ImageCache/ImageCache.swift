@@ -153,7 +153,7 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
     /// Drops queued decodes and decoded images, and slows the queue to one
     /// operation for 60 s. Queued writes still run: cancelling them would make
     /// the next sync fetch and encode those covers again.
-    @objc func handleMemoryWarning() {
+    func handleMemoryWarning() {
         for operation in processingQueue.operations where operation is ImageDecodeOperation {
             operation.cancel()
         }
