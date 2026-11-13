@@ -332,13 +332,17 @@ final class DownloadThrottlingServiceTests: XCTestCase {
         XCTAssertEqual(done.task.resumeCallCount, 0)
     }
 
+    /// The pending resume must not keep a released service alive for 30 s.
     func testMemoryWarning_resumeAfterServiceIsGone_doesNothing() async {
         let ebook = await register(state: .running, isAudiobook: false, taskId: 1)
         await service.pauseDownloadsForMemoryWarningAsync()
+        weak var weakService = service
 
         service = nil
-        scheduler.fireAll()
 
+        XCTAssertNil(weakService, "The scheduled resume must not retain the service")
+        scheduler.fireAll()
+        await weakService?.lastLimitActiveDownloadsTask?.value
         XCTAssertEqual(ebook.task.resumeCallCount, 0)
     }
 }
