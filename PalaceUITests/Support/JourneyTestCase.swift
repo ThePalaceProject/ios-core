@@ -13,9 +13,10 @@ import XCTest
 @MainActor
 class JourneyTestCase: XCTestCase {
 
-    /// Generous enough for a cold launch on a loaded CI machine; every wait is
-    /// for a condition, so a passing run does not spend it.
-    static let defaultTimeout: TimeInterval = 30
+    /// Generous enough for the first minutes of a CI job, when one journey step
+    /// has taken 35 to 40 s on a loaded runner. Every wait is for a condition,
+    /// so a passing run does not spend it; a failure is only reported later.
+    static let defaultTimeout: TimeInterval = 60
 
     private(set) var app: XCUIApplication!
     private var currentStep = "launch"
@@ -72,7 +73,7 @@ class JourneyTestCase: XCTestCase {
     /// it to the Libraries list. The first launch on a freshly booted CI
     /// simulator is much slower than later ones: about 60 s before the
     /// automation session starts, then about 40 s with a busy main thread while
-    /// the registry swaps in. A journey that pays that cost fails its 30 s waits.
+    /// the registry swaps in. A journey that pays that cost can fail its waits.
     /// Nothing here asserts; a slow or failed warm-up leaves the journey's own
     /// waits to report the problem.
     private static func warmUpOnce(fixtures: String) {
