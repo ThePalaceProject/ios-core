@@ -266,3 +266,50 @@ final class NotificationPayloadContractTests: XCTestCase {
         }
     }
 }
+
+// MARK: - Received-notification log line (PP-5576)
+
+final class NotificationLogMessageTests: XCTestCase {
+
+    private func message(for userInfo: [AnyHashable: Any]) -> String {
+        NotificationService.notificationLogMessage(
+            title: "Your hold is available!",
+            body: "\"The Great Gatsby\" is ready to borrow.",
+            userInfo: userInfo,
+            context: "foreground",
+            timestamp: "2026-11-13T09:00:00Z"
+        )
+    }
+
+    /// The push payload carries the patron's card number; the log is attached to support emails.
+    func testLogMessage_WhenPayloadHasCardNumber_LeavesItOut() {
+        var payload = NotificationFixture.loadPayloads()["hold_available"]!
+        payload["authorization_identifier"] = "23333012345678"
+
+        let line = message(for: payload)
+
+        XCTAssertFalse(line.contains("23333012345678"))
+        XCTAssertFalse(line.contains("authorization_identifier"))
+    }
+
+    /// A key the server adds later stays out of the log until someone adds it to the allowlist.
+    func testLogMessage_WhenPayloadHasUnknownKey_LeavesItOut() {
+        let line = message(for: ["event_type": "HoldAvailable", "patron_email": "reader@example.org"])
+
+        XCTAssertFalse(line.contains("reader@example.org"))
+    }
+
+    /// Support still needs the event and the book to follow an availability problem.
+    func testLogMessage_KeepsEventTypeBookAndLibrary() {
+        let payload = NotificationFixture.loadPayloads()["loan_expiry"]!
+
+        let line = message(for: payload)
+
+        XCTAssertTrue(line.contains("event_type: LoanExpiry"))
+        XCTAssertTrue(line.contains("identifier: 978-0-111222-33-4"))
+        XCTAssertTrue(line.contains("library: BPL"))
+        XCTAssertTrue(line.contains("days_to_expiry: 3"))
+        XCTAssertTrue(line.contains("Title: Your hold is available!"))
+        XCTAssertTrue(line.contains("(foreground) at 2026-11-13T09:00:00Z"))
+    }
+}
