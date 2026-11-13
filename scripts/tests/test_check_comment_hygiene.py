@@ -201,3 +201,17 @@ def test_tracked_pre_commit_hook_blocks_a_violating_comment(tmp_path):
 def test_tracked_pre_commit_hook_passes_a_clean_comment(tmp_path):
     r = _run_hook(_hook_repo(tmp_path, "// Retries once; the server returns 503 on cold start."))
     assert "comment_hygiene" not in r.stderr, r.stderr
+
+
+def test_known_behavior_marker_is_an_allowed_comment(tmp_path):
+    # The `// Known: PP-1234 ...` marker (scripts/list-known-behaviors.py)
+    # carries only a Jira key and a one-line note, which the rules allow.
+    write(tmp_path, "PalaceTests/BorrowTests.swift",
+          "final class BorrowTests {\n"
+          "    func testCancel() {\n"
+          "        // Known: PP-1234 an alert still shows after a cancelled borrow; may be wrong\n"
+          "        assertSnapshot()\n"
+          "    }\n"
+          "}\n")
+    r = run(tmp_path)
+    assert r.returncode == 0, r.stdout

@@ -9,6 +9,7 @@ concurrency:
   cancel-in-progress: true
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   pr-text:
@@ -18,10 +19,29 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: false
-          sparse-checkout: scripts/check-pr-hygiene.py
+          sparse-checkout: |
+            scripts/check-pr-hygiene.py
+            scripts/list-known-behaviors.py
           sparse-checkout-cone-mode: false
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
+      # The changed-file list decides whether the Evidence section is required;
+      # the diff supplies the `// Known:` markers the PR adds. GitHub refuses the
+      # full diff for very large PRs; the check then runs without the marker match.
       - name: PR title and body follow the writing conventions
-        run: python3 scripts/check-pr-hygiene.py --event "$GITHUB_EVENT_PATH"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[].filename' > "$RUNNER_TEMP/pr-files.txt"
+          diff_args=()
+          if gh pr diff "$PR" --repo "$REPO" > "$RUNNER_TEMP/pr.diff"; then
+            diff_args=(--diff-file "$RUNNER_TEMP/pr.diff")
+          else
+            echo "::warning::gh pr diff failed; Known markers are not matched against the Evidence section."
+          fi
+          python3 scripts/check-pr-hygiene.py --event "$GITHUB_EVENT_PATH" \
+            --changed-files "$RUNNER_TEMP/pr-files.txt" ${diff_args[@]+"${diff_args[@]}"}
