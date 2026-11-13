@@ -73,6 +73,10 @@ private final class RecordingPositionWriter: PositionWriter, @unchecked Sendable
     func cancel(for bookID: String) async {
         log.record("writer.cancel", args: ["bookID": bookID])
     }
+
+    func flush(for bookID: String) async {
+        log.record("writer.flush", args: ["bookID": bookID])
+    }
 }
 
 // MARK: - Spy registry (records location calls into a CallLog)

@@ -160,6 +160,25 @@ public final class RemotePositionWriter: PositionWriter, @unchecked Sendable {
         }
     }
 
+    // PUBLIC_INTENT: witness for the public `PositionWriter.flush(for:)` requirement; the app calls it across the package boundary.
+    public func flush(for bookID: String) async {
+        let running = await onQueue { () -> [Task<Void, Never>] in
+            if var bookState = self.state[bookID], let queued = bookState.queued {
+                // Clearing `scheduledFlush` makes the window's timer a no-op,
+                // and the new stamp makes later saves queue behind this post.
+                bookState.queued = nil
+                bookState.scheduledFlush = nil
+                bookState.lastPostAttempt = self.clock()
+                self.state[bookID] = bookState
+                self.startOwnedFlush(of: queued)
+            }
+            return self.ownedFlushes.values.filter { $0.bookID == bookID }.map(\.task)
+        }
+        for task in running {
+            await task.value
+        }
+    }
+
     // MARK: - Decision (serial-queue isolated)
 
     private enum SaveDecision: Sendable {

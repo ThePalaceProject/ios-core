@@ -76,11 +76,33 @@ class TPPLastReadPositionPoster {
 
     /// Stores the reader's last locator and writes any position still waiting
     /// for its disk write. Called when the reader closes.
+    ///
+    /// Then asks the writer to post its queued position now rather than when
+    /// the throttle window ends (PP-5595). The writer runs that post in a
+    /// background task, so closing never waits on the network.
     func storeFinalPositionAndFlush(locator: Locator?) {
         if let locator {
             storeReadPosition(locator: locator)
         }
         bookRegistryProvider.flushPendingPositions()
+        flushServerPosts()
+    }
+
+    /// Flushes after the saves already started, so a save that is still
+    /// deciding whether to queue cannot queue behind the flush.
+    private func flushServerPosts() {
+        let started = writeTasks.snapshot().map { $0.1 }
+        let token = UUID()
+        let registry = writeTasks
+        let bookID = book.identifier
+        let task = Task { [positionWriter] in
+            defer { registry.complete(token) }
+            for save in started {
+                await save.value
+            }
+            await positionWriter.flush(for: bookID)
+        }
+        registry.register(token, task)
     }
 
     /// Test seam: returns the server-post `Task`s that are still running so a

@@ -1053,11 +1053,12 @@ public final class AudiobookSessionManager: ObservableObject {
 
         let bookId = currentBook?.identifier
 
-        // 3.2.3 Cause 2: cancel any pending throttled remote listening-position
-        // write BEFORE tearing down the manager, so a queued snapshot can't
-        // flush after teardown and resurrect a stale server position. Must run
-        // while `manager?.bookmarkDelegate` (the writer's owner) is still live.
-        if let bookId {
+        // 3.2.3 Cause 2: when the final position is not kept (a return), cancel
+        // any pending throttled remote listening-position write BEFORE tearing
+        // down the manager, so a queued snapshot can't flush after teardown and
+        // resurrect a stale server position. Must run while
+        // `manager?.bookmarkDelegate` (the writer's owner) is still live.
+        if !persistFinalPosition, let bookId {
             await cancelPendingRemotePositionWrite(forBookId: bookId)
         }
 
@@ -1067,6 +1068,14 @@ public final class AudiobookSessionManager: ObservableObject {
             let livePosition = manager?.audiobook.player.currentTrackPosition ?? currentPosition
             if let position = livePosition {
                 manager?.saveLocation(position)
+            }
+            // PP-5595: post the final position now instead of when the writer's
+            // throttle window ends. The Task keeps the bookmark logic and its
+            // writer alive past the teardown below; the post runs in a
+            // background task, so closing does not wait on the network.
+            if let logic = manager?.bookmarkDelegate as? AudiobookBookmarkBusinessLogic,
+               logic.book.identifier == bookId {
+                Task { await logic.flushPendingRemotePositionWrite() }
             }
         }
 
@@ -1122,9 +1131,9 @@ public final class AudiobookSessionManager: ObservableObject {
     /// `RemotePositionWriter`. Only cancels when `bookId` is the active
     /// session's book (a queued write can only exist for the book whose
     /// delegate is currently bound); a no-op otherwise. This is the single
-    /// implementation used by both `stopPlayback` (self) and the
-    /// `BookReturnService` return path (via the `AudiobookSessionManaging`
-    /// protocol on `AppContainer.audiobookSession`).
+    /// implementation used by both `stopPlayback` when it does not keep the
+    /// final position and the `BookReturnService` return path (via the
+    /// `AudiobookSessionManaging` protocol on `AppContainer.audiobookSession`).
     @MainActor
     func cancelPendingRemotePositionWrite(forBookId bookId: String) async {
         guard let logic = manager?.bookmarkDelegate as? AudiobookBookmarkBusinessLogic,

@@ -19,12 +19,15 @@ private actor SpyPositionWriter: PositionWriter {
     private(set) var savedSnapshots: [PositionSnapshot] = []
     private(set) var loadedBookIDs: [String] = []
     private(set) var cancelledBookIDs: [String] = []
+    /// Saves and flushes in call order, as "save" and "flush:<bookID>".
+    private(set) var events: [String] = []
     private var savedThrows: Error?
 
     func setSaveError(_ error: Error?) { savedThrows = error }
 
     func save(_ snapshot: PositionSnapshot) async throws -> ServerPositionID? {
         savedSnapshots.append(snapshot)
+        events.append("save")
         if let err = savedThrows { throw err }
         return "spy-server-id"
     }
@@ -36,6 +39,10 @@ private actor SpyPositionWriter: PositionWriter {
 
     func cancel(for bookID: String) async {
         cancelledBookIDs.append(bookID)
+    }
+
+    func flush(for bookID: String) async {
+        events.append("flush:\(bookID)")
     }
 }
 
@@ -61,18 +68,24 @@ private actor PostGate {
 private actor GatedPositionWriter: PositionWriter {
     private let gate: PostGate
     private(set) var savedSnapshots: [PositionSnapshot] = []
+    private(set) var events: [String] = []
 
     init(gate: PostGate) { self.gate = gate }
 
     func save(_ snapshot: PositionSnapshot) async throws -> ServerPositionID? {
         await gate.wait()
         savedSnapshots.append(snapshot)
+        events.append("save")
         return "gated-server-id"
     }
 
     func load(for bookID: String) async throws -> PositionSnapshot? { nil }
 
     func cancel(for bookID: String) async {}
+
+    func flush(for bookID: String) async {
+        events.append("flush:\(bookID)")
+    }
 }
 
 // Deliberately NOT @MainActor: the code under test is nonisolated and the
@@ -339,8 +352,8 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
         gatedPoster.storeFinalPositionAndFlush(locator: createLocator(
             href: "/chapter2.xhtml", progression: 0.5, totalProgression: 0.6))
 
-        XCTAssertEqual(gatedPoster.liveWriteTaskCountForTesting, 2,
-                       "posts that have not finished must stay owned and joinable")
+        XCTAssertEqual(gatedPoster.liveWriteTaskCountForTesting, 3,
+                       "the two posts and the close flush must stay owned and joinable")
         let stored = bookRegistryMock.location(forIdentifier: testBook.identifier)?.locationString ?? ""
         XCTAssertTrue(stored.contains("/chapter2.xhtml"),
                       "close must save the final position locally without waiting for the server")
@@ -352,6 +365,55 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
         XCTAssertEqual(saved.count, 2, "both posts must complete after the reader closes")
         XCTAssertEqual(gatedPoster.liveWriteTaskCountForTesting, 0,
                        "each post must leave the task set once it finishes")
+    }
+
+    // MARK: - Send the last position on close (PP-5595)
+
+    /// Close hands the final position to the writer, then asks it to send what it queued.
+    func testStoreFinalPositionAndFlush_savesFinalPositionThenFlushesTheWriter() async throws {
+        poster.storeFinalPositionAndFlush(locator: createLocator(
+            href: "/chapter2.xhtml", progression: 0.5, totalProgression: 0.6))
+
+        for task in poster.pendingWriteTasksForTesting() { await task.value }
+
+        let events = await spyWriter.events
+        XCTAssertEqual(events, ["save", "flush:\(testBook.identifier)"])
+    }
+
+    /// The flush waits for running saves, so a save still deciding cannot queue after it.
+    func testStoreFinalPositionAndFlush_whileSavesAreHeld_flushesOnlyAfterTheyFinish() async throws {
+        let gate = PostGate()
+        let gatedWriter = GatedPositionWriter(gate: gate)
+        let gatedPoster = TPPLastReadPositionPoster(
+            book: testBook,
+            publication: publication,
+            bookRegistryProvider: bookRegistryMock,
+            positionWriter: gatedWriter
+        )
+
+        gatedPoster.storeReadPosition(locator: createLocator(
+            href: "/chapter1.xhtml", progression: 0.5, totalProgression: 0.25))
+        gatedPoster.storeFinalPositionAndFlush(locator: createLocator(
+            href: "/chapter2.xhtml", progression: 0.5, totalProgression: 0.6))
+        try await Task.sleep(nanoseconds: 50_000_000)
+        let beforeOpen = await gatedWriter.events
+        XCTAssertEqual(beforeOpen, [], "flush must not run while a save is still held")
+
+        await gate.open()
+        for task in gatedPoster.pendingWriteTasksForTesting() { await task.value }
+
+        let events = await gatedWriter.events
+        XCTAssertEqual(events, ["save", "save", "flush:\(testBook.identifier)"])
+    }
+
+    /// A close with no usable locator still sends the position queued earlier.
+    func testStoreFinalPositionAndFlush_withoutLocator_stillFlushesTheWriter() async throws {
+        poster.storeFinalPositionAndFlush(locator: nil)
+
+        for task in poster.pendingWriteTasksForTesting() { await task.value }
+
+        let events = await spyWriter.events
+        XCTAssertEqual(events, ["flush:\(testBook.identifier)"])
     }
 
     // MARK: - shouldStore Predicate Boundary Tests (P0 #1)

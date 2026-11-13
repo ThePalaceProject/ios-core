@@ -1657,6 +1657,7 @@ private actor SynchronizerSpyWriter: PositionWriter {
     }
 
     func cancel(for bookID: String) async {}
+    func flush(for bookID: String) async {}
 }
 
 /// Verifies the real `TPPLastReadPositionSynchronizer.sync(...)` path with

@@ -67,6 +67,9 @@ struct TPPPDFReaderView: View {
                     .environmentObject(metadata)
             }
         }
+        .onDisappear {
+            metadata.storeFinalPositionAndFlush()
+        }
     }
 
     @ViewBuilder

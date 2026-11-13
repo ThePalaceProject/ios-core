@@ -35,6 +35,8 @@ private final class SpyPositionWriter: PositionWriter, @unchecked Sendable {
     private var _saveResult: SaveOutcome = .success("spy-server-id")
     private var _loadResult: PositionSnapshot? = nil
     private var _cancelledBookIDs: [String] = []
+    private var _flushedBookIDs: [String] = []
+    private var _events: [String] = []
     private var _onSave: (() -> Void)?
 
     func setOnSave(_ hook: @escaping () -> Void) {
@@ -63,6 +65,17 @@ private final class SpyPositionWriter: PositionWriter, @unchecked Sendable {
         return _cancelledBookIDs
     }
 
+    var flushedBookIDs: [String] {
+        lock.lock(); defer { lock.unlock() }
+        return _flushedBookIDs
+    }
+
+    /// Saves (when they return) and flushes in order, as "save" and "flush:<bookID>".
+    var events: [String] {
+        lock.lock(); defer { lock.unlock() }
+        return _events
+    }
+
     func save(_ snapshot: PositionSnapshot) async throws -> ServerPositionID? {
         let (result, hook) = lock.withLock { () -> (SaveOutcome, (() -> Void)?) in
             _savedSnapshots.append(snapshot)
@@ -70,6 +83,7 @@ private final class SpyPositionWriter: PositionWriter, @unchecked Sendable {
         }
 
         hook?()  // race-window injection: tests can mutate registry between SUT's local-save and post-save guard
+        lock.withLock { _events.append("save") }
 
         switch result {
         case .success(let id):
@@ -87,6 +101,13 @@ private final class SpyPositionWriter: PositionWriter, @unchecked Sendable {
 
     func cancel(for bookID: String) async {
         lock.withLock { _cancelledBookIDs.append(bookID) }
+    }
+
+    func flush(for bookID: String) async {
+        lock.withLock {
+            _flushedBookIDs.append(bookID)
+            _events.append("flush:\(bookID)")
+        }
     }
 }
 
@@ -275,6 +296,28 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
                      "(local is safe; the user's data is not lost)")
     }
 
+    // MARK: - 4a. Send the last position on close (PP-5595)
+
+    /// Closing the player sends the final position: its save runs first, then the writer is flushed.
+    func testFlushPendingRemotePositionWrite_afterFinalSave_flushesAfterTheSaveRuns() async {
+        spyWriter.saveResult = .throttled
+        // Holds the save open, so a flush that does not wait for it lands first.
+        spyWriter.setOnSave { Thread.sleep(forTimeInterval: 0.3) }
+
+        sut.saveListeningPosition(at: position(trackIndex: 1, time: 120.0), completion: nil)
+        await sut.flushPendingRemotePositionWrite()
+
+        XCTAssertEqual(spyWriter.events, ["save", "flush:\(bookIdentifier)"])
+    }
+
+    /// With no save in flight, close still flushes what the writer queued earlier.
+    func testFlushPendingRemotePositionWrite_noSaveInFlight_flushesTheWriter() async {
+        await sut.flushPendingRemotePositionWrite()
+
+        XCTAssertEqual(spyWriter.events, ["flush:\(bookIdentifier)"])
+        XCTAssertTrue(spyWriter.cancelledBookIDs.isEmpty, "close must not cancel the queued position")
+    }
+
     // MARK: - 4b. Pending remote-write cancellation (3.2.3 Cause 2)
 
     /// `cancelPendingRemotePositionWrite()` MUST forward to the writer's
@@ -453,6 +496,7 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
             }
             func load(for bookID: String) async throws -> PositionSnapshot? { nil }
             func cancel(for bookID: String) async {}
+            func flush(for bookID: String) async {}
         }
         let raceWriter = TimeRaceWriter { [weak self] in
             // Simulate "user moved ahead" between snapshot capture and
@@ -537,6 +581,7 @@ final class AudiobookBookmarkBusinessLogicPositionWriteTests: XCTestCase {
             }
             func load(for bookID: String) async throws -> PositionSnapshot? { nil }
             func cancel(for bookID: String) async {}
+            func flush(for bookID: String) async {}
         }
         let tieWriter = TieWriter { [weak self] in
             self?.mockRegistry.setLocation(tieLocation,

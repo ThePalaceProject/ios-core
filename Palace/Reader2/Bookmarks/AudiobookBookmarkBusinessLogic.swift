@@ -37,10 +37,11 @@ import PalaceUtilities
     private let debounceInterval: TimeInterval?
     private var debounceWorkItem: DispatchWorkItem?  // Access only on `queue`
 
-    // MARK: - Test join seam
-    // Retains the most recent `saveListeningPosition` write `Task` so tests can
-    // join it instead of polling a deadline. Access is confined to `queue`.
-    private var _positionWriteTaskForTesting: Task<Void, Never>?
+    // MARK: - Write-task handles
+    // The most recent `saveListeningPosition` write `Task`. Closing the player
+    // waits for it before flushing, and tests join it instead of polling a
+    // deadline. Access is confined to `queue`.
+    private var lastPositionWriteTask: Task<Void, Never>?
     /// Sibling of the above for `saveBookmark`, whose write also runs in a
     /// detached `Task`. Access is confined to `queue`.
     private var _bookmarkWriteTaskForTesting: Task<Void, Never>?
@@ -148,6 +149,17 @@ import PalaceUtilities
     /// Idempotent; a no-op when the writer has nothing queued for this book.
     func cancelPendingRemotePositionWrite() async {
         await positionWriter.cancel(for: book.identifier)
+    }
+
+    /// Posts this book's queued listening position now instead of when the
+    /// writer's throttle window ends. Called when the player closes (PP-5595).
+    /// Waits for the last `saveListeningPosition` write first, so the final
+    /// position is queued before the flush. The writer runs the post in a
+    /// background task.
+    func flushPendingRemotePositionWrite() async {
+        let lastWrite = onStateQueue { self.lastPositionWriteTask }
+        await lastWrite?.value
+        await positionWriter.flush(for: book.identifier)
     }
 
     // MARK: - Bookmark Management
@@ -278,14 +290,14 @@ import PalaceUtilities
                 await complete(nil)
             }
         }
-        onStateQueue { self._positionWriteTaskForTesting = writeTask }
+        onStateQueue { self.lastPositionWriteTask = writeTask }
     }
 
     /// Test-only join seam: awaits the most recent `saveListeningPosition` write
     /// `Task`, including its conflict resolution and completion. No-op if no
     /// write is in flight.
     func _awaitPositionWriteForTesting() async {
-        let handle = onStateQueue { self._positionWriteTaskForTesting }
+        let handle = onStateQueue { self.lastPositionWriteTask }
         await handle?.value
     }
 
