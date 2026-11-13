@@ -24,6 +24,30 @@ protocol DownloadThrottlingServiceDelegate: AnyObject {
     func schedulePendingStartsAsync() async
 }
 
+// MARK: - Resume scheduling
+
+/// A scheduled resume that a new memory warning can cancel.
+protocol DownloadResumeCancellable: AnyObject {
+    func cancel()
+}
+
+/// Runs work after a delay. Injected so tests control the quiet period after
+/// a memory warning without waiting on the clock.
+protocol DownloadResumeScheduling {
+    func schedule(after delay: TimeInterval, _ work: @escaping @Sendable () -> Void) -> DownloadResumeCancellable
+}
+
+extension DispatchWorkItem: DownloadResumeCancellable {}
+
+/// Schedules on the main queue, where the memory warning also arrives.
+struct MainQueueResumeScheduler: DownloadResumeScheduling {
+    func schedule(after delay: TimeInterval, _ work: @escaping @Sendable () -> Void) -> DownloadResumeCancellable {
+        let item = DispatchWorkItem(block: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
+        return item
+    }
+}
+
 // MARK: - DownloadThrottlingService
 
 /// Concurrency policy for the download center. Suspends non-audiobook tasks
@@ -55,8 +79,17 @@ final class DownloadThrottlingService: @unchecked Sendable {
     /// exactly as before; only a reference is now kept.
     private(set) var lastLimitActiveDownloadsTask: Task<Void, Never>?
 
+    /// Handle to the Task spawned by `pauseDownloadsForMemoryWarning()`, so
+    /// tests can join the pause.
+    private(set) var lastMemoryWarningTask: Task<Void, Never>?
+
+    /// The quiet period after the last memory warning before paused
+    /// downloads resume (PP-5587).
+    static let memoryRecoveryDelay: TimeInterval = 30
+
     private let stateManager: DownloadStateManager
     private let notificationCenter: NotificationCenter
+    private let resumeScheduler: DownloadResumeScheduling
 
     /// Block-based observer registration handle so `deinit` can clean up
     /// without forcing the service to be `@objc` selector-callable.
@@ -64,10 +97,12 @@ final class DownloadThrottlingService: @unchecked Sendable {
 
     init(
         stateManager: DownloadStateManager,
-        notificationCenter: NotificationCenter = .default
+        notificationCenter: NotificationCenter = .default,
+        resumeScheduler: DownloadResumeScheduling = MainQueueResumeScheduler()
     ) {
         self.stateManager = stateManager
         self.notificationCenter = notificationCenter
+        self.resumeScheduler = resumeScheduler
     }
 
     deinit {
@@ -149,6 +184,18 @@ final class DownloadThrottlingService: @unchecked Sendable {
             }
             info.downloadTask.suspend()
         }
+    }
+
+    // MARK: - Memory warning
+
+    func pauseDownloadsForMemoryWarning() {
+        lastMemoryWarningTask = Task { [weak self] in
+            await self?.pauseDownloadsForMemoryWarningAsync()
+        }
+    }
+
+    func pauseDownloadsForMemoryWarningAsync() async {
+        await pauseAllDownloadsAsync()
     }
 
     /// Re-applies the current cap. Used by the network-conditions observer
