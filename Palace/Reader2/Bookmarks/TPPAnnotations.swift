@@ -25,8 +25,15 @@ enum AnnotationDevice {
     nonisolated(unsafe) static var firebaseDeviceIDOverride: String?
 
     static func currentID() -> String {
+        id(forAccountId: nil)
+    }
+
+    /// The device ID registered with the library `accountId` names; nil means
+    /// the selected library. Adobe activation is per library, so the ID is too.
+    static func id(forAccountId accountId: String?) -> String {
         let accountsManager: TPPUserAccountResolving = accountsManagerOverride ?? AppContainer.production().accountsManager
-        if let adobeID = accountsManager.currentUserAccount.deviceID, !adobeID.isEmpty {
+        let userAccount = accountId.map(accountsManager.userAccount(for:)) ?? accountsManager.currentUserAccount
+        if let adobeID = userAccount.deviceID, !adobeID.isEmpty {
             return adobeID
         }
         let firebaseDeviceID = firebaseDeviceIDOverride ?? FirebaseManager.shared.deviceID
@@ -52,22 +59,32 @@ protocol AnnotationsManager {
 }
 
 @objcMembers final class TPPAnnotationsWrapper: NSObject, AnnotationsManager {
-    var syncIsPossibleAndPermitted: Bool { TPPAnnotations.syncIsPossibleAndPermitted() }
+    /// The library whose annotations these are; nil means the selected library.
+    /// An audiobook keeps playing when the patron selects another library, so
+    /// its writes must not follow the selection (PP-5552).
+    let accountId: String?
+
+    init(accountId: String? = nil) {
+        self.accountId = accountId
+        super.init()
+    }
+
+    var syncIsPossibleAndPermitted: Bool { TPPAnnotations.syncIsPossibleAndPermitted(accountId: accountId) }
 
     func postListeningPosition(forBook bookID: String, selectorValue: String, completion: ((_ response: AnnotationResponse?) -> Void)?) {
-        TPPAnnotations.postListeningPosition(forBook: bookID, selectorValue: selectorValue, completion: completion)
+        TPPAnnotations.postListeningPosition(forBook: bookID, selectorValue: selectorValue, accountId: accountId, completion: completion)
     }
 
     func postAudiobookBookmark(forBook bookID: String, selectorValue: String) async throws -> AnnotationResponse? {
-        try await TPPAnnotations.postAudiobookBookmark(forBook: bookID, selectorValue: selectorValue)
+        try await TPPAnnotations.postAudiobookBookmark(forBook: bookID, selectorValue: selectorValue, accountId: accountId)
     }
 
     func getServerBookmarks(forBook book: TPPBook?, atURL annotationURL: URL?, motivation: TPPBookmarkSpec.Motivation = .bookmark, completion: @escaping ([Bookmark]?) -> Void) {
-        TPPAnnotations.getServerBookmarks(forBook: book, atURL: annotationURL, motivation: motivation, completion: completion)
+        TPPAnnotations.getServerBookmarks(forBook: book, atURL: annotationURL, motivation: motivation, accountId: accountId, completion: completion)
     }
 
     func deleteBookmark(annotationId: String, completionHandler: @escaping (Bool) -> Void) {
-        TPPAnnotations.deleteBookmark(annotationId: annotationId, completionHandler: completionHandler)
+        TPPAnnotations.deleteBookmark(annotationId: annotationId, accountId: accountId, completionHandler: completionHandler)
     }
 
     func deleteAllBookmarks(forBook book: TPPBook, completion: @escaping () -> Void) {
@@ -202,15 +219,15 @@ protocol AnnotationsManager {
         return firstBox.bookmark
     }
 
-    static func postListeningPosition(forBook bookID: String, selectorValue: String, completion: ((_ response: AnnotationResponse?) -> Void)? = nil) {
-        postReadingPosition(forBook: bookID, selectorValue: selectorValue, motivation: .readingProgress, completion: completion)
+    static func postListeningPosition(forBook bookID: String, selectorValue: String, accountId: String? = nil, completion: ((_ response: AnnotationResponse?) -> Void)? = nil) {
+        postReadingPosition(forBook: bookID, selectorValue: selectorValue, motivation: .readingProgress, accountId: accountId, completion: completion)
     }
 
-    static func postAudiobookBookmark(forBook bookID: String, selectorValue: String) async throws -> AnnotationResponse? {
+    static func postAudiobookBookmark(forBook bookID: String, selectorValue: String, accountId: String? = nil) async throws -> AnnotationResponse? {
         return try await withCheckedThrowingContinuation { continuation in
             var didResume = false
 
-            postReadingPosition(forBook: bookID, selectorValue: selectorValue, motivation: .bookmark) { response in
+            postReadingPosition(forBook: bookID, selectorValue: selectorValue, motivation: .bookmark, accountId: accountId) { response in
                 // The double-resume guard is checked here, outside the
                 // `@Sendable` main-queue hop, which cannot mutate a captured `var`.
                 guard !didResume else { return }
@@ -227,14 +244,17 @@ protocol AnnotationsManager {
         }
     }
 
-    static func postReadingPosition(forBook bookID: String, selectorValue: String, motivation: TPPBookmarkSpec.Motivation, completion: ((_ response: AnnotationResponse?) -> Void)? = nil) {
-        guard syncIsPossibleAndPermitted() else {
+    /// - Parameter accountId: the library the book belongs to; nil means the
+    ///   selected library. It decides the sync check, the URL, the credentials
+    ///   and the device ID.
+    static func postReadingPosition(forBook bookID: String, selectorValue: String, motivation: TPPBookmarkSpec.Motivation, accountId: String? = nil, completion: ((_ response: AnnotationResponse?) -> Void)? = nil) {
+        guard syncIsPossibleAndPermitted(accountId: accountId) else {
             Log.debug(#file, "Account does not support sync or sync is disabled.")
             completion?(nil)
             return
         }
 
-        guard let annotationsURL = TPPAnnotations.annotationsURL else {
+        guard let annotationsURL = annotationsURL(forAccountId: accountId) else {
             Log.error(#file, "Annotations URL was nil, so nothing was posted for book=\(bookID), motivation=\(String(describing: motivation))")
             completion?(nil)
             return
@@ -244,7 +264,7 @@ protocol AnnotationsManager {
         // `AnnotationDevice.currentID()` supplies that, including for libraries
         // without Adobe DRM, which cross-device detection depends on.
         let bookmark = TPPBookmarkSpec(time: NSDate(),
-                                       device: AnnotationDevice.currentID(),
+                                       device: AnnotationDevice.id(forAccountId: accountId),
                                        motivation: motivation,
                                        bookID: bookID,
                                        selectorValue: selectorValue)
@@ -266,7 +286,7 @@ protocol AnnotationsManager {
             queueKey = bookID
         }
 
-        postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: true, queueKey: queueKey) { result in
+        postAnnotation(forBook: bookID, withAnnotationURL: annotationsURL, withParameters: parameters, queueOffline: true, queueKey: queueKey, accountId: accountId) { result in
             switch result {
             case let .succeeded(id, timeStamp):
                 Log.debug(#file, "Successfully saved Reading Position to server: \(selectorValue)")
@@ -410,6 +430,7 @@ protocol AnnotationsManager {
                               timeout: TimeInterval = TPPDefaultRequestTimeout,
                               queueOffline: Bool,
                               queueKey: String? = nil,
+                              accountId: String? = nil,
                               _ completionHandler: @escaping (_ result: AnnotationPostResult) -> Void) {
         // One POST carries reading positions and bookmarks for every format, so
         // the failure lines below name which write this was and for which book;
@@ -433,13 +454,13 @@ protocol AnnotationsManager {
             return
         }
 
-        var request = Self.currentExecutor.request(for: url)
+        var request = Self.request(for: url, accountId: accountId)
         request.httpMethod = "POST"
         request.httpBody = jsonData
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = timeout
 
-        let task = Self.currentExecutor.POST(request, useTokenIfAvailable: true) { (data, response, error) in
+        let handleResponse: (Data?, URLResponse?, Error?) -> Void = { (data, response, error) in
             if let error = error as NSError? {
                 let willQueueOffline = (NetworkQueue.StatusCodes.contains(error.code)) && (queueOffline == true)
 
@@ -448,7 +469,7 @@ protocol AnnotationsManager {
 
                 if willQueueOffline {
                     Log.debug(#file, "Queued for offline retry")
-                    self.addToOfflineQueue(queueKey ?? bookID, url, parameters)
+                    self.addToOfflineQueue(queueKey ?? bookID, url, parameters, accountId: accountId)
                     completionHandler(.queuedForRetry)
                     return
                 }
@@ -475,6 +496,12 @@ protocol AnnotationsManager {
                 Log.error(#file, "Annotation POST refused for \(posted). Status code: \(statusCode)")
                 completionHandler(.failed(underlying: nil, response: response as? HTTPURLResponse))
             }
+        }
+        let task: URLSessionDataTask?
+        if let accountId {
+            task = execute(request, accountId: accountId, enableTokenRefresh: true, completion: handleResponse)
+        } else {
+            task = Self.currentExecutor.POST(request, useTokenIfAvailable: true, completion: handleResponse)
         }
         task?.resume()
     }
@@ -533,9 +560,10 @@ protocol AnnotationsManager {
     static func getServerBookmarks(forBook book: TPPBook?,
                                   atURL annotationURL: URL?,
                                   motivation: TPPBookmarkSpec.Motivation = .bookmark,
+                                  accountId: String? = nil,
                                   completion: @escaping (_ bookmarks: [Bookmark]?) -> Void) {
 
-        guard syncIsPossibleAndPermitted() else {
+        guard syncIsPossibleAndPermitted(accountId: accountId) else {
             Log.debug(#file, "📡 getServerBookmarks: Account does not support sync or sync is disabled.")
             completion(nil)
             return
@@ -549,7 +577,7 @@ protocol AnnotationsManager {
 
         Log.info(#file, "📡 GET SERVER BOOKMARKS for book: \(book.identifier), URL: \(annotationURL.absoluteString), motivation: \(motivation.rawValue)")
 
-        let dataTask = Self.currentExecutor.GET(annotationURL, useTokenIfAvailable: true) { (data, response, error) in
+        let handleResponse: (Data?, URLResponse?, Error?) -> Void = { (data, response, error) in
 
             if let error = error as NSError? {
                 Log.error(#file, "📡 Request Error Code: \(error.code). Description: \(error.localizedDescription)")
@@ -613,6 +641,15 @@ protocol AnnotationsManager {
             completion(bookmarks)
         }
 
+        let dataTask: URLSessionDataTask?
+        if let accountId {
+            var request = Self.request(for: annotationURL, accountId: accountId)
+            request.httpMethod = "GET"
+            request.cachePolicy = .useProtocolCachePolicy
+            dataTask = execute(request, accountId: accountId, enableTokenRefresh: true, completion: handleResponse)
+        } else {
+            dataTask = Self.currentExecutor.GET(annotationURL, useTokenIfAvailable: true, completion: handleResponse)
+        }
         dataTask?.resume()
     }
 
@@ -695,9 +732,10 @@ protocol AnnotationsManager {
     }
 
     static func deleteBookmark(annotationId: String,
+                              accountId: String? = nil,
                               completionHandler: @escaping (_ success: Bool) -> Void) {
 
-        if !syncIsPossibleAndPermitted() {
+        if !syncIsPossibleAndPermitted(accountId: accountId) {
             completionHandler(true)
             return
         }
@@ -708,10 +746,10 @@ protocol AnnotationsManager {
             return
         }
 
-        var request = Self.currentExecutor.request(for: url)
+        var request = Self.request(for: url, accountId: accountId)
         request.timeoutInterval = TPPDefaultRequestTimeout
 
-        let task = Self.currentExecutor.DELETE(request, useTokenIfAvailable: true) { (_, response, error) in
+        let handleResponse: (Data?, URLResponse?, Error?) -> Void = { (_, response, error) in
             let response = response as? HTTPURLResponse
             if response?.statusCode == 200 {
                 Log.info(#file, "200: DELETE bookmark success")
@@ -729,6 +767,14 @@ protocol AnnotationsManager {
                 Log.error(#file, "DELETE bookmark Request Failed with Error Code: \(nsError?.code ?? -1). Description: \(nsError?.localizedDescription ?? "no response and no error")")
                 completionHandler(false)
             }
+        }
+
+        let task: URLSessionDataTask?
+        if let accountId {
+            request.httpMethod = "DELETE"
+            task = execute(request, accountId: accountId, enableTokenRefresh: false, completion: handleResponse)
+        } else {
+            task = Self.currentExecutor.DELETE(request, useTokenIfAvailable: true, completion: handleResponse)
         }
 
         if let task {
@@ -801,6 +847,20 @@ protocol AnnotationsManager {
         return details
     }
 
+    /// Details of a library named by `accountId`. Selecting another library
+    /// marks the previous one `.detailsEvicted` but keeps its parsed `details`,
+    /// and an audiobook from that library keeps playing and syncing (PP-5552).
+    /// Every other state still requires `.detailsLoaded`.
+    fileprivate static func details(ofBookLibrary account: Account?) -> AccountDetails? {
+        if let details = loadedDetails(of: account) {
+            return details
+        }
+        guard let account, case .detailsEvicted = account.loadState else {
+            return nil
+        }
+        return account.details
+    }
+
     /// Annotation-syncing is possible only if the given `account` is signed-in
     /// and if the currently selected library supports it.
     ///
@@ -814,11 +874,12 @@ protocol AnnotationsManager {
         return account.hasCredentials() && loadedDetails(of: library)?.supportsSimplyESync == true
     }
 
-    static func syncIsPossibleAndPermitted(accountsManager: TPPLibraryAccountsProvider? = nil) -> Bool {
+    /// - Parameter accountId: the library to check; nil means the selected one.
+    static func syncIsPossibleAndPermitted(accountsManager: TPPLibraryAccountsProvider? = nil, accountId: String? = nil) -> Bool {
         let manager = accountsManager ?? Self.currentAccountsManager
-        let account = manager.currentUserAccount
-        let acct = manager.currentAccount
-        let details = loadedDetails(of: acct)
+        let account = accountId.map(manager.userAccount(for:)) ?? manager.currentUserAccount
+        let acct = accountId.map(manager.account) ?? manager.currentAccount
+        let details = accountId == nil ? loadedDetails(of: acct) : details(ofBookLibrary: acct)
         let hasCreds = account.hasCredentials()
         let supportsSync = details?.supportsSimplyESync == true
         let permissionGranted = details?.syncPermissionGranted == true
@@ -838,12 +899,45 @@ protocol AnnotationsManager {
         return TPPConfiguration.mainFeedURL()?.appendingPathComponent("annotations/")
     }
 
-    private static func addToOfflineQueue(_ bookID: String?, _ url: URL, _ parameters: [String: Any], accountsManager: TPPLibraryAccountsProvider? = nil, networkExecutor: TPPNetworkExecutor? = nil) {
-        let manager = accountsManager ?? Self.currentAccountsManager
-        let executor = networkExecutor ?? Self.currentExecutor
-        let libraryID = manager.currentAccount?.uuid ?? ""
+    /// The annotations collection of the library `accountId` names. The
+    /// selected library keeps `annotationsURL`, which follows its main feed
+    /// (and `annotationsURLOverride` in tests); any other library is addressed
+    /// through its catalog URL.
+    static func annotationsURL(forAccountId accountId: String?) -> URL? {
+        let manager = Self.currentAccountsManager
+        guard let accountId, accountId != manager.currentAccountId else {
+            return annotationsURL
+        }
+        return manager.account(accountId)?.catalogUrl
+            .flatMap(URL.init(string:))?
+            .appendingPathComponent("annotations/")
+    }
+
+    /// A request carrying the credentials of `accountId`, or of the selected
+    /// library when it is nil.
+    private static func request(for url: URL, accountId: String?) -> URLRequest {
+        guard let accountId else { return Self.currentExecutor.request(for: url) }
+        return Self.currentExecutor.request(for: url, accountId: accountId)
+    }
+
+    /// Sends `request` as `accountId`, so a token refresh and the 401 retry
+    /// also use that library's credentials (PP-4986).
+    private static func execute(_ request: URLRequest,
+                                accountId: String,
+                                enableTokenRefresh: Bool,
+                                completion: @escaping (Data?, URLResponse?, Error?) -> Void) -> URLSessionDataTask? {
+        Self.currentExecutor.executeRequest(request, enableTokenRefresh: enableTokenRefresh, accountId: accountId) { result in
+            switch result {
+            case let .success(data, response): completion(data, response, nil)
+            case let .failure(error, response): completion(nil, response, error)
+            }
+        }
+    }
+
+    private static func addToOfflineQueue(_ bookID: String?, _ url: URL, _ parameters: [String: Any], accountId: String? = nil) {
+        let libraryID = accountId ?? Self.currentAccountsManager.currentAccount?.uuid ?? ""
         let parameterData = try? JSONSerialization.data(withJSONObject: parameters, options: [.prettyPrinted])
-        let headers = executor.request(for: url).allHTTPHeaderFields
+        let headers = request(for: url, accountId: accountId).allHTTPHeaderFields
         Self.currentOfflineQueue.addRequest(libraryID, bookID, url, .POST, parameterData, headers)
     }
 }
