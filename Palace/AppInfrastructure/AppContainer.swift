@@ -739,6 +739,8 @@ struct AppContainer: @unchecked Sendable {
             opdsFeedService: OPDSFeedService(),
             readerService: ReaderService(
               isConnected: { reachability.isConnectedToNetwork() },
+              downloadCenter: { downloadCenter },
+              bookRegistry: { bookRegistry },
               imageCache: { imageCache }
             ),
             navigationCoordinatorHub: navigationCoordinatorHub,
