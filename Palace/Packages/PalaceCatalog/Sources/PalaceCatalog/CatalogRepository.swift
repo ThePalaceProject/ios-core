@@ -32,6 +32,13 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
     // `CatalogAPI` protocol is not yet annotated `Sendable` (owned by a
     // sibling modernization pass); the lock makes the conformance sound today.
     private let api: CatalogAPI
+
+    /// How many feeds, and how many format-entry lists, stay in memory. Each
+    /// load can add up to five preloaded facets, so 40 holds about six recent
+    /// loads; an older feed is fetched again when it is opened (PP-5585).
+    // PUBLIC_INTENT: read by PalaceTests, which imports PalaceCatalog without @testable.
+    public static let memoryFeedLimit = 40
+
     private static let lastAppLaunchKey = "CatalogRepository.lastAppLaunch"
 
     /// Test seam: injectable "now" provider so unit tests can drive the
@@ -61,12 +68,12 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
     /// `SearchFormatEntry`) are not yet `Sendable`; the lock itself provides
     /// the synchronization that makes that safe.
     private struct CacheState {
-        var memoryCache: [String: CachedFeed] = [:]
+        var memoryCache = RecentEntries<CachedFeed>(limit: CatalogRepository.memoryFeedLimit)
         /// Dedicated cache for format entry points, keyed by groups-feed URL.
         /// Pre-warmed by loadTopLevelCatalog so search can display the format
         /// picker immediately without an extra network round-trip when the
         /// user first opens search.
-        var formatEntriesCache: [String: [SearchFormatEntry]] = [:]
+        var formatEntriesCache = RecentEntries<[SearchFormatEntry]>(limit: CatalogRepository.memoryFeedLimit)
         /// Track if we need to refresh stale content in background.
         var needsBackgroundRefresh = false
     }
@@ -227,7 +234,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
     public func loadTopLevelCatalog(at url: URL) async throws -> CatalogFeed? {
         let cacheKey = cacheKey(for: url)
 
-        let cachedEntry = cache.withLockUnchecked { $0.memoryCache[cacheKey] }
+        let cachedEntry = cache.withLockUnchecked { $0.memoryCache.value(for: cacheKey) }
 
         // STALE-WHILE-REVALIDATE PATTERN:
         // 1. Fresh cache (< 10 min) → return immediately
@@ -301,7 +308,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
 
         // Cache the result
         let cachedFeed = CachedFeed(feed: feed, timestamp: now())
-        cache.withLockUnchecked { $0.memoryCache[cacheKey] = cachedFeed }
+        cache.withLockUnchecked { $0.memoryCache.set(cachedFeed, for: cacheKey) }
         prewarmFormatEntriesCache(from: feed, cacheKey: cacheKey)
 
         Task.detached(priority: .background) {
@@ -321,7 +328,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
             guard let feed = feed else { return }
 
             let cachedFeed = CachedFeed(feed: feed, timestamp: now())
-            cache.withLockUnchecked { $0.memoryCache[cacheKey] = cachedFeed }
+            cache.withLockUnchecked { $0.memoryCache.set(cachedFeed, for: cacheKey) }
             Log.info(#file, "Background refresh completed for: \(url.absoluteString)")
 
             // Preload related facets too
@@ -340,8 +347,8 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
         let entries = DefaultCatalogAPI.extractSearchEntryPoints(from: feed)
         guard !entries.isEmpty else { return }
         cache.withLockUnchecked { state in
-            guard state.formatEntriesCache[cacheKey] == nil else { return }
-            state.formatEntriesCache[cacheKey] = entries
+            guard !state.formatEntriesCache.contains(cacheKey) else { return }
+            state.formatEntriesCache.set(entries, for: cacheKey)
         }
     }
 
@@ -379,7 +386,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
 
         // Check the dedicated format-entries cache first. Pre-warmed by loadTopLevelCatalog
         // so the search format picker has data without an extra network round-trip.
-        let cached = cache.withLockUnchecked { $0.formatEntriesCache[cacheKey] }
+        let cached = cache.withLockUnchecked { $0.formatEntriesCache.value(for: cacheKey) }
         if let cached, !cached.isEmpty {
             return cached
         }
@@ -387,7 +394,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
         // Cache miss — fetch from network and cache for next time.
         let entries = try await api.fetchSearchEntryPoints(from: url)
         if !entries.isEmpty {
-            cache.withLockUnchecked { $0.formatEntriesCache[cacheKey] = entries }
+            cache.withLockUnchecked { $0.formatEntriesCache.set(entries, for: cacheKey) }
         }
         return entries
     }
@@ -398,7 +405,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
 
     public func invalidateCache(for url: URL) {
         let cacheKey = cacheKey(for: url)
-        cache.withLockUnchecked { $0.memoryCache[cacheKey] = nil }
+        cache.withLockUnchecked { $0.memoryCache.remove(cacheKey) }
     }
 
     public func cachedFeed(for url: URL) -> CatalogFeed? {
@@ -406,7 +413,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
         // Synchronous, read-only lookup under the cache lock. The unfair lock
         // holds only briefly, so calling this from the MainActor is safe.
         return cache.withLockUnchecked { state in
-            guard let entry = state.memoryCache[cacheKey], !isTooOld(entry) else { return nil }
+            guard let entry = state.memoryCache.value(for: cacheKey), !isTooOld(entry) else { return nil }
             return entry.feed
         }
     }
@@ -479,13 +486,13 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
                     guard let self else { return }
                     let cacheKey = self.cacheKey(for: url)
 
-                    let isCached = self.cache.withLockUnchecked { $0.memoryCache[cacheKey] != nil }
+                    let isCached = self.cache.withLockUnchecked { $0.memoryCache.contains(cacheKey) }
                     guard !isCached else { return }
 
                     do {
                         if let preloadedFeed = try await self.api.fetchFeed(at: url) {
                             let cachedFeed = CachedFeed(feed: preloadedFeed, timestamp: self.now())
-                            self.cache.withLockUnchecked { $0.memoryCache[cacheKey] = cachedFeed }
+                            self.cache.withLockUnchecked { $0.memoryCache.set(cachedFeed, for: cacheKey) }
                         }
                     } catch {
                         // Silently fail preloading
@@ -493,5 +500,60 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
                 }
             }
         }
+    }
+}
+
+/// A dictionary that keeps at most `limit` entries and drops the least
+/// recently used first. Reads through `value(for:)` and writes through
+/// `set(_:for:)` make an entry the most recent; `contains` does not, so a
+/// background preload check cannot keep an unused feed alive (PP-5585).
+/// Not thread-safe: `CatalogRepository` keeps it inside its cache lock.
+struct RecentEntries<Value> {
+    let limit: Int
+    private var values: [String: Value] = [:]
+    /// Keys from least to most recently used. At most `limit + 1` long, so
+    /// the linear search and removal stay cheap.
+    private var order: [String] = []
+
+    init(limit: Int) {
+        self.limit = limit
+    }
+
+    var count: Int { values.count }
+
+    func contains(_ key: String) -> Bool {
+        values[key] != nil
+    }
+
+    mutating func value(for key: String) -> Value? {
+        guard let value = values[key] else { return nil }
+        markMostRecent(key)
+        return value
+    }
+
+    mutating func set(_ value: Value, for key: String) {
+        values[key] = value
+        markMostRecent(key)
+        while values.count > limit, let oldest = order.first {
+            order.removeFirst()
+            values[oldest] = nil
+        }
+    }
+
+    mutating func remove(_ key: String) {
+        guard values.removeValue(forKey: key) != nil else { return }
+        order.removeAll { $0 == key }
+    }
+
+    mutating func removeAll() {
+        values.removeAll()
+        order.removeAll()
+    }
+
+    private mutating func markMostRecent(_ key: String) {
+        if let index = order.firstIndex(of: key) {
+            order.remove(at: index)
+        }
+        order.append(key)
     }
 }
