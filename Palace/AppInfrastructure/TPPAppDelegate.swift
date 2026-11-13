@@ -912,8 +912,8 @@ final class MemoryPressureMonitor: @unchecked Sendable {
     }
 
     /// This monitor's part of a memory warning: record the event before
-    /// anything is released, clear the response cache, pause downloads, and
-    /// free disk space when under 256 MB is left.
+    /// anything is released, clear the response cache, pause downloads until
+    /// memory recovers, and free disk space when under 256 MB is left.
     func registerReleaseSteps(on coordinator: MemoryReleaseCoordinator) {
         coordinator.register(self, stage: .record) { monitor in
             monitor.memoryEvents.record(.warning)
@@ -928,7 +928,7 @@ final class MemoryPressureMonitor: @unchecked Sendable {
         }
         coordinator.register(self, stage: .downloads) { _ in
             DispatchQueue.main.async {
-                AppContainer.production().downloadCenter.pauseAllDownloads()
+                AppContainer.production().downloadCenter.pauseDownloadsForMemoryWarning()
             }
         }
         coordinator.register(self, stage: .diskSpace) { monitor in
