@@ -1,0 +1,107 @@
+[
+  {
+    "args" : {
+
+    },
+    "method" : "announceBorrowStarted"
+  },
+  {
+    "args" : {
+      "bookId" : "BORROW-FAIL",
+      "processing" : "true"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+      "attempt" : "1",
+      "breakerArmed" : "false"
+    },
+    "method" : "fetchBook"
+  },
+  {
+    "args" : {
+      "bookId" : "BORROW-FAIL",
+      "processing" : "false"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "account.markCredentialsStale"
+  },
+  {
+    "args" : {
+      "result" : "true"
+    },
+    "method" : "attemptOIDCReauth"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "announceBorrowStarted"
+  },
+  {
+    "args" : {
+      "bookId" : "BORROW-FAIL",
+      "processing" : "true"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+      "attempt" : "2",
+      "breakerArmed" : "true"
+    },
+    "method" : "fetchBook"
+  },
+  {
+    "args" : {
+      "bookId" : "BORROW-FAIL",
+      "processing" : "false"
+    },
+    "method" : "registry.setProcessing"
+  },
+  {
+    "args" : {
+      "bookId" : "BORROW-FAIL",
+      "state" : "downloadNeeded"
+    },
+    "method" : "registry.addBook"
+  },
+  {
+    "args" : {
+      "bookId" : "BORROW-FAIL",
+      "state" : "downloadNeeded"
+    },
+    "method" : "registry.setState"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "announceBorrowSucceeded"
+  },
+  {
+    "args" : {
+
+    },
+    "method" : "noteBorrowSucceeded"
+  },
+  {
+    "args" : {
+      "bookId" : "BORROW-FAIL"
+    },
+    "method" : "borrowReturned"
+  },
+  {
+    "args" : {
+      "authState" : "credentialsStale",
+      "breakerArmed" : "false"
+    },
+    "method" : "end"
+  }
+]
