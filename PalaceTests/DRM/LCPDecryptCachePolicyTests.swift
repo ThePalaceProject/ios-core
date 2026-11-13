@@ -177,6 +177,57 @@ final class LCPDecryptCachePolicyTests: XCTestCase {
         XCTAssertNotNil(cache.decrypted(for: epubChunk))
     }
 
+    /// An audiobook licence with an empty content key is not recorded, so an
+    /// EPUB whose context also has an empty key keeps the cache.
+    func testDecrypt_AudiobookLicenceWithEmptyKey_DoesNotTurnOffTheCacheForOthers() throws {
+        _ = try client.createContext(
+            jsonLicense: Self.licence(key: "", type: "application/audiobook+lcp"),
+            hashedPassphrase: "hash", pemCrl: ""
+        )
+        let epub = try client.createContext(
+            jsonLicense: Self.licence(key: "", type: "application/epub+zip"),
+            hashedPassphrase: "hash", pemCrl: ""
+        )
+        let chunk = Data([3, 1, 4])
+
+        _ = client.decrypt(data: chunk, using: epub)
+        _ = client.decrypt(data: chunk, using: epub)
+
+        XCTAssertEqual(decryptCalls[""], 1)
+        XCTAssertNotNil(cache.decrypted(for: chunk))
+    }
+
+    // MARK: - Licence classification
+
+    /// `rel` may be an array; the publication link is found either way.
+    func testIsAudiobookLicence_RelAsArray_IsAudiobook() {
+        let json = #"{"links":[{"rel":["publication","alternate"],"type":"application/audiobook+lcp"}]}"#
+
+        XCTAssertTrue(TPPLCPClient.isAudiobookLicence(json))
+    }
+
+    /// Media types are case-insensitive.
+    func testIsAudiobookLicence_UppercaseType_IsAudiobook() {
+        let json = #"{"links":[{"rel":"publication","type":"APPLICATION/AUDIOBOOK+LCP"}]}"#
+
+        XCTAssertTrue(TPPLCPClient.isAudiobookLicence(json))
+    }
+
+    /// A media type with parameters still counts as an audiobook.
+    func testIsAudiobookLicence_TypeWithParameters_IsAudiobook() {
+        let json = #"{"links":[{"rel":"publication","type":"application/audiobook+lcp; charset=utf-8"}]}"#
+
+        XCTAssertTrue(TPPLCPClient.isAudiobookLicence(json))
+    }
+
+    /// Only the publication link decides: an audiobook type on another link
+    /// does not count.
+    func testIsAudiobookLicence_AudiobookTypeOnANonPublicationLink_IsNotAudiobook() {
+        let json = #"{"links":[{"rel":["alternate"],"type":"application/audiobook+lcp"},{"rel":"publication","type":"application/epub+zip"}]}"#
+
+        XCTAssertFalse(TPPLCPClient.isAudiobookLicence(json))
+    }
+
     // MARK: - Fixtures
 
     private static func licence(key: String, type: String?) -> String {

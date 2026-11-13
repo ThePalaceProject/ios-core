@@ -98,6 +98,9 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
     /// Their decrypts skip `cache`: tracks are read once, in order, so the
     /// cache only held decrypted audio, and a hit saves just the AES step
     /// because the ciphertext key has already been read (PP-5584).
+    /// Never pruned; each entry is one key string, about 100 bytes per
+    /// audiobook licence opened in the process. An empty key is never added,
+    /// so a licence without one cannot turn the cache off for other books.
     private let audiobookContentKeys = OSAllocatedUnfairLock(initialState: Set<String>())
 
     private let createDRMContext: (String, String, String) throws -> DRMContext
@@ -182,8 +185,8 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
             throw LCPContextError.creationReturnedNil
         }
 
-        if Self.isAudiobookLicence(jsonLicense) {
-            let key = newCtx.encryptedContentKey
+        let key = newCtx.encryptedContentKey
+        if !key.isEmpty, Self.isAudiobookLicence(jsonLicense) {
             audiobookContentKeys.withLock { _ = $0.insert(key) }
         }
 
