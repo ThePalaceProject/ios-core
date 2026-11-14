@@ -94,7 +94,7 @@ final class MemoryReleaseWiringTests: PalaceWiringTestCase {
             result.set(keepList(), onMain: Thread.isMainThread)
             done.fulfill()
         }
-        wait(for: [done], timeout: 5)
+        wait(for: [done], timeout: 5)  // STARVE-001-OK: waits on one global-queue hop made just above; no other async work
 
         XCTAssertFalse(result.ranOnMain, "precondition: the call ran off main")
         XCTAssertEqual(result.value, [])
