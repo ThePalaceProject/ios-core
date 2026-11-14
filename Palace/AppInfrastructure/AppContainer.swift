@@ -270,7 +270,9 @@ struct AppContainer: @unchecked Sendable {
 
     /// The app's image loader. It shares the launch's cover-bytes disk cache
     /// with `TPPBookCoverRegistry.shared`, so a cover fetched for the player is
-    /// not fetched again for a list (PP-5583).
+    /// not fetched again for a list (PP-5583). The production builder must
+    /// build its loader here: tests cannot call `production()`, so a loader
+    /// built inline there would go untested.
     static func makeProductionImageLoader(imageCache: ImageCacheType) -> ImageLoader {
         ImageLoader(imageCache: imageCache, sourceCache: TPPBookCoverRegistry.launchSourceCache)
     }
@@ -303,7 +305,9 @@ struct AppContainer: @unchecked Sendable {
 
     /// The launch call that sets the cover store's recent-cover floor for the
     /// device type (PP-5583).
-    static func applyDeviceIdiom(_ idiom: UIUserInterfaceIdiom, to store: BookCoverStore) {}
+    static func applyDeviceIdiom(_ idiom: UIUserInterfaceIdiom, to store: BookCoverStore) {
+        store.useDeviceIdiom(isPad: idiom == .pad)
+    }
 
     /// The cover store's keep list: the playing audiobook's ID. Steps run on
     /// the posting thread; UIKit posts on main, and off main the list is empty.
