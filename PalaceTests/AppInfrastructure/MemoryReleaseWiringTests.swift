@@ -77,6 +77,19 @@ final class MemoryReleaseWiringTests: PalaceWiringTestCase {
         XCTAssertEqual(coordinator.stages(registeredFor: store), [.decodedImages])
     }
 
+    /// The launch call gives an iPad the larger recent-cover floor and leaves a
+    /// phone's alone.
+    func testApplyDeviceIdiom_setsTheIPadFloorOnlyOnIPad() {
+        let pad = BookCoverStore(limits: .forDevice(memoryMB: 4096))
+        let phone = BookCoverStore(limits: .forDevice(memoryMB: 4096))
+
+        AppContainer.applyDeviceIdiom(.pad, to: pad)
+        AppContainer.applyDeviceIdiom(.phone, to: phone)
+
+        XCTAssertEqual(pad.limits.keepRecent, 120)
+        XCTAssertEqual(phone.limits.keepRecent, 60)
+    }
+
     /// The keep list names the playing audiobook, and nothing when none plays.
     func testPlayingAudiobookKeepList_namesThePlayingBook() {
         XCTAssertEqual(AppContainer.playingAudiobookKeepList(currentBookID: { "playing-id" })(), ["playing-id"])

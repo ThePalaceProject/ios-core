@@ -301,6 +301,10 @@ struct AppContainer: @unchecked Sendable {
         )
     }
 
+    /// The launch call that sets the cover store's recent-cover floor for the
+    /// device type (PP-5583).
+    static func applyDeviceIdiom(_ idiom: UIUserInterfaceIdiom, to store: BookCoverStore) {}
+
     /// The cover store's keep list: the playing audiobook's ID. Steps run on
     /// the posting thread; UIKit posts on main, and off main the list is empty.
     static func playingAudiobookKeepList(

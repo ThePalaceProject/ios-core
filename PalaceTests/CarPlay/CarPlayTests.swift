@@ -80,6 +80,7 @@ class CarPlayTests: XCTestCase {
         TPPBookImageContext.imageLoaderProvider = { silent }
         let book = Self.makeBookWithoutCover()
         await drainMainQueueAsync()
+        XCTAssertNil(book.coverImage, "precondition: no cover in memory, so artwork takes the loader path")
         let loader = MockImageLoader()
         let provider = CarPlayImageProvider(imageLoader: loader)
         let done = expectation(description: "artwork")
@@ -87,6 +88,8 @@ class CarPlayTests: XCTestCase {
         provider.artwork(for: book) { _ in done.fulfill() }
         await fulfillment(of: [done], timeout: 5)  // STARVE-001-OK: one main-actor Task awaiting a mock loader that answers on the next main-queue turn
 
+        XCTAssertTrue(loader.coverCalls.contains { $0.identifier == book.identifier },
+                      "precondition: the loader was asked and answered nothing, so the artwork is a placeholder")
         XCTAssertFalse(loader.setKeys.contains("carplay_\(book.identifier)"))
     }
 
