@@ -552,6 +552,7 @@ final class BookCoverStoreTests: XCTestCase {
     /// The app's launch call sets the iPad floor on a store built before it.
     func testUseDeviceIdiom_onIPad_raisesTheRecentCoverFloor() {
         let store = BookCoverStore(limits: .forDevice(memoryMB: 4096))
+        XCTAssertEqual(store.limits.keepRecent, 60, "precondition: the phone floor")
 
         store.useDeviceIdiom(isPad: true)
 
