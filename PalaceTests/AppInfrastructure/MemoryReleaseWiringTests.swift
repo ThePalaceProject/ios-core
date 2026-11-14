@@ -86,10 +86,27 @@ final class MemoryReleaseWiringTests: PalaceWiringTestCase {
     /// Off the main thread the keep list is empty instead of reading main-actor state.
     func testPlayingAudiobookKeepList_offMain_isEmpty() {
         let keepList = AppContainer.playingAudiobookKeepList(currentBookID: { "playing-id" })
+        let done = expectation(description: "off main")
+        let result = KeepListResult()
 
-        let offMain = DispatchQueue.global().sync { keepList() }
+        // `async`, not `sync`: a sync dispatch from main can run on main.
+        DispatchQueue.global().async {
+            result.set(keepList(), onMain: Thread.isMainThread)
+            done.fulfill()
+        }
+        wait(for: [done], timeout: 5)
 
-        XCTAssertEqual(offMain, [])
+        XCTAssertFalse(result.ranOnMain, "precondition: the call ran off main")
+        XCTAssertEqual(result.value, [])
+    }
+
+    private final class KeepListResult: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: Set<String>?
+        private var onMain = true
+        var value: Set<String>? { lock.withLock { stored } }
+        var ranOnMain: Bool { lock.withLock { onMain } }
+        func set(_ value: Set<String>, onMain: Bool) { lock.withLock { stored = value; self.onMain = onMain } }
     }
 
     func testAppContainer_registersItsBookCoverStore() {
