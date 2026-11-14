@@ -21,7 +21,7 @@ import PalaceBookModel
 /// `complete`-mode fix for the "main-actor API from nonisolated context" warnings
 /// in `processForCarPlay`/`generatePlaceholder`, and makes `self` a `Sendable`
 /// main-actor reference so the async `Task` in `artwork(for:)` no longer needs the
-/// completion-box hop. `loadArtwork`'s `URLSession` await runs fine on the main
+/// completion-box hop. `loadArtwork`'s image loader await runs fine on the main
 /// actor (it suspends, it doesn't block).
 @MainActor
 final class CarPlayImageProvider {
@@ -69,7 +69,7 @@ final class CarPlayImageProvider {
 
         // Load asynchronously on the main actor (the type is `@MainActor`, so the
         // Task inherits that isolation and `self` is a Sendable main-actor ref —
-        // no completion-box hop needed). `loadArtwork`'s `URLSession` await
+        // no completion-box hop needed). `loadArtwork`'s image loader await
         // suspends without blocking main; the completion is invoked on main.
         Task { @MainActor in
             let image = await loadArtwork(for: book)
@@ -105,18 +105,13 @@ final class CarPlayImageProvider {
             return cover
         }
 
-        // Try to load from URL
-        guard let imageURL = book.imageURL ?? book.imageThumbnailURL else {
+        // The loader reads the decoded and downloaded-bytes disk caches before
+        // the network, so a cover released from memory still shows offline
+        // (PP-5583).
+        guard book.imageURL != nil || book.imageThumbnailURL != nil else {
             return nil
         }
-
-        do {
-            let (data, _) = try await URLSession.shared.data(for: URLRequest.withoutHTTP3Assumption(url: imageURL))
-            return UIImage(data: data)
-        } catch {
-            Log.error(#file, "CarPlay: Failed to load artwork for '\(book.title)': \(error)")
-            return nil
-        }
+        return await imageLoader.coverImage(for: book)
     }
 
     private func processForCarPlay(_ image: UIImage) -> UIImage {
