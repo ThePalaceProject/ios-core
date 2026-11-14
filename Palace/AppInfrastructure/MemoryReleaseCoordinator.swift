@@ -108,9 +108,17 @@ final class MemoryReleaseCoordinator: @unchecked Sendable {
 
     /// Runs every live step once, in stage order and then registration order.
     func releaseAll() {
+        releaseAll(stages: Set(MemoryReleaseStage.allCases))
+    }
+
+    /// Runs the live steps of `stages` once, in stage order and then
+    /// registration order. A background trim names the stages that hold only
+    /// screen memory (PP-5581).
+    func releaseAll(stages: Set<MemoryReleaseStage>) {
         let live: [(owner: AnyObject, step: Step)] = lock.withLock {
             steps.removeAll { $0.owner == nil }
             return steps
+                .filter { stages.contains($0.stage) }
                 .sorted { ($0.stage, $0.index) < ($1.stage, $1.index) }
                 .compactMap { step in step.owner.map { ($0, step) } }
         }

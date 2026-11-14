@@ -69,6 +69,23 @@ final class MemoryReleaseCoordinatorTests: XCTestCase {
         withExtendedLifetime(book) {}
     }
 
+    /// A background trim runs only the stages it names, still in stage order (PP-5581).
+    func testReleaseAllStages_RunsOnlyNamedStages_InStageOrder() {
+        let owners = [
+            (Owner("downloads"), MemoryReleaseStage.downloads),
+            (Owner("images"), .decodedImages),
+            (Owner("lcp"), .lcpDecrypt),
+            (Owner("cells"), .bookCells),
+            (Owner("record"), .record)
+        ]
+        for (owner, stage) in owners { register(owner, stage) }
+
+        sut.releaseAll(stages: [.decodedImages, .bookCells])
+
+        XCTAssertEqual(log.all, ["cells", "images"])
+        withExtendedLifetime(owners) {}
+    }
+
     /// The playing book's cover is kept when the store's step runs.
     func testRegisterBookCovers_KeepsTheIdentifiersTheProviderNames() {
         let store = BookCoverStore(limits: .init(byteLimit: .max, keepRecent: 0))

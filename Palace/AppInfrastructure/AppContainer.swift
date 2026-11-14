@@ -253,6 +253,18 @@ struct AppContainer: @unchecked Sendable {
             }
         )
         services.audiobookSession = session
+        // Screen memory goes while the app is in the background with this
+        // session playing (PP-5581). Built with the session, so launch work
+        // does not change.
+        services.backgroundPlaybackTrimmer = Self.makeBackgroundPlaybackTrimmer(
+            isPlaying: session.$isPlaying.eraseToAnyPublisher(),
+            applicationState: UIApplication.shared.applicationState,
+            memoryRelease: memoryRelease,
+            bookCoverStore: bookCoverStore,
+            keepList: Self.playingAudiobookKeepList(
+                currentBookID: { [services] in services.audiobookSession?.currentBook?.identifier }
+            )
+        )
         return session
     }
 
@@ -261,6 +273,32 @@ struct AppContainer: @unchecked Sendable {
     /// not fetched again for a list (PP-5583).
     static func makeProductionImageLoader(imageCache: ImageCacheType) -> ImageLoader {
         ImageLoader(imageCache: imageCache, sourceCache: TPPBookCoverRegistry.launchSourceCache)
+    }
+
+    /// The trimmer for an audiobook session (PP-5581): a trim runs the screen
+    /// stages through `memoryRelease` and releases `bookCoverStore`'s covers
+    /// outside `keepList`; a restore makes the covers views still hold strong
+    /// again. A session built while the app is in the background (a relaunch
+    /// for audio) starts in the background.
+    @MainActor
+    static func makeBackgroundPlaybackTrimmer(
+        isPlaying: AnyPublisher<Bool, Never>,
+        applicationState: UIApplication.State,
+        memoryRelease: MemoryReleaseCoordinator,
+        bookCoverStore: BookCoverStore,
+        keepList: @escaping @Sendable () -> Set<String> = { [] },
+        center: NotificationCenter = .default
+    ) -> BackgroundPlaybackMemoryTrimmer {
+        BackgroundPlaybackMemoryTrimmer(
+            center: center,
+            isPlaying: isPlaying,
+            startsInBackground: applicationState == .background,
+            trim: {
+                memoryRelease.releaseAll(stages: BackgroundPlaybackMemoryTrimmer.stages)
+                bookCoverStore.releaseImages(keeping: keepList())
+            },
+            restore: { bookCoverStore.restoreReleasedImages() }
+        )
     }
 
     /// The cover store's keep list: the playing audiobook's ID. Steps run on

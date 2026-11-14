@@ -678,6 +678,56 @@ final class BookCoverStoreTests: XCTestCase {
         XCTAssertEqual(BookCoverStore.Limits.forDevice(memoryMB: 8192, isPad: true), .init(byteLimit: .max, keepRecent: 120))
     }
 
+
+    /// A released cover that a view still holds comes back as the same image,
+    /// at the same size, from the getter and after a restore (PP-5581).
+    func testReleasedCoverStillHeldElsewhere_getterAndRestoreReturnTheSameImage() async {
+        let limited = makeLimitedStore(byteLimit: .max, keepRecent: 0)
+        let book = Self.makeBook("weak-a", cache: CountingCache(), store: limited)
+        await settle()
+        let drawn = solidImage(width: 10, height: 10)
+        book.coverImage = drawn
+
+        limited.releaseImages()
+
+        XCTAssertIdentical(book.coverImage, drawn, "the getter finds the image a view still holds")
+        limited.restoreReleasedImages()
+        XCTAssertIdentical(limited.state(for: "weak-a").coverImage, drawn)
+    }
+
+    /// A released thumbnail a view still holds is restored as the same image.
+    func testRestoreReleasedImages_restoresAHeldThumbnail() async {
+        let limited = makeLimitedStore(byteLimit: .max, keepRecent: 0)
+        let book = Self.makeBook("restore-thumb", cache: CountingCache(), store: limited)
+        await settle()
+        let thumbnail = solidImage(width: 5, height: 5)
+        book.thumbnailImage = thumbnail
+        limited.releaseImages()
+        XCTAssertNil(limited.state(for: "restore-thumb").thumbnailImage, "precondition: released")
+
+        limited.restoreReleasedImages()
+
+        XCTAssertIdentical(limited.state(for: "restore-thumb").thumbnailImage, thumbnail)
+        XCTAssertEqual(limited.imageByteCount, thumbnail.decodedBytes)
+    }
+
+    /// A released cover nothing else holds is freed, and a restore does not bring
+    /// it back.
+    func testReleasedCoverHeldNowhere_restoreDoesNotBringItBack() async {
+        let limited = makeLimitedStore(byteLimit: .max, keepRecent: 0)
+        let book = Self.makeBook("weak-b", cache: CountingCache(), store: limited)
+        await settle()
+        autoreleasepool {
+            book.coverImage = solidImage(width: 10, height: 10)
+        }
+
+        autoreleasepool { limited.releaseImages() }
+        limited.restoreReleasedImages()
+
+        XCTAssertNil(limited.state(for: "weak-b").coverImage)
+        XCTAssertEqual(limited.imageByteCount, 0)
+    }
+
     private func makeLimitedStore(byteLimit: Int, keepRecent: Int) -> BookCoverStore {
         let extractor = extractor!
         return BookCoverStore(

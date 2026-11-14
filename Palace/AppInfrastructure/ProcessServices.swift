@@ -22,6 +22,7 @@ import os
 final class ProcessServices: @unchecked Sendable {
     @MainActor var samplePreviewManager: SamplePreviewManager?
     @MainActor var audiobookSession: AudiobookSessionManager?
+    @MainActor var backgroundPlaybackTrimmer: BackgroundPlaybackMemoryTrimmer?
     @MainActor var audiobookSessionPresenter: AudiobookSessionPresenter?
     @MainActor var playbackBootstrapper: PlaybackBootstrapper?
     @MainActor var appRatingService: AppRatingService?

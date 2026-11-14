@@ -142,6 +142,30 @@ public final class BookCoverStore: @unchecked Sendable {
         releaseImages(keeping: [])
     }
 
+    /// Makes released images that something else still holds strong again, with
+    /// no change notice: views already show them (PP-5581).
+    // PUBLIC_INTENT: the app calls this when it returns to the foreground.
+    public func restoreReleasedImages() {
+        lock.withLock {
+            for identifier in Array(entries.keys) {
+                guard var state = entries[identifier]?.state else { continue }
+                let bytesBefore = Self.byteCount(of: state)
+                if state.coverImage == nil, let cover = state.releasedCover {
+                    state.coverImage = cover
+                    state.coverReleased = false
+                }
+                if state.thumbnailImage == nil, let thumbnail = state.releasedThumbnail {
+                    state.thumbnailImage = thumbnail
+                    state.thumbnailReleased = false
+                }
+                state.releasedCover = nil
+                state.releasedThumbnail = nil
+                entries[identifier]?.state = state
+                byteTotal += Self.byteCount(of: state) - bytesBefore
+            }
+        }
+    }
+
     /// The cover for a getter: marks the entry as read, and says whether the
     /// store released the cover.
     func readCover(for identifier: String) -> (image: UIImage?, released: Bool) {
