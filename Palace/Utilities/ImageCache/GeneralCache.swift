@@ -321,9 +321,30 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
         }
     }
 
-    /// Deletes the oldest stored files until the disk layer holds at most
-    /// `maxBytes`.
-    func prune(maxBytes: Int) {}
+    /// Deletes the oldest stored files, by creation date, until the disk layer
+    /// holds at most `maxBytes`. Folders and staging files are left alone.
+    func prune(maxBytes: Int) {
+        guard mode == .diskOnly || mode == .memoryAndDisk else { return }
+        let keys: Set<URLResourceKey> = [.fileSizeKey, .creationDateKey, .isRegularFileKey]
+        lock.withLock {
+            guard let urls = try? fileManager.contentsOfDirectory(
+                at: cacheDirectory,
+                includingPropertiesForKeys: Array(keys),
+                options: [.skipsHiddenFiles]
+            ) else { return }
+            var files = urls.compactMap { url -> (url: URL, size: Int, created: Date)? in
+                guard let values = try? url.resourceValues(forKeys: keys), values.isRegularFile == true else { return nil }
+                return (url, values.fileSize ?? 0, values.creationDate ?? .distantPast)
+            }
+            var total = files.reduce(0) { $0 + $1.size }
+            guard total > maxBytes else { return }
+            files.sort { $0.created < $1.created }
+            for file in files where total > maxBytes {
+                try? fileManager.removeItem(at: file.url)
+                total -= file.size
+            }
+        }
+    }
 
     /// Bytes the memory layer holds now (PP-5509).
     var memoryBytes: Int { memoryCache.byteCount }

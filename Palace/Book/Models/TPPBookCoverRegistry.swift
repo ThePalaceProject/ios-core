@@ -97,6 +97,14 @@ actor TPPBookCoverRegistry {
     /// `GeneralCache` reads a file with no expiry as already expired.
     static let sourceEntryLifetime: TimeInterval = 365 * 24 * 60 * 60
 
+    /// Disk the source bytes may use; the oldest go first over it.
+    nonisolated static let sourceByteLimit = 100 * 1024 * 1024
+
+    /// The source cache is pruned after this many new bytes, not on every
+    /// write, so a screen of cover fetches lists the folder once.
+    static let sourcePruneInterval = 10 * 1024 * 1024
+    private var sourceBytesSincePrune = 0
+
     /// Dedup concurrent callers that want the same URL's bytes. A swimlane
     /// rendering 10 cells at once must only hit the network once per URL.
     private var inProgressDataTasks: [URL: Task<Data?, Never>] = [:]
@@ -558,6 +566,7 @@ actor TPPBookCoverRegistry {
                 await self.clearBadResponse(for: url)
                 await self.hostFailureTracker.recordSuccess(for: url.host)
                 self.sourceCache.set(data, for: key, expiresIn: Self.sourceEntryLifetime)
+                await self.noteSourceBytesWritten(data.count)
                 return data
             } catch {
                 if Self.isHostLevelError(error) {
@@ -576,6 +585,16 @@ actor TPPBookCoverRegistry {
         let data = await task.value
         inProgressDataTasks[url] = nil
         return data
+    }
+
+    private func noteSourceBytesWritten(_ count: Int) {
+        sourceBytesSincePrune += count
+        guard sourceBytesSincePrune >= Self.sourcePruneInterval else { return }
+        sourceBytesSincePrune = 0
+        let cache = sourceCache
+        Task.detached(priority: .utility) {
+            cache.prune(maxBytes: TPPBookCoverRegistry.sourceByteLimit)
+        }
     }
 
     /// Stores a decoded image under its sized key AND under the bare identifier,
