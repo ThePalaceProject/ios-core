@@ -11,7 +11,7 @@ import Combine
 import UIKit
 import XCTest
 @testable import Palace
-import PalaceBookModel
+@testable import PalaceBookModel
 
 @MainActor
 final class BackgroundPlaybackMemoryTrimmerTests: XCTestCase {
