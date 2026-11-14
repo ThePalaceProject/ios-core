@@ -114,6 +114,16 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
     private struct RefreshTrackingState {
         var isTracking = false
         var tasks: [Task<Void, Never>] = []
+        /// The priority tracked refreshes and preloads run at. A test joins
+        /// them, and on a busy CI runner `.background` work may never be
+        /// scheduled within the test's time limit.
+        var priority: TaskPriority?
+    }
+
+    /// The priority for a background refresh or preload: the tracked priority
+    /// while a test has tracking armed, otherwise `production`.
+    private func backgroundPriority(_ production: TaskPriority) -> TaskPriority {
+        refreshTracking.withLock { $0.isTracking ? $0.priority : nil } ?? production
     }
     private let refreshTracking = OSAllocatedUnfairLock(initialState: RefreshTrackingState())
 
@@ -266,7 +276,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
             // test can join it deterministically — see the field's doc comment.
             // Behavior is identical to a bare `Task.detached { … }`: nothing
             // production awaits this handle.
-            let refreshTask = Task.detached(priority: .utility) { [weak self] in
+            let refreshTask = Task.detached(priority: backgroundPriority(.utility)) { [weak self] in
                 await self?.refreshFeedInBackground(url: url, cacheKey: cacheKey)
                 return ()
             }
@@ -321,7 +331,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
         cache.withLockUnchecked { $0.memoryCache.set(cachedFeed, for: cacheKey) }
         prewarmFormatEntriesCache(from: feed, cacheKey: cacheKey)
 
-        let preloadTask = Task.detached(priority: .background) {
+        let preloadTask = Task.detached(priority: backgroundPriority(.background)) {
             await self.preloadRelatedFacets(from: feed)
         }
         // Test-only: lets a test join the preload. No-op in production.
@@ -470,7 +480,10 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
     /// Changes NO production behavior: tracking is opt-in and defaults off, so
     /// production never appends to (or grows) the tracked-task array.
     public func _trackRefreshTasksForTesting(priority: TaskPriority = .utility) {
-        refreshTracking.withLock { $0.isTracking = true }
+        refreshTracking.withLock {
+            $0.isTracking = true
+            $0.priority = priority
+        }
     }
 
     /// TEST SEAM — deterministically await EVERY background stale-revalidate
