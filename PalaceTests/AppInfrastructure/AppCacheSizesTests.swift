@@ -322,6 +322,44 @@ final class TPPBookCoverRegistrySourceBytesTests: XCTestCase {
         try? FileManager.default.removeItem(at: root)
     }
 
+    /// New source bytes reaching the prune interval prune the disk cache to its
+    /// limit.
+    func testSourceBytesReachingThePruneInterval_pruneTheDiskCache() async throws {
+        let sourceCache = GeneralCache<String, Data>(cacheName: "Prune-\(UUID().uuidString)", mode: .diskOnly)
+        let registry = makePruningRegistry(sourceCache: sourceCache, interval: jpeg.count)
+        let book = makeBook()
+
+        _ = await registry.coverImage(for: book, displayPoints: 280)
+
+        let url = try XCTUnwrap(book.imageURL)
+        XCTAssertNil(sourceCache.get(for: TPPBookCoverRegistry.sourceKey(for: url)))
+        sourceCache.clear()
+    }
+
+    /// Below the prune interval the source bytes stay on disk.
+    func testSourceBytesUnderThePruneInterval_stayOnDisk() async throws {
+        let sourceCache = GeneralCache<String, Data>(cacheName: "Prune-\(UUID().uuidString)", mode: .diskOnly)
+        let registry = makePruningRegistry(sourceCache: sourceCache, interval: jpeg.count + 1)
+        let book = makeBook()
+
+        _ = await registry.coverImage(for: book, displayPoints: 280)
+
+        let url = try XCTUnwrap(book.imageURL)
+        XCTAssertEqual(sourceCache.get(for: TPPBookCoverRegistry.sourceKey(for: url)), jpeg)
+        sourceCache.clear()
+    }
+
+    /// A registry whose prune empties the disk cache at once when it runs.
+    private func makePruningRegistry(sourceCache: GeneralCache<String, Data>, interval: Int) -> TPPBookCoverRegistry {
+        let cache = ImageCache._makeIsolatedForTesting(cacheName: "Prune-\(UUID().uuidString)")
+        return TPPBookCoverRegistry(
+            imageCache: cache,
+            urlSession: .stubbedSession(),
+            sourceCache: sourceCache,
+            sourcePrunePolicy: .init(byteLimit: 0, interval: interval, schedule: { $0() })
+        )
+    }
+
     /// The source-byte caches keep nothing in memory (PP-5583).
     func testSourceCaches_holdNoBytesInMemory() throws {
         let instance = TPPBookCoverRegistry.makeInstanceSourceCache()

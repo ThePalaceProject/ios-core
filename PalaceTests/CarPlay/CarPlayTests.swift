@@ -68,9 +68,41 @@ class CarPlayTests: XCTestCase {
         XCTAssertTrue(loader.coverCalls.contains { $0.identifier == book.identifier })
     }
 
-    /// A book with a cover URL and no cover in memory: the image context's loader
-    /// answers nothing while the book is built.
-    private static func makeBookWithoutCover() -> TPPBook {
+    /// A book with only a thumbnail URL also gets its artwork from the loader.
+    func testCarPlayImageProvider_thumbnailURLOnly_asksTheLoader() async {
+        let previousLoader = TPPBookImageContext.imageLoaderProvider
+        defer { TPPBookImageContext.imageLoaderProvider = previousLoader }
+        let silent = MockImageLoader()
+        TPPBookImageContext.imageLoaderProvider = { silent }
+        let book = Self.makeBookWithoutCover(imageURL: false, thumbnailURL: true)
+        await drainMainQueueAsync()
+        let loader = MockImageLoader()
+        loader.stubbedCoverImage = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 60)).image { _ in }
+
+        _ = await CarPlayImageProvider(imageLoader: loader).imageSet(for: book)
+
+        XCTAssertTrue(loader.coverCalls.contains { $0.identifier == book.identifier })
+    }
+
+    /// A book with no cover URL gets the CarPlay placeholder without asking the loader.
+    func testCarPlayImageProvider_noCoverURL_usesThePlaceholderWithoutTheLoader() async {
+        let previousLoader = TPPBookImageContext.imageLoaderProvider
+        defer { TPPBookImageContext.imageLoaderProvider = previousLoader }
+        let silent = MockImageLoader()
+        TPPBookImageContext.imageLoaderProvider = { silent }
+        let book = Self.makeBookWithoutCover(imageURL: false, thumbnailURL: false)
+        await drainMainQueueAsync()
+        let loader = MockImageLoader()
+
+        let set = await CarPlayImageProvider(imageLoader: loader).imageSet(for: book)
+
+        XCTAssertNotNil(set)
+        XCTAssertFalse(loader.coverCalls.contains { $0.identifier == book.identifier })
+    }
+
+    /// A book with cover URLs as asked and no cover in memory: the image
+    /// context's loader answers nothing while the book is built.
+    private static func makeBookWithoutCover(imageURL: Bool = true, thumbnailURL: Bool = false) -> TPPBook {
         let id = "no-cover-\(UUID().uuidString)"
         return TPPBook(
             acquisitions: [],
@@ -78,8 +110,8 @@ class CarPlayTests: XCTestCase {
             categoryStrings: [],
             distributor: "",
             identifier: id,
-            imageURL: URL(string: "https://covers.example/\(id).jpg"),
-            imageThumbnailURL: nil,
+            imageURL: imageURL ? URL(string: "https://covers.example/\(id).jpg") : nil,
+            imageThumbnailURL: thumbnailURL ? URL(string: "https://covers.example/thumb/\(id).jpg") : nil,
             published: nil,
             publisher: "",
             subtitle: "",

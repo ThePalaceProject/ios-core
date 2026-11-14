@@ -105,6 +105,22 @@ actor TPPBookCoverRegistry {
     static let sourcePruneInterval = 10 * 1024 * 1024
     private var sourceBytesSincePrune = 0
 
+    /// How a prune runs. Production runs it on a background task; a test can
+    /// run it at once. With the limit and interval it is injected so a test can
+    /// reach the prune without writing 10 MB.
+    struct SourcePrunePolicy: Sendable {
+        var byteLimit: Int
+        var interval: Int
+        var schedule: @Sendable (@escaping @Sendable () -> Void) -> Void
+
+        static let production = SourcePrunePolicy(
+            byteLimit: TPPBookCoverRegistry.sourceByteLimit,
+            interval: TPPBookCoverRegistry.sourcePruneInterval,
+            schedule: { work in Task.detached(priority: .utility) { work() } }
+        )
+    }
+    private let sourcePrunePolicy: SourcePrunePolicy
+
     /// Dedup concurrent callers that want the same URL's bytes. A swimlane
     /// rendering 10 cells at once must only hit the network once per URL.
     private var inProgressDataTasks: [URL: Task<Data?, Never>] = [:]
@@ -203,10 +219,12 @@ actor TPPBookCoverRegistry {
         hostFailureTracker: HostFailureTracker = HostFailureTracker(),
         urlSession: URLSession = TPPBookCoverRegistry.imageSession,
         now: @escaping @Sendable () -> Date = Date.init,
-        sourceCache: GeneralCache<String, Data> = TPPBookCoverRegistry.makeInstanceSourceCache()
+        sourceCache: GeneralCache<String, Data> = TPPBookCoverRegistry.makeInstanceSourceCache(),
+        sourcePrunePolicy: SourcePrunePolicy = .production
     ) {
         self.imageCache = imageCache
         self.sourceCache = sourceCache
+        self.sourcePrunePolicy = sourcePrunePolicy
         self.hostFailureTracker = hostFailureTracker
         self.urlSession = urlSession
         self.now = now
@@ -589,11 +607,12 @@ actor TPPBookCoverRegistry {
 
     private func noteSourceBytesWritten(_ count: Int) {
         sourceBytesSincePrune += count
-        guard sourceBytesSincePrune >= Self.sourcePruneInterval else { return }
+        guard sourceBytesSincePrune >= sourcePrunePolicy.interval else { return }
         sourceBytesSincePrune = 0
         let cache = sourceCache
-        Task.detached(priority: .utility) {
-            cache.prune(maxBytes: TPPBookCoverRegistry.sourceByteLimit)
+        let limit = sourcePrunePolicy.byteLimit
+        sourcePrunePolicy.schedule {
+            cache.prune(maxBytes: limit)
         }
     }
 
