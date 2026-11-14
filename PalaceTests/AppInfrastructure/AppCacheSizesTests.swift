@@ -419,8 +419,8 @@ final class TPPBookCoverRegistrySourceBytesTests: XCTestCase {
 
     /// The app's image loader and the shared registry use one launch cache, so a
     /// cover fetched for the player is not fetched again for a list.
-    func testProductionImageLoader_sharesTheLaunchSourceCache() throws {
-        let loader = try XCTUnwrap(AppContainer.production().imageLoader as? ImageLoader)
+    func testProductionImageLoader_sharesTheLaunchSourceCache() {
+        let loader = AppContainer.makeProductionImageLoader(imageCache: MockImageCache())
         XCTAssertIdentical(loader.sourceCache, TPPBookCoverRegistry.launchSourceCache)
     }
 
