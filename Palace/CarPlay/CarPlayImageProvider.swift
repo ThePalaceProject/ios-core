@@ -111,7 +111,13 @@ final class CarPlayImageProvider {
         guard book.imageURL != nil || book.imageThumbnailURL != nil else {
             return nil
         }
-        return await imageLoader.coverImage(for: book)
+        // The completion form is called here on the main actor; the async form
+        // would send the non-Sendable loader off it.
+        return await withCheckedContinuation { continuation in
+            imageLoader.coverImage(for: book) { image in
+                continuation.resume(returning: image)
+            }
+        }
     }
 
     private func processForCarPlay(_ image: UIImage) -> UIImage {
