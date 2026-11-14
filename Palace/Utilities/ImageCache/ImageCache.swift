@@ -185,6 +185,10 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
     /// disk are not written again, and when every key is on disk the image is
     /// not resized or encoded at all.
     public nonisolated func set(_ image: UIImage, for keys: [String], expiresIn: TimeInterval?) {
+        // A generated placeholder is not stored (PP-5583): read back from disk
+        // it loses its mark and outranks the real cover, and kept in memory it
+        // answers the next fetch under the cover's key once the network is back.
+        guard !image.isGeneratedCoverPlaceholder else { return }
         var seen = Set<String>()
         let keys = keys.filter { seen.insert($0).inserted }
         guard !keys.isEmpty else { return }

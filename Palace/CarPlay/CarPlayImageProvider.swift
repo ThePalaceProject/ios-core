@@ -62,7 +62,9 @@ final class CarPlayImageProvider {
         // Check if book already has a loaded image
         if let existingImage = book.coverImage ?? book.thumbnailImage {
             let processed = processForCarPlay(existingImage)
-            imageLoader.set(processed, for: cacheKey)
+            if !existingImage.isGeneratedCoverPlaceholder {
+                imageLoader.set(processed, for: cacheKey)
+            }
             completion(processed)
             return
         }
@@ -76,7 +78,11 @@ final class CarPlayImageProvider {
             let finalImage = image ?? generatePlaceholder(for: book)
             let processed = processForCarPlay(finalImage)
 
-            imageLoader.set(processed, for: cacheKey)
+            // Artwork drawn from a placeholder is not cached, so the real cover
+            // is fetched once the network is back (PP-5583).
+            if let image, !image.isGeneratedCoverPlaceholder {
+                imageLoader.set(processed, for: cacheKey)
+            }
 
             completion(processed)
         }
