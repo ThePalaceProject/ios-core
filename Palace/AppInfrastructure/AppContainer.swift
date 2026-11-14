@@ -265,6 +265,13 @@ struct AppContainer: @unchecked Sendable {
         return session
     }
 
+    /// The app's image loader. It shares the launch's cover-bytes disk cache
+    /// with `TPPBookCoverRegistry.shared`, so a cover fetched for the player is
+    /// not fetched again for a list (PP-5583).
+    static func makeProductionImageLoader(imageCache: ImageCacheType) -> ImageLoader {
+        ImageLoader(imageCache: imageCache, sourceCache: TPPBookCoverRegistry.launchSourceCache)
+    }
+
     /// The trimmer for an audiobook session: it trims through `memoryRelease`
     /// and restores through `bookCoverStore` (PP-5581). A session built while
     /// the app is in the background (a relaunch for audio) starts in the
@@ -718,10 +725,7 @@ struct AppContainer: @unchecked Sendable {
         // Built before TPPBookRegistry, which takes ImageLoading as a required
         // init parameter (a default-arg resolution here would re-enter the lock).
         let imageCache = ImageCache.shared
-        let imageLoader: ImageLoading = ImageLoader(
-            imageCache: imageCache,
-            sourceCache: TPPBookCoverRegistry.launchSourceCache
-        )
+        let imageLoader: ImageLoading = makeProductionImageLoader(imageCache: imageCache)
         // Must be configured before the first TPPBook is constructed (the
         // registry construction below parses records).
         TPPBookImageContext.imageCacheProvider = { imageCache }

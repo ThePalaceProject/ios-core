@@ -85,7 +85,7 @@ class CarPlayTests: XCTestCase {
         let done = expectation(description: "artwork")
 
         provider.artwork(for: book) { _ in done.fulfill() }
-        await fulfillment(of: [done], timeout: 5)
+        await fulfillment(of: [done], timeout: 5)  // STARVE-001-OK: one main-actor Task awaiting a mock loader that answers on the next main-queue turn
 
         XCTAssertFalse(loader.setKeys.contains("carplay_\(book.identifier)"))
     }
@@ -105,7 +105,7 @@ class CarPlayTests: XCTestCase {
         let done = expectation(description: "artwork")
 
         CarPlayImageProvider(imageLoader: loader).artwork(for: book) { _ in done.fulfill() }
-        await fulfillment(of: [done], timeout: 5)
+        await fulfillment(of: [done], timeout: 5)  // STARVE-001-OK: one main-actor Task awaiting a mock loader that answers on the next main-queue turn
 
         XCTAssertFalse(loader.setKeys.contains("carplay_\(book.identifier)"))
     }
@@ -126,7 +126,7 @@ class CarPlayTests: XCTestCase {
         let done = expectation(description: "artwork")
 
         CarPlayImageProvider(imageLoader: loader).artwork(for: book) { _ in done.fulfill() }
-        await fulfillment(of: [done], timeout: 5)
+        await fulfillment(of: [done], timeout: 5)  // STARVE-001-OK: completion runs synchronously from the book's in-memory cover; no async work
 
         XCTAssertFalse(loader.setKeys.contains("carplay_\(book.identifier)"))
         withExtendedLifetime(placeholder) {}
