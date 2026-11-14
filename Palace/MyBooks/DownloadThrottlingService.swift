@@ -172,7 +172,6 @@ final class DownloadThrottlingService: @unchecked Sendable {
     /// connection mid-stream. `internal` (not `private`) so
     /// callers already inside an `async` context — and tests — can `await` the
     /// suspend fan-out to completion deterministically instead of polling.
-    /// Behavior is unchanged; only the access level widened.
     func pauseAllDownloadsAsync() async {
         let allInfo = await stateManager.bookIdentifierToDownloadInfo.values()
         for info in allInfo {
