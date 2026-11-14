@@ -130,6 +130,41 @@ final class BackgroundPlaybackMemoryTrimmerTests: XCTestCase {
         XCTAssertEqual(restores, 0)
     }
 
+    // MARK: - Container wiring
+
+    /// A session built while the app is in the background trims as soon as
+    /// playback starts; one built in the foreground waits for the background.
+    func testContainerTrimmer_builtInBackground_trimsOnPlayback() {
+        let coordinator = MemoryReleaseCoordinator(center: NotificationCenter())
+        let owner = NSObject()
+        let released = ReleaseCount()
+        coordinator.register(owner, stage: .bookCells) { _ in released.increment() }
+        let isPlaying = CurrentValueSubject<Bool, Never>(false)
+        let store = BookCoverStore.shared
+        let background = AppContainer.makeBackgroundPlaybackTrimmer(
+            isPlaying: isPlaying.eraseToAnyPublisher(), applicationState: .background,
+            memoryRelease: coordinator, bookCoverStore: store, center: center
+        )
+        let foregroundPlaying = CurrentValueSubject<Bool, Never>(false)
+        let foreground = AppContainer.makeBackgroundPlaybackTrimmer(
+            isPlaying: foregroundPlaying.eraseToAnyPublisher(), applicationState: .active,
+            memoryRelease: coordinator, bookCoverStore: store, center: NotificationCenter()
+        )
+
+        isPlaying.send(true)
+        XCTAssertEqual(released.value, 1, "the background-built trimmer trims on playback")
+        foregroundPlaying.send(true)
+        XCTAssertEqual(released.value, 1, "the foreground-built trimmer does not")
+        withExtendedLifetime((background, foreground, owner)) {}
+    }
+
+    private final class ReleaseCount: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+        var value: Int { lock.withLock { count } }
+        func increment() { lock.withLock { count += 1 } }
+    }
+
     // MARK: - Stages
 
     /// A trim releases screen memory only: never the player's LCP decrypt cache,

@@ -256,13 +256,34 @@ struct AppContainer: @unchecked Sendable {
         // Screen memory goes while the app is in the background with this
         // session playing (PP-5581). Built with the session, so launch work
         // does not change.
-        services.backgroundPlaybackTrimmer = BackgroundPlaybackMemoryTrimmer(
+        services.backgroundPlaybackTrimmer = Self.makeBackgroundPlaybackTrimmer(
             isPlaying: session.$isPlaying.eraseToAnyPublisher(),
-            startsInBackground: UIApplication.shared.applicationState == .background,
-            trim: { [memoryRelease] in memoryRelease.releaseAll(stages: BackgroundPlaybackMemoryTrimmer.stages) },
-            restore: { [bookCoverStore] in bookCoverStore.restoreReleasedImages() }
+            applicationState: UIApplication.shared.applicationState,
+            memoryRelease: memoryRelease,
+            bookCoverStore: bookCoverStore
         )
         return session
+    }
+
+    /// The trimmer for an audiobook session: it trims through `memoryRelease`
+    /// and restores through `bookCoverStore` (PP-5581). A session built while
+    /// the app is in the background (a relaunch for audio) starts in the
+    /// background.
+    @MainActor
+    static func makeBackgroundPlaybackTrimmer(
+        isPlaying: AnyPublisher<Bool, Never>,
+        applicationState: UIApplication.State,
+        memoryRelease: MemoryReleaseCoordinator,
+        bookCoverStore: BookCoverStore,
+        center: NotificationCenter = .default
+    ) -> BackgroundPlaybackMemoryTrimmer {
+        BackgroundPlaybackMemoryTrimmer(
+            center: center,
+            isPlaying: isPlaying,
+            startsInBackground: applicationState == .background,
+            trim: { memoryRelease.releaseAll(stages: BackgroundPlaybackMemoryTrimmer.stages) },
+            restore: { bookCoverStore.restoreReleasedImages() }
+        )
     }
 
     /// Side-loading (PP-2678) — process-wide registry of side-loaded books.

@@ -659,6 +659,22 @@ final class BookCoverStoreTests: XCTestCase {
         XCTAssertIdentical(limited.state(for: "weak-a").coverImage, drawn)
     }
 
+    /// A released thumbnail a view still holds is restored as the same image.
+    func testRestoreReleasedImages_restoresAHeldThumbnail() async {
+        let limited = makeLimitedStore(byteLimit: .max, keepRecent: 0)
+        let book = Self.makeBook("restore-thumb", cache: CountingCache(), store: limited)
+        await settle()
+        let thumbnail = solidImage(width: 5, height: 5)
+        book.thumbnailImage = thumbnail
+        limited.releaseImages()
+        XCTAssertNil(limited.state(for: "restore-thumb").thumbnailImage, "precondition: released")
+
+        limited.restoreReleasedImages()
+
+        XCTAssertIdentical(limited.state(for: "restore-thumb").thumbnailImage, thumbnail)
+        XCTAssertEqual(limited.imageByteCount, thumbnail.decodedBytes)
+    }
+
     /// A released cover nothing else holds is freed, and a restore does not bring
     /// it back.
     func testReleasedCoverHeldNowhere_restoreDoesNotBringItBack() async {
