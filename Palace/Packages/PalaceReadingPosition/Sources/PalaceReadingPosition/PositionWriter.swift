@@ -41,9 +41,31 @@ public protocol PositionWriter: Sendable {
     /// - Throws: `PositionWriterError` on network/adapter failure.
     func load(for bookID: String) async throws -> PositionSnapshot?
 
-    /// Cancel any pending writes for a book. Used at session teardown.
+    /// Cancel the writes the writer started on its own for a book. Used at
+    /// session teardown.
+    ///
+    /// Drops the queued snapshot, stops a scheduled flush from posting, and
+    /// cancels a flush post that is running; returns after that post has
+    /// ended. A post that completes after this call brings back no queued
+    /// snapshot and starts no second post. Posts started by `save(_:)` run in
+    /// the caller's task and are the caller's to cancel.
+    ///
+    /// Cancelling ends the writer's wait; an adapter that ignores task
+    /// cancellation can still deliver its request to the server.
     ///
     /// Idempotent. Cancelling a book with no pending state is a no-op.
     /// Cancelling for one book does not affect any other book's queue.
     func cancel(for bookID: String) async
+
+    /// Post the book's queued snapshot now instead of when its throttle
+    /// window ends. Used when a reader closes, so the last position reaches
+    /// the server even if the app is suspended soon after (PP-5595).
+    ///
+    /// The post runs in a writer-owned task inside a background task, so a
+    /// caller that does not await this call still gets the post. Returns
+    /// after that post, and any flush post already running for the book,
+    /// has ended. `cancel(for:)` cancels it like any other flush post.
+    ///
+    /// A no-op when nothing is queued. Other books are unaffected.
+    func flush(for bookID: String) async
 }

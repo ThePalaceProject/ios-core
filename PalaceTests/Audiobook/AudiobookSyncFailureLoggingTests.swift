@@ -57,6 +57,7 @@ private final class FailingPositionWriter: PositionWriter, @unchecked Sendable {
     func save(_ snapshot: PositionSnapshot) async throws -> ServerPositionID? { throw error }
     func load(for bookID: String) async throws -> PositionSnapshot? { nil }
     func cancel(for bookID: String) async {}
+    func flush(for bookID: String) async {}
 }
 
 /// Carries a unique token so each run can find its own line in a log file that

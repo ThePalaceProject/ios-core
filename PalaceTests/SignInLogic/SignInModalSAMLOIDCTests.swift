@@ -7,7 +7,7 @@ import PalaceBookModel
 ///
 /// The !needsAuth guard at SignInModalPresenter must return true
 /// for SAML/OIDC so the sign-in modal is presented when needed.
-/// The handleBorrowAuthErrorIfNeeded guard must allow re-auth for
+/// The borrow failure plan must allow re-auth for
 /// genuinely expired SAML/OIDC sessions on unborrowed books.
 @MainActor
 final class SignInModalSAMLOIDCTests: XCTestCase {
@@ -67,7 +67,7 @@ final class SignInModalSAMLOIDCTests: XCTestCase {
         }
     }
 
-    // MARK: - handleBorrowAuthErrorIfNeeded: SAML session expiry
+    // MARK: - Borrow failure plan: SAML session expiry
 
     /// When a book is NOT yet borrowed (.unregistered), a SAML session
     /// expiry during borrow MUST trigger re-auth — the already-borrowed

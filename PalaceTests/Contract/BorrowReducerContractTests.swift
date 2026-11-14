@@ -65,6 +65,31 @@ final class BorrowReducerContractTests: XCTestCase {
                 ]
             )
         }
+        // The same row with the `.returning` override armed: only `.unregistered`
+        // is applied, and it disarms the override (PP-5493).
+        for newState in registryStates {
+            var state = BorrowState(
+                bookState: .returning,
+                localBookStateOverride: .returning,
+                downloadProgress: 0,
+                processingButtons: preFlags,
+                isManagingHold: false,
+                showHalfSheet: true
+            )
+            _ = BorrowReducer.reduce(&state, .registryStateChanged(newState))
+            log.record(
+                "registryStateChanged.overrideArmed",
+                args: [
+                    "input.priorBookState": "returning",
+                    "input.newRegistryState": "\(newState.stringValue())",
+                    "output.bookState": "\(state.bookState.stringValue())",
+                    "output.processingButtons": sortedFlags(state.processingButtons),
+                    "output.isManagingHold": state.isManagingHold,
+                    "output.showHalfSheet": state.showHalfSheet,
+                    "output.localBookStateOverride": state.localBookStateOverride.map { $0.stringValue() } ?? "nil",
+                ]
+            )
+        }
         ContractSnapshot.assert(log, named: "registryStateChanged_allCases")
     }
 
@@ -94,6 +119,34 @@ final class BorrowReducerContractTests: XCTestCase {
                 showHalfSheet: true
             )
             _ = BorrowReducer.reduce(&state, action)
+            log.record(
+                name,
+                args: [
+                    "output.bookState": "\(state.bookState.stringValue())",
+                    "output.processingButtons": sortedFlags(state.processingButtons),
+                    "output.isManagingHold": state.isManagingHold,
+                    "output.showHalfSheet": state.showHalfSheet,
+                    "output.downloadProgress": state.downloadProgress,
+                    "output.localBookStateOverride": state.localBookStateOverride.map { $0.stringValue() } ?? "nil",
+                ]
+            )
+        }
+        // `.returnFinished` from a return still showing, and after a re-borrow
+        // already replaced it (PP-5493).
+        let returnFinishedStarts: [(String, TPPBookState, TPPBookState?)] = [
+            ("returnFinished.stillReturning", .returning, .returning),
+            ("returnFinished.afterNewLoan", .downloadNeeded, nil),
+        ]
+        for (name, bookState, override) in returnFinishedStarts {
+            var state = BorrowState(
+                bookState: bookState,
+                localBookStateOverride: override,
+                downloadProgress: 0,
+                processingButtons: [.get, .download, .retry, .returning, .reserve],
+                isManagingHold: false,
+                showHalfSheet: true
+            )
+            _ = BorrowReducer.reduce(&state, .returnFinished)
             log.record(
                 name,
                 args: [

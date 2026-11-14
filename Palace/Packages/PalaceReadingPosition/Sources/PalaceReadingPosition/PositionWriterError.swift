@@ -31,6 +31,9 @@ public enum PositionWriterError: Error, Equatable, Sendable {
     /// server contract.
     case malformedSnapshot
 
-    /// The pending write was explicitly cancelled via `cancel(for:)`.
+    /// The post was cancelled before it completed: the task that called
+    /// `save(_:)` was cancelled, or the background task expired. A deferred
+    /// flush stopped by `cancel(for:)` ends the same way but has no caller to
+    /// throw to.
     case cancelled
 }

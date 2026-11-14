@@ -73,6 +73,10 @@ private final class CallLogReader2Writer: PositionWriter, @unchecked Sendable {
     func cancel(for bookID: String) async {
         log.record("writer.cancel", args: ["bookID": bookID])
     }
+
+    func flush(for bookID: String) async {
+        log.record("writer.flush", args: ["bookID": bookID])
+    }
 }
 
 // MARK: - Recording registry (same shape as the audiobook contract test)

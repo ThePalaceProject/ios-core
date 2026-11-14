@@ -58,6 +58,15 @@ final class EffectBoundaryTests: XCTestCase {
         XCTAssertEqual(result, "marker=5", "init(run:) must store and invoke the exact closure supplied")
     }
 
+    /// A runner skips scheduling work for `.none` only, so the marker must be
+    /// set by `.none` and by no other factory.
+    func test_isNone_isTrueOnlyForNone() {
+        XCTAssertTrue(Effect<Int, ProbeEnv>.none.isNone)
+        XCTAssertFalse(Effect<Int, ProbeEnv>.send(1).isNone)
+        XCTAssertFalse(Effect<Int, ProbeEnv>.task { _ in nil }.isNone)
+        XCTAssertFalse(Effect<Int, ProbeEnv>(run: { _ in nil }).isNone)
+    }
+
     // MARK: - Package-boundary Sendable guarantee
 
     /// Compile-time witness for the boundary. The `Environment: Sendable` bound
@@ -69,7 +78,7 @@ final class EffectBoundaryTests: XCTestCase {
     func test_authEnvironment_satisfiesSendableBound_andEffectResolvesOverIt() async {
         assertSendable(AuthEnvironment.self)
         let effect: Effect<AuthAction, AuthEnvironment> = .none
-        let result = await effect.run(AuthEnvironment())
+        let result = await effect.run(AuthEnvironment(validateCredentials: {}))
         XCTAssertNil(result, "AuthReducer's effect type must resolve — .none over AuthEnvironment yields no action")
     }
 

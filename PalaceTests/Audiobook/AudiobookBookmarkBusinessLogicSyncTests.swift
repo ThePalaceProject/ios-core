@@ -22,6 +22,7 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
     private final class ScriptedAnnotationsServer: NSObject, AnnotationsManager, @unchecked Sendable {
         private let lock = NSLock()
         private var _serverBookmarks: [Bookmark]?
+        private var _serverAnnotations: [[String: Any]]?
         private var _deleteResults: [String: Bool] = [:]
         private var _deleteCalls: [String] = []
         private var _postedSelectors: [String] = []
@@ -31,6 +32,13 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
         var serverBookmarks: [Bookmark]? {
             get { lock.withLock { _serverBookmarks } }
             set { lock.withLock { _serverBookmarks = newValue } }
+        }
+        /// Annotations as the server returns them. When set, they are parsed by
+        /// `TPPBookmarkFactory`, as the production fetch does, in place of
+        /// `serverBookmarks`.
+        var serverAnnotations: [[String: Any]]? {
+            get { lock.withLock { _serverAnnotations } }
+            set { lock.withLock { _serverAnnotations = newValue } }
         }
         /// Result per annotation ID; IDs not listed succeed.
         var deleteResults: [String: Bool] {
@@ -70,6 +78,12 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
         }
 
         func getServerBookmarks(forBook book: TPPBook?, atURL annotationURL: URL?, motivation: TPPBookmarkSpec.Motivation, completion: @escaping ([Bookmark]?) -> Void) {
+            if let annotations = serverAnnotations, let book {
+                completion(annotations.compactMap {
+                    TPPBookmarkFactory.make(fromServerAnnotation: $0, annotationType: motivation, book: book)
+                })
+                return
+            }
             completion(serverBookmarks)
         }
 
@@ -441,6 +455,153 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
         XCTAssertEqual(localBookmarks.map(\.annotationId), ["srv-1"])
     }
 
+    // MARK: - Bookmarks already on the server (PP-5577)
+
+    /// A bookmark annotation as the server returns one this app uploaded: the
+    /// selector holds the app's encoding, including its empty `annotationId`.
+    private func serverAnnotation(id: String, selector: [String: Any]) -> [String: Any] {
+        let selectorData = try! JSONSerialization.data(withJSONObject: selector, options: [.sortedKeys])
+        return [
+            TPPBookmarkSpec.Id.key: id,
+            TPPBookmarkSpec.Target.key: [
+                TPPBookmarkSpec.Target.Source.key: bookIdentifier,
+                TPPBookmarkSpec.Target.Selector.key: [
+                    TPPBookmarkSpec.Target.Selector.Value.key: String(data: selectorData, encoding: .utf8)!
+                ]
+            ],
+            TPPBookmarkSpec.Motivation.key: TPPBookmarkSpec.Motivation.bookmark.rawValue,
+            TPPBookmarkSpec.Body.key: [
+                TPPBookmarkSpec.Body.Device.key: "urn:uuid:other-device",
+                TPPBookmarkSpec.Body.Time.key: "2024-06-07T01:58:20Z"
+            ]
+        ]
+    }
+
+    /// The v1 bookmark from the PP-5577 report, as uploaded by an earlier version.
+    private var authorsNoteSelector: [String: Any] {
+        ["@type": "LocatorAudioBookTime", "@version": 1, "annotationId": "", "chapter": 1, "part": 0,
+         "title": "Author's Note ", "time": 85_000, "readingOrderItemOffsetMilliseconds": 85_000,
+         "timeStamp": "2024-06-07T01:58:20Z"]
+    }
+
+    private func v2Selector(trackIndex: Int, offsetMs: Int) -> [String: Any] {
+        ["@type": "LocatorAudioBookTime", "@version": 2, "annotationId": "",
+         "readingOrderItem": tracks.tracks[trackIndex].key, "readingOrderItemOffsetMilliseconds": offsetMs,
+         "timeStamp": "2026-01-01T00:00:00Z"]
+    }
+
+    /// Opening a book whose bookmarks are already on the server, then opening
+    /// it again, uploads nothing.
+    func testReopen_BookmarksAlreadyOnServer_AreNotUploadedAgain() async {
+        server.serverAnnotations = [
+            serverAnnotation(id: "srv-16890", selector: authorsNoteSelector),
+            serverAnnotation(id: "srv-v2", selector: v2Selector(trackIndex: 2, offsetMs: 7_000))
+        ]
+        server.postOutcome = .success(AnnotationResponse(serverId: "srv-duplicate", timeStamp: nil))
+
+        _ = await fetch()
+        _ = await fetch()
+
+        XCTAssertEqual(server.postedSelectors, [])
+    }
+
+    /// Bookmarks fetched from the server are stored under the server's
+    /// annotation IDs, so they count as synced.
+    func testSync_BookmarksFetchedFromServer_AreStoredWithServerIDs() async {
+        server.serverAnnotations = [
+            serverAnnotation(id: "srv-16890", selector: authorsNoteSelector),
+            serverAnnotation(id: "srv-v2", selector: v2Selector(trackIndex: 2, offsetMs: 7_000))
+        ]
+
+        _ = await sync()
+
+        XCTAssertEqual(Set(localBookmarks.map(\.annotationId)), ["srv-16890", "srv-v2"])
+    }
+
+    /// A copy stored by an earlier version without the server's ID is matched
+    /// to the server bookmark at its position and takes its ID, instead of
+    /// being uploaded again.
+    func testSync_StoredCopyWithoutIDOfServerBookmark_TakesServerIDWithoutUpload() async {
+        storeLocally(bookmark("", trackIndex: 2, offsetMs: 7_000))
+        server.serverAnnotations = [serverAnnotation(id: "srv-v2", selector: v2Selector(trackIndex: 2, offsetMs: 7_000))]
+        server.postOutcome = .success(AnnotationResponse(serverId: "srv-duplicate", timeStamp: nil))
+
+        _ = await sync()
+
+        XCTAssertEqual(server.postedSelectors, [])
+        XCTAssertEqual(localBookmarks.map(\.annotationId), ["srv-v2"])
+    }
+
+    /// Two stored copies without an ID of one server bookmark end as one
+    /// record with the server's ID, and nothing is uploaded.
+    func testSync_TwoStoredCopiesWithoutIDOfServerBookmark_EndAsOneRecord() async {
+        storeLocally(bookmark("", trackIndex: 2, offsetMs: 7_000))
+        let leftover = bookmark("", trackIndex: 2, offsetMs: 7_000)
+        leftover.lastSavedTimeStamp = "2025-01-01T00:00:00Z"
+        storeLocally(leftover)
+        server.serverAnnotations = [serverAnnotation(id: "srv-v2", selector: v2Selector(trackIndex: 2, offsetMs: 7_000))]
+        server.postOutcome = .success(AnnotationResponse(serverId: "srv-duplicate", timeStamp: nil))
+
+        _ = await sync()
+
+        XCTAssertEqual(server.postedSelectors, [])
+        XCTAssertEqual(localBookmarks.map(\.annotationId), ["srv-v2"])
+    }
+
+    /// An unsynced bookmark at a position the server does not hold is still
+    /// uploaded, even when the server holds other bookmarks.
+    func testSync_UnsyncedBookmarkAtPositionNotOnServer_IsUploaded() async {
+        storeLocally(bookmark("", trackIndex: 2, offsetMs: 7_001))
+        server.serverAnnotations = [serverAnnotation(id: "srv-v2", selector: v2Selector(trackIndex: 2, offsetMs: 7_000))]
+        server.postOutcome = .success(AnnotationResponse(serverId: "srv-new", timeStamp: nil))
+
+        _ = await sync()
+
+        XCTAssertEqual(server.postedSelectors.count, 1)
+        XCTAssertEqual(Set(localBookmarks.map(\.annotationId)), ["srv-new", "srv-v2"])
+    }
+
+    /// A server bookmark without an ID is not a synced copy: the stored
+    /// bookmark at its position is still uploaded.
+    func testSync_ServerBookmarkWithoutID_DoesNotBlockUploadOfStoredCopy() async {
+        storeLocally(bookmark("", trackIndex: 2, offsetMs: 7_000))
+        server.serverAnnotations = [serverAnnotation(id: "", selector: v2Selector(trackIndex: 2, offsetMs: 7_000))]
+        server.postOutcome = .success(AnnotationResponse(serverId: "srv-new", timeStamp: nil))
+
+        _ = await sync()
+
+        XCTAssertEqual(server.postedSelectors.count, 1)
+        XCTAssertEqual(localBookmarks.map(\.annotationId), ["srv-new"])
+    }
+
+    /// With sync off, a stored unsynced copy does not take the ID of a server
+    /// bookmark: nothing from the server is applied.
+    func testSync_SyncNotPermitted_StoredCopyDoesNotTakeServerID() async {
+        storeLocally(bookmark("", trackIndex: 2, offsetMs: 7_000))
+        server.syncPermitted = false
+        server.serverAnnotations = [serverAnnotation(id: "srv-v2", selector: v2Selector(trackIndex: 2, offsetMs: 7_000))]
+
+        _ = await sync()
+
+        XCTAssertEqual(localBookmarks.map(\.annotationId), [""])
+    }
+
+    /// A deleted bookmark's stale stored copy is hidden before uploads, so the
+    /// server copy is not merged back.
+    func testSync_DeletedBookmarkWithStaleStoredCopy_DoesNotReturn() async {
+        let synced = bookmark("srv-v2", trackIndex: 2, offsetMs: 7_000)
+        storeLocally(synced)
+        let deleted = await delete(synced)
+        XCTAssertTrue(deleted)
+        storeLocally(bookmark("", trackIndex: 2, offsetMs: 7_000))
+        server.serverAnnotations = [serverAnnotation(id: "srv-v2", selector: v2Selector(trackIndex: 2, offsetMs: 7_000))]
+
+        let result = await sync()
+
+        XCTAssertTrue(result.isEmpty)
+        XCTAssertFalse(localBookmarks.contains { $0.annotationId == "srv-v2" })
+    }
+
     // MARK: - Bookmark added while offline
 
     private func addBookmark(at position: TrackPosition) async {
@@ -466,6 +627,18 @@ final class AudiobookBookmarkBusinessLogicSyncTests: XCTestCase {
         await addBookmark(at: TrackPosition(track: tracks.tracks[1], timestamp: 7.0, tracks: tracks))
         server.postOutcome = .success(AnnotationResponse(serverId: "srv-9", timeStamp: "2026-02-02T00:00:00Z"))
         _ = await fetch()
+    }
+
+    /// A bookmark added at a restored position does not take the listening
+    /// position's annotation ID when its own post fails.
+    func testSaveBookmark_AtPositionWithAnnotationID_PostFails_StaysUnsynced() async {
+        server.postOutcome = .failure(NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet))
+        var restored = TrackPosition(track: tracks.tracks[1], timestamp: 7.0, tracks: tracks)
+        restored.annotationId = "srv-listening-position"
+
+        await addBookmark(at: restored)
+
+        XCTAssertEqual(localBookmarks.map(\.annotationId), [""])
     }
 
     /// A bookmark added offline and synced once is stored once, as the synced record.

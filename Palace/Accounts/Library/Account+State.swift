@@ -23,8 +23,9 @@ extension Account {
     /// fetches.
     ///
     /// Forward-only under the cold-launch path; cycles only on library
-    /// reselect (reset to `.notLoaded`) or user-initiated retry of a
-    /// failed load (`.detailsFailed` → `.detailsLoading`).
+    /// reselect (reset to `.notLoaded`), user-initiated retry of a failed
+    /// load, or a network reconnect after a failed fetch (both
+    /// `.detailsFailed` → `.detailsLoading`).
     ///
     /// `.detailsFailed` means the load pipeline produced an error.
     /// `.detailsEvicted` is a separate terminal: the eviction marker, kept

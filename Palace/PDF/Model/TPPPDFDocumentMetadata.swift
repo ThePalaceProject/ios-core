@@ -65,8 +65,13 @@ import PalaceBookRegistry
 
     /// Returns `true` if current account allows synchronisation
     private var canSync: Bool {
-        TPPAnnotations.syncIsPossibleAndPermitted()
+        syncPermitted()
     }
+
+    private let syncPermitted: () -> Bool
+
+    /// The page last written to the registry, so close does not save it twice.
+    private var lastSavedPage: Int?
 
     /// Initializes metadata.
     /// - Parameter bookIdentifier: PDF book identifier string.
@@ -75,12 +80,16 @@ import PalaceBookRegistry
     /// `bookIdentifier` must be present in the registry, otherwise the app crashes..
     init(with book: TPPBook,
          bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry,
-         positionWriter: PositionWriter? = nil) {
+         positionWriter: PositionWriter? = nil,
+         syncPermitted: @escaping () -> Bool = { TPPAnnotations.syncIsPossibleAndPermitted() }) {
         self.book = book
         self.bookRegistry = bookRegistry
         self.positionWriter = positionWriter ?? EPUBPositionWriterFactory.make(for: book)
+        self.syncPermitted = syncPermitted
         self.deviceID = AnnotationDevice.currentID()
-        currentPage = bookRegistry.location(forIdentifier: book.identifier)?.pageNumber ?? 0
+        let storedPage = bookRegistry.location(forIdentifier: book.identifier)?.pageNumber ?? 0
+        currentPage = storedPage
+        lastSavedPage = storedPage
         bookRegistry.setState(.used, for: book.identifier)
         super.init()
         bookmarks = localBookmarks
@@ -99,26 +108,51 @@ import PalaceBookRegistry
     ///
     /// This function preserves last opened page in the book registry.
     func setCurrentPage(_ pageNumber: Int) {
+        savePage(pageNumber)
+    }
+
+    /// Saves the page locally and, when sync is on, starts its server post.
+    /// Returns that post's task.
+    @discardableResult
+    private func savePage(_ pageNumber: Int) -> Task<Void, Never>? {
         let page = TPPPDFPage(pageNumber: pageNumber)
         guard let locationString = page.locationString,
               let bookmarkSelector = page.bookmarkSelector,
               let location = TPPBookLocation(locationString: locationString, renderer: rendererString)
         else {
             Log.error(#file, "Error creating and saving PDF Page Location")
-            return
+            return nil
         }
         bookRegistry.setLocation(location, forIdentifier: self.bookIdentifier)
-        if canSync {
-            let snapshot = PositionSnapshot(
-                bookID: bookIdentifier,
-                format: .pdfPage,
-                payload: Data(bookmarkSelector.utf8),
-                timestamp: Date(),
-                device: deviceID
-            )
-            Task { [positionWriter] in
-                _ = try? await positionWriter.save(snapshot)
-            }
+        lastSavedPage = pageNumber
+        guard canSync else { return nil }
+        let snapshot = PositionSnapshot(
+            bookID: bookIdentifier,
+            format: .pdfPage,
+            payload: Data(bookmarkSelector.utf8),
+            timestamp: Date(),
+            device: deviceID
+        )
+        return Task { [positionWriter] in
+            _ = try? await positionWriter.save(snapshot)
+        }
+    }
+
+    /// Called when the reader leaves the screen. Saves a page change the
+    /// one-second debounce has not saved yet, then asks the writer to post
+    /// its queued position now instead of when the throttle window ends
+    /// (PP-5595). The writer runs that post in a background task, so leaving
+    /// the reader never waits on the network.
+    ///
+    /// Leaves the page subscription in place: the view also disappears on a
+    /// tab switch, and reading continues when the patron comes back.
+    @discardableResult
+    func storeFinalPositionAndFlush() -> Task<Void, Never> {
+        let save = currentPage == lastSavedPage ? nil : savePage(currentPage)
+        let bookID = bookIdentifier
+        return Task { [positionWriter] in
+            await save?.value
+            await positionWriter.flush(for: bookID)
         }
     }
 

@@ -127,6 +127,7 @@ basicInfoLoaded ─loadCatalogs.fetchAuthDoc(uuid)──→ detailsLoading
 detailsLoading ──auth doc parse success──────────→ detailsLoaded(Details)
 detailsLoading ──auth doc fetch fails────────────→ detailsFailed(Error)
 detailsFailed ──user-initiated retry─────────────→ detailsLoading
+detailsFailed(authDocumentFetchFailed) ──network reconnect──→ detailsLoading
 detailsLoaded ──library reselect / sign-out──────→ notLoaded
 any but detailsLoading/detailsEvicted ──direct loadAuthenticationDocument success──→ detailsLoaded(Details)
 ```
@@ -139,7 +140,7 @@ successful load leaves `details` and `loadState` in agreement. It leaves
 finishes or the account becomes current again. This edge is not limited to
 user-initiated retries.
 
-**Invariant:** monotonic forward under the cold-launch path; cycles only on user-initiated retry or library reselect/sign-out.
+**Invariant:** monotonic forward under the cold-launch path; cycles only on user-initiated retry, library reselect/sign-out, or a network reconnect after a failed fetch (`AuthDocumentLoader.driveCurrentAccountAuthDocAfterReconnect`, PP-5492).
 
 **Single-flight ownership:** `AccountsManager` is responsible for ensuring only one in-flight `fetchAuthDoc(uuid)` per UUID. `Account.awaitReady()` does not enforce single-flight at the gate — it just observes the store's stream. Multiple concurrent `awaitReady()` calls per UUID share the same in-flight fetch via the store's broadcast semantics.
 

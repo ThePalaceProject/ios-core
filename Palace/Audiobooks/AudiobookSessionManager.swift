@@ -1053,15 +1053,12 @@ public final class AudiobookSessionManager: ObservableObject {
 
         let bookId = currentBook?.identifier
 
-        // 3.2.3 Cause 2: cancel any pending throttled remote listening-position
-        // write BEFORE tearing down the manager, so a queued snapshot can't
-        // flush after teardown and resurrect a stale server position. Must run
-        // while `manager?.bookmarkDelegate` (the writer's owner) is still live.
-        if let bookId {
-            await cancelPendingRemotePositionWrite(forBookId: bookId)
-        }
-
-        if persistFinalPosition {
+        // Must run while `manager?.bookmarkDelegate` (the writer's owner) is
+        // still live, before the teardown below.
+        await Self.settleRemotePosition(
+            logic: Self.positionLogic(manager?.bookmarkDelegate, bookId: bookId),
+            persistFinalPosition: persistFinalPosition
+        ) {
             // Prefer the live position from the player over the cached value, which
             // may lag behind if the user scrubbed or the position update hadn't fired yet.
             let livePosition = manager?.audiobook.player.currentTrackPosition ?? currentPosition
@@ -1114,24 +1111,6 @@ public final class AudiobookSessionManager: ObservableObject {
         playbackStatePublisher.send(state)
 
         Log.info(#file, "Playback stopped and session cleared")
-    }
-
-    /// Cancels any pending throttled remote
-    /// listening-position write for `bookId` by routing to the live bookmark
-    /// delegate (`AudiobookBookmarkBusinessLogic`) that owns the
-    /// `RemotePositionWriter`. Only cancels when `bookId` is the active
-    /// session's book (a queued write can only exist for the book whose
-    /// delegate is currently bound); a no-op otherwise. This is the single
-    /// implementation used by both `stopPlayback` (self) and the
-    /// `BookReturnService` return path (via the `AudiobookSessionManaging`
-    /// protocol on `AppContainer.audiobookSession`).
-    @MainActor
-    func cancelPendingRemotePositionWrite(forBookId bookId: String) async {
-        guard let logic = manager?.bookmarkDelegate as? AudiobookBookmarkBusinessLogic,
-              logic.book.identifier == bookId else {
-            return
-        }
-        await logic.cancelPendingRemotePositionWrite()
     }
 
     /// Dismisses the audiobook player view on the phone.

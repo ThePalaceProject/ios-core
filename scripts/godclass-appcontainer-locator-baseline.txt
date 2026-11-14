@@ -74,4 +74,6 @@
 #   routes the download center's two sign-in prompts through one bound closure.
 # 202 -> 200: PP-5545 gives the audiobook session its container's playback
 #   bootstrapper through a provider instead of two AppContainer.production() reads.
-200
+# 200 -> 198: PP-5494 gives ReaderService its container's download center and
+#   book registry instead of four AppContainer.production() reads in the re-download.
+198

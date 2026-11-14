@@ -53,6 +53,7 @@ private final class StubPositionWriter: PositionWriter, @unchecked Sendable {
 
     func load(for bookID: String) async throws -> PositionSnapshot? { nil }
     func cancel(for bookID: String) async {}
+    func flush(for bookID: String) async {}
 }
 
 /// Routes location reads and writes through the production `BookmarkManager`

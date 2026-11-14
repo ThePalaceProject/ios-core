@@ -1074,6 +1074,15 @@ final class BookRegistrySync: @unchecked Sendable {
     }
   }
 
+  /// Sets one book's location in the registry file of `account`, a library
+  /// whose shelf is not in memory. See `RegistryLocationPatch`.
+  func writeLocation(_ location: TPPBookLocation?, forIdentifier identifier: String, inRegistryOf account: String) {
+    guard let url = registryUrl(for: account) else { return }
+    runOnDiskWriteQueue {
+      RegistryLocationPatch.write(location, forIdentifier: identifier, registryURL: url, beforeWrite: dependencies.beforeRegistryWrite)
+    }
+  }
+
   /// A save's per-book sequence, its snapshot ticket and the shelf snapshot it
   /// writes, taken in one store read so no change falls between them: a save
   /// with a higher sequence or ticket saw the same shelf or a later one. The

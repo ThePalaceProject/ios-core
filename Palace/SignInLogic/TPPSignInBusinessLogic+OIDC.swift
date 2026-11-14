@@ -373,10 +373,11 @@ extension TPPSignInBusinessLogic {
             return
         }
 
+        // The reducer's effect starts credential validation on a sign-in task.
+        // That task runs after this synchronous handler returns, so the patron
+        // set below is in place before validation reads it.
         self.dispatch(.bearerTokenReceived(token: authToken, expiration: nil))
         self.patron = parsedPatron
-        // OIDC callback handler is synchronous, so the await needs a Task.
-        startSignInTask { await self.validateCredentials() }
     }
 }
 

@@ -210,10 +210,10 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
     /// it directly when the public delegate API isn't expressive enough.
     var authState = AuthState()
 
-    /// Run an `AuthAction` through `AuthReducer`. Effects are currently all
-    /// `.none`, so we discard the return value.
+    /// Run an `AuthAction` through `AuthReducer`, then start the effect it
+    /// returns (see `TPPSignInBusinessLogic+AuthEffects.swift`).
     func dispatch(_ action: AuthAction) {
-        _ = AuthReducer.reduce(&authState, action)
+        runAuthEffect(AuthReducer.reduce(&authState, action))
     }
 
     /// This flag should be set if the instance is used to register new users.
@@ -576,11 +576,9 @@ class TPPSignInBusinessLogic: NSObject, @preconcurrency TPPSignedInStateProvider
                 defer { completion?() }
                 switch outcome {
                 case .success(let tokenResponse):
+                    // The reducer's effect starts credential validation.
                     self?.dispatch(.bearerTokenReceived(token: tokenResponse.accessToken,
                                                         expiration: tokenResponse.expirationDate))
-                    if let self {
-                        self.startSignInTask { await self.validateCredentials() }
-                    }
                 case .failure(let error):
                     self?.handleNetworkError(error as NSError, loggingContext: ["Context": self?.uiContext as Any])
                 }

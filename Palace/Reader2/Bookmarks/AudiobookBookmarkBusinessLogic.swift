@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import os
 import PalaceLogging
 import PalaceReadingPosition
 import PalaceBookRegistry
@@ -20,6 +21,9 @@ import PalaceUtilities
 @objc public class AudiobookBookmarkBusinessLogic: NSObject, @unchecked Sendable {
     public let book: TPPBook
     private let registry: TPPBookRegistryProvider
+    /// The library the book was opened from; nil means the selected library at
+    /// each write. Local position writes go to its shelf (PP-5578).
+    private let accountId: String?
     private let annotationsManager: AnnotationsManager
     private let positionWriter: PositionWriter
     private let queue = DispatchQueue(label: "com.palace.audiobookBookmarkBusinessLogic")
@@ -33,10 +37,11 @@ import PalaceUtilities
     private let debounceInterval: TimeInterval?
     private var debounceWorkItem: DispatchWorkItem?  // Access only on `queue`
 
-    // MARK: - Test join seam
-    // Retains the most recent `saveListeningPosition` write `Task` so tests can
-    // join it instead of polling a deadline. Access is confined to `queue`.
-    private var _positionWriteTaskForTesting: Task<Void, Never>?
+    // MARK: - Write-task handles
+    // The most recent `saveListeningPosition` write `Task`. Closing the player
+    // waits for it before flushing, and tests join it instead of polling a
+    // deadline. Access is confined to `queue`.
+    private var lastPositionWriteTask: Task<Void, Never>?
     /// Sibling of the above for `saveBookmark`, whose write also runs in a
     /// detached `Task`. Access is confined to `queue`.
     private var _bookmarkWriteTaskForTesting: Task<Void, Never>?
@@ -69,8 +74,8 @@ import PalaceUtilities
     }
 
     /// The book opens from the selected library. Pinning that library here
-    /// keeps its annotations there after the patron selects another library
-    /// while it plays (PP-5552).
+    /// keeps its annotations (PP-5552) and its local position (PP-5578) there
+    /// after the patron selects another library while it plays.
     convenience init(
         book: TPPBook,
         positionTrace: AudiobookPositionTraceRecorder?,
@@ -78,13 +83,15 @@ import PalaceUtilities
         accountsManager: TPPLibraryAccountsProvider,
         debounceInterval: TimeInterval? = 1.0
     ) {
+        let accountId = accountsManager.currentAccountId
         self.init(
             book: book,
             registry: registry,
-            annotationsManager: TPPAnnotationsWrapper(accountId: accountsManager.currentAccountId),
+            annotationsManager: TPPAnnotationsWrapper(accountId: accountId),
             positionWriter: nil,
             positionTrace: positionTrace,
-            debounceInterval: debounceInterval
+            debounceInterval: debounceInterval,
+            accountId: accountId
         )
     }
 
@@ -94,8 +101,10 @@ import PalaceUtilities
         annotationsManager: AnnotationsManager,
         positionWriter: PositionWriter? = nil,
         positionTrace: AudiobookPositionTraceRecorder? = nil,
-        debounceInterval: TimeInterval? = 1.0
+        debounceInterval: TimeInterval? = 1.0,
+        accountId: String? = nil
     ) {
+        self.accountId = accountId
         self.debounceInterval = debounceInterval
         self.positionTrace = positionTrace
         self.book = book
@@ -142,6 +151,17 @@ import PalaceUtilities
         await positionWriter.cancel(for: book.identifier)
     }
 
+    /// Posts this book's queued listening position now instead of when the
+    /// writer's throttle window ends. Called when the player closes (PP-5595).
+    /// Waits for the last `saveListeningPosition` write first, so the final
+    /// position is queued before the flush. The writer runs the post in a
+    /// background task.
+    func flushPendingRemotePositionWrite() async {
+        let lastWrite = onStateQueue { self.lastPositionWriteTask }
+        await lastWrite?.value
+        await positionWriter.flush(for: book.identifier)
+    }
+
     // MARK: - Bookmark Management
 
     public func saveListeningPosition(at position: TrackPosition, completion: ((String?) -> Void)?) {
@@ -162,7 +182,7 @@ import PalaceUtilities
             completion?(nil)
             return
         }
-        registry.setLocation(tppLocation, forIdentifier: self.book.identifier)
+        registry.setLocation(tppLocation, forIdentifier: self.book.identifier, account: accountId)
         Log.debug(#file, "💾 Immediately saved position locally: track=\(position.track.key), time=\(position.timestamp)")
         // PP-4963: the LOCAL write is what decides whether the patron keeps
         // their place, so the trace is notified here rather than after the
@@ -256,7 +276,7 @@ import PalaceUtilities
                 // with the next save.
                 audioBookmark.annotationId = serverID
 
-                self.registry.setLocationDeferringSave(audioBookmark.toTPPBookLocation(), forIdentifier: self.book.identifier)
+                self.registry.setLocationDeferringSave(audioBookmark.toTPPBookLocation(), forIdentifier: self.book.identifier, account: self.accountId)
                 Log.debug(#file, "☁️ Synced position to server: track=\(sentTrackKey), annotationId=\(audioBookmark.annotationId)")
                 await complete(serverID)
             } catch {
@@ -270,14 +290,14 @@ import PalaceUtilities
                 await complete(nil)
             }
         }
-        onStateQueue { self._positionWriteTaskForTesting = writeTask }
+        onStateQueue { self.lastPositionWriteTask = writeTask }
     }
 
     /// Test-only join seam: awaits the most recent `saveListeningPosition` write
     /// `Task`, including its conflict resolution and completion. No-op if no
     /// write is in flight.
     func _awaitPositionWriteForTesting() async {
-        let handle = onStateQueue { self._positionWriteTaskForTesting }
+        let handle = onStateQueue { self.lastPositionWriteTask }
         await handle?.value
     }
 
@@ -288,6 +308,10 @@ import PalaceUtilities
             let writeTask = Task { [weak self] in
                 guard let self else { return }
                 let location = position.toAudioBookmark()
+                // A position restored from the server carries the listening
+                // position's annotation ID. A new bookmark has none until its
+                // own post succeeds.
+                location.annotationId = ""
                 var updatedPosition = position
 
                 defer {
@@ -514,16 +538,31 @@ import PalaceUtilities
 
         Task { [weak self] in
             guard let self else { return }
-            await uploadUnsyncedBookmarks()
+            // Fetch before uploading, so a stored unsynced copy of a bookmark
+            // the server already holds takes the server's ID instead of being
+            // posted again (PP-5577).
+            let remoteBookmarks = await fetchServerBookmarks()
+            await uploadUnsyncedBookmarks(serverBookmarks: remoteBookmarks)
 
-            fetchServerBookmarks { [weak self] remoteBookmarks in
-                guard let strongSelf = self else { return }
-
-                strongSelf.updateLocalBookmarks(with: remoteBookmarks) { updatedBookmarks in
-                    strongSelf.finalizeSync(with: updatedBookmarks, completion: completionBox)
-                }
+            updateLocalBookmarks(with: remoteBookmarks) { updatedBookmarks in
+                self.finalizeSync(with: updatedBookmarks, completion: completionBox)
             }
         }
+    }
+
+    private func fetchServerBookmarks() async -> [AudioBookmark] {
+        let box: AudioBookmarkListBox = await withCheckedContinuation { continuation in
+            let resumed = OSAllocatedUnfairLock(initialState: false)
+            fetchServerBookmarks { bookmarks in
+                // A second completion is ignored; a continuation resumes once.
+                guard resumed.withLock({ wasResumed in
+                    defer { wasResumed = true }
+                    return !wasResumed
+                }) else { return }
+                continuation.resume(returning: AudioBookmarkListBox(bookmarks))
+            }
+        }
+        return box.bookmarks
     }
 
     private func fetchLocalBookmarks() -> [AudioBookmark] {
@@ -597,7 +636,14 @@ import PalaceUtilities
     /// position of a synced record by `AudioBookmark.isSimilar`, is that same
     /// bookmark, so it is removed instead of posted again. An unsynced bookmark
     /// with no synced twin is always uploaded, never removed.
-    private func uploadUnsyncedBookmarks() async {
+    ///
+    /// An unsynced bookmark at the position of a bookmark the server holds
+    /// takes that annotation's ID instead of being posted: earlier versions
+    /// stored fetched bookmarks without their server IDs (PP-5577).
+    private func uploadUnsyncedBookmarks(serverBookmarks: [AudioBookmark]) async {
+        let syncedOnServer = annotationsManager.syncIsPossibleAndPermitted
+            ? serverBookmarks.filter { !$0.isUnsynced }
+            : []
         for candidate in fetchStoredBookmarks() where candidate.bookmark.isUnsynced {
             // Re-read each time: an upload earlier in this loop may have synced a
             // record at the same position, or the patron may have deleted this one.
@@ -607,6 +653,12 @@ import PalaceUtilities
             if current.contains(where: { !$0.bookmark.isUnsynced && $0.bookmark.isSimilar(to: candidate.bookmark) }) {
                 Log.info(#file, "Removing unsynced copy of an already-synced bookmark: \(candidate.bookmark.uniqueIdentifier)")
                 registry.deleteGenericBookmark(identicalTo: candidate.record, forIdentifier: book.identifier)
+                continue
+            }
+
+            if let serverCopy = syncedOnServer.first(where: { $0.isSimilar(to: candidate.bookmark) }) {
+                Log.info(#file, "Unsynced bookmark is already on the server; storing its annotation ID: \(candidate.bookmark.uniqueIdentifier)")
+                updateLocalBookmark(candidate, with: AnnotationResponse(serverId: serverCopy.annotationId, timeStamp: nil))
                 continue
             }
 
@@ -772,10 +824,10 @@ import PalaceUtilities
         guard let tppLocation = audioBookmark.toTPPBookLocation() else { return }
 
         if let registryWithSync = registry as? TPPBookRegistry {
-            registryWithSync.setLocationSync(tppLocation, forIdentifier: self.book.identifier)
+            registryWithSync.setLocationSync(tppLocation, forIdentifier: self.book.identifier, account: accountId)
             Log.debug(#file, "🔒 SYNC: Saved position for termination: track=\(position.track.key), time=\(position.timestamp)")
         } else {
-            registry.setLocation(tppLocation, forIdentifier: self.book.identifier)
+            registry.setLocation(tppLocation, forIdentifier: self.book.identifier, account: accountId)
             Log.warn(#file, "⚠️ Registry doesn't support sync save, using async fallback")
         }
         // PP-4963: the termination path is a save like any other, and leaving

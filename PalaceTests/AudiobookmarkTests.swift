@@ -128,4 +128,52 @@ final class AudiobookmarkTests: XCTestCase {
         // must preserve annotationId for this invariant to hold.
         XCTAssertFalse(decodedBookmark.isUnsynced, "Bookmark with annotationId should not be marked as unsynced")
     }
+    // MARK: - Annotation ID (PP-5577)
+
+    private let v2Locator: [String: Any] = [
+        "readingOrderItem": "urn:uuid:ddf56790-60a7-413c-9771-7f7dcef2f565-0",
+        "readingOrderItemOffsetMilliseconds": 15823,
+        "@type": "LocatorAudioBookTime",
+        "@version": 2
+    ]
+
+    /// The app uploads its selector with an empty `annotationId`; parsing it
+    /// back with the server's ID must keep that ID, or the bookmark reads as
+    /// unsynced and is uploaded again.
+    func testCreate_SelectorWithEmptyAnnotationId_TakesGivenServerID() {
+        var locator = v2Locator
+        locator["annotationId"] = ""
+
+        let bookmark = AudioBookmark.create(locatorData: locator, annotationId: "https://example.com/annotations/1")
+
+        XCTAssertEqual(bookmark?.annotationId, "https://example.com/annotations/1")
+        XCTAssertEqual(bookmark?.isUnsynced, false)
+    }
+
+    /// A stored record is parsed without a given ID; the ID in the record is kept.
+    func testCreate_StoredRecordWithAnnotationId_KeepsItsID() {
+        var locator = v2Locator
+        locator["annotationId"] = "https://example.com/annotations/stored"
+
+        let bookmark = AudioBookmark.create(locatorData: locator)
+
+        XCTAssertEqual(bookmark?.annotationId, "https://example.com/annotations/stored")
+    }
+
+    /// The server's annotation ID wins over an ID echoed inside the selector.
+    func testCreate_SelectorIDDiffersFromGivenServerID_TakesServerID() {
+        var locator = v2Locator
+        locator["annotationId"] = "https://example.com/annotations/echoed"
+
+        let bookmark = AudioBookmark.create(locatorData: locator, annotationId: "https://example.com/annotations/server")
+
+        XCTAssertEqual(bookmark?.annotationId, "https://example.com/annotations/server")
+    }
+
+    /// No ID anywhere leaves the bookmark unsynced.
+    func testCreate_NoAnnotationIdAnywhere_IsUnsynced() {
+        let bookmark = AudioBookmark.create(locatorData: v2Locator)
+
+        XCTAssertEqual(bookmark?.isUnsynced, true)
+    }
 }
