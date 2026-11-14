@@ -469,7 +469,7 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
     ///
     /// Changes NO production behavior: tracking is opt-in and defaults off, so
     /// production never appends to (or grows) the tracked-task array.
-    public func _trackRefreshTasksForTesting() {
+    public func _trackRefreshTasksForTesting(priority: TaskPriority = .utility) {
         refreshTracking.withLock { $0.isTracking = true }
     }
 

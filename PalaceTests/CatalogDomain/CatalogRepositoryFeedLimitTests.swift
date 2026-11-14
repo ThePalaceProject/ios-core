@@ -250,6 +250,21 @@ final class CatalogRepositoryFeedLimitTests: XCTestCase {
     // MARK: - Preloaded facets
 
     /// Preloading facets of a feed never drops a feed the patron has read.
+    /// With refresh tracking armed, facet preloads run at the tracked priority,
+    /// not `.background`, so a test that joins them does not wait on work a
+    /// busy CI runner may never schedule.
+    func testTrackedPreloads_RunAtTheTrackedPriority() async throws {
+        let repository = makeRepository()
+
+        try await loadGroup(repository, 0)
+
+        let priorities = (0..<5).compactMap { api.fetchPriorities[facetURL(group: 0, $0)] }
+        XCTAssertEqual(priorities.count, 5, "precondition: every facet was preloaded")
+        for priority in priorities {
+            XCTAssertGreaterThanOrEqual(priority.rawValue, TaskPriority.utility.rawValue)
+        }
+    }
+
     func testPreload_AtTheReadLimit_DropsNoReadFeed() async throws {
         let repository = makeRepository()
         try await load(repository, 0..<(readLimit - 1))
