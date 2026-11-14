@@ -136,7 +136,7 @@ final class DownloadThrottlingServiceTests: XCTestCase {
                        "Schedule still runs at-cap so newly-completable starts can fire")
     }
 
-    // MARK: - pauseAllDownloads
+    // MARK: - pauseAllDownloadsAsync
 
     func testPauseAllDownloads_suspendsAllNonAudiobookTasks() async {
         let book1 = await register(state: .running, isAudiobook: false, taskId: 1)
@@ -155,7 +155,7 @@ final class DownloadThrottlingServiceTests: XCTestCase {
         await service.pauseAllDownloadsAsync()
 
         XCTAssertEqual(audio.task.suspendCallCount, 0,
-                       "pauseAllDownloads must NEVER suspend an audiobook (user may be streaming)")
+                       "pauseAllDownloadsAsync must NEVER suspend an audiobook (user may be streaming)")
         XCTAssertEqual(book.task.suspendCallCount, 1)
     }
 

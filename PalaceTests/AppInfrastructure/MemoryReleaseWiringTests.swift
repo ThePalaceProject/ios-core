@@ -12,7 +12,7 @@ import XCTest
 @testable import PalaceBookModel
 
 @MainActor
-final class MemoryReleaseWiringTests: XCTestCase {
+final class MemoryReleaseWiringTests: PalaceWiringTestCase {
 
     private func postSystemWarning() {
         NotificationCenter.default.post(name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
