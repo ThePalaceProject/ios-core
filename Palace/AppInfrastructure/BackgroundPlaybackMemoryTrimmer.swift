@@ -16,9 +16,13 @@ import UIKit
 /// changes. Returning to the foreground after a trim runs `restore`.
 @MainActor
 final class BackgroundPlaybackMemoryTrimmer {
-    /// Stages that hold memory only screens use. Not the LCP decrypt cache,
-    /// which feeds the player, nor downloads, disk or network responses.
-    static let stages: Set<MemoryReleaseStage> = [.catalogFeeds, .bookCells, .cachedData, .decodedImages]
+    /// Stages a return to the foreground redraws from without a placeholder or
+    /// a fetch: feeds the screens already hold, and the memory layer of disk
+    /// caches. Not book cells or decoded images: new cells would start as
+    /// placeholders and the decoded-image release slows decoding for 60 s, so
+    /// every visible cover would flash. Not the LCP decrypt cache, which feeds
+    /// the player, nor downloads, disk or network responses.
+    static let stages: Set<MemoryReleaseStage> = [.catalogFeeds, .cachedData]
 
     private var inBackground: Bool
     private var playing = false

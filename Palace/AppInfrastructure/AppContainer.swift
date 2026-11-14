@@ -260,7 +260,10 @@ struct AppContainer: @unchecked Sendable {
             isPlaying: session.$isPlaying.eraseToAnyPublisher(),
             applicationState: UIApplication.shared.applicationState,
             memoryRelease: memoryRelease,
-            bookCoverStore: bookCoverStore
+            bookCoverStore: bookCoverStore,
+            keepList: Self.playingAudiobookKeepList(
+                currentBookID: { [services] in services.audiobookSession?.currentBook?.identifier }
+            )
         )
         return session
     }
@@ -272,10 +275,11 @@ struct AppContainer: @unchecked Sendable {
         ImageLoader(imageCache: imageCache, sourceCache: TPPBookCoverRegistry.launchSourceCache)
     }
 
-    /// The trimmer for an audiobook session: it trims through `memoryRelease`
-    /// and restores through `bookCoverStore` (PP-5581). A session built while
-    /// the app is in the background (a relaunch for audio) starts in the
-    /// background.
+    /// The trimmer for an audiobook session (PP-5581): a trim runs the screen
+    /// stages through `memoryRelease` and releases `bookCoverStore`'s covers
+    /// outside `keepList`; a restore makes the covers views still hold strong
+    /// again. A session built while the app is in the background (a relaunch
+    /// for audio) starts in the background.
     @MainActor
     static func makeBackgroundPlaybackTrimmer(
         isPlaying: AnyPublisher<Bool, Never>,
@@ -289,7 +293,10 @@ struct AppContainer: @unchecked Sendable {
             center: center,
             isPlaying: isPlaying,
             startsInBackground: applicationState == .background,
-            trim: { memoryRelease.releaseAll(stages: BackgroundPlaybackMemoryTrimmer.stages) },
+            trim: {
+                memoryRelease.releaseAll(stages: BackgroundPlaybackMemoryTrimmer.stages)
+                bookCoverStore.releaseImages(keeping: keepList())
+            },
             restore: { bookCoverStore.restoreReleasedImages() }
         )
     }
