@@ -90,6 +90,48 @@ class CarPlayTests: XCTestCase {
         XCTAssertFalse(loader.setKeys.contains("carplay_\(book.identifier)"))
     }
 
+    /// A placeholder the loader returns is not cached either.
+    func testCarPlayArtwork_fromALoaderPlaceholder_isNotCached() async {
+        let previousLoader = TPPBookImageContext.imageLoaderProvider
+        defer { TPPBookImageContext.imageLoaderProvider = previousLoader }
+        let silent = MockImageLoader()
+        TPPBookImageContext.imageLoaderProvider = { silent }
+        let book = Self.makeBookWithoutCover()
+        await drainMainQueueAsync()
+        let loader = MockImageLoader()
+        let placeholder = Self.solid(.blue)
+        placeholder.isGeneratedCoverPlaceholder = true
+        loader.stubbedCoverImage = placeholder
+        let done = expectation(description: "artwork")
+
+        CarPlayImageProvider(imageLoader: loader).artwork(for: book) { _ in done.fulfill() }
+        await fulfillment(of: [done], timeout: 5)
+
+        XCTAssertFalse(loader.setKeys.contains("carplay_\(book.identifier)"))
+    }
+
+    /// A book whose cover in memory is a placeholder does not cache CarPlay artwork
+    /// drawn from it.
+    func testCarPlayArtwork_fromABookPlaceholder_isNotCached() async {
+        let previousLoader = TPPBookImageContext.imageLoaderProvider
+        defer { TPPBookImageContext.imageLoaderProvider = previousLoader }
+        let silent = MockImageLoader()
+        TPPBookImageContext.imageLoaderProvider = { silent }
+        let book = Self.makeBookWithoutCover()
+        let placeholder = Self.solid(.blue)
+        placeholder.isGeneratedCoverPlaceholder = true
+        book.coverImage = placeholder
+        await drainMainQueueAsync()
+        let loader = MockImageLoader()
+        let done = expectation(description: "artwork")
+
+        CarPlayImageProvider(imageLoader: loader).artwork(for: book) { _ in done.fulfill() }
+        await fulfillment(of: [done], timeout: 5)
+
+        XCTAssertFalse(loader.setKeys.contains("carplay_\(book.identifier)"))
+        withExtendedLifetime(placeholder) {}
+    }
+
     private static func solid(_ color: UIColor) -> UIImage {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1

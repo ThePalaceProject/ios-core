@@ -559,6 +559,15 @@ final class BookCoverStoreTests: XCTestCase {
         XCTAssertEqual(store.limits.keepRecent, 120)
     }
 
+    /// A phone keeps its floor when the app reports its idiom.
+    func testUseDeviceIdiom_onAPhone_keepsThePhoneFloor() {
+        let store = BookCoverStore(limits: .forDevice(memoryMB: 4096))
+
+        store.useDeviceIdiom(isPad: false)
+
+        XCTAssertEqual(store.limits.keepRecent, 60)
+    }
+
     /// A released thumbnail a view still holds comes back from the getter.
     func testReleasedThumbnailHeldByAView_getterReturnsTheSameImage() async {
         let limited = makeLimitedStore(byteLimit: .max, keepRecent: 0)

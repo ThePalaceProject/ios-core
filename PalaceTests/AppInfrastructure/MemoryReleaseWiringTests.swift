@@ -83,6 +83,15 @@ final class MemoryReleaseWiringTests: PalaceWiringTestCase {
         XCTAssertEqual(AppContainer.playingAudiobookKeepList(currentBookID: { nil })(), [])
     }
 
+    /// Off the main thread the keep list is empty instead of reading main-actor state.
+    func testPlayingAudiobookKeepList_offMain_isEmpty() {
+        let keepList = AppContainer.playingAudiobookKeepList(currentBookID: { "playing-id" })
+
+        let offMain = DispatchQueue.global().sync { keepList() }
+
+        XCTAssertEqual(offMain, [])
+    }
+
     func testAppContainer_registersItsBookCoverStore() {
         let container = makeTestAppContainer()
         XCTAssertEqual(MemoryReleaseCoordinator.shared.stages(registeredFor: container.bookCoverStore), [.decodedImages])
