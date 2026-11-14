@@ -69,6 +69,23 @@ final class MemoryReleaseCoordinatorTests: XCTestCase {
         withExtendedLifetime(book) {}
     }
 
+    /// The playing book's cover is kept when the store's step runs.
+    func testRegisterBookCovers_KeepsTheIdentifiersTheProviderNames() {
+        let store = BookCoverStore(limits: .init(byteLimit: .max, keepRecent: 0))
+        let playing = Self.makeBook("playing-cover", store: store)
+        let other = Self.makeBook("other-cover", store: store)
+        let cover = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { _ in }
+        playing.coverImage = cover
+        other.coverImage = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { _ in }
+
+        sut.registerBookCovers(store, keeping: { ["playing-cover"] })
+        postWarning()
+
+        XCTAssertIdentical(store.state(for: "playing-cover").coverImage, cover)
+        XCTAssertNil(store.state(for: "other-cover").coverImage)
+        withExtendedLifetime([playing, other]) {}
+    }
+
     private static func makeBook(_ identifier: String, store: BookCoverStore) -> TPPBook {
         TPPBook(
             acquisitions: [],

@@ -47,6 +47,22 @@ class CarPlayTests: XCTestCase {
 
     // MARK: - CarPlayImageProvider Tests
 
+    /// Offline, a book with no cover in memory gets CarPlay artwork from the
+    /// loader, which reads the disk caches, instead of a direct network fetch
+    /// that fails and leaves a placeholder (PP-5583).
+    func testCarPlayImageProvider_offlineWithoutCoverInMemory_asksTheLoader() async {
+        let loader = MockImageLoader()
+        loader.stubbedCoverImage = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 60)).image { _ in }
+        let provider = CarPlayImageProvider(imageLoader: loader)
+        let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
+        XCTAssertNil(book.coverImage, "precondition: no cover in memory")
+
+        let set = await provider.imageSet(for: book)
+
+        XCTAssertNotNil(set)
+        XCTAssertTrue(loader.coverCalls.contains { $0.identifier == book.identifier })
+    }
+
     func testCarPlayImageProvider_GeneratesPlaceholder() {
         // Arrange
         let imageProvider = CarPlayImageProvider(imageLoader: makeTestAppContainer().imageLoader)

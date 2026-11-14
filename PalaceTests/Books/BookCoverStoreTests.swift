@@ -435,11 +435,13 @@ final class BookCoverStoreTests: XCTestCase {
         let cache = CountingCache()
         let book = Self.makeBook("fb-a", cache: cache, store: limited)
         await settle()
-        book.coverImage = solidImage(width: 10, height: 10)
+        autoreleasepool {
+            book.coverImage = solidImage(width: 10, height: 10)
+        }
         let cached = solidImage(width: 10, height: 10)
         cache.set(cached, for: "fb-a", expiresIn: nil)
 
-        limited.releaseImages()
+        autoreleasepool { limited.releaseImages() }
 
         XCTAssertIdentical(book.coverImage, cached)
         XCTAssertNil(limited.state(for: "fb-a").coverImage, "the store holds no copy of its own")
@@ -492,33 +494,152 @@ final class BookCoverStoreTests: XCTestCase {
         XCTAssertNil(book.coverImage)
     }
 
-    /// A release keeps the cover color, and the same cover coming back computes no
-    /// new color.
-    func testReleasedCover_keepsColor_andTheReturningCoverComputesNoNewColor() async {
+    /// A release keeps the cover color, and the same image coming back computes
+    /// no new color.
+    func testReleasedCover_keepsColor_andTheSameImageReturningComputesNoNewColor() async {
         let limited = makeLimitedStore(byteLimit: .max, keepRecent: 0)
         let book = Self.makeBook("col-a", cache: CountingCache(), store: limited)
         await settle()
-        limited.offerCover(solidImage(width: 10, height: 10), for: "col-a")
+        let drawn = solidImage(width: 10, height: 10)
+        limited.offerCover(drawn, for: "col-a")
         await settle()
         XCTAssertEqual(extractor.count, 1, "precondition: the first cover computed a color")
 
         limited.releaseImages()
-        let returning = solidImage(width: 10, height: 10)
-        limited.offerCover(returning, for: "col-a")
+        limited.offerCover(drawn, for: "col-a")
         await settle()
 
-        XCTAssertIdentical(book.coverImage, returning)
+        XCTAssertIdentical(book.coverImage, drawn)
         XCTAssertEqual(book.dominantUIColor, .red)
         XCTAssertEqual(extractor.count, 1)
     }
 
-    /// Limits follow the device tiers the image cache uses.
+    /// A different image after a release computes the color again.
+    func testReleasedCover_aDifferentImageReturning_computesTheColorAgain() async {
+        let limited = makeLimitedStore(byteLimit: .max, keepRecent: 0)
+        let book = Self.makeBook("col-b", cache: CountingCache(), store: limited)
+        await settle()
+        autoreleasepool {
+            limited.offerCover(solidImage(width: 10, height: 10), for: "col-b")
+        }
+        await settle()
+        XCTAssertEqual(extractor.count, 1, "precondition: the first cover computed a color")
+
+        autoreleasepool { limited.releaseImages() }
+        let other = solidImage(width: 10, height: 10)
+        limited.offerCover(other, for: "col-b")
+        await settle()
+
+        XCTAssertIdentical(book.coverImage, other)
+        XCTAssertEqual(extractor.count, 2)
+    }
+
+    /// A released cover that a view still holds comes back from the getter as the
+    /// same image, at the size it was drawn.
+    func testReleasedCoverHeldByAView_getterReturnsTheSameImage() async {
+        let limited = makeLimitedStore(byteLimit: .max, keepRecent: 0)
+        let book = Self.makeBook("weak-a", cache: CountingCache(), store: limited)
+        await settle()
+        let drawn = solidImage(width: 10, height: 10)
+        book.coverImage = drawn
+
+        limited.releaseImages()
+
+        XCTAssertIdentical(book.coverImage, drawn)
+        XCTAssertNil(limited.state(for: "weak-a").coverImage, "the store itself holds no strong copy")
+    }
+
+    /// A released cover nothing else holds is freed.
+    func testReleasedCoverHeldNowhere_isFreed() async {
+        let limited = makeLimitedStore(byteLimit: .max, keepRecent: 0)
+        let book = Self.makeBook("weak-b", cache: CountingCache(), store: limited)
+        await settle()
+        autoreleasepool {
+            book.coverImage = solidImage(width: 10, height: 10)
+        }
+
+        autoreleasepool { limited.releaseImages() }
+
+        XCTAssertNil(book.coverImage)
+        XCTAssertEqual(limited.imageByteCount, 0)
+    }
+
+    /// A detail header that drew a large cover keeps it after a release: a
+    /// lane-sized decode arriving later does not replace it, so it does not blur.
+    func testDetailHeaderAfterRelease_laneSizedOfferDoesNotReplaceTheDrawnCover() async {
+        let limited = makeLimitedStore(byteLimit: .max, keepRecent: 0)
+        let header = Self.makeBook("blur-a", cache: CountingCache(), store: limited)
+        await settle()
+        let large = solidImage(width: 200, height: 300)
+        header.coverImage = large
+
+        limited.releaseImages()
+        limited.offerCover(solidImage(width: 10, height: 15), for: "blur-a")
+
+        XCTAssertIdentical(header.coverImage, large)
+    }
+
+    /// A visible cell still shows its cover after a release and a memory warning
+    /// that empties the image cache.
+    func testVisibleCellAfterReleaseAndWarning_stillRendersItsImage() async {
+        let limited = makeLimitedStore(byteLimit: .max, keepRecent: 0)
+        let cache = CountingCache()
+        let cell = Self.makeBook("blank-a", cache: cache, store: limited)
+        await settle()
+        let drawn = solidImage(width: 10, height: 10)
+        cell.coverImage = drawn
+
+        limited.releaseImages()
+        cache.clear()
+
+        XCTAssertIdentical(cell.coverImage, drawn)
+    }
+
+    /// The lane-size refusal still holds after a release.
+    func testLaneSizedCacheHitAfterRelease_keepsTheLargerCover() async {
+        let small = solidImage(width: 10, height: 15)
+        let large = solidImage(width: 200, height: 300)
+        let cache = CountingCache(hits: ["id-lr": small])
+        let limited = makeLimitedStore(byteLimit: .max, keepRecent: 0)
+        let header = Self.makeBook("id-lr", cache: cache, store: limited)
+        await settle()
+        header.coverImage = large
+
+        limited.releaseImages()
+        let laneCell = Self.makeBook("id-lr", cache: cache, store: limited)
+        laneCell.fetchCoverImage(forDisplayHeight: 160)
+        await settle()
+
+        XCTAssertIdentical(header.coverImage, large)
+        XCTAssertIdentical(laneCell.coverImage, large)
+    }
+
+    /// A release keeps the covers it is told to keep, such as the playing audiobook.
+    func testReleaseImagesKeeping_keepsNamedCovers() async {
+        let limited = makeLimitedStore(byteLimit: .max, keepRecent: 0)
+        let cache = CountingCache()
+        let kept = Self.makeBook("keep-a", cache: cache, store: limited)
+        let other = Self.makeBook("keep-b", cache: cache, store: limited)
+        await settle()
+        let cover = solidImage(width: 10, height: 10)
+        kept.coverImage = cover
+        other.coverImage = solidImage(width: 10, height: 10)
+
+        limited.releaseImages(keeping: ["keep-a"])
+
+        XCTAssertIdentical(limited.state(for: "keep-a").coverImage, cover)
+        XCTAssertNil(limited.state(for: "keep-b").coverImage)
+    }
+
+    /// Limits apply a byte cap only below 4 GB (PP-5583 review).
     func testLimitsForDevice_followMemoryTiers() {
         let mb = 1024 * 1024
         XCTAssertEqual(BookCoverStore.Limits.forDevice(memoryMB: 2047), .init(byteLimit: 15 * mb, keepRecent: 40))
-        XCTAssertEqual(BookCoverStore.Limits.forDevice(memoryMB: 2048), .init(byteLimit: 25 * mb, keepRecent: 40))
-        XCTAssertEqual(BookCoverStore.Limits.forDevice(memoryMB: 4095), .init(byteLimit: 25 * mb, keepRecent: 40))
-        XCTAssertEqual(BookCoverStore.Limits.forDevice(memoryMB: 4096), .init(byteLimit: 40 * mb, keepRecent: 80))
+        XCTAssertEqual(BookCoverStore.Limits.forDevice(memoryMB: 2048), .init(byteLimit: 25 * mb, keepRecent: 60))
+        XCTAssertEqual(BookCoverStore.Limits.forDevice(memoryMB: 4095), .init(byteLimit: 25 * mb, keepRecent: 60))
+        // 4 GB and larger phones and iPads keep today's unbounded store; only a
+        // memory warning releases, and it keeps more than an iPad screen of covers.
+        XCTAssertEqual(BookCoverStore.Limits.forDevice(memoryMB: 4096), .init(byteLimit: .max, keepRecent: 120))
     }
 
     private func makeLimitedStore(byteLimit: Int, keepRecent: Int) -> BookCoverStore {

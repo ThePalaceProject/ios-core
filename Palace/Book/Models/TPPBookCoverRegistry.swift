@@ -87,7 +87,7 @@ actor TPPBookCoverRegistry {
     ///
     /// `nonisolated let`: `GeneralCache` serializes its own access, and the
     /// fetch writes it from a detached `Task`.
-    nonisolated private let sourceCache: GeneralCache<String, Data>
+    nonisolated let sourceCache: GeneralCache<String, Data>
 
     /// Caches folder that holds one source-byte folder per launch.
     nonisolated static let sourceCacheRootName = "CoverSourceData"

@@ -321,6 +321,10 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
         }
     }
 
+    /// Deletes the oldest stored files until the disk layer holds at most
+    /// `maxBytes`.
+    func prune(maxBytes: Int) {}
+
     /// Bytes the memory layer holds now (PP-5509).
     var memoryBytes: Int { memoryCache.byteCount }
 

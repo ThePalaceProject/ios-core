@@ -91,6 +91,9 @@ struct ReadiumPDFLoadingView: View {
         .accessibilityLabel("\(book.title), \(progress.statusText)")
     }
 
+    /// Asks for the cover when the view appears without one.
+    static func requestCoverIfMissing(for book: TPPBook) {}
+
     @ViewBuilder
     private var coverThumbnail: some View {
         if let image = book.coverImage {

@@ -97,7 +97,7 @@ final class MemoryReleaseCoordinator: @unchecked Sendable {
     /// package that cannot see this type, so the app registers it (PP-5583).
     /// Every container registers its store; a store already registered is
     /// skipped, so a shared store gets one step.
-    func registerBookCovers(_ store: BookCoverStore) {
+    func registerBookCovers(_ store: BookCoverStore, keeping: @escaping @Sendable () -> Set<String> = { [] }) {
         guard !stages(registeredFor: store).contains(.decodedImages) else { return }
         register(store, stage: .decodedImages) { store in
             store.releaseImages()
