@@ -547,7 +547,14 @@ struct AppContainer: @unchecked Sendable {
             on: accountsManager.accountSwitchPublisher,
             ownedServices: ownedServices
         )
-        memoryRelease.registerBookCovers(bookCoverStore)
+        // The playing audiobook's cover is never released: CarPlay and the
+        // lock screen show it. Steps run on the posting thread; UIKit posts on main.
+        memoryRelease.registerBookCovers(bookCoverStore, keeping: { [processServices] in
+            guard Thread.isMainThread else { return [] }
+            return MainActor.assumeIsolated {
+                processServices.audiobookSession?.currentBook.map { [$0.identifier] } ?? []
+            }
+        })
     }
 
     /// Binds a network-loss monitor to `downloadCenter`'s reachability (the one
