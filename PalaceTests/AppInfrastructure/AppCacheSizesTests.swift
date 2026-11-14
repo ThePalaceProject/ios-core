@@ -37,7 +37,6 @@ final class AppCacheSizesTests: XCTestCase {
             networkResponses: { 1 * mb },
             decodedImages: { 2 * mb },
             imageData: { 3 * mb },
-            coverSourceData: { 4 * mb },
             bookCovers: { 5 * mb },
             opdsFeedData: { 6 * mb },
             pdfPreviews: { 7 * mb },
@@ -50,7 +49,7 @@ final class AppCacheSizesTests: XCTestCase {
 
         let line = try XCTUnwrap(lines.all.first)
         var expected = [
-            "networkResponses": 1, "decodedImages": 2, "imageData": 3, "coverSourceData": 4,
+            "networkResponses": 1, "decodedImages": 2, "imageData": 3,
             "bookCovers": 5, "opdsFeedData": 6, "pdfPreviews": 7, "pdfThumbnails": 8
         ]
         #if LCP
@@ -80,7 +79,9 @@ final class AppCacheSizesTests: XCTestCase {
 
     // MARK: - ImageCache
 
-    func testImageCache_CountsDecodedAndCompressedBytesUntilRemoved() {
+    /// Compressed cover data is kept on disk only (PP-5583); the decoded image is
+    /// the one copy in memory.
+    func testImageCache_KeepsCompressedDataOnDiskOnly_andCountsDecodedBytesUntilRemoved() {
         let cache = ImageCache._makeIsolatedForTesting(cacheName: "AppCacheSizes-\(UUID().uuidString)")
         let image = Self.solidImage(width: 40, height: 60)
 
@@ -88,27 +89,68 @@ final class AppCacheSizesTests: XCTestCase {
         cache.processingQueue.waitUntilAllOperationsAreFinished()
 
         XCTAssertGreaterThanOrEqual(cache.decodedImageBytes, 40 * 60 * 4)
-        XCTAssertGreaterThan(cache.compressedDataMemoryBytes, 0)
+        XCTAssertEqual(cache.compressedDataMemoryBytes, 0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: cache._diskURLForTesting(for: "cover").path))
 
         cache.remove(for: "cover")
 
         XCTAssertEqual(cache.decodedImageBytes, 0)
-        XCTAssertEqual(cache.compressedDataMemoryBytes, 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: cache._diskURLForTesting(for: "cover").path))
         cache.clear()
     }
 
-    func testImageCache_EvictDecodedImages_ZeroesDecodedBytesOnly() {
+    /// A generated placeholder is not stored, in memory or on disk, so a cover
+    /// that failed offline is fetched again once the network is back.
+    func testImageCache_GeneratedPlaceholder_isNotStored() {
+        let cache = ImageCache._makeIsolatedForTesting(cacheName: "AppCacheSizes-\(UUID().uuidString)")
+        let placeholder = Self.solidImage(width: 40, height: 60)
+        placeholder.isGeneratedCoverPlaceholder = true
+
+        cache.set(placeholder, for: "offline")
+        Self.drain(cache)
+
+        XCTAssertNil(cache.memoryImage(for: "offline"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: cache._diskURLForTesting(for: "offline").path))
+
+        cache.set(Self.solidImage(width: 40, height: 60), for: "offline")
+        Self.drain(cache)
+
+        XCTAssertNotNil(cache.memoryImage(for: "offline"), "the real cover is stored once it arrives")
+        cache.clear()
+    }
+
+    /// Evicting decoded images keeps the disk copy, so the cover decodes again
+    /// from disk instead of the network.
+    func testImageCache_EvictDecodedImages_ZeroesDecodedBytesAndKeepsTheDiskCopy() async {
         let cache = ImageCache._makeIsolatedForTesting(cacheName: "AppCacheSizes-\(UUID().uuidString)")
         cache.set(Self.solidImage(width: 40, height: 60), for: "cover")
-        cache.processingQueue.waitUntilAllOperationsAreFinished()
-        let compressed = cache.compressedDataMemoryBytes
+        Self.drain(cache)
         XCTAssertGreaterThan(cache.decodedImageBytes, 0, "precondition: the image is held decoded")
 
         cache.evictDecodedImages()
 
         XCTAssertEqual(cache.decodedImageBytes, 0)
-        XCTAssertEqual(cache.compressedDataMemoryBytes, compressed)
+        let fromDisk = await cache.getAsync(for: "cover")
+        XCTAssertEqual(fromDisk?.cgImage?.width, 40)
         cache.clear()
+    }
+
+    /// `memoryImage(for:)` answers from memory only, so a getter can call it on
+    /// the main thread.
+    func testImageCache_MemoryImage_ReturnsDecodedCopyAndNotTheDiskCopy() {
+        let cache = ImageCache._makeIsolatedForTesting(cacheName: "AppCacheSizes-\(UUID().uuidString)")
+        cache.set(Self.solidImage(width: 40, height: 60), for: "cover")
+        Self.drain(cache)
+        XCTAssertNotNil(cache.memoryImage(for: "cover"))
+
+        cache.evictDecodedImages()
+
+        XCTAssertNil(cache.memoryImage(for: "cover"))
+        cache.clear()
+    }
+
+    private static func drain(_ cache: ImageCache) {
+        cache.processingQueue.waitUntilAllOperationsAreFinished()
     }
 
     // MARK: - LCP
@@ -221,13 +263,21 @@ final class AppCacheSizesTests: XCTestCase {
     }
 }
 
-/// The registry keeps the fetched source bytes so one cover decodes at several
-/// sizes without a second request; those bytes are on the memory event line.
+/// The registry keeps the fetched source bytes on disk so one cover decodes at
+/// several sizes without a second request.
 @MainActor
 final class TPPBookCoverRegistrySourceBytesTests: XCTestCase {
 
     private let host = "covers.source-bytes.example"
     private var jpeg = Data()
+    private var requests = RequestLog()
+
+    private final class RequestLog: @unchecked Sendable {
+        private let lock = NSLock()
+        private var urls: [URL?] = []
+        var count: Int { lock.withLock { urls.count } }
+        func append(_ url: URL?) { lock.withLock { urls.append(url) } }
+    }
 
     override func setUp() async throws {
         try await super.setUp()
@@ -235,8 +285,11 @@ final class TPPBookCoverRegistrySourceBytesTests: XCTestCase {
         let jpeg = try Self.coverJPEG()
         self.jpeg = jpeg
         let host = host
+        let requests = RequestLog()
+        self.requests = requests
         HTTPStubURLProtocol.register { request in
             guard request.url?.host == host else { return nil }
+            requests.append(request.url)
             return .init(statusCode: 200, headers: ["Content-Type": "image/jpeg"], body: jpeg)
         }
     }
@@ -246,18 +299,149 @@ final class TPPBookCoverRegistrySourceBytesTests: XCTestCase {
         try await super.tearDown()
     }
 
-    func testFetchedCover_CountsItsSourceBytes() async throws {
-        let counter = CacheByteCounter()
-        let cache = ImageCache._makeIsolatedForTesting(cacheName: "SourceBytes-\(UUID().uuidString)")
-        let registry = TPPBookCoverRegistry(imageCache: cache, urlSession: .stubbedSession(), sourceDataCounter: counter)
+    /// Source bytes live on disk (PP-5583): a registry that has lost everything in
+    /// memory decodes the cover at a new size without asking the network again.
+    func testFetchedCover_SourceBytesOnDisk_newSizeAfterMemoryLossMakesNoSecondRequest() async throws {
+        let sourceCache = GeneralCache<String, Data>(cacheName: "SourceBytes-\(UUID().uuidString)", mode: .diskOnly)
+        let firstCache = ImageCache._makeIsolatedForTesting(cacheName: "SourceBytes-\(UUID().uuidString)")
+        let first = TPPBookCoverRegistry(imageCache: firstCache, urlSession: .stubbedSession(), sourceCache: sourceCache)
+        let book = makeBook()
+        let cover = await first.coverImage(for: book, displayPoints: 280)
+        Self.drain(firstCache)
+        XCTAssertNotNil(cover, "precondition: the stubbed cover was fetched")
+        XCTAssertEqual(requests.count, 1)
+
+        let secondCache = ImageCache._makeIsolatedForTesting(cacheName: "SourceBytes-\(UUID().uuidString)")
+        let second = TPPBookCoverRegistry(imageCache: secondCache, urlSession: .stubbedSession(), sourceCache: sourceCache)
+        // Above `smallDisplayThreshold`, so this size asks for the same full-size URL.
+        let smaller = await second.coverImage(for: book, displayPoints: 240)
+        Self.drain(secondCache)
+
+        XCTAssertNotNil(smaller)
+        XCTAssertEqual(requests.count, 1, "the second size came from the disk copy")
+        firstCache.clear()
+        secondCache.clear()
+        sourceCache.clear()
+    }
+
+    /// Source bytes last for one launch, as the in-memory cache they replace did;
+    /// a launch removes the folders of earlier launches and keeps its own.
+    func testRemoveEarlierLaunches_deletesOtherLaunchFoldersAndKeepsTheCurrentOne() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("SourceLaunches-\(UUID().uuidString)")
+        let old = root.appendingPathComponent("old-launch")
+        let current = root.appendingPathComponent("this-launch")
+        for folder in [old, current] {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try Data([1]).write(to: folder.appendingPathComponent("bytes"))
+        }
+
+        TPPBookCoverRegistry.removeEarlierLaunches(in: root, keeping: "this-launch")
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: old.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: current.appendingPathComponent("bytes").path))
+        try? FileManager.default.removeItem(at: root)
+    }
+
+    /// New source bytes reaching the prune interval prune the disk cache to its
+    /// limit.
+    func testSourceBytesReachingThePruneInterval_pruneTheDiskCache() async throws {
+        let sourceCache = GeneralCache<String, Data>(cacheName: "Prune-\(UUID().uuidString)", mode: .diskOnly)
+        let registry = makePruningRegistry(sourceCache: sourceCache, interval: jpeg.count)
         let book = makeBook()
 
-        let cover = await registry.coverImage(for: book, displayPoints: 280)
-        Self.drain(cache)
+        _ = await registry.coverImage(for: book, displayPoints: 280)
 
-        XCTAssertNotNil(cover, "precondition: the stubbed cover was fetched")
-        XCTAssertEqual(counter.bytes, jpeg.count)
-        XCTAssertEqual(registry.sourceDataBytes, counter.bytes)
+        let url = try XCTUnwrap(book.imageURL)
+        XCTAssertNil(sourceCache.get(for: TPPBookCoverRegistry.sourceKey(for: url)))
+        sourceCache.clear()
+    }
+
+    /// Below the prune interval the source bytes stay on disk.
+    func testSourceBytesUnderThePruneInterval_stayOnDisk() async throws {
+        let sourceCache = GeneralCache<String, Data>(cacheName: "Prune-\(UUID().uuidString)", mode: .diskOnly)
+        let registry = makePruningRegistry(sourceCache: sourceCache, interval: jpeg.count + 1)
+        let book = makeBook()
+
+        _ = await registry.coverImage(for: book, displayPoints: 280)
+
+        let url = try XCTUnwrap(book.imageURL)
+        XCTAssertEqual(sourceCache.get(for: TPPBookCoverRegistry.sourceKey(for: url)), jpeg)
+        sourceCache.clear()
+    }
+
+    /// A registry whose prune empties the disk cache at once when it runs.
+    private func makePruningRegistry(sourceCache: GeneralCache<String, Data>, interval: Int) -> TPPBookCoverRegistry {
+        let cache = ImageCache._makeIsolatedForTesting(cacheName: "Prune-\(UUID().uuidString)")
+        return TPPBookCoverRegistry(
+            imageCache: cache,
+            urlSession: .stubbedSession(),
+            sourceCache: sourceCache,
+            sourcePrunePolicy: .init(byteLimit: 0, interval: interval, schedule: { $0() })
+        )
+    }
+
+    /// The source-byte caches keep nothing in memory (PP-5583).
+    func testSourceCaches_holdNoBytesInMemory() throws {
+        let instance = TPPBookCoverRegistry.makeInstanceSourceCache()
+        let url = try XCTUnwrap(URL(string: "https://\(host)/memory-check-\(UUID().uuidString)"))
+        let key = TPPBookCoverRegistry.sourceKey(for: url)
+
+        instance.set(Data(count: 2_000), for: key, expiresIn: 60)
+        TPPBookCoverRegistry.launchSourceCache.set(Data(count: 2_000), for: key, expiresIn: 60)
+
+        XCTAssertEqual(instance.memoryBytes, 0)
+        XCTAssertEqual(TPPBookCoverRegistry.launchSourceCache.memoryBytes, 0)
+        instance.clear()
+        TPPBookCoverRegistry.launchSourceCache.remove(for: key)
+    }
+
+    /// URLs that differ only in punctuation get separate files: the cache strips
+    /// punctuation from raw keys, so the key is a hash.
+    func testSourceKey_punctuationOnlyURLs_getDistinctFiles() throws {
+        let cache = TPPBookCoverRegistry.makeInstanceSourceCache()
+        let a = TPPBookCoverRegistry.sourceKey(for: try XCTUnwrap(URL(string: "https://\(host)/a.b")))
+        let b = TPPBookCoverRegistry.sourceKey(for: try XCTUnwrap(URL(string: "https://\(host)/ab")))
+
+        XCTAssertNotEqual(cache.fileURL(for: a), cache.fileURL(for: b))
+    }
+
+    /// A URL longer than a file name allows still round-trips through the cache.
+    func testSourceKey_urlOver255Characters_roundTrips() throws {
+        let cache = TPPBookCoverRegistry.makeInstanceSourceCache()
+        let long = try XCTUnwrap(URL(string: "https://\(host)/" + String(repeating: "c", count: 400)))
+        let key = TPPBookCoverRegistry.sourceKey(for: long)
+
+        cache.set(jpeg, for: key, expiresIn: 60)
+
+        XCTAssertEqual(cache.get(for: key), jpeg)
+        cache.clear()
+    }
+
+    /// The app's image loader and the shared registry use one launch cache, so a
+    /// cover fetched for the player is not fetched again for a list.
+    func testProductionImageLoader_sharesTheLaunchSourceCache() {
+        let loader = AppContainer.makeProductionImageLoader(imageCache: MockImageCache())
+        XCTAssertIdentical(loader.sourceCache, TPPBookCoverRegistry.launchSourceCache)
+    }
+
+    /// The source-byte disk cache is bounded: over the limit the oldest files go.
+    func testGeneralCachePrune_deletesOldestFilesUntilUnderTheLimit() {
+        let cache = GeneralCache<String, Data>(cacheName: "Prune-\(UUID().uuidString)", mode: .diskOnly)
+        let base = Date(timeIntervalSince1970: 1_000_000)
+        for (offset, name) in ["first", "second", "third"].enumerated() {
+            cache.set(Data(count: 1_000), for: name, expiresIn: 60)
+            // Set the order here; file system timestamps can tie.
+            try? FileManager.default.setAttributes(
+                [.creationDate: base.addingTimeInterval(TimeInterval(offset))],
+                ofItemAtPath: cache.fileURL(for: name).path
+            )
+        }
+
+        cache.prune(maxBytes: 2_000)
+
+        XCTAssertNil(cache.get(for: "first"))
+        XCTAssertNotNil(cache.get(for: "second"))
+        XCTAssertNotNil(cache.get(for: "third"))
         cache.clear()
     }
 

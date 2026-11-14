@@ -11,6 +11,7 @@
 
 import Foundation
 import UIKit
+import PalaceBookModel
 
 /// The order a memory warning runs release steps in: the memory event record
 /// first, then what is cheapest to rebuild, then downloads and disk.
@@ -89,6 +90,19 @@ final class MemoryReleaseCoordinator: @unchecked Sendable {
     func stages(registeredFor owner: AnyObject) -> [MemoryReleaseStage] {
         lock.withLock {
             steps.filter { $0.owner === owner }.map(\.stage)
+        }
+    }
+
+    /// Adds the cover store's release step once. `BookCoverStore` lives in a
+    /// package that cannot see this type, so the app registers it (PP-5583).
+    /// Every container registers its store; a store already registered is
+    /// skipped, so a shared store gets one step. `keeping` names covers the
+    /// step never releases, such as the playing audiobook's; it is read when
+    /// the step runs.
+    func registerBookCovers(_ store: BookCoverStore, keeping: @escaping @Sendable () -> Set<String> = { [] }) {
+        guard !stages(registeredFor: store).contains(.decodedImages) else { return }
+        register(store, stage: .decodedImages) { store in
+            store.releaseImages(keeping: keeping())
         }
     }
 

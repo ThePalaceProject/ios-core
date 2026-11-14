@@ -44,6 +44,9 @@ public nonisolated class ImageLoader: ImageLoading, @unchecked Sendable {
     /// Kept internal so call sites can't reach past `ImageLoading`.
     private let registry: TPPBookCoverRegistry
 
+    /// The disk cache of downloaded cover bytes this loader's registry uses.
+    var sourceCache: GeneralCache<String, Data> { registry.sourceCache }
+
     /// Disk + decoded-memory cache. Re-exported through the cache surface of
     /// `ImageLoading` so consumers that used to inject `ImageCacheType` get one
     /// protocol covering both layers.
@@ -51,9 +54,16 @@ public nonisolated class ImageLoader: ImageLoading, @unchecked Sendable {
 
     // MARK: - Init
 
-    public init(imageCache: ImageCacheType) {
+    /// `sourceCache` holds downloaded cover bytes on disk. The app passes the
+    /// launch-wide cache it shares with `TPPBookCoverRegistry.shared`; other
+    /// callers get a folder of their own.
+    // PUBLIC_INTENT: the existing public init with one defaulted parameter added.
+    public init(imageCache: ImageCacheType, sourceCache: GeneralCache<String, Data>? = nil) {
         self.cache = imageCache
-        self.registry = TPPBookCoverRegistry(imageCache: imageCache)
+        self.registry = TPPBookCoverRegistry(
+            imageCache: imageCache,
+            sourceCache: sourceCache ?? TPPBookCoverRegistry.makeInstanceSourceCache()
+        )
     }
 
     // MARK: - Book-level fetch

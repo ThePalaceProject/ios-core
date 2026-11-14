@@ -9,6 +9,7 @@
 import UIKit
 import XCTest
 @testable import Palace
+@testable import PalaceBookModel
 
 @MainActor
 final class MemoryReleaseWiringTests: PalaceWiringTestCase {
@@ -62,6 +63,55 @@ final class MemoryReleaseWiringTests: PalaceWiringTestCase {
     func testAppContainerBookCellModelCache_registersBookCells() {
         let container = makeTestAppContainer()
         XCTAssertEqual(MemoryReleaseCoordinator.shared.stages(registeredFor: container.bookCellModelCache), [.bookCells])
+    }
+
+    /// The container wires its cover store to the warning once, however many
+    /// containers share the store (PP-5583).
+    func testAppContainers_registerTheirBookCoverStoreOnce() {
+        let coordinator = MemoryReleaseCoordinator(center: NotificationCenter())
+        let store = BookCoverStore(limits: .init(byteLimit: .max, keepRecent: 0))
+
+        coordinator.registerBookCovers(store)
+        coordinator.registerBookCovers(store)
+
+        XCTAssertEqual(coordinator.stages(registeredFor: store), [.decodedImages])
+    }
+
+    /// The keep list names the playing audiobook, and nothing when none plays.
+    func testPlayingAudiobookKeepList_namesThePlayingBook() {
+        XCTAssertEqual(AppContainer.playingAudiobookKeepList(currentBookID: { "playing-id" })(), ["playing-id"])
+        XCTAssertEqual(AppContainer.playingAudiobookKeepList(currentBookID: { nil })(), [])
+    }
+
+    /// Off the main thread the keep list is empty instead of reading main-actor state.
+    func testPlayingAudiobookKeepList_offMain_isEmpty() {
+        let keepList = AppContainer.playingAudiobookKeepList(currentBookID: { "playing-id" })
+        let done = expectation(description: "off main")
+        let result = KeepListResult()
+
+        // `async`, not `sync`: a sync dispatch from main can run on main.
+        DispatchQueue.global().async {
+            result.set(keepList(), onMain: Thread.isMainThread)
+            done.fulfill()
+        }
+        wait(for: [done], timeout: 5)  // STARVE-001-OK: waits on one global-queue hop made just above; no other async work
+
+        XCTAssertFalse(result.ranOnMain, "precondition: the call ran off main")
+        XCTAssertEqual(result.value, [])
+    }
+
+    private final class KeepListResult: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: Set<String>?
+        private var onMain = true
+        var value: Set<String>? { lock.withLock { stored } }
+        var ranOnMain: Bool { lock.withLock { onMain } }
+        func set(_ value: Set<String>, onMain: Bool) { lock.withLock { stored = value; self.onMain = onMain } }
+    }
+
+    func testAppContainer_registersItsBookCoverStore() {
+        let container = makeTestAppContainer()
+        XCTAssertEqual(MemoryReleaseCoordinator.shared.stages(registeredFor: container.bookCoverStore), [.decodedImages])
     }
 
     /// The monitor records the event first, then the network cache, downloads

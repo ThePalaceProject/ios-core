@@ -47,6 +47,8 @@ struct AppContainer: @unchecked Sendable {
     let signInRedirects = SignInRedirectRelay()
     /// Runs each registered cache's release step on a memory warning (PP-5580).
     let memoryRelease: MemoryReleaseCoordinator
+    /// Decoded covers for book objects; released on a memory warning (PP-5583).
+    let bookCoverStore: BookCoverStore
     let drmAuthorizerProvider: () -> TPPDRMAuthorizing?
 
     /// Single auth-refresh dispatcher. Every network consumer that sees a
@@ -252,6 +254,26 @@ struct AppContainer: @unchecked Sendable {
         )
         services.audiobookSession = session
         return session
+    }
+
+    /// The app's image loader. It shares the launch's cover-bytes disk cache
+    /// with `TPPBookCoverRegistry.shared`, so a cover fetched for the player is
+    /// not fetched again for a list (PP-5583).
+    static func makeProductionImageLoader(imageCache: ImageCacheType) -> ImageLoader {
+        ImageLoader(imageCache: imageCache, sourceCache: TPPBookCoverRegistry.launchSourceCache)
+    }
+
+    /// The cover store's keep list: the playing audiobook's ID. Steps run on
+    /// the posting thread; UIKit posts on main, and off main the list is empty.
+    static func playingAudiobookKeepList(
+        currentBookID: @escaping @MainActor () -> String?
+    ) -> @Sendable () -> Set<String> {
+        {
+            guard Thread.isMainThread else { return [] }
+            return MainActor.assumeIsolated {
+                currentBookID().map { [$0] } ?? []
+            }
+        }
     }
 
     /// Side-loading (PP-2678) — process-wide registry of side-loaded books.
@@ -513,9 +535,11 @@ struct AppContainer: @unchecked Sendable {
         authCoordinator: AuthCoordinator,
         downloadNetworkLossMonitor: DownloadNetworkLossMonitor? = nil,
         processServices: ProcessServices = ProcessServices(),
-        memoryRelease: MemoryReleaseCoordinator = .shared
+        memoryRelease: MemoryReleaseCoordinator = .shared,
+        bookCoverStore: BookCoverStore = .shared
     ) {
         self.memoryRelease = memoryRelease
+        self.bookCoverStore = bookCoverStore
         self.bookRegistry = bookRegistry
         self.networkExecutor = networkExecutor
         self.networkQueue = networkQueue
@@ -543,6 +567,11 @@ struct AppContainer: @unchecked Sendable {
             on: accountsManager.accountSwitchPublisher,
             ownedServices: ownedServices
         )
+        // The playing audiobook's cover is never released: CarPlay and the
+        // lock screen show it. Steps run on the posting thread; UIKit posts on main.
+        memoryRelease.registerBookCovers(bookCoverStore, keeping: Self.playingAudiobookKeepList(
+            currentBookID: { [processServices] in processServices.audiobookSession?.currentBook?.identifier }
+        ))
     }
 
     /// Binds a network-loss monitor to `downloadCenter`'s reachability (the one
@@ -666,7 +695,7 @@ struct AppContainer: @unchecked Sendable {
         // Built before TPPBookRegistry, which takes ImageLoading as a required
         // init parameter (a default-arg resolution here would re-enter the lock).
         let imageCache = ImageCache.shared
-        let imageLoader: ImageLoading = ImageLoader(imageCache: imageCache)
+        let imageLoader: ImageLoading = makeProductionImageLoader(imageCache: imageCache)
         // Must be configured before the first TPPBook is constructed (the
         // registry construction below parses records).
         TPPBookImageContext.imageCacheProvider = { imageCache }

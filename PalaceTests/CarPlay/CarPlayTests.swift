@@ -47,6 +47,165 @@ class CarPlayTests: XCTestCase {
 
     // MARK: - CarPlayImageProvider Tests
 
+    /// Offline, a book with no cover in memory gets CarPlay artwork from the
+    /// loader, which reads the disk caches, instead of a direct network fetch
+    /// that fails and leaves a placeholder (PP-5583).
+    func testCarPlayImageProvider_offlineWithoutCoverInMemory_asksTheLoader() async throws {
+        let previousLoader = TPPBookImageContext.imageLoaderProvider
+        defer { TPPBookImageContext.imageLoaderProvider = previousLoader }
+        let silent = MockImageLoader()
+        TPPBookImageContext.imageLoaderProvider = { silent }
+        let book = Self.makeBookWithoutCover()
+        await drainMainQueueAsync()
+        XCTAssertNil(book.coverImage, "precondition: no cover in memory")
+        let loader = MockImageLoader()
+        loader.stubbedCoverImage = Self.solid(.red)
+        let provider = CarPlayImageProvider(imageLoader: loader)
+
+        let set = await provider.imageSet(for: book)
+
+        XCTAssertTrue(loader.coverCalls.contains { $0.identifier == book.identifier })
+        // The artwork is drawn from the loader's red image, not the placeholder.
+        let center = try XCTUnwrap(set?.lightContentImage).centerPixel
+        XCTAssertGreaterThan(center.red, 0.9)
+        XCTAssertLessThan(center.green, 0.1)
+    }
+
+    /// Artwork drawn from a placeholder is not cached, so the real cover is
+    /// fetched once the network is back.
+    func testCarPlayArtwork_fromAPlaceholder_isNotCached() async {
+        let previousLoader = TPPBookImageContext.imageLoaderProvider
+        defer { TPPBookImageContext.imageLoaderProvider = previousLoader }
+        let silent = MockImageLoader()
+        TPPBookImageContext.imageLoaderProvider = { silent }
+        let book = Self.makeBookWithoutCover()
+        await drainMainQueueAsync()
+        let loader = MockImageLoader()
+        let provider = CarPlayImageProvider(imageLoader: loader)
+        let done = expectation(description: "artwork")
+
+        provider.artwork(for: book) { _ in done.fulfill() }
+        await fulfillment(of: [done], timeout: 5)  // STARVE-001-OK: one main-actor Task awaiting a mock loader that answers on the next main-queue turn
+
+        XCTAssertFalse(loader.setKeys.contains("carplay_\(book.identifier)"))
+    }
+
+    /// A placeholder the loader returns is not cached either.
+    func testCarPlayArtwork_fromALoaderPlaceholder_isNotCached() async {
+        let previousLoader = TPPBookImageContext.imageLoaderProvider
+        defer { TPPBookImageContext.imageLoaderProvider = previousLoader }
+        let silent = MockImageLoader()
+        TPPBookImageContext.imageLoaderProvider = { silent }
+        let book = Self.makeBookWithoutCover()
+        await drainMainQueueAsync()
+        let loader = MockImageLoader()
+        let placeholder = Self.solid(.blue)
+        placeholder.isGeneratedCoverPlaceholder = true
+        loader.stubbedCoverImage = placeholder
+        let done = expectation(description: "artwork")
+
+        CarPlayImageProvider(imageLoader: loader).artwork(for: book) { _ in done.fulfill() }
+        await fulfillment(of: [done], timeout: 5)  // STARVE-001-OK: one main-actor Task awaiting a mock loader that answers on the next main-queue turn
+
+        XCTAssertFalse(loader.setKeys.contains("carplay_\(book.identifier)"))
+    }
+
+    /// A book whose cover in memory is a placeholder does not cache CarPlay artwork
+    /// drawn from it.
+    func testCarPlayArtwork_fromABookPlaceholder_isNotCached() async {
+        let previousLoader = TPPBookImageContext.imageLoaderProvider
+        defer { TPPBookImageContext.imageLoaderProvider = previousLoader }
+        let silent = MockImageLoader()
+        TPPBookImageContext.imageLoaderProvider = { silent }
+        let book = Self.makeBookWithoutCover()
+        let placeholder = Self.solid(.blue)
+        placeholder.isGeneratedCoverPlaceholder = true
+        book.coverImage = placeholder
+        await drainMainQueueAsync()
+        let loader = MockImageLoader()
+        let done = expectation(description: "artwork")
+
+        CarPlayImageProvider(imageLoader: loader).artwork(for: book) { _ in done.fulfill() }
+        await fulfillment(of: [done], timeout: 5)  // STARVE-001-OK: completion runs synchronously from the book's in-memory cover; no async work
+
+        XCTAssertFalse(loader.setKeys.contains("carplay_\(book.identifier)"))
+        withExtendedLifetime(placeholder) {}
+    }
+
+    private static func solid(_ color: UIColor) -> UIImage {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: CGSize(width: 40, height: 60), format: format).image { context in
+            color.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 40, height: 60))
+        }
+    }
+
+    /// A book with only a thumbnail URL also gets its artwork from the loader.
+    func testCarPlayImageProvider_thumbnailURLOnly_asksTheLoader() async {
+        let previousLoader = TPPBookImageContext.imageLoaderProvider
+        defer { TPPBookImageContext.imageLoaderProvider = previousLoader }
+        let silent = MockImageLoader()
+        TPPBookImageContext.imageLoaderProvider = { silent }
+        let book = Self.makeBookWithoutCover(imageURL: false, thumbnailURL: true)
+        await drainMainQueueAsync()
+        let loader = MockImageLoader()
+        loader.stubbedCoverImage = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 60)).image { _ in }
+
+        _ = await CarPlayImageProvider(imageLoader: loader).imageSet(for: book)
+
+        XCTAssertTrue(loader.coverCalls.contains { $0.identifier == book.identifier })
+    }
+
+    /// A book with no cover URL gets the CarPlay placeholder without asking the loader.
+    func testCarPlayImageProvider_noCoverURL_usesThePlaceholderWithoutTheLoader() async {
+        let previousLoader = TPPBookImageContext.imageLoaderProvider
+        defer { TPPBookImageContext.imageLoaderProvider = previousLoader }
+        let silent = MockImageLoader()
+        TPPBookImageContext.imageLoaderProvider = { silent }
+        let book = Self.makeBookWithoutCover(imageURL: false, thumbnailURL: false)
+        await drainMainQueueAsync()
+        let loader = MockImageLoader()
+
+        let set = await CarPlayImageProvider(imageLoader: loader).imageSet(for: book)
+
+        XCTAssertNotNil(set)
+        XCTAssertFalse(loader.coverCalls.contains { $0.identifier == book.identifier })
+    }
+
+    /// A book with cover URLs as asked and no cover in memory: the image
+    /// context's loader answers nothing while the book is built.
+    private static func makeBookWithoutCover(imageURL: Bool = true, thumbnailURL: Bool = false) -> TPPBook {
+        let id = "no-cover-\(UUID().uuidString)"
+        return TPPBook(
+            acquisitions: [],
+            authors: [],
+            categoryStrings: [],
+            distributor: "",
+            identifier: id,
+            imageURL: imageURL ? URL(string: "https://covers.example/\(id).jpg") : nil,
+            imageThumbnailURL: thumbnailURL ? URL(string: "https://covers.example/thumb/\(id).jpg") : nil,
+            published: nil,
+            publisher: "",
+            subtitle: "",
+            summary: "",
+            title: "No Cover",
+            updated: Date(),
+            annotationsURL: nil,
+            analyticsURL: nil,
+            alternateURL: nil,
+            relatedWorksURL: nil,
+            previewLink: nil,
+            seriesURL: nil,
+            revokeURL: nil,
+            reportURL: nil,
+            timeTrackingURL: nil,
+            contributors: [:],
+            bookDuration: nil,
+            imageCache: MockImageCache()
+        )
+    }
+
     func testCarPlayImageProvider_GeneratesPlaceholder() {
         // Arrange
         let imageProvider = CarPlayImageProvider(imageLoader: makeTestAppContainer().imageLoader)
@@ -1229,5 +1388,21 @@ final class CarPlayTemplateNavigatorTests: XCTestCase {
 
         XCTAssertEqual(controller.popCount, 0)
         XCTAssertTrue(controller.topTemplate === chapters)
+    }
+}
+
+private extension UIImage {
+    /// The color at the image's center, in sRGB components.
+    var centerPixel: (red: CGFloat, green: CGFloat, blue: CGFloat) {
+        var pixel = [UInt8](repeating: 0, count: 4)
+        guard let cgImage,
+              let context = CGContext(
+                data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              ) else { return (0, 0, 0) }
+        let w = CGFloat(cgImage.width), h = CGFloat(cgImage.height)
+        context.draw(cgImage, in: CGRect(x: -w / 2, y: -h / 2, width: w, height: h))
+        return (CGFloat(pixel[0]) / 255, CGFloat(pixel[1]) / 255, CGFloat(pixel[2]) / 255)
     }
 }

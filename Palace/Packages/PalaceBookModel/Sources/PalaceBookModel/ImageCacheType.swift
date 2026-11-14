@@ -16,9 +16,13 @@ public protocol ImageCacheType: Sendable {
     /// switch (the new library has different covers). On the protocol so the
     /// account-switch cleanup does not need `ImageCache.shared`.
     func evictDecodedImages()
+    /// The decoded image for `key` if it is in memory now. Never reads disk.
+    func memoryImage(for key: String) -> UIImage?
 }
 
 public extension ImageCacheType {
+    func memoryImage(for key: String) -> UIImage? { nil }
+
     func set(_ image: UIImage, for keys: [String], expiresIn: TimeInterval?) {
         for key in keys {
             set(image, for: key, expiresIn: expiresIn)
