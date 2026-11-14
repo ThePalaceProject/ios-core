@@ -1,8 +1,10 @@
+import UIKit
 import XCTest
 import Combine
 import PalaceCatalog
 import PalaceNetwork
 @testable import Palace
+@testable import PalaceBookModel
 
 // Offline/reconnect branching (PP-4578) is driven by the shared
 // `MockReachability` test double (PalaceTests/Mocks/MockReachability.swift).
@@ -402,6 +404,50 @@ final class CatalogViewModelStateMachineTests: PalaceTestCase {
         guard case .loaded = vm.state else {
             return XCTFail("Expected .loaded after account change, got \(vm.state)")
         }
+    }
+
+    /// Coming back to the foreground after a background trim keeps the catalog
+    /// screen and fetches nothing: the trim drops the repository's in-memory
+    /// feeds, and the view model still holds the one it shows (PP-5581).
+    func testForegroundAfterBackgroundTrim_keepsTheScreen_withoutAFetch() async throws {
+        let api = CatalogAPIMock()
+        api.stubbedFeeds[testURL] = Self.makeGroupedCatalogFeed()
+        let suite = "trim-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let repository = CatalogRepository(api: api, defaults: defaults)
+        let vm = CatalogViewModel(
+            repository: repository,
+            topLevelURLProvider: { [testURL] in testURL },
+            bookRegistry: bookRegistry,
+            imageCache: MockImageCache(),
+            reachability: MockReachability(initiallyConnected: true)
+        )
+        await vm.load()
+        await waitUntilLoaded(vm, at: testURL)
+        let fetches = api.fetchFeedCalls.count
+        XCTAssertNotNil(repository.cachedFeed(for: testURL), "precondition: the feed is in memory")
+        let center = NotificationCenter()
+        let coordinator = MemoryReleaseCoordinator(center: center)
+        coordinator.register(repository, stage: .catalogFeeds) { $0.releaseInMemoryCaches() }
+        let trimmer = AppContainer.makeBackgroundPlaybackTrimmer(
+            isPlaying: Just(true).eraseToAnyPublisher(), applicationState: .active,
+            memoryRelease: coordinator,
+            bookCoverStore: BookCoverStore(limits: .init(byteLimit: .max, keepRecent: 0)),
+            center: center
+        )
+
+        center.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
+        XCTAssertNil(repository.cachedFeed(for: testURL), "precondition: the trim dropped the in-memory feed")
+        center.post(name: UIApplication.willEnterForegroundNotification, object: nil)
+        await drainMainQueueAsync()
+
+        guard case .loaded(let content) = vm.state else {
+            return XCTFail("Expected the loaded screen after returning, got \(vm.state)")
+        }
+        XCTAssertEqual(content.title, "Library")
+        XCTAssertEqual(api.fetchFeedCalls.count, fetches)
+        withExtendedLifetime(trimmer) {}
     }
 
     /// Pull-to-refresh is the ONE path that invalidates: it drops the current

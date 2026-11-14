@@ -25,7 +25,6 @@ public enum CachePolicy {
 // name. The memory-only clears skip the lock because `CountedCache` is itself
 // thread-safe and dropping a memory entry can never make a read wrong (the
 // value is still on disk, or in `.memoryOnly` mode it is simply gone).
-// `memoryWarningObserver` is set once during `init` and only read in `deinit`.
 // `Key`/`Value` are constrained to `Sendable` so cached values can cross
 // threads safely (all call sites use `GeneralCache<String, Data>`).
 public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codable & Sendable>: @unchecked Sendable {
@@ -60,7 +59,6 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
     /// wins. Guarded by `lock`.
     private var pendingWrites: [Key: UInt64] = [:]
     private var lastWriteGeneration: UInt64 = 0
-    private var memoryWarningObserver: NSObjectProtocol?
 
     private final class Entry: Codable, Sendable {
         let value: Value
@@ -92,7 +90,8 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
         cacheName: String,
         mode: CachingMode,
         writeData: @escaping @Sendable (Data, URL) throws -> Void,
-        byteCounter: CacheByteCounter = CacheByteCounter()
+        byteCounter: CacheByteCounter = CacheByteCounter(),
+        memoryRelease: MemoryReleaseCoordinator = .shared
     ) {
         memoryCache = CountedCache(counter: byteCounter)
         self.mode = mode
@@ -101,20 +100,14 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
             cacheDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(cacheName, isDirectory: true)
             try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
             configureCacheLimits()
-            setupMemoryWarningHandler()
+            registerMemoryRelease(on: memoryRelease)
             return
         }
         cacheDirectory = cachesDir.appendingPathComponent(cacheName, isDirectory: true)
         try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
 
         configureCacheLimits()
-        setupMemoryWarningHandler()
-    }
-
-    deinit {
-        if let observer = memoryWarningObserver {
-            NotificationCenter.default.removeObserver(observer)
-        }
+        registerMemoryRelease(on: memoryRelease)
     }
 
     private func configureCacheLimits() {
@@ -140,19 +133,16 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
         memoryCache.countLimit = itemCountLimit
     }
 
-    private func setupMemoryWarningHandler() {
-        memoryWarningObserver = NotificationCenter.default.addObserver(
-            forName: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.handleMemoryWarning()
+    private func registerMemoryRelease(on memoryRelease: MemoryReleaseCoordinator) {
+        memoryRelease.register(self, stage: .cachedData) { cache in
+            cache.handleMemoryWarning()
         }
     }
 
     private func handleMemoryWarning() {
-        // Runs on the main thread; deliberately does not take `lock`, which a
-        // reader may be holding across disk I/O. See the type comment.
+        // Runs on the thread that posted the warning (main, from UIKit);
+        // deliberately does not take `lock`, which a reader may be holding
+        // across disk I/O. See the type comment.
         memoryCache.removeAllObjects()
     }
 
@@ -327,6 +317,31 @@ public final class GeneralCache<Key: Hashable & Codable & Sendable, Value: Codab
                 (try? fileManager.contentsOfDirectory(at: cacheDirectory,
                                                       includingPropertiesForKeys: nil))?
                     .forEach { try? fileManager.removeItem(at: $0) }
+            }
+        }
+    }
+
+    /// Deletes the oldest stored files, by creation date, until the disk layer
+    /// holds at most `maxBytes`. Folders and staging files are left alone.
+    func prune(maxBytes: Int) {
+        guard mode == .diskOnly || mode == .memoryAndDisk else { return }
+        let keys: Set<URLResourceKey> = [.fileSizeKey, .creationDateKey, .isRegularFileKey]
+        lock.withLock {
+            guard let urls = try? fileManager.contentsOfDirectory(
+                at: cacheDirectory,
+                includingPropertiesForKeys: Array(keys),
+                options: [.skipsHiddenFiles]
+            ) else { return }
+            var files = urls.compactMap { url -> (url: URL, size: Int, created: Date)? in
+                guard let values = try? url.resourceValues(forKeys: keys), values.isRegularFile == true else { return nil }
+                return (url, values.fileSize ?? 0, values.creationDate ?? .distantPast)
+            }
+            var total = files.reduce(0) { $0 + $1.size }
+            guard total > maxBytes else { return }
+            files.sort { $0.created < $1.created }
+            for file in files where total > maxBytes {
+                try? fileManager.removeItem(at: file.url)
+                total -= file.size
             }
         }
     }

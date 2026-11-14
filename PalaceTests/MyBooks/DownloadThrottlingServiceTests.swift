@@ -21,15 +21,18 @@ final class DownloadThrottlingServiceTests: XCTestCase {
     private var notificationCenter: NotificationCenter!
     private var spyDelegate: SpyDelegate!
     private var service: DownloadThrottlingService!
+    private var scheduler: ManualResumeScheduler!
 
     override func setUpWithError() throws {
         try super.setUpWithError()
         stateManager = DownloadStateManager()
         notificationCenter = NotificationCenter()
         spyDelegate = SpyDelegate()
+        scheduler = ManualResumeScheduler()
         service = DownloadThrottlingService(
             stateManager: stateManager,
-            notificationCenter: notificationCenter
+            notificationCenter: notificationCenter,
+            resumeScheduler: scheduler
         )
         service.delegate = spyDelegate
     }
@@ -39,6 +42,7 @@ final class DownloadThrottlingServiceTests: XCTestCase {
         notificationCenter = nil
         spyDelegate = nil
         service = nil
+        scheduler = nil
         try super.tearDownWithError()
     }
 
@@ -132,7 +136,7 @@ final class DownloadThrottlingServiceTests: XCTestCase {
                        "Schedule still runs at-cap so newly-completable starts can fire")
     }
 
-    // MARK: - pauseAllDownloads
+    // MARK: - pauseAllDownloadsAsync
 
     func testPauseAllDownloads_suspendsAllNonAudiobookTasks() async {
         let book1 = await register(state: .running, isAudiobook: false, taskId: 1)
@@ -151,7 +155,7 @@ final class DownloadThrottlingServiceTests: XCTestCase {
         await service.pauseAllDownloadsAsync()
 
         XCTAssertEqual(audio.task.suspendCallCount, 0,
-                       "pauseAllDownloads must NEVER suspend an audiobook (user may be streaming)")
+                       "pauseAllDownloadsAsync must NEVER suspend an audiobook (user may be streaming)")
         XCTAssertEqual(book.task.suspendCallCount, 1)
     }
 
@@ -223,6 +227,159 @@ final class DownloadThrottlingServiceTests: XCTestCase {
         await applyCapAndJoin(max: 4)
         XCTAssertEqual(spyDelegate.scheduleCallCount, 2)
     }
+
+    // MARK: - Memory warning pause and resume (PP-5587)
+
+    /// Joins the resume the scheduler fires: the resume re-applies the cap
+    /// through `limitActiveDownloads`, which runs its policy in a Task.
+    private func fireResumeAndJoin() async {
+        scheduler.fireAll()
+        await service.lastLimitActiveDownloadsTask?.value
+    }
+
+    func testMemoryWarning_suspendsEbookAndKeepsAudiobookRunning() async {
+        let ebook = await register(state: .running, isAudiobook: false, taskId: 1)
+        let audio = await register(state: .running, isAudiobook: true, taskId: 2)
+
+        await service.pauseDownloadsForMemoryWarningAsync()
+
+        XCTAssertEqual(ebook.task.state, .suspended)
+        XCTAssertEqual(audio.task.suspendCallCount, 0)
+    }
+
+    func testMemoryWarning_schedulesOneResumeAfterQuietPeriod() async {
+        await register(state: .running, isAudiobook: false, taskId: 1)
+
+        await service.pauseDownloadsForMemoryWarningAsync()
+
+        XCTAssertEqual(scheduler.pendingDelays, [DownloadThrottlingService.memoryRecoveryDelay])
+        XCTAssertEqual(DownloadThrottlingService.memoryRecoveryDelay, 30)
+    }
+
+    func testMemoryWarning_beforeQuietPeriodEnds_downloadStaysPaused() async {
+        stateManager.maxConcurrentDownloads = 4
+        let ebook = await register(state: .running, isAudiobook: false, taskId: 1)
+
+        await service.pauseDownloadsForMemoryWarningAsync()
+        await service.lastLimitActiveDownloadsTask?.value
+
+        XCTAssertEqual(ebook.task.resumeCallCount, 0)
+        XCTAssertEqual(ebook.task.state, .suspended)
+    }
+
+    func testMemoryWarning_afterQuietPeriod_resumesPausedEbook() async {
+        stateManager.maxConcurrentDownloads = 4
+        let ebook = await register(state: .running, isAudiobook: false, taskId: 1)
+
+        await service.pauseDownloadsForMemoryWarningAsync()
+        await fireResumeAndJoin()
+
+        XCTAssertEqual(ebook.task.resumeCallCount, 1)
+        XCTAssertEqual(ebook.task.state, .running)
+        XCTAssertEqual(spyDelegate.scheduleCallCount, 1,
+                       "The resume re-pumps pending starts so queued books start too")
+    }
+
+    func testMemoryWarning_secondWarningDuringWait_restartsWaitAndResumesOnce() async {
+        stateManager.maxConcurrentDownloads = 4
+        let ebook = await register(state: .running, isAudiobook: false, taskId: 1)
+
+        await service.pauseDownloadsForMemoryWarningAsync()
+        await service.pauseDownloadsForMemoryWarningAsync()
+
+        XCTAssertEqual(scheduler.cancelledCount, 1, "The second warning cancels the first resume")
+        XCTAssertEqual(scheduler.pendingDelays.count, 1)
+
+        await fireResumeAndJoin()
+
+        XCTAssertEqual(ebook.task.resumeCallCount, 1)
+    }
+
+    func testMemoryWarning_syncEntryPoint_cancelsPendingResumeBeforePausing() async {
+        await register(state: .running, isAudiobook: false, taskId: 1)
+        await service.pauseDownloadsForMemoryWarningAsync()
+
+        service.pauseDownloadsForMemoryWarning()
+
+        XCTAssertEqual(scheduler.cancelledCount, 1,
+                       "A warning cancels the pending resume at once, not after its pause Task runs")
+        await service.lastMemoryWarningTask?.value
+        XCTAssertEqual(scheduler.pendingDelays.count, 1)
+    }
+
+    func testMemoryWarning_resumeRespectsCapLoweredDuringWait() async {
+        stateManager.maxConcurrentDownloads = 4
+        let first = await register(state: .running, isAudiobook: false, taskId: 1)
+        let second = await register(state: .running, isAudiobook: false, taskId: 2)
+
+        await service.pauseDownloadsForMemoryWarningAsync()
+        stateManager.maxConcurrentDownloads = 1
+        await fireResumeAndJoin()
+
+        XCTAssertEqual(first.task.resumeCallCount + second.task.resumeCallCount, 1,
+                       "A thermal or power cap set during the wait still limits the resume")
+    }
+
+    func testMemoryWarning_completedDownloadIsNotResumed() async {
+        stateManager.maxConcurrentDownloads = 4
+        let done = await register(state: .running, isAudiobook: false, taskId: 1)
+
+        await service.pauseDownloadsForMemoryWarningAsync()
+        // The download is cancelled or fails during the wait.
+        done.task.forceState(.completed)
+        await fireResumeAndJoin()
+
+        XCTAssertEqual(done.task.resumeCallCount, 0)
+    }
+
+    /// The pending resume must not keep a released service alive for 30 s.
+    func testMemoryWarning_resumeAfterServiceIsGone_doesNothing() async {
+        let ebook = await register(state: .running, isAudiobook: false, taskId: 1)
+        await service.pauseDownloadsForMemoryWarningAsync()
+        weak var weakService = service
+
+        service = nil
+
+        XCTAssertNil(weakService, "The scheduled resume must not retain the service")
+        scheduler.fireAll()
+        await weakService?.lastLimitActiveDownloadsTask?.value
+        XCTAssertEqual(ebook.task.resumeCallCount, 0)
+    }
+}
+
+// MARK: - Download center entry point
+
+/// The memory warning step calls the download center, not the service. Pins
+/// that the center's entry point pauses AND schedules the resume (PP-5587).
+final class MyBooksDownloadCenterMemoryWarningTests: XCTestCase {
+
+    func testPauseDownloadsForMemoryWarning_pausesEbookAndSchedulesResume() async {
+        let stateManager = DownloadStateManager()
+        let scheduler = ManualResumeScheduler()
+        let service = DownloadThrottlingService(
+            stateManager: stateManager,
+            notificationCenter: NotificationCenter(),
+            resumeScheduler: scheduler
+        )
+        let center = MyBooksDownloadCenter(
+            bookRegistry: TPPBookRegistryMock(),
+            throttlingService: service,
+            stateManager: stateManager
+        )
+        let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
+        let task = FakeDownloadTask(state: .running, identifier: 1)
+        await stateManager.bookIdentifierToDownloadInfo.set(
+            book.identifier,
+            value: MyBooksDownloadInfo(downloadProgress: 0.0, downloadTask: task, rightsManagement: .none)
+        )
+        await stateManager.taskIdentifierToBook.set(1, value: book)
+
+        center.pauseDownloadsForMemoryWarning()
+        await service.lastMemoryWarningTask?.value
+
+        XCTAssertEqual(task.state, .suspended)
+        XCTAssertEqual(scheduler.pendingDelays, [DownloadThrottlingService.memoryRecoveryDelay])
+    }
 }
 
 // MARK: - Test fakes
@@ -233,7 +390,7 @@ final class DownloadThrottlingServiceTests: XCTestCase {
 /// actually running, and tests need deterministic state without a live
 /// network.
 private final class FakeDownloadTask: URLSessionDownloadTask, @unchecked Sendable {
-    private let _state: URLSessionTask.State
+    private var _state: URLSessionTask.State
     private let _taskIdentifier: Int
     private(set) var suspendCallCount = 0
     private(set) var resumeCallCount = 0
@@ -244,11 +401,61 @@ private final class FakeDownloadTask: URLSessionDownloadTask, @unchecked Sendabl
         super.init()
     }
 
+    /// Sets the state directly, for a task that ends while downloads are paused.
+    func forceState(_ state: URLSessionTask.State) { _state = state }
+
     override var state: URLSessionTask.State { _state }
     override var taskIdentifier: Int { _taskIdentifier }
-    override func suspend() { suspendCallCount += 1 }
-    override func resume() { resumeCallCount += 1 }
+    // Like URLSessionTask, suspend and resume change the state only while the
+    // task has not finished.
+    override func suspend() {
+        suspendCallCount += 1
+        if _state == .running { _state = .suspended }
+    }
+    override func resume() {
+        resumeCallCount += 1
+        if _state == .suspended { _state = .running }
+    }
     override func cancel() {}
+}
+
+/// Holds scheduled resumes until the test fires them, so the quiet period
+/// takes no wall-clock time.
+private final class ManualResumeScheduler: DownloadResumeScheduling, @unchecked Sendable {
+    private final class Item: DownloadResumeCancellable {
+        let delay: TimeInterval
+        let work: @Sendable () -> Void
+        var isCancelled = false
+        weak var owner: ManualResumeScheduler?
+        init(delay: TimeInterval, work: @escaping @Sendable () -> Void) {
+            self.delay = delay
+            self.work = work
+        }
+        func cancel() {
+            guard !isCancelled else { return }
+            isCancelled = true
+            owner?.cancelledCount += 1
+        }
+    }
+
+    private var items: [Item] = []
+    fileprivate(set) var cancelledCount = 0
+
+    var pendingDelays: [TimeInterval] { items.filter { !$0.isCancelled }.map(\.delay) }
+
+    func schedule(after delay: TimeInterval, _ work: @escaping @Sendable () -> Void) -> DownloadResumeCancellable {
+        let item = Item(delay: delay, work: work)
+        item.owner = self
+        items.append(item)
+        return item
+    }
+
+    /// Runs every resume that is still pending, once.
+    func fireAll() {
+        let due = items.filter { !$0.isCancelled }
+        items.removeAll()
+        due.forEach { $0.work() }
+    }
 }
 
 private final class SpyDelegate: DownloadThrottlingServiceDelegate {

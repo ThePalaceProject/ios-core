@@ -111,18 +111,8 @@ final class BookCellModelCache: ObservableObject {
             setupRegistryObserver()
         }
 
-        setupMemoryWarningObserver()
         setupAccountChangeObserver()
         if let activityPolicy { scheduleCleanup(on: activityPolicy) }
-    }
-
-    private func setupMemoryWarningObserver() {
-        NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                self?.handleMemoryWarning()
-            }
-            .store(in: &cancellables)
     }
 
     private func setupAccountChangeObserver() {
@@ -342,7 +332,7 @@ extension BookCellModelCache {
 
 extension BookCellModelCache {
 
-    /// Called automatically when receiving memory warning notification
+    /// Called on a memory warning; AppContainer registers it (PP-5580).
     public func handleMemoryWarning() {
         let previousCount = cache.count
 
