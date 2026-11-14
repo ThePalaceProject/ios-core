@@ -445,6 +445,41 @@ final class BookCoverStoreTests: XCTestCase {
         XCTAssertNil(limited.state(for: "fb-a").coverImage, "the store holds no copy of its own")
     }
 
+    /// A released thumbnail reads the image cache's thumbnail copy, as the cover does.
+    func testReleasedThumbnail_getterFallsBackToTheImageCacheMemoryCopy() async {
+        let limited = makeLimitedStore(byteLimit: .max, keepRecent: 0)
+        let cache = CountingCache()
+        let book = Self.makeBook("fb-thumb", cache: cache, store: limited)
+        await settle()
+        autoreleasepool {
+            book.thumbnailImage = solidImage(width: 5, height: 5)
+        }
+        let cached = solidImage(width: 5, height: 5)
+        cache.set(cached, for: "fb-thumb_thumbnail", expiresIn: nil)
+
+        autoreleasepool { limited.releaseImages() }
+
+        XCTAssertIdentical(book.thumbnailImage, cached)
+    }
+
+    /// A book read recently but holding no image does not take a place in the
+    /// recently read floor, so an older cover that is in the floor stays.
+    func testRecentlyReadBookWithoutImages_doesNotTakeAFloorPlace() async {
+        let limited = makeLimitedStore(byteLimit: .max, keepRecent: 1)
+        let cache = CountingCache()
+        let withCover = Self.makeBook("floor-a", cache: cache, store: limited)
+        let loading = Self.makeBook("floor-b", cache: cache, store: limited)
+        await settle()
+        let cover = solidImage(width: 10, height: 10)
+        withCover.coverImage = cover
+        _ = withCover.coverImage
+        _ = loading.coverImage
+
+        limited.releaseImages()
+
+        XCTAssertIdentical(limited.state(for: "floor-a").coverImage, cover)
+    }
+
     /// The fallback is only for a released cover: a book whose cover never loaded
     /// keeps showing its loading state.
     func testCoverNeverLoaded_getterDoesNotReadTheImageCache() async {
