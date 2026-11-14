@@ -86,7 +86,7 @@ final class MemoryReleaseCoordinatorTests: XCTestCase {
         withExtendedLifetime(owners) {}
     }
 
-    /// The playing book's cover is kept when the store's step runs (PP-5581).
+    /// The playing book's cover is kept when the store's step runs.
     func testRegisterBookCovers_KeepsTheIdentifiersTheProviderNames() {
         let store = BookCoverStore(limits: .init(byteLimit: .max, keepRecent: 0))
         let playing = Self.makeBook("playing-cover", store: store)

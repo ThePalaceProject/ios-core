@@ -16,18 +16,24 @@ struct BookCoverState {
     var isCoverLoading = false
     var isThumbnailLoading = false
     var dominantColor: UIColor = .gray
-    /// The image `dominantColor` was (or is being) computed from.
-    var colorSource: UIImage?
-    /// Set when the store released the cover or thumbnail. A getter then reads
-    /// the image cache's memory copy, and the next cover keeps the color.
+    /// The image `dominantColor` was (or is being) computed from. Weak: the
+    /// cover fields hold the image; after a release the same image coming back
+    /// keeps the color, and a different image computes it again.
+    weak var colorSource: UIImage?
+    /// Set when the store released the cover or thumbnail. With no view still
+    /// holding the image, a getter reads the image cache's memory copy.
     var coverReleased = false
     var thumbnailReleased = false
-    /// A released image stays reachable while something else holds it, such
-    /// as a view that drew it (PP-5581). Getters and a restore use it, so the
-    /// image comes back at the size it was drawn.
+    /// A released image stays reachable while something else holds it, such as
+    /// a view that drew it. Getters return it and a new offer ranks against it,
+    /// so a drawn cover comes back at its size and is not replaced by a smaller
+    /// decode.
     weak var releasedCover: UIImage?
     weak var releasedThumbnail: UIImage?
-    var colorKeptFromReleasedImage = false
+
+    /// The cover a view may be showing: the stored one, or a released one that
+    /// is still held.
+    var visibleCover: UIImage? { coverImage ?? releasedCover }
 }
 
 /// An entry lives while at least one TPPBook object for its ID is alive.
@@ -62,6 +68,9 @@ public final class BookCoverStore: @unchecked Sendable {
     private let lock = NSRecursiveLock()
     private var entries: [String: Entry] = [:]
     private var readClock: UInt64 = 0
+    /// Decoded bytes of every entry's cover and thumbnail, kept as entries
+    /// change so a read does not walk the entries.
+    private var byteTotal = 0
 
     let colorQueue: DispatchQueue
     private let colorExtractor: @Sendable (UIImage) -> UIColor
@@ -83,23 +92,25 @@ public final class BookCoverStore: @unchecked Sendable {
         let byteLimit: Int
         let keepRecent: Int
 
-        /// Byte limits match `ImageCache`'s decoded-image tiers. `keepRecent` is
-        /// about two screens of covers: a phone catalog or My Books screen, or
-        /// an iPad catalog with several lanes.
+        /// Below 4 GB the byte limit matches `ImageCache`'s decoded-image tiers.
+        /// 4 GB and larger phones and iPads keep an unbounded store, as before;
+        /// only a memory warning releases there. `keepRecent` is at least two
+        /// screens of covers; the 3 GB tier and up includes iPads with several
+        /// lanes on screen.
         static func forDevice(memoryMB: UInt64 = ProcessInfo.processInfo.physicalMemory / (1024 * 1024)) -> Limits {
             let mb = 1024 * 1024
             if memoryMB < 2048 {
                 return Limits(byteLimit: 15 * mb, keepRecent: 40)
             } else if memoryMB < 4096 {
-                return Limits(byteLimit: 25 * mb, keepRecent: 40)
+                return Limits(byteLimit: 25 * mb, keepRecent: 60)
             }
-            return Limits(byteLimit: 40 * mb, keepRecent: 80)
+            return Limits(byteLimit: .max, keepRecent: 120)
         }
     }
 
     /// Releases every decoded image outside the `keepRecent` most recently read
-    /// covers and the `keeping` identifiers, for a memory warning or a
-    /// background trim. Loading flags and colors stay.
+    /// covers and the `keeping` identifiers, for a memory warning. Loading
+    /// flags and colors stay.
     // PUBLIC_INTENT: the app's release step passes the playing audiobook.
     public func releaseImages(keeping: Set<String>) {
         lock.withLock {
@@ -114,13 +125,14 @@ public final class BookCoverStore: @unchecked Sendable {
         releaseImages(keeping: [])
     }
 
-    /// Makes released images that something else still holds strong again,
-    /// with no change notice: views already show them (PP-5581).
+    /// Makes released images that something else still holds strong again, with
+    /// no change notice: views already show them (PP-5581).
     // PUBLIC_INTENT: the app calls this when it returns to the foreground.
     public func restoreReleasedImages() {
         lock.withLock {
             for identifier in Array(entries.keys) {
                 guard var state = entries[identifier]?.state else { continue }
+                let bytesBefore = Self.byteCount(of: state)
                 if state.coverImage == nil, let cover = state.releasedCover {
                     state.coverImage = cover
                     state.coverReleased = false
@@ -132,6 +144,7 @@ public final class BookCoverStore: @unchecked Sendable {
                 state.releasedCover = nil
                 state.releasedThumbnail = nil
                 entries[identifier]?.state = state
+                byteTotal += Self.byteCount(of: state) - bytesBefore
             }
         }
     }
@@ -141,7 +154,7 @@ public final class BookCoverStore: @unchecked Sendable {
     func readCover(for identifier: String) -> (image: UIImage?, released: Bool) {
         lock.withLock {
             guard let state = markUsedLocked(identifier) else { return (nil, false) }
-            return (state.coverImage ?? state.releasedCover, state.coverReleased)
+            return (state.visibleCover, state.coverReleased)
         }
     }
 
@@ -165,7 +178,9 @@ public final class BookCoverStore: @unchecked Sendable {
         lock.withLock {
             guard var entry = entries.removeValue(forKey: identifier) else { return }
             entry.books[book] = nil
-            if !entry.books.isEmpty {
+            if entry.books.isEmpty {
+                byteTotal -= Self.byteCount(of: entry.state)
+            } else {
                 entries[identifier] = entry
             }
         }
@@ -175,12 +190,12 @@ public final class BookCoverStore: @unchecked Sendable {
         lock.withLock { entries[identifier]?.books.count ?? 0 }
     }
 
-    /// Bytes of the decoded images the store holds now (PP-5509). An image held
-    /// in more than one field counts once. Walks every entry, so it is meant for
-    /// the memory event line, not a hot path.
+    /// Bytes of the decoded images the store holds now (PP-5509). An entry's
+    /// image held as both cover and thumbnail counts once. Released images that
+    /// a view still holds are not the store's and do not count.
     // PUBLIC_INTENT: read by the app's memory event line.
     public var imageByteCount: Int {
-        lock.withLock { imageByteCountLocked() }
+        lock.withLock { byteTotal }
     }
 
     /// `imageByteCount` of the default store that TPPBook uses.
@@ -232,7 +247,7 @@ public final class BookCoverStore: @unchecked Sendable {
                 state.isCoverLoading = false
             }
             guard let image else { return }
-            if let current = state.coverImage, Self.image(image, ranksBelow: current) { return }
+            if let current = state.visibleCover, Self.image(image, ranksBelow: current) { return }
             state.coverImage = image
             accepted = image
         }
@@ -259,10 +274,6 @@ public final class BookCoverStore: @unchecked Sendable {
         let claimed = lock.withLock { () -> Bool in
             guard let entry = entries[identifier], entry.state.colorSource !== image else { return false }
             entries[identifier]?.state.colorSource = image
-            if entry.state.colorKeptFromReleasedImage {
-                entries[identifier]?.state.colorKeptFromReleasedImage = false
-                return false
-            }
             return true
         }
         guard claimed else { return }
@@ -283,7 +294,9 @@ public final class BookCoverStore: @unchecked Sendable {
         lock.withLock {
             guard var entry = entries.removeValue(forKey: identifier) else { return false }
             let before = (cover: entry.state.coverImage, thumbnail: entry.state.thumbnailImage)
+            let bytesBefore = Self.byteCount(of: entry.state)
             change(&entry.state)
+            byteTotal += Self.byteCount(of: entry.state) - bytesBefore
             let newCover = entry.state.coverImage.map { $0 !== before.cover } ?? false
             let newThumbnail = entry.state.thumbnailImage.map { $0 !== before.thumbnail } ?? false
             if newCover {
@@ -319,13 +332,13 @@ public final class BookCoverStore: @unchecked Sendable {
     /// `keepRecent` most recently used ones.
     private func releasableIdentifiersLocked() -> [String] {
         let holding = entries
-            .filter { $0.value.state.coverImage != nil || $0.value.state.thumbnailImage != nil || $0.value.state.colorSource != nil }
+            .filter { $0.value.state.coverImage != nil || $0.value.state.thumbnailImage != nil }
             .sorted { $0.value.lastUsed > $1.value.lastUsed }
         return holding.dropFirst(max(0, limits.keepRecent)).reversed().map(\.key)
     }
 
     private func enforceByteLimitLocked() {
-        var bytes = imageByteCountLocked()
+        var bytes = byteTotal
         guard bytes > limits.byteLimit else { return }
         for identifier in releasableIdentifiersLocked() {
             bytes -= releaseImagesLocked(for: identifier)
@@ -337,7 +350,7 @@ public final class BookCoverStore: @unchecked Sendable {
     @discardableResult
     private func releaseImagesLocked(for identifier: String) -> Int {
         guard var state = entries[identifier]?.state else { return 0 }
-        let released = Self.byteCount(of: [state.coverImage, state.thumbnailImage, state.colorSource])
+        let released = Self.byteCount(of: state)
         if let cover = state.coverImage {
             state.coverReleased = true
             state.releasedCover = cover
@@ -346,16 +359,15 @@ public final class BookCoverStore: @unchecked Sendable {
             state.thumbnailReleased = true
             state.releasedThumbnail = thumbnail
         }
-        if state.colorSource != nil { state.colorKeptFromReleasedImage = true }
         state.coverImage = nil
         state.thumbnailImage = nil
-        state.colorSource = nil
         entries[identifier]?.state = state
+        byteTotal -= released
         return released
     }
 
-    private func imageByteCountLocked() -> Int {
-        Self.byteCount(of: entries.values.flatMap { [$0.state.coverImage, $0.state.thumbnailImage, $0.state.colorSource] })
+    private static func byteCount(of state: BookCoverState) -> Int {
+        byteCount(of: [state.coverImage, state.thumbnailImage])
     }
 
     /// Decoded bytes of `images`, each image object counted once.

@@ -87,7 +87,7 @@ actor TPPBookCoverRegistry {
     ///
     /// `nonisolated let`: `GeneralCache` serializes its own access, and the
     /// fetch writes it from a detached `Task`.
-    nonisolated private let sourceCache: GeneralCache<String, Data>
+    nonisolated let sourceCache: GeneralCache<String, Data>
 
     /// Caches folder that holds one source-byte folder per launch.
     nonisolated static let sourceCacheRootName = "CoverSourceData"
@@ -96,6 +96,30 @@ actor TPPBookCoverRegistry {
     /// did. The folder name bounds their life, so entries get a long expiry:
     /// `GeneralCache` reads a file with no expiry as already expired.
     static let sourceEntryLifetime: TimeInterval = 365 * 24 * 60 * 60
+
+    /// Disk the source bytes may use; the oldest go first over it.
+    nonisolated static let sourceByteLimit = 100 * 1024 * 1024
+
+    /// The source cache is pruned after this many new bytes, not on every
+    /// write, so a screen of cover fetches lists the folder once.
+    static let sourcePruneInterval = 10 * 1024 * 1024
+    private var sourceBytesSincePrune = 0
+
+    /// How a prune runs. Production runs it on a background task; a test can
+    /// run it at once. With the limit and interval it is injected so a test can
+    /// reach the prune without writing 10 MB.
+    struct SourcePrunePolicy: Sendable {
+        var byteLimit: Int
+        var interval: Int
+        var schedule: @Sendable (@escaping @Sendable () -> Void) -> Void
+
+        static let production = SourcePrunePolicy(
+            byteLimit: TPPBookCoverRegistry.sourceByteLimit,
+            interval: TPPBookCoverRegistry.sourcePruneInterval,
+            schedule: { work in Task.detached(priority: .utility) { work() } }
+        )
+    }
+    private let sourcePrunePolicy: SourcePrunePolicy
 
     /// Dedup concurrent callers that want the same URL's bytes. A swimlane
     /// rendering 10 cells at once must only hit the network once per URL.
@@ -195,10 +219,12 @@ actor TPPBookCoverRegistry {
         hostFailureTracker: HostFailureTracker = HostFailureTracker(),
         urlSession: URLSession = TPPBookCoverRegistry.imageSession,
         now: @escaping @Sendable () -> Date = Date.init,
-        sourceCache: GeneralCache<String, Data> = TPPBookCoverRegistry.makeInstanceSourceCache()
+        sourceCache: GeneralCache<String, Data> = TPPBookCoverRegistry.makeInstanceSourceCache(),
+        sourcePrunePolicy: SourcePrunePolicy = .production
     ) {
         self.imageCache = imageCache
         self.sourceCache = sourceCache
+        self.sourcePrunePolicy = sourcePrunePolicy
         self.hostFailureTracker = hostFailureTracker
         self.urlSession = urlSession
         self.now = now
@@ -558,6 +584,7 @@ actor TPPBookCoverRegistry {
                 await self.clearBadResponse(for: url)
                 await self.hostFailureTracker.recordSuccess(for: url.host)
                 self.sourceCache.set(data, for: key, expiresIn: Self.sourceEntryLifetime)
+                await self.noteSourceBytesWritten(data.count)
                 return data
             } catch {
                 if Self.isHostLevelError(error) {
@@ -576,6 +603,17 @@ actor TPPBookCoverRegistry {
         let data = await task.value
         inProgressDataTasks[url] = nil
         return data
+    }
+
+    private func noteSourceBytesWritten(_ count: Int) {
+        sourceBytesSincePrune += count
+        guard sourceBytesSincePrune >= sourcePrunePolicy.interval else { return }
+        sourceBytesSincePrune = 0
+        let cache = sourceCache
+        let limit = sourcePrunePolicy.byteLimit
+        sourcePrunePolicy.schedule {
+            cache.prune(maxBytes: limit)
+        }
     }
 
     /// Stores a decoded image under its sized key AND under the bare identifier,

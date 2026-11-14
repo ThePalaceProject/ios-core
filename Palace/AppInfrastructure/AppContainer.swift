@@ -556,8 +556,8 @@ struct AppContainer: @unchecked Sendable {
             on: accountsManager.accountSwitchPublisher,
             ownedServices: ownedServices
         )
-        // The playing audiobook's cover is never released (PP-5581). Steps run
-        // on the thread that posted; UIKit and the background trim post on main.
+        // The playing audiobook's cover is never released: CarPlay and the
+        // lock screen show it. Steps run on the posting thread; UIKit posts on main.
         memoryRelease.registerBookCovers(bookCoverStore, keeping: { [processServices] in
             guard Thread.isMainThread else { return [] }
             return MainActor.assumeIsolated {

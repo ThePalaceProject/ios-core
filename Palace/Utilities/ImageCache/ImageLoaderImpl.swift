@@ -44,6 +44,9 @@ public nonisolated class ImageLoader: ImageLoading, @unchecked Sendable {
     /// Kept internal so call sites can't reach past `ImageLoading`.
     private let registry: TPPBookCoverRegistry
 
+    /// The disk cache of downloaded cover bytes this loader's registry uses.
+    var sourceCache: GeneralCache<String, Data> { registry.sourceCache }
+
     /// Disk + decoded-memory cache. Re-exported through the cache surface of
     /// `ImageLoading` so consumers that used to inject `ImageCacheType` get one
     /// protocol covering both layers.

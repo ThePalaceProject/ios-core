@@ -322,6 +322,103 @@ final class TPPBookCoverRegistrySourceBytesTests: XCTestCase {
         try? FileManager.default.removeItem(at: root)
     }
 
+    /// New source bytes reaching the prune interval prune the disk cache to its
+    /// limit.
+    func testSourceBytesReachingThePruneInterval_pruneTheDiskCache() async throws {
+        let sourceCache = GeneralCache<String, Data>(cacheName: "Prune-\(UUID().uuidString)", mode: .diskOnly)
+        let registry = makePruningRegistry(sourceCache: sourceCache, interval: jpeg.count)
+        let book = makeBook()
+
+        _ = await registry.coverImage(for: book, displayPoints: 280)
+
+        let url = try XCTUnwrap(book.imageURL)
+        XCTAssertNil(sourceCache.get(for: TPPBookCoverRegistry.sourceKey(for: url)))
+        sourceCache.clear()
+    }
+
+    /// Below the prune interval the source bytes stay on disk.
+    func testSourceBytesUnderThePruneInterval_stayOnDisk() async throws {
+        let sourceCache = GeneralCache<String, Data>(cacheName: "Prune-\(UUID().uuidString)", mode: .diskOnly)
+        let registry = makePruningRegistry(sourceCache: sourceCache, interval: jpeg.count + 1)
+        let book = makeBook()
+
+        _ = await registry.coverImage(for: book, displayPoints: 280)
+
+        let url = try XCTUnwrap(book.imageURL)
+        XCTAssertEqual(sourceCache.get(for: TPPBookCoverRegistry.sourceKey(for: url)), jpeg)
+        sourceCache.clear()
+    }
+
+    /// A registry whose prune empties the disk cache at once when it runs.
+    private func makePruningRegistry(sourceCache: GeneralCache<String, Data>, interval: Int) -> TPPBookCoverRegistry {
+        let cache = ImageCache._makeIsolatedForTesting(cacheName: "Prune-\(UUID().uuidString)")
+        return TPPBookCoverRegistry(
+            imageCache: cache,
+            urlSession: .stubbedSession(),
+            sourceCache: sourceCache,
+            sourcePrunePolicy: .init(byteLimit: 0, interval: interval, schedule: { $0() })
+        )
+    }
+
+    /// The source-byte caches keep nothing in memory (PP-5583).
+    func testSourceCaches_holdNoBytesInMemory() throws {
+        let instance = TPPBookCoverRegistry.makeInstanceSourceCache()
+        let url = try XCTUnwrap(URL(string: "https://\(host)/memory-check-\(UUID().uuidString)"))
+        let key = TPPBookCoverRegistry.sourceKey(for: url)
+
+        instance.set(Data(count: 2_000), for: key, expiresIn: 60)
+        TPPBookCoverRegistry.launchSourceCache.set(Data(count: 2_000), for: key, expiresIn: 60)
+
+        XCTAssertEqual(instance.memoryBytes, 0)
+        XCTAssertEqual(TPPBookCoverRegistry.launchSourceCache.memoryBytes, 0)
+        instance.clear()
+        TPPBookCoverRegistry.launchSourceCache.remove(for: key)
+    }
+
+    /// URLs that differ only in punctuation get separate files: the cache strips
+    /// punctuation from raw keys, so the key is a hash.
+    func testSourceKey_punctuationOnlyURLs_getDistinctFiles() throws {
+        let cache = TPPBookCoverRegistry.makeInstanceSourceCache()
+        let a = TPPBookCoverRegistry.sourceKey(for: try XCTUnwrap(URL(string: "https://\(host)/cover?a=1")))
+        let b = TPPBookCoverRegistry.sourceKey(for: try XCTUnwrap(URL(string: "https://\(host)/cover?a=2")))
+
+        XCTAssertNotEqual(cache.fileURL(for: a), cache.fileURL(for: b))
+    }
+
+    /// A URL longer than a file name allows still round-trips through the cache.
+    func testSourceKey_urlOver255Characters_roundTrips() throws {
+        let cache = TPPBookCoverRegistry.makeInstanceSourceCache()
+        let long = try XCTUnwrap(URL(string: "https://\(host)/" + String(repeating: "c", count: 400)))
+        let key = TPPBookCoverRegistry.sourceKey(for: long)
+
+        cache.set(jpeg, for: key, expiresIn: 60)
+
+        XCTAssertEqual(cache.get(for: key), jpeg)
+        cache.clear()
+    }
+
+    /// The app's image loader and the shared registry use one launch cache, so a
+    /// cover fetched for the player is not fetched again for a list.
+    func testProductionImageLoader_sharesTheLaunchSourceCache() throws {
+        let loader = try XCTUnwrap(AppContainer.production().imageLoader as? ImageLoader)
+        XCTAssertIdentical(loader.sourceCache, TPPBookCoverRegistry.launchSourceCache)
+    }
+
+    /// The source-byte disk cache is bounded: over the limit the oldest files go.
+    func testGeneralCachePrune_deletesOldestFilesUntilUnderTheLimit() {
+        let cache = GeneralCache<String, Data>(cacheName: "Prune-\(UUID().uuidString)", mode: .diskOnly)
+        for name in ["first", "second", "third"] {
+            cache.set(Data(count: 1_000), for: name, expiresIn: 60)
+        }
+
+        cache.prune(maxBytes: 2_000)
+
+        XCTAssertNil(cache.get(for: "first"))
+        XCTAssertNotNil(cache.get(for: "second"))
+        XCTAssertNotNil(cache.get(for: "third"))
+        cache.clear()
+    }
+
     private func makeBook() -> TPPBook {
         let id = "source-bytes-\(UUID().uuidString)"
         return TPPBook(

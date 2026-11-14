@@ -47,6 +47,92 @@ class CarPlayTests: XCTestCase {
 
     // MARK: - CarPlayImageProvider Tests
 
+    /// Offline, a book with no cover in memory gets CarPlay artwork from the
+    /// loader, which reads the disk caches, instead of a direct network fetch
+    /// that fails and leaves a placeholder (PP-5583).
+    func testCarPlayImageProvider_offlineWithoutCoverInMemory_asksTheLoader() async {
+        let previousLoader = TPPBookImageContext.imageLoaderProvider
+        defer { TPPBookImageContext.imageLoaderProvider = previousLoader }
+        let silent = MockImageLoader()
+        TPPBookImageContext.imageLoaderProvider = { silent }
+        let book = Self.makeBookWithoutCover()
+        await drainMainQueueAsync()
+        XCTAssertNil(book.coverImage, "precondition: no cover in memory")
+        let loader = MockImageLoader()
+        loader.stubbedCoverImage = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 60)).image { _ in }
+        let provider = CarPlayImageProvider(imageLoader: loader)
+
+        let set = await provider.imageSet(for: book)
+
+        XCTAssertNotNil(set)
+        XCTAssertTrue(loader.coverCalls.contains { $0.identifier == book.identifier })
+    }
+
+    /// A book with only a thumbnail URL also gets its artwork from the loader.
+    func testCarPlayImageProvider_thumbnailURLOnly_asksTheLoader() async {
+        let previousLoader = TPPBookImageContext.imageLoaderProvider
+        defer { TPPBookImageContext.imageLoaderProvider = previousLoader }
+        let silent = MockImageLoader()
+        TPPBookImageContext.imageLoaderProvider = { silent }
+        let book = Self.makeBookWithoutCover(imageURL: false, thumbnailURL: true)
+        await drainMainQueueAsync()
+        let loader = MockImageLoader()
+        loader.stubbedCoverImage = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 60)).image { _ in }
+
+        _ = await CarPlayImageProvider(imageLoader: loader).imageSet(for: book)
+
+        XCTAssertTrue(loader.coverCalls.contains { $0.identifier == book.identifier })
+    }
+
+    /// A book with no cover URL gets the CarPlay placeholder without asking the loader.
+    func testCarPlayImageProvider_noCoverURL_usesThePlaceholderWithoutTheLoader() async {
+        let previousLoader = TPPBookImageContext.imageLoaderProvider
+        defer { TPPBookImageContext.imageLoaderProvider = previousLoader }
+        let silent = MockImageLoader()
+        TPPBookImageContext.imageLoaderProvider = { silent }
+        let book = Self.makeBookWithoutCover(imageURL: false, thumbnailURL: false)
+        await drainMainQueueAsync()
+        let loader = MockImageLoader()
+
+        let set = await CarPlayImageProvider(imageLoader: loader).imageSet(for: book)
+
+        XCTAssertNotNil(set)
+        XCTAssertFalse(loader.coverCalls.contains { $0.identifier == book.identifier })
+    }
+
+    /// A book with cover URLs as asked and no cover in memory: the image
+    /// context's loader answers nothing while the book is built.
+    private static func makeBookWithoutCover(imageURL: Bool = true, thumbnailURL: Bool = false) -> TPPBook {
+        let id = "no-cover-\(UUID().uuidString)"
+        return TPPBook(
+            acquisitions: [],
+            authors: [],
+            categoryStrings: [],
+            distributor: "",
+            identifier: id,
+            imageURL: imageURL ? URL(string: "https://covers.example/\(id).jpg") : nil,
+            imageThumbnailURL: thumbnailURL ? URL(string: "https://covers.example/thumb/\(id).jpg") : nil,
+            published: nil,
+            publisher: "",
+            subtitle: "",
+            summary: "",
+            title: "No Cover",
+            updated: Date(),
+            annotationsURL: nil,
+            analyticsURL: nil,
+            alternateURL: nil,
+            relatedWorksURL: nil,
+            previewLink: nil,
+            seriesURL: nil,
+            revokeURL: nil,
+            reportURL: nil,
+            timeTrackingURL: nil,
+            contributors: [:],
+            bookDuration: nil,
+            imageCache: MockImageCache()
+        )
+    }
+
     func testCarPlayImageProvider_GeneratesPlaceholder() {
         // Arrange
         let imageProvider = CarPlayImageProvider(imageLoader: makeTestAppContainer().imageLoader)
