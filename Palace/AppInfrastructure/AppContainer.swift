@@ -282,6 +282,7 @@ struct AppContainer: @unchecked Sendable {
         applicationState: UIApplication.State,
         memoryRelease: MemoryReleaseCoordinator,
         bookCoverStore: BookCoverStore,
+        keepList: @escaping @Sendable () -> Set<String> = { [] },
         center: NotificationCenter = .default
     ) -> BackgroundPlaybackMemoryTrimmer {
         BackgroundPlaybackMemoryTrimmer(

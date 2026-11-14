@@ -139,9 +139,9 @@ final class BackgroundPlaybackMemoryTrimmerTests: XCTestCase {
         let coordinator = MemoryReleaseCoordinator(center: NotificationCenter())
         let owner = NSObject()
         let released = ReleaseCount()
-        coordinator.register(owner, stage: .bookCells) { _ in released.increment() }
+        coordinator.register(owner, stage: .catalogFeeds) { _ in released.increment() }
         let isPlaying = CurrentValueSubject<Bool, Never>(false)
-        let store = BookCoverStore.shared
+        let store = BookCoverStore(limits: .init(byteLimit: .max, keepRecent: 0))
         let background = AppContainer.makeBackgroundPlaybackTrimmer(
             isPlaying: isPlaying.eraseToAnyPublisher(), applicationState: .background,
             memoryRelease: coordinator, bookCoverStore: store, center: center
@@ -159,6 +159,82 @@ final class BackgroundPlaybackMemoryTrimmerTests: XCTestCase {
         withExtendedLifetime((background, foreground, owner)) {}
     }
 
+    /// A container trim releases only the screen stages and the cover store's
+    /// images outside the keep list, never the player's LCP decrypt cache,
+    /// downloads, book cells or the decoded-image cache; returning to the
+    /// foreground restores the covers views still hold.
+    func testContainerTrimmer_trimsOnlyScreenMemory_andRestoresOnForeground() async {
+        let coordinator = MemoryReleaseCoordinator(center: NotificationCenter())
+        let log = StageLog()
+        let owners = MemoryReleaseStage.allCases.map { stage -> NSObject in
+            let owner = NSObject()
+            coordinator.register(owner, stage: stage) { _ in log.append(stage) }
+            return owner
+        }
+        let store = BookCoverStore(limits: .init(byteLimit: .max, keepRecent: 0))
+        let shown = Self.makeBook("trim-shown", store: store)
+        let playing = Self.makeBook("trim-playing", store: store)
+        await drainMainQueueAsync()
+        let drawn = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { _ in }
+        let playingCover = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { _ in }
+        shown.coverImage = drawn
+        playing.coverImage = playingCover
+        let trimmer = AppContainer.makeBackgroundPlaybackTrimmer(
+            isPlaying: Just(true).eraseToAnyPublisher(), applicationState: .active,
+            memoryRelease: coordinator, bookCoverStore: store,
+            keepList: { ["trim-playing"] }, center: center
+        )
+
+        enterBackground()
+
+        XCTAssertEqual(Set(log.all), [.catalogFeeds, .cachedData])
+        XCTAssertNil(store.state(for: "trim-shown").coverImage, "the store released the shown cover")
+        XCTAssertIdentical(store.state(for: "trim-playing").coverImage, playingCover, "the playing book's cover stays")
+
+        enterForeground()
+
+        XCTAssertIdentical(store.state(for: "trim-shown").coverImage, drawn, "restore made the held cover strong again")
+        withExtendedLifetime((trimmer, owners, shown, playing, drawn)) {}
+    }
+
+    private final class StageLog: @unchecked Sendable {
+        private let lock = NSLock()
+        private var stages: [MemoryReleaseStage] = []
+        var all: [MemoryReleaseStage] { lock.withLock { stages } }
+        func append(_ stage: MemoryReleaseStage) { lock.withLock { stages.append(stage) } }
+    }
+
+    private static func makeBook(_ identifier: String, store: BookCoverStore) -> TPPBook {
+        TPPBook(
+            acquisitions: [],
+            authors: [],
+            categoryStrings: [],
+            distributor: "",
+            identifier: identifier,
+            imageURL: nil,
+            imageThumbnailURL: nil,
+            published: nil,
+            publisher: "",
+            subtitle: "",
+            summary: "",
+            title: "Title",
+            updated: Date(),
+            annotationsURL: nil,
+            analyticsURL: nil,
+            alternateURL: nil,
+            relatedWorksURL: nil,
+            previewLink: nil,
+            seriesURL: nil,
+            revokeURL: nil,
+            reportURL: nil,
+            timeTrackingURL: nil,
+            contributors: [:],
+            bookDuration: nil,
+            imageCache: MockImageCache(),
+            coverStore: store
+        )
+    }
+
     private final class ReleaseCount: @unchecked Sendable {
         private let lock = NSLock()
         private var count = 0
@@ -168,9 +244,10 @@ final class BackgroundPlaybackMemoryTrimmerTests: XCTestCase {
 
     // MARK: - Stages
 
-    /// A trim releases screen memory only: never the player's LCP decrypt cache,
-    /// downloads, disk or network responses.
+    /// A trim runs only the stages a return to the foreground can redraw from
+    /// without a placeholder or a fetch: feeds the screens already hold and
+    /// the memory layer of disk caches.
     func testStages_AreTheScreenOnlyStages() {
-        XCTAssertEqual(BackgroundPlaybackMemoryTrimmer.stages, [.catalogFeeds, .bookCells, .cachedData, .decodedImages])
+        XCTAssertEqual(BackgroundPlaybackMemoryTrimmer.stages, [.catalogFeeds, .cachedData])
     }
 }

@@ -4,6 +4,7 @@ import Combine
 import PalaceCatalog
 import PalaceNetwork
 @testable import Palace
+@testable import PalaceBookModel
 
 // Offline/reconnect branching (PP-4578) is driven by the shared
 // `MockReachability` test double (PalaceTests/Mocks/MockReachability.swift).
@@ -406,44 +407,47 @@ final class CatalogViewModelStateMachineTests: PalaceTestCase {
     }
 
     /// Coming back to the foreground after a background trim keeps the catalog
-    /// screen and asks the repository for nothing (PP-5581).
-    func testForegroundAfterBackgroundTrim_keepsTheScreen_withoutAFetch() async {
-        mockRepository.loadTopLevelCatalogResult = Self.makeGroupedCatalogFeed()
-        let vm = createViewModel()
+    /// screen and fetches nothing: the trim drops the repository's in-memory
+    /// feeds, and the view model still holds the one it shows (PP-5581).
+    func testForegroundAfterBackgroundTrim_keepsTheScreen_withoutAFetch() async throws {
+        let api = CatalogAPIMock()
+        api.stubbedFeeds[testURL] = Self.makeGroupedCatalogFeed()
+        let suite = "trim-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let repository = CatalogRepository(api: api, defaults: defaults)
+        let vm = CatalogViewModel(
+            repository: repository,
+            topLevelURLProvider: { [testURL] in testURL },
+            bookRegistry: bookRegistry,
+            imageCache: MockImageCache(),
+            reachability: MockReachability(initiallyConnected: true)
+        )
         await vm.load()
         await waitUntilLoaded(vm, at: testURL)
-        let fetches = mockRepository.loadTopLevelCatalogCallCount
+        let fetches = api.fetchFeedCalls.count
+        XCTAssertNotNil(repository.cachedFeed(for: testURL), "precondition: the feed is in memory")
         let center = NotificationCenter()
         let coordinator = MemoryReleaseCoordinator(center: center)
-        let feedsOwner = NSObject()
-        let released = Counter()
-        coordinator.register(feedsOwner, stage: .catalogFeeds) { _ in released.increment() }
-        let trimmer = BackgroundPlaybackMemoryTrimmer(
-            center: center,
-            isPlaying: Just(true).eraseToAnyPublisher(),
-            startsInBackground: false,
-            trim: { coordinator.releaseAll(stages: BackgroundPlaybackMemoryTrimmer.stages) },
-            restore: {}
+        coordinator.register(repository, stage: .catalogFeeds) { $0.releaseInMemoryCaches() }
+        let trimmer = AppContainer.makeBackgroundPlaybackTrimmer(
+            isPlaying: Just(true).eraseToAnyPublisher(), applicationState: .active,
+            memoryRelease: coordinator,
+            bookCoverStore: BookCoverStore(limits: .init(byteLimit: .max, keepRecent: 0)),
+            center: center
         )
 
         center.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
+        XCTAssertNil(repository.cachedFeed(for: testURL), "precondition: the trim dropped the in-memory feed")
         center.post(name: UIApplication.willEnterForegroundNotification, object: nil)
         await drainMainQueueAsync()
 
-        XCTAssertEqual(released.value, 1, "precondition: the trim released the feeds")
         guard case .loaded(let content) = vm.state else {
             return XCTFail("Expected the loaded screen after returning, got \(vm.state)")
         }
         XCTAssertEqual(content.title, "Library")
-        XCTAssertEqual(mockRepository.loadTopLevelCatalogCallCount, fetches)
-        withExtendedLifetime((trimmer, feedsOwner)) {}
-    }
-
-    private final class Counter: @unchecked Sendable {
-        private let lock = NSLock()
-        private var count = 0
-        var value: Int { lock.withLock { count } }
-        func increment() { lock.withLock { count += 1 } }
+        XCTAssertEqual(api.fetchFeedCalls.count, fetches)
+        withExtendedLifetime(trimmer) {}
     }
 
     /// Pull-to-refresh is the ONE path that invalidates: it drops the current
