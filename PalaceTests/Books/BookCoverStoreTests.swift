@@ -549,6 +549,39 @@ final class BookCoverStoreTests: XCTestCase {
         XCTAssertNil(limited.state(for: "weak-a").coverImage, "the store itself holds no strong copy")
     }
 
+    /// The app's launch call sets the iPad floor on a store built before it.
+    func testUseDeviceIdiom_onIPad_raisesTheRecentCoverFloor() {
+        let store = BookCoverStore(limits: .forDevice(memoryMB: 4096))
+        XCTAssertEqual(store.limits.keepRecent, 60, "precondition: the phone floor")
+
+        store.useDeviceIdiom(isPad: true)
+
+        XCTAssertEqual(store.limits.keepRecent, 120)
+    }
+
+    /// A phone keeps its floor when the app reports its idiom.
+    func testUseDeviceIdiom_onAPhone_keepsThePhoneFloor() {
+        let store = BookCoverStore(limits: .forDevice(memoryMB: 4096))
+
+        store.useDeviceIdiom(isPad: false)
+
+        XCTAssertEqual(store.limits.keepRecent, 60)
+    }
+
+    /// A released thumbnail a view still holds comes back from the getter.
+    func testReleasedThumbnailHeldByAView_getterReturnsTheSameImage() async {
+        let limited = makeLimitedStore(byteLimit: .max, keepRecent: 0)
+        let book = Self.makeBook("weak-thumb", cache: CountingCache(), store: limited)
+        await settle()
+        let drawn = solidImage(width: 5, height: 5)
+        book.thumbnailImage = drawn
+
+        limited.releaseImages()
+
+        XCTAssertIdentical(book.thumbnailImage, drawn)
+        XCTAssertNil(limited.state(for: "weak-thumb").thumbnailImage, "the store itself holds no strong copy")
+    }
+
     /// A released cover nothing else holds is freed.
     func testReleasedCoverHeldNowhere_isFreed() async {
         let limited = makeLimitedStore(byteLimit: .max, keepRecent: 0)
@@ -631,15 +664,18 @@ final class BookCoverStoreTests: XCTestCase {
         XCTAssertNil(limited.state(for: "keep-b").coverImage)
     }
 
-    /// Limits apply a byte cap only below 4 GB (PP-5583 review).
+    /// Limits apply a byte cap only below 4 GB; the floor follows the device type.
     func testLimitsForDevice_followMemoryTiers() {
         let mb = 1024 * 1024
         XCTAssertEqual(BookCoverStore.Limits.forDevice(memoryMB: 2047), .init(byteLimit: 15 * mb, keepRecent: 40))
         XCTAssertEqual(BookCoverStore.Limits.forDevice(memoryMB: 2048), .init(byteLimit: 25 * mb, keepRecent: 60))
         XCTAssertEqual(BookCoverStore.Limits.forDevice(memoryMB: 4095), .init(byteLimit: 25 * mb, keepRecent: 60))
-        // 4 GB and larger phones and iPads keep today's unbounded store; only a
-        // memory warning releases, and it keeps more than an iPad screen of covers.
-        XCTAssertEqual(BookCoverStore.Limits.forDevice(memoryMB: 4096), .init(byteLimit: .max, keepRecent: 120))
+        // 4 GB and larger devices keep today's unbounded store; only a memory
+        // warning releases.
+        XCTAssertEqual(BookCoverStore.Limits.forDevice(memoryMB: 4096), .init(byteLimit: .max, keepRecent: 60))
+        // An iPad keeps more than a multi-lane screen of covers on any tier.
+        XCTAssertEqual(BookCoverStore.Limits.forDevice(memoryMB: 3072, isPad: true), .init(byteLimit: 25 * mb, keepRecent: 120))
+        XCTAssertEqual(BookCoverStore.Limits.forDevice(memoryMB: 8192, isPad: true), .init(byteLimit: .max, keepRecent: 120))
     }
 
 

@@ -286,6 +286,19 @@ struct AppContainer: @unchecked Sendable {
         )
     }
 
+    /// The cover store's keep list: the playing audiobook's ID. Steps run on
+    /// the posting thread; UIKit posts on main, and off main the list is empty.
+    static func playingAudiobookKeepList(
+        currentBookID: @escaping @MainActor () -> String?
+    ) -> @Sendable () -> Set<String> {
+        {
+            guard Thread.isMainThread else { return [] }
+            return MainActor.assumeIsolated {
+                currentBookID().map { [$0] } ?? []
+            }
+        }
+    }
+
     /// Side-loading (PP-2678) — process-wide registry of side-loaded books.
     /// Source of truth for the sync-exemption set (consumed by
     /// `BookRegistrySync.sync()` via a lazy provider) and the side-loaded
@@ -579,12 +592,9 @@ struct AppContainer: @unchecked Sendable {
         )
         // The playing audiobook's cover is never released: CarPlay and the
         // lock screen show it. Steps run on the posting thread; UIKit posts on main.
-        memoryRelease.registerBookCovers(bookCoverStore, keeping: { [processServices] in
-            guard Thread.isMainThread else { return [] }
-            return MainActor.assumeIsolated {
-                processServices.audiobookSession?.currentBook.map { [$0.identifier] } ?? []
-            }
-        })
+        memoryRelease.registerBookCovers(bookCoverStore, keeping: Self.playingAudiobookKeepList(
+            currentBookID: { [processServices] in processServices.audiobookSession?.currentBook?.identifier }
+        ))
     }
 
     /// Binds a network-loss monitor to `downloadCenter`'s reachability (the one

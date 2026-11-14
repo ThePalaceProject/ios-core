@@ -99,6 +99,26 @@ final class AppCacheSizesTests: XCTestCase {
         cache.clear()
     }
 
+    /// A generated placeholder is not stored, in memory or on disk, so a cover
+    /// that failed offline is fetched again once the network is back.
+    func testImageCache_GeneratedPlaceholder_isNotStored() {
+        let cache = ImageCache._makeIsolatedForTesting(cacheName: "AppCacheSizes-\(UUID().uuidString)")
+        let placeholder = Self.solidImage(width: 40, height: 60)
+        placeholder.isGeneratedCoverPlaceholder = true
+
+        cache.set(placeholder, for: "offline")
+        Self.drain(cache)
+
+        XCTAssertNil(cache.memoryImage(for: "offline"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: cache._diskURLForTesting(for: "offline").path))
+
+        cache.set(Self.solidImage(width: 40, height: 60), for: "offline")
+        Self.drain(cache)
+
+        XCTAssertNotNil(cache.memoryImage(for: "offline"), "the real cover is stored once it arrives")
+        cache.clear()
+    }
+
     /// Evicting decoded images keeps the disk copy, so the cover decodes again
     /// from disk instead of the network.
     func testImageCache_EvictDecodedImages_ZeroesDecodedBytesAndKeepsTheDiskCopy() async {
@@ -379,8 +399,8 @@ final class TPPBookCoverRegistrySourceBytesTests: XCTestCase {
     /// punctuation from raw keys, so the key is a hash.
     func testSourceKey_punctuationOnlyURLs_getDistinctFiles() throws {
         let cache = TPPBookCoverRegistry.makeInstanceSourceCache()
-        let a = TPPBookCoverRegistry.sourceKey(for: try XCTUnwrap(URL(string: "https://\(host)/cover?a=1")))
-        let b = TPPBookCoverRegistry.sourceKey(for: try XCTUnwrap(URL(string: "https://\(host)/cover?a=2")))
+        let a = TPPBookCoverRegistry.sourceKey(for: try XCTUnwrap(URL(string: "https://\(host)/a.b")))
+        let b = TPPBookCoverRegistry.sourceKey(for: try XCTUnwrap(URL(string: "https://\(host)/ab")))
 
         XCTAssertNotEqual(cache.fileURL(for: a), cache.fileURL(for: b))
     }
@@ -407,8 +427,14 @@ final class TPPBookCoverRegistrySourceBytesTests: XCTestCase {
     /// The source-byte disk cache is bounded: over the limit the oldest files go.
     func testGeneralCachePrune_deletesOldestFilesUntilUnderTheLimit() {
         let cache = GeneralCache<String, Data>(cacheName: "Prune-\(UUID().uuidString)", mode: .diskOnly)
-        for name in ["first", "second", "third"] {
+        let base = Date(timeIntervalSince1970: 1_000_000)
+        for (offset, name) in ["first", "second", "third"].enumerated() {
             cache.set(Data(count: 1_000), for: name, expiresIn: 60)
+            // Set the order here; file system timestamps can tie.
+            try? FileManager.default.setAttributes(
+                [.creationDate: base.addingTimeInterval(TimeInterval(offset))],
+                ofItemAtPath: cache.fileURL(for: name).path
+            )
         }
 
         cache.prune(maxBytes: 2_000)

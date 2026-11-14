@@ -74,7 +74,10 @@ public final class BookCoverStore: @unchecked Sendable {
 
     let colorQueue: DispatchQueue
     private let colorExtractor: @Sendable (UIImage) -> UIColor
-    let limits: Limits
+    /// Under `lock`: the app sets the iPad floor at launch, after the shared
+    /// store may already exist.
+    private var storedLimits: Limits
+    var limits: Limits { lock.withLock { storedLimits } }
 
     init(
         colorQueue: DispatchQueue = DispatchQueue(label: "org.thepalaceproject.dominantcolor", qos: .utility),
@@ -83,7 +86,7 @@ public final class BookCoverStore: @unchecked Sendable {
     ) {
         self.colorQueue = colorQueue
         self.colorExtractor = colorExtractor
-        self.limits = limits
+        self.storedLimits = limits
     }
 
     /// How many decoded image bytes the store keeps, and how many of the most
@@ -93,19 +96,24 @@ public final class BookCoverStore: @unchecked Sendable {
         let keepRecent: Int
 
         /// Below 4 GB the byte limit matches `ImageCache`'s decoded-image tiers.
-        /// 4 GB and larger phones and iPads keep an unbounded store, as before;
-        /// only a memory warning releases there. `keepRecent` is at least two
-        /// screens of covers; the 3 GB tier and up includes iPads with several
-        /// lanes on screen.
-        static func forDevice(memoryMB: UInt64 = ProcessInfo.processInfo.physicalMemory / (1024 * 1024)) -> Limits {
+        /// 4 GB and larger devices keep an unbounded store, as before; only a
+        /// memory warning releases there. `keepRecent` is at least two phone
+        /// screens of covers, and on an iPad more than a multi-lane screen.
+        static func forDevice(memoryMB: UInt64 = ProcessInfo.processInfo.physicalMemory / (1024 * 1024), isPad: Bool = false) -> Limits {
             let mb = 1024 * 1024
+            let byteLimit: Int
+            let phoneFloor: Int
             if memoryMB < 2048 {
-                return Limits(byteLimit: 15 * mb, keepRecent: 40)
+                (byteLimit, phoneFloor) = (15 * mb, 40)
             } else if memoryMB < 4096 {
-                return Limits(byteLimit: 25 * mb, keepRecent: 60)
+                (byteLimit, phoneFloor) = (25 * mb, 60)
+            } else {
+                (byteLimit, phoneFloor) = (.max, 60)
             }
-            return Limits(byteLimit: .max, keepRecent: 120)
+            return Limits(byteLimit: byteLimit, keepRecent: isPad ? padKeepRecent : phoneFloor)
         }
+
+        static let padKeepRecent = 120
     }
 
     /// Releases every decoded image outside the `keepRecent` most recently read
@@ -117,6 +125,15 @@ public final class BookCoverStore: @unchecked Sendable {
             for identifier in releasableIdentifiersLocked() where !keeping.contains(identifier) {
                 releaseImagesLocked(for: identifier)
             }
+        }
+    }
+
+    /// Sets the recent-cover floor for the device type.
+    // PUBLIC_INTENT: the app passes the device idiom at launch.
+    public func useDeviceIdiom(isPad: Bool) {
+        guard isPad else { return }
+        lock.withLock {
+            storedLimits = Limits(byteLimit: storedLimits.byteLimit, keepRecent: Limits.padKeepRecent)
         }
     }
 
@@ -334,15 +351,15 @@ public final class BookCoverStore: @unchecked Sendable {
         let holding = entries
             .filter { $0.value.state.coverImage != nil || $0.value.state.thumbnailImage != nil }
             .sorted { $0.value.lastUsed > $1.value.lastUsed }
-        return holding.dropFirst(max(0, limits.keepRecent)).reversed().map(\.key)
+        return holding.dropFirst(max(0, storedLimits.keepRecent)).reversed().map(\.key)
     }
 
     private func enforceByteLimitLocked() {
         var bytes = byteTotal
-        guard bytes > limits.byteLimit else { return }
+        guard bytes > storedLimits.byteLimit else { return }
         for identifier in releasableIdentifiersLocked() {
             bytes -= releaseImagesLocked(for: identifier)
-            if bytes <= limits.byteLimit { return }
+            if bytes <= storedLimits.byteLimit { return }
         }
     }
 
