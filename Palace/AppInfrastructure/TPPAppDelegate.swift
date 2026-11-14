@@ -171,8 +171,9 @@ class TPPAppDelegate: UIResponder, UIApplicationDelegate {
             on: memoryMonitor.memoryEvents,
             sources: .production(networkResponses: { networkExecutor.cacheMemoryUsage })
         )
-        AppContainer.production().bookCoverStore.useDeviceIdiom(
-            isPad: UIDevice.current.userInterfaceIdiom == .pad
+        AppContainer.applyDeviceIdiom(
+            UIDevice.current.userInterfaceIdiom,
+            to: AppContainer.production().bookCoverStore
         )
 
         DispatchQueue.main.async { [weak self] in

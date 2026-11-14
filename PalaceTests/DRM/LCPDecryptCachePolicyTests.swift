@@ -107,6 +107,24 @@ final class LCPDecryptCachePolicyTests: XCTestCase {
         XCTAssertEqual(cache.decrypted(for: chunk), Data(chunk.reversed()))
     }
 
+    /// The context-free decrypt path, which only `LCPLibraryService` uses, also
+    /// keeps the cache for an EPUB: a repeated read is served without a second
+    /// decrypt.
+    func testDecryptWithoutContext_EPUBLicence_SecondReadIsACacheHit() throws {
+        _ = try client.createContext(
+            jsonLicense: Self.licence(key: "epub-nc", type: "application/epub+zip"),
+            hashedPassphrase: "hash", pemCrl: ""
+        )
+        let chunk = Data(repeating: 4, count: 1_024)
+
+        let first = client.decrypt(data: chunk)
+        let second = client.decrypt(data: chunk)
+
+        XCTAssertEqual(decryptCalls["epub-nc"], 1)
+        XCTAssertEqual(first, second)
+        XCTAssertEqual(cache.decrypted(for: chunk), Data(chunk.reversed()))
+    }
+
     /// A repeated LCP PDF read is served from the cache without a second decrypt.
     func testDecrypt_PDFLicence_SecondReadIsACacheHit() throws {
         let context = try client.createContext(
