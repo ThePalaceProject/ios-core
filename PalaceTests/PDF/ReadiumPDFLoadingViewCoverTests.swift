@@ -21,7 +21,9 @@ final class ReadiumPDFLoadingViewCoverTests: XCTestCase {
     func testRequestCoverIfMissing_withoutCover_asksTheLoaderAtTheThumbnailSize() async {
         let loader = MockImageLoader()
         TPPBookImageContext.imageLoaderProvider = { loader }
-        let book = TPPBookMocker.mockBook(distributorType: .OpenAccessPDF)
+        let book = Self.makeBookWithoutCover()
+        await drainMainQueueAsync()
+        XCTAssertNil(book.coverImage, "precondition: no cover in memory")
 
         ReadiumPDFLoadingView.requestCoverIfMissing(for: book)
         await awaitConditionAsync(timeout: 3) { loader.coverCalls.contains { $0.displayPoints == 200 } }
@@ -32,7 +34,7 @@ final class ReadiumPDFLoadingViewCoverTests: XCTestCase {
     func testRequestCoverIfMissing_withCover_asksForNothing() async {
         let loader = MockImageLoader()
         TPPBookImageContext.imageLoaderProvider = { loader }
-        let book = TPPBookMocker.mockBook(distributorType: .OpenAccessPDF)
+        let book = Self.makeBookWithoutCover()
         let cover = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { _ in }
         book.coverImage = cover
         await drainMainQueueAsync()
@@ -43,5 +45,38 @@ final class ReadiumPDFLoadingViewCoverTests: XCTestCase {
 
         XCTAssertEqual(loader.coverCalls.count, before)
         withExtendedLifetime(cover) {}
+    }
+
+    /// A book with a cover URL and no cover in memory: the image context's loader
+    /// answers nothing while the book is built.
+    private static func makeBookWithoutCover() -> TPPBook {
+        let id = "no-cover-\(UUID().uuidString)"
+        return TPPBook(
+            acquisitions: [],
+            authors: [],
+            categoryStrings: [],
+            distributor: "",
+            identifier: id,
+            imageURL: URL(string: "https://covers.example/\(id).jpg"),
+            imageThumbnailURL: nil,
+            published: nil,
+            publisher: "",
+            subtitle: "",
+            summary: "",
+            title: "No Cover",
+            updated: Date(),
+            annotationsURL: nil,
+            analyticsURL: nil,
+            alternateURL: nil,
+            relatedWorksURL: nil,
+            previewLink: nil,
+            seriesURL: nil,
+            revokeURL: nil,
+            reportURL: nil,
+            timeTrackingURL: nil,
+            contributors: [:],
+            bookDuration: nil,
+            imageCache: MockImageCache()
+        )
     }
 }

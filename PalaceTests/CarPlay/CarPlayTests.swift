@@ -51,16 +51,54 @@ class CarPlayTests: XCTestCase {
     /// loader, which reads the disk caches, instead of a direct network fetch
     /// that fails and leaves a placeholder (PP-5583).
     func testCarPlayImageProvider_offlineWithoutCoverInMemory_asksTheLoader() async {
+        let previousLoader = TPPBookImageContext.imageLoaderProvider
+        defer { TPPBookImageContext.imageLoaderProvider = previousLoader }
+        let silent = MockImageLoader()
+        TPPBookImageContext.imageLoaderProvider = { silent }
+        let book = Self.makeBookWithoutCover()
+        await drainMainQueueAsync()
+        XCTAssertNil(book.coverImage, "precondition: no cover in memory")
         let loader = MockImageLoader()
         loader.stubbedCoverImage = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 60)).image { _ in }
         let provider = CarPlayImageProvider(imageLoader: loader)
-        let book = TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
-        XCTAssertNil(book.coverImage, "precondition: no cover in memory")
 
         let set = await provider.imageSet(for: book)
 
         XCTAssertNotNil(set)
         XCTAssertTrue(loader.coverCalls.contains { $0.identifier == book.identifier })
+    }
+
+    /// A book with a cover URL and no cover in memory: the image context's loader
+    /// answers nothing while the book is built.
+    private static func makeBookWithoutCover() -> TPPBook {
+        let id = "no-cover-\(UUID().uuidString)"
+        return TPPBook(
+            acquisitions: [],
+            authors: [],
+            categoryStrings: [],
+            distributor: "",
+            identifier: id,
+            imageURL: URL(string: "https://covers.example/\(id).jpg"),
+            imageThumbnailURL: nil,
+            published: nil,
+            publisher: "",
+            subtitle: "",
+            summary: "",
+            title: "No Cover",
+            updated: Date(),
+            annotationsURL: nil,
+            analyticsURL: nil,
+            alternateURL: nil,
+            relatedWorksURL: nil,
+            previewLink: nil,
+            seriesURL: nil,
+            revokeURL: nil,
+            reportURL: nil,
+            timeTrackingURL: nil,
+            contributors: [:],
+            bookDuration: nil,
+            imageCache: MockImageCache()
+        )
     }
 
     func testCarPlayImageProvider_GeneratesPlaceholder() {
