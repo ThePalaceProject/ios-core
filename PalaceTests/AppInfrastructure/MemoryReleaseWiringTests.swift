@@ -77,6 +77,12 @@ final class MemoryReleaseWiringTests: PalaceWiringTestCase {
         XCTAssertEqual(coordinator.stages(registeredFor: store), [.decodedImages])
     }
 
+    /// The keep list names the playing audiobook, and nothing when none plays.
+    func testPlayingAudiobookKeepList_namesThePlayingBook() {
+        XCTAssertEqual(AppContainer.playingAudiobookKeepList(currentBookID: { "playing-id" })(), ["playing-id"])
+        XCTAssertEqual(AppContainer.playingAudiobookKeepList(currentBookID: { nil })(), [])
+    }
+
     func testAppContainer_registersItsBookCoverStore() {
         let container = makeTestAppContainer()
         XCTAssertEqual(MemoryReleaseCoordinator.shared.stages(registeredFor: container.bookCoverStore), [.decodedImages])

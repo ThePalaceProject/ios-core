@@ -256,6 +256,13 @@ struct AppContainer: @unchecked Sendable {
         return session
     }
 
+    /// The cover store's keep list: the playing audiobook's ID.
+    static func playingAudiobookKeepList(
+        currentBookID: @escaping @MainActor () -> String?
+    ) -> @Sendable () -> Set<String> {
+        { [] }
+    }
+
     /// Side-loading (PP-2678) — process-wide registry of side-loaded books.
     /// Source of truth for the sync-exemption set (consumed by
     /// `BookRegistrySync.sync()` via a lazy provider) and the side-loaded

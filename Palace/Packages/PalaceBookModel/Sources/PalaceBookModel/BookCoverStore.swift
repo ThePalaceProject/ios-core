@@ -97,7 +97,7 @@ public final class BookCoverStore: @unchecked Sendable {
         /// only a memory warning releases there. `keepRecent` is at least two
         /// screens of covers; the 3 GB tier and up includes iPads with several
         /// lanes on screen.
-        static func forDevice(memoryMB: UInt64 = ProcessInfo.processInfo.physicalMemory / (1024 * 1024)) -> Limits {
+        static func forDevice(memoryMB: UInt64 = ProcessInfo.processInfo.physicalMemory / (1024 * 1024), isPad: Bool = false) -> Limits {
             let mb = 1024 * 1024
             if memoryMB < 2048 {
                 return Limits(byteLimit: 15 * mb, keepRecent: 40)
@@ -119,6 +119,10 @@ public final class BookCoverStore: @unchecked Sendable {
             }
         }
     }
+
+    /// Sets the recent-cover floor for the device type.
+    // PUBLIC_INTENT: the app passes the device idiom at launch.
+    public func useDeviceIdiom(isPad: Bool) {}
 
     // PUBLIC_INTENT: the app registers this as a memory warning release step.
     public func releaseImages() {
