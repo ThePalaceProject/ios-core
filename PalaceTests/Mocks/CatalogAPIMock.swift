@@ -49,7 +49,8 @@ final class CatalogAPIMock: CatalogAPI {
     private var _fetchFeedCalls: [URL] = []
     var fetchFeedCalls: [URL] { callsLock.withLock { _fetchFeedCalls } }
 
-    /// The task priority each fetch ran at, by URL.
+    /// The base priority each fetch ran at, by URL. Base, not current: a task
+    /// that awaits this work raises its current priority.
     private var _fetchPriorities: [URL: TaskPriority] = [:]
     var fetchPriorities: [URL: TaskPriority] { callsLock.withLock { _fetchPriorities } }
 
@@ -74,7 +75,7 @@ final class CatalogAPIMock: CatalogAPI {
     // MARK: - CatalogAPI Implementation
 
     func fetchFeed(at url: URL) async throws -> CatalogFeed? {
-        let priority = Task.currentPriority
+        let priority = Task.basePriority ?? Task.currentPriority
         let count = callsLock.withLock { () -> Int in
             _fetchFeedCalls.append(url)
             _fetchPriorities[url] = priority
