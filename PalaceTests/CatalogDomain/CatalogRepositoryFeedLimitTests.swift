@@ -62,7 +62,8 @@ final class CatalogRepositoryFeedLimitTests: XCTestCase {
             Self.makeFeed(facets: (0..<5).map { facetURL(group: group, $0) })
         )
         _ = try await repository.loadTopLevelCatalog(at: groupURL(group))
-        await repository._awaitAllBackgroundRefreshesForTesting()
+        let pending = await repository._awaitAllBackgroundRefreshesForTesting()
+        XCTAssertEqual(pending, [], "background refreshes still running")
     }
 
     private func fetchCount(_ url: URL) -> Int {
@@ -155,7 +156,8 @@ final class CatalogRepositoryFeedLimitTests: XCTestCase {
         api.fetchFeedError = URLError(.notConnectedToInternet)
 
         _ = try await repository.loadTopLevelCatalog(at: url(0))
-        await repository._awaitAllBackgroundRefreshesForTesting()
+        let pending = await repository._awaitAllBackgroundRefreshesForTesting()
+        XCTAssertEqual(pending, [], "background refreshes still running")
         api.fetchFeedError = nil
         _ = try await repository.loadTopLevelCatalog(at: url(readLimit))
 
@@ -251,8 +253,8 @@ final class CatalogRepositoryFeedLimitTests: XCTestCase {
 
     /// Preloading facets of a feed never drops a feed the patron has read.
     /// With refresh tracking armed, facet preloads run at the tracked priority,
-    /// not `.background`, so a test that joins them does not wait on work a
-    /// busy CI runner may never schedule.
+    /// not `.background`. The mock reads base priority, which waiting on the
+    /// preload does not raise.
     func testTrackedPreloads_RunAtTheTrackedPriority() async throws {
         let repository = makeRepository()
 
@@ -263,6 +265,20 @@ final class CatalogRepositoryFeedLimitTests: XCTestCase {
         for priority in priorities {
             XCTAssertGreaterThanOrEqual(priority.rawValue, TaskPriority.utility.rawValue)
         }
+    }
+
+    /// A join that times out names the tracked tasks still running, so a hung
+    /// test reports what it waited on.
+    func testJoinTimeout_ReportsTheUnfinishedRefresh() async throws {
+        let repository = makeRepository()
+        try await load(repository, 0..<1)
+        testNow.value = testNow.value.addingTimeInterval(601)
+        api.simulatedDelay = 5
+
+        _ = try await repository.loadTopLevelCatalog(at: url(0))
+        let pending = await repository._awaitAllBackgroundRefreshesForTesting(timeout: 0.2)
+
+        XCTAssertEqual(pending, ["refresh \(url(0).absoluteString)"])
     }
 
     func testPreload_AtTheReadLimit_DropsNoReadFeed() async throws {

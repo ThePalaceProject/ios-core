@@ -114,10 +114,30 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
     private struct RefreshTrackingState {
         var isTracking = false
         var tasks: [Task<Void, Never>] = []
-        /// The priority tracked refreshes and preloads run at. A test joins
-        /// them, and on a busy CI runner `.background` work may never be
-        /// scheduled within the test's time limit.
+        /// The priority tracked refreshes and preloads run at, so a test that
+        /// joins them does not depend on how a runner schedules `.background`
+        /// work.
         var priority: TaskPriority?
+        /// Tracked tasks not finished yet, by ID, labelled for the join's
+        /// timeout report.
+        var nextID = 0
+        var pending: [Int: String] = [:]
+    }
+
+    /// Registers a tracked task before it starts, so it cannot finish before
+    /// it is listed. Returns nil when tracking is off (always, in the app).
+    private func beginTracked(_ label: String) -> Int? {
+        refreshTracking.withLock { state in
+            guard state.isTracking else { return nil }
+            state.nextID += 1
+            state.pending[state.nextID] = label
+            return state.nextID
+        }
+    }
+
+    private func endTracked(_ id: Int?) {
+        guard let id else { return }
+        refreshTracking.withLock { _ = $0.pending.removeValue(forKey: id) }
     }
 
     /// The priority for a background refresh or preload: the tracked priority
@@ -276,8 +296,10 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
             // test can join it deterministically — see the field's doc comment.
             // Behavior is identical to a bare `Task.detached { … }`: nothing
             // production awaits this handle.
+            let trackID = beginTracked("refresh \(url.absoluteString)")
             let refreshTask = Task.detached(priority: backgroundPriority(.utility)) { [weak self] in
                 await self?.refreshFeedInBackground(url: url, cacheKey: cacheKey)
+                self?.endTracked(trackID)
                 return ()
             }
             lastBackgroundRefreshTask.withLock { $0 = refreshTask }
@@ -331,8 +353,10 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
         cache.withLockUnchecked { $0.memoryCache.set(cachedFeed, for: cacheKey) }
         prewarmFormatEntriesCache(from: feed, cacheKey: cacheKey)
 
+        let trackID = beginTracked("preload \(url.absoluteString)")
         let preloadTask = Task.detached(priority: backgroundPriority(.background)) {
             await self.preloadRelatedFacets(from: feed)
+            self.endTracked(trackID)
         }
         // Test-only: lets a test join the preload. No-op in production.
         refreshTracking.withLock { state in
@@ -486,15 +510,35 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
         }
     }
 
-    /// TEST SEAM — deterministically await EVERY background stale-revalidate
-    /// refresh scheduled since `_trackRefreshTasksForTesting()` was armed.
-    /// Returns immediately if none are in flight. Same rationale as
-    /// `_awaitBackgroundRefreshForTesting()` (join the actual work unit instead
-    /// of polling a wall-clock deadline that starves under sim-clone
-    /// oversubscription) but for the N-concurrent-URL case.
-    public func _awaitAllBackgroundRefreshesForTesting() async {
+    /// TEST SEAM — await every background refresh and preload scheduled since
+    /// `_trackRefreshTasksForTesting()` was armed, for at most `timeout`
+    /// seconds. Returns the labels of the tracked tasks still unfinished: empty
+    /// when all finished, otherwise what a hung test was waiting on. The join
+    /// races two unstructured tasks, because a task group waits for every
+    /// child and would hang with a stuck one.
+    @discardableResult
+    // PUBLIC_INTENT: test seam; PalaceTests imports PalaceCatalog without @testable.
+    public func _awaitAllBackgroundRefreshesForTesting(timeout: TimeInterval = 60) async -> [String] {
         let tasks = refreshTracking.withLock { $0.tasks }
-        for task in tasks { await task.value }
+        let tracking = refreshTracking
+        return await withCheckedContinuation { continuation in
+            let resumed = OSAllocatedUnfairLock(initialState: false)
+            let finish: @Sendable ([String]) -> Void = { pending in
+                let first = resumed.withLock { done -> Bool in
+                    defer { done = true }
+                    return !done
+                }
+                if first { continuation.resume(returning: pending) }
+            }
+            Task {
+                for task in tasks { await task.value }
+                finish([])
+            }
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                finish(tracking.withLock { $0.pending.values.sorted() })
+            }
+        }
     }
 
     // MARK: - Background Preloading
