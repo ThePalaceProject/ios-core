@@ -249,9 +249,8 @@ final class CatalogRepositoryFeedLimitTests: XCTestCase {
         }
     }
 
-    // MARK: - Preloaded facets
+    // MARK: - Background refresh tracking
 
-    /// Preloading facets of a feed never drops a feed the patron has read.
     /// With refresh tracking armed, facet preloads run at the tracked priority,
     /// not `.background`. The mock reads base priority, which waiting on the
     /// preload does not raise.
@@ -281,6 +280,9 @@ final class CatalogRepositoryFeedLimitTests: XCTestCase {
         XCTAssertEqual(pending, ["refresh \(url(0).absoluteString)"])
     }
 
+    // MARK: - Preloaded facets
+
+    /// Preloading facets of a feed never drops a feed the patron has read.
     func testPreload_AtTheReadLimit_DropsNoReadFeed() async throws {
         let repository = makeRepository()
         try await load(repository, 0..<(readLimit - 1))
