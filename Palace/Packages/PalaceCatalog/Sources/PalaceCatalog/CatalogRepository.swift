@@ -511,15 +511,20 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
     }
 
     /// TEST SEAM — await every background refresh and preload scheduled since
-    /// `_trackRefreshTasksForTesting()` was armed, for at most `timeout`
-    /// seconds. Returns the labels of the tracked tasks still unfinished: empty
-    /// when all finished, otherwise what a hung test was waiting on. The join
-    /// races two unstructured tasks, because a task group waits for every
-    /// child and would hang with a stuck one.
+    /// `_trackRefreshTasksForTesting()` was armed. Returns the labels of the
+    /// tracked tasks still unfinished: always empty without a `timeout`. Pass
+    /// a `timeout` only to test the report itself; a normal join has no
+    /// deadline, so slow work that is still progressing is not failed early.
+    /// The bounded join races two unstructured tasks, because a task group
+    /// waits for every child and would hang with a stuck one.
     @discardableResult
     // PUBLIC_INTENT: test seam; PalaceTests imports PalaceCatalog without @testable.
-    public func _awaitAllBackgroundRefreshesForTesting(timeout: TimeInterval = 60) async -> [String] {
+    public func _awaitAllBackgroundRefreshesForTesting(timeout: TimeInterval? = nil) async -> [String] {
         let tasks = refreshTracking.withLock { $0.tasks }
+        guard let timeout else {
+            for task in tasks { await task.value }
+            return []
+        }
         let tracking = refreshTracking
         return await withCheckedContinuation { continuation in
             let resumed = OSAllocatedUnfairLock(initialState: false)
@@ -530,13 +535,16 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
                 }
                 if first { continuation.resume(returning: pending) }
             }
-            Task {
-                for task in tasks { await task.value }
-                finish([])
+            let deadline = Task {
+                // STARVE-001-OK: opt-in; only the test of the timeout report passes a timeout.
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+                finish(tracking.withLock { $0.pending.values.sorted() })
             }
             Task {
-                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-                finish(tracking.withLock { $0.pending.values.sorted() })
+                for task in tasks { await task.value }
+                deadline.cancel()
+                finish([])
             }
         }
     }

@@ -62,8 +62,7 @@ final class CatalogRepositoryFeedLimitTests: XCTestCase {
             Self.makeFeed(facets: (0..<5).map { facetURL(group: group, $0) })
         )
         _ = try await repository.loadTopLevelCatalog(at: groupURL(group))
-        let pending = await repository._awaitAllBackgroundRefreshesForTesting()
-        XCTAssertEqual(pending, [], "background refreshes still running")
+        await repository._awaitAllBackgroundRefreshesForTesting()
     }
 
     private func fetchCount(_ url: URL) -> Int {
@@ -156,8 +155,7 @@ final class CatalogRepositoryFeedLimitTests: XCTestCase {
         api.fetchFeedError = URLError(.notConnectedToInternet)
 
         _ = try await repository.loadTopLevelCatalog(at: url(0))
-        let pending = await repository._awaitAllBackgroundRefreshesForTesting()
-        XCTAssertEqual(pending, [], "background refreshes still running")
+        await repository._awaitAllBackgroundRefreshesForTesting()
         api.fetchFeedError = nil
         _ = try await repository.loadTopLevelCatalog(at: url(readLimit))
 
