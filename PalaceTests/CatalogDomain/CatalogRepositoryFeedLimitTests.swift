@@ -269,6 +269,7 @@ final class CatalogRepositoryFeedLimitTests: XCTestCase {
     func testJoinTimeout_ReportsTheUnfinishedRefresh() async throws {
         let repository = makeRepository()
         try await load(repository, 0..<1)
+        await repository._awaitAllBackgroundRefreshesForTesting()
         testNow.value = testNow.value.addingTimeInterval(601)
         api.simulatedDelay = 5
 

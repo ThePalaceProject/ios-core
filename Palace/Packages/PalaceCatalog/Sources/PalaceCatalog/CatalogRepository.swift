@@ -100,17 +100,14 @@ public final class CatalogRepository: CatalogRepositoryProtocol, @unchecked Send
     private let lastBackgroundRefreshTask = OSAllocatedUnfairLock<Task<Void, Never>?>(initialState: nil)
 
     /// Multi-refresh test join support. When `_trackRefreshTasksForTesting()`
-    /// has armed tracking (test-only), every background stale-revalidate Task
-    /// handle scheduled by `loadTopLevelCatalog` is ALSO appended here — so a
-    /// test that fires N concurrent stale reads across N distinct URLs can join
-    /// ALL of them via `_awaitAllBackgroundRefreshesForTesting()`, not just the
-    /// most-recently-scheduled one that `lastBackgroundRefreshTask` retains.
+    /// has armed tracking (test-only), every background stale-revalidate
+    /// refresh and facet preload that `loadTopLevelCatalog` schedules is also
+    /// recorded here, so a test can join all of them via
+    /// `_awaitAllBackgroundRefreshesForTesting()`, not just the most recent
+    /// one that `lastBackgroundRefreshTask` retains.
     ///
-    /// Production behavior is UNCHANGED: `isTrackingRefreshTasks` defaults to
-    /// `false`, so `allBackgroundRefreshTasks` is never appended to and stays
-    /// empty in production — no retained-Task growth, no extra work on the
-    /// hot path. The append is behind the flag purely so the array cannot
-    /// accumulate handles indefinitely outside of a test.
+    /// Production behavior is unchanged: `isTracking` defaults to `false`, so
+    /// `tasks` and `pending` stay empty in the app and no handles accumulate.
     private struct RefreshTrackingState {
         var isTracking = false
         var tasks: [Task<Void, Never>] = []
