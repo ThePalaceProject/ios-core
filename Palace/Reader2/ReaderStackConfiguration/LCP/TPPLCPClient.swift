@@ -6,14 +6,15 @@ import ReadiumShared
 import PalaceAudiobookToolkit
 import PalaceLogging
 import UIKit
+import os
 
 /// Per-process LRU cache of decrypted blocks, keyed by the ciphertext
 /// bytes. Added while LCP PDFs rendered through Readium's PDF navigator,
 /// whose cross-ref walk requested the same blocks (cross-ref index, font
 /// tables) repeatedly within one pass; caching the decrypted output skips
 /// the AES work for every repeat hit. LCP PDFs now decrypt to disk in one
-/// linear pass (`LCPPDFDiskExtract`), and the cache still serves every LCP
-/// decrypt.
+/// linear pass (`LCPPDFDiskExtract`); the cache still serves EPUB and PDF
+/// decrypts. Audiobook licences skip it (see `TPPLCPClient`, PP-5584).
 ///
 /// `NSCache` auto-evicts under memory pressure (matched against
 /// `totalCostLimit`), so the cache cannot itself contribute to an OOM
@@ -22,41 +23,45 @@ import UIKit
 /// blocks for a typical 50MB book but small enough that the OS will
 /// reclaim it before evicting the foreground app.
 ///
-/// `NotificationCenter` listener purges everything on a system memory
-/// warning (or our pre-emptive `ReaderService.openPDF` notification).
+/// A system memory warning purges everything, through the step registered
+/// with `MemoryReleaseCoordinator`.
 /// `@unchecked Sendable` invariant: the sole stored property `cache` is an
 /// immutable `let` and `CountedCache` is thread-safe, so concurrent
-/// `decrypted(for:)` / `store(_:for:)` calls are safe. The observer is
+/// `decrypted(for:)` / `store(_:for:)` calls are safe. The release step is
 /// registered once in `init`, and `handleMemoryWarning` only calls the
 /// thread-safe `removeAllObjects()`. No unsynchronized mutable state exists.
 final class LCPDecryptCache: @unchecked Sendable {
     static let shared = LCPDecryptCache(byteCounter: AppCacheCounters.lcpDecrypt)
     private let cache: CountedCache<NSData, NSData>
 
-    init(byteCounter: CacheByteCounter = CacheByteCounter()) {
+    init(byteCounter: CacheByteCounter = CacheByteCounter(), memoryRelease: MemoryReleaseCoordinator = .shared) {
         cache = CountedCache(counter: byteCounter)
         cache.totalCostLimit = 16 * 1024 * 1024  // 16MB
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleMemoryWarning),
-            name: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil
-        )
+        memoryRelease.register(self, stage: .lcpDecrypt) { cache in
+            cache.handleMemoryWarning()
+        }
     }
 
-    @objc private func handleMemoryWarning() {
+    private func handleMemoryWarning() {
         cache.removeAllObjects()
     }
 
-    /// Bytes of plaintext held now (PP-5509).
+    /// Bytes of plaintext and ciphertext keys held now (PP-5509, PP-5580).
     var byteCount: Int { cache.byteCount }
 
     func decrypted(for ciphertext: Data) -> Data? {
         cache.object(forKey: ciphertext as NSData) as Data?
     }
 
+    /// The limit costs the plaintext only, as before; the count also includes
+    /// the ciphertext key, which the cache holds too (PP-5580).
     func store(_ plaintext: Data, for ciphertext: Data) {
-        cache.setObject(plaintext as NSData, forKey: ciphertext as NSData, cost: plaintext.count)
+        cache.setObject(
+            plaintext as NSData,
+            forKey: ciphertext as NSData,
+            cost: plaintext.count,
+            bytes: plaintext.count + ciphertext.count
+        )
     }
 }
 
@@ -87,6 +92,36 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
         qos: .userInitiated
     )
 
+    private let cache: LCPDecryptCache
+
+    /// `encryptedContentKey` of every audiobook licence this client opened.
+    /// Their decrypts skip `cache`: tracks are read once, in order, so the
+    /// cache only held decrypted audio, and a hit saves just the AES step
+    /// because the ciphertext key has already been read (PP-5584).
+    /// Never pruned; each entry is one key string, about 100 bytes per
+    /// audiobook licence opened in the process. An empty key is never added,
+    /// so a licence without one cannot turn the cache off for other books.
+    private let audiobookContentKeys = OSAllocatedUnfairLock(initialState: Set<String>())
+
+    private let createDRMContext: (String, String, String) throws -> DRMContext
+    private let decryptWithDRM: (Data, DRMContext) -> Data?
+
+    /// The closures default to R2LCPClient; tests pass fakes because a real
+    /// context needs a signed licence and its passphrase.
+    init(
+        cache: LCPDecryptCache = .shared,
+        createDRMContext: @escaping (String, String, String) throws -> DRMContext = {
+            try R2LCPClient.createContext(jsonLicense: $0, hashedPassphrase: $1, pemCrl: $2)
+        },
+        decryptWithDRM: @escaping (Data, DRMContext) -> Data? = {
+            R2LCPClient.decrypt(data: $0, using: $1)
+        }
+    ) {
+        self.cache = cache
+        self.createDRMContext = createDRMContext
+        self.decryptWithDRM = decryptWithDRM
+    }
+
     deinit {
         contextQueue.sync {
             _context = nil
@@ -113,7 +148,7 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
             throw LCPContextError.invalidPemCrl(prefix: prefix)
         }
 
-        var rawResult: LCPClientContext?
+        var rawResult: DRMContext?
         var caughtError: Error?
         var caughtNativeException: NSException?
 
@@ -128,11 +163,7 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
         contextQueue.sync {
             caughtNativeException = TPPObjCExceptionCatcher.catchAllExceptions {
                 do {
-                    rawResult = try R2LCPClient.createContext(
-                        jsonLicense: jsonLicense,
-                        hashedPassphrase: hashedPassphrase,
-                        pemCrl: pemCrl
-                    )
+                    rawResult = try self.createDRMContext(jsonLicense, hashedPassphrase, pemCrl)
                 } catch {
                     caughtError = error
                 }
@@ -152,6 +183,11 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
 
         guard let newCtx = rawResult else {
             throw LCPContextError.creationReturnedNil
+        }
+
+        let key = newCtx.encryptedContentKey
+        if !key.isEmpty, Self.isAudiobookLicence(jsonLicense) {
+            audiobookContentKeys.withLock { _ = $0.insert(key) }
         }
 
         contextQueue.sync {
@@ -175,13 +211,14 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
         // Cache hit: same ciphertext bytes → same plaintext (LCP keys
         // are per-license and stable for the open lifetime). Skips the
         // R2LCPClient AES round-trip entirely.
-        if let cached = LCPDecryptCache.shared.decrypted(for: data) {
+        let usesCache = cachesDecrypts(for: drmContext)
+        if usesCache, let cached = cache.decrypted(for: data) {
             LCPPDFOpenProgress.shared.recordDecrypt(byteCount: data.count, fromCache: true)
             return cached
         }
 
         do {
-            let decrypted = R2LCPClient.decrypt(data: data, using: drmContext)
+            let decrypted = decryptWithDRM(data, drmContext)
             if let decrypted {
                 // Per-call success log dropped intentionally — at ~7k
                 // calls/s during a PDF cross-ref walk the string
@@ -189,7 +226,9 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
                 // memory churn on the device. The progress reporter +
                 // periodic [PERF] [LCP-PDF] residentMB line carry the
                 // same information without the per-call cost.
-                LCPDecryptCache.shared.store(decrypted, for: data)
+                if usesCache {
+                    cache.store(decrypted, for: data)
+                }
                 LCPPDFOpenProgress.shared.recordDecrypt(byteCount: data.count)
             } else {
                 Log.error(#file, "R2LCPClient.decrypt returned nil for \(data.count) bytes")
@@ -237,6 +276,27 @@ class TPPLCPClient: ReadiumLCP.LCPClient {
     func getSupportedLCPProfileURIs() -> [String] {
         R2LCPClient.getSupportedLCPProfileURIs() ?? []
     }
+
+    fileprivate func cachesDecrypts(for context: DRMContext) -> Bool {
+        let key = context.encryptedContentKey
+        return !audiobookContentKeys.withLock { $0.contains(key) }
+    }
+
+    /// Whether the licence's publication link names an audiobook type
+    /// (`application/audiobook+lcp`, `application/audiobook+zip`, ...). A
+    /// licence that does not parse or has no type counts as not an audiobook,
+    /// so it keeps the cache.
+    static func isAudiobookLicence(_ jsonLicense: String) -> Bool {
+        guard
+            let object = try? JSONSerialization.jsonObject(with: Data(jsonLicense.utf8)) as? [String: Any],
+            let links = object["links"] as? [[String: Any]]
+        else { return false }
+        return links.contains { link in
+            let rels = (link["rel"] as? [String]) ?? [link["rel"] as? String].compactMap { $0 }
+            guard rels.contains("publication"), let type = link["type"] as? String else { return false }
+            return type.lowercased().hasPrefix("application/audiobook+")
+        }
+    }
 }
 
 extension TPPLCPClient {
@@ -251,15 +311,18 @@ extension TPPLCPClient {
             return nil
         }
 
-        if let cached = LCPDecryptCache.shared.decrypted(for: data) {
+        let usesCache = cachesDecrypts(for: drmContext)
+        if usesCache, let cached = cache.decrypted(for: data) {
             LCPPDFOpenProgress.shared.recordDecrypt(byteCount: data.count, fromCache: true)
             return cached
         }
 
         do {
-            let result = R2LCPClient.decrypt(data: data, using: drmContext)
+            let result = decryptWithDRM(data, drmContext)
             if let result {
-                LCPDecryptCache.shared.store(result, for: data)
+                if usesCache {
+                    cache.store(result, for: data)
+                }
                 LCPPDFOpenProgress.shared.recordDecrypt(byteCount: data.count)
             } else {
                 Log.error(#file, "R2LCPClient.decrypt returned nil for \(data.count) bytes")

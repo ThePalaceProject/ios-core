@@ -12,7 +12,7 @@ import PalaceUIKit
 import PalaceBookModel
 
 struct ReadiumPDFLoadingView: View {
-    let book: TPPBook
+    @ObservedObject var book: TPPBook
 
     @StateObject private var progress = ProgressBridge()
 
@@ -46,7 +46,8 @@ struct ReadiumPDFLoadingView: View {
             VStack(spacing: 24) {
                 Spacer()
                 coverThumbnail
-                    .frame(width: 140, height: 200)
+                    .frame(width: 140, height: Self.coverHeight)
+                    .onAppear { Self.requestCoverIfMissing(for: book) }
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                     .shadow(color: .black.opacity(0.6), radius: 12, y: 6)
 
@@ -90,6 +91,15 @@ struct ReadiumPDFLoadingView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(book.title), \(progress.statusText)")
     }
+
+    /// Asks for the cover when the view appears without one, through the book's
+    /// cover path, which reads the disk caches first (PP-5583).
+    static func requestCoverIfMissing(for book: TPPBook) {
+        guard book.coverImage == nil else { return }
+        book.fetchCoverImage(forDisplayHeight: coverHeight)
+    }
+
+    private static let coverHeight: CGFloat = 200
 
     @ViewBuilder
     private var coverThumbnail: some View {

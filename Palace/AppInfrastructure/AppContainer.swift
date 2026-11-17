@@ -45,6 +45,10 @@ struct AppContainer: @unchecked Sendable {
     let tabRouterHub: AppTabRouterHub
     /// Universal-link redirects that end a browser sign-in.
     let signInRedirects = SignInRedirectRelay()
+    /// Runs each registered cache's release step on a memory warning (PP-5580).
+    let memoryRelease: MemoryReleaseCoordinator
+    /// Decoded covers for book objects; released on a memory warning (PP-5583).
+    let bookCoverStore: BookCoverStore
     let drmAuthorizerProvider: () -> TPPDRMAuthorizing?
 
     /// Single auth-refresh dispatcher. Every network consumer that sees a
@@ -194,6 +198,15 @@ struct AppContainer: @unchecked Sendable {
             activityPolicy: activityPolicy,
             bookOpenDependencies: bookOpenDependencies
         )
+        memoryRelease.register(cache, stage: .bookCells) { cache in
+            // The models are main-actor state. UIKit posts the warning on main;
+            // from any other thread, clear on the next main-queue turn.
+            if Thread.isMainThread {
+                MainActor.assumeIsolated { cache.handleMemoryWarning() }
+            } else {
+                Task { @MainActor in cache.handleMemoryWarning() }
+            }
+        }
         storage.bookCellModelCache = cache
         return cache
     }
@@ -240,7 +253,74 @@ struct AppContainer: @unchecked Sendable {
             }
         )
         services.audiobookSession = session
+        // Screen memory goes while the app is in the background with this
+        // session playing (PP-5581). Built with the session, so launch work
+        // does not change.
+        services.backgroundPlaybackTrimmer = Self.makeBackgroundPlaybackTrimmer(
+            isPlaying: session.$isPlaying.eraseToAnyPublisher(),
+            applicationState: UIApplication.shared.applicationState,
+            memoryRelease: memoryRelease,
+            bookCoverStore: bookCoverStore,
+            keepList: Self.playingAudiobookKeepList(
+                currentBookID: { [services] in services.audiobookSession?.currentBook?.identifier }
+            )
+        )
         return session
+    }
+
+    /// The app's image loader. It shares the launch's cover-bytes disk cache
+    /// with `TPPBookCoverRegistry.shared`, so a cover fetched for the player is
+    /// not fetched again for a list (PP-5583). The production builder must
+    /// build its loader here: new tests may not call `production()`
+    /// (`AppContainerIsolationLintTests`), so a loader built inline there would
+    /// go untested.
+    static func makeProductionImageLoader(imageCache: ImageCacheType) -> ImageLoader {
+        ImageLoader(imageCache: imageCache, sourceCache: TPPBookCoverRegistry.launchSourceCache)
+    }
+
+    /// The trimmer for an audiobook session (PP-5581): a trim runs the screen
+    /// stages through `memoryRelease` and releases `bookCoverStore`'s covers
+    /// outside `keepList`; a restore makes the covers views still hold strong
+    /// again. A session built while the app is in the background (a relaunch
+    /// for audio) starts in the background.
+    @MainActor
+    static func makeBackgroundPlaybackTrimmer(
+        isPlaying: AnyPublisher<Bool, Never>,
+        applicationState: UIApplication.State,
+        memoryRelease: MemoryReleaseCoordinator,
+        bookCoverStore: BookCoverStore,
+        keepList: @escaping @Sendable () -> Set<String> = { [] },
+        center: NotificationCenter = .default
+    ) -> BackgroundPlaybackMemoryTrimmer {
+        BackgroundPlaybackMemoryTrimmer(
+            center: center,
+            isPlaying: isPlaying,
+            startsInBackground: applicationState == .background,
+            trim: {
+                memoryRelease.releaseAll(stages: BackgroundPlaybackMemoryTrimmer.stages)
+                bookCoverStore.releaseImages(keeping: keepList())
+            },
+            restore: { bookCoverStore.restoreReleasedImages() }
+        )
+    }
+
+    /// The launch call that sets the cover store's recent-cover floor for the
+    /// device type (PP-5583).
+    static func applyDeviceIdiom(_ idiom: UIUserInterfaceIdiom, to store: BookCoverStore) {
+        store.useDeviceIdiom(isPad: idiom == .pad)
+    }
+
+    /// The cover store's keep list: the playing audiobook's ID. Steps run on
+    /// the posting thread; UIKit posts on main, and off main the list is empty.
+    static func playingAudiobookKeepList(
+        currentBookID: @escaping @MainActor () -> String?
+    ) -> @Sendable () -> Set<String> {
+        {
+            guard Thread.isMainThread else { return [] }
+            return MainActor.assumeIsolated {
+                currentBookID().map { [$0] } ?? []
+            }
+        }
     }
 
     /// Side-loading (PP-2678) — process-wide registry of side-loaded books.
@@ -471,6 +551,11 @@ struct AppContainer: @unchecked Sendable {
             api: catalogAPI,
             accountID: { [weak accountsManager] in accountsManager?.currentAccount?.uuid }
         )
+        // The repository's in-memory feeds go on a memory warning; its disk
+        // cache stays. Held weakly, so the container still owns its lifetime.
+        memoryRelease.register(repository, stage: .catalogFeeds) { repository in
+            repository.releaseInMemoryCaches()
+        }
         storage.catalogRepository = repository
         return repository
     }
@@ -496,8 +581,12 @@ struct AppContainer: @unchecked Sendable {
         drmAuthorizerProvider: @escaping () -> TPPDRMAuthorizing?,
         authCoordinator: AuthCoordinator,
         downloadNetworkLossMonitor: DownloadNetworkLossMonitor? = nil,
-        processServices: ProcessServices = ProcessServices()
+        processServices: ProcessServices = ProcessServices(),
+        memoryRelease: MemoryReleaseCoordinator = .shared,
+        bookCoverStore: BookCoverStore = .shared
     ) {
+        self.memoryRelease = memoryRelease
+        self.bookCoverStore = bookCoverStore
         self.bookRegistry = bookRegistry
         self.networkExecutor = networkExecutor
         self.networkQueue = networkQueue
@@ -525,6 +614,11 @@ struct AppContainer: @unchecked Sendable {
             on: accountsManager.accountSwitchPublisher,
             ownedServices: ownedServices
         )
+        // The playing audiobook's cover is never released: CarPlay and the
+        // lock screen show it. Steps run on the posting thread; UIKit posts on main.
+        memoryRelease.registerBookCovers(bookCoverStore, keeping: Self.playingAudiobookKeepList(
+            currentBookID: { [processServices] in processServices.audiobookSession?.currentBook?.identifier }
+        ))
     }
 
     /// Binds a network-loss monitor to `downloadCenter`'s reachability (the one
@@ -653,7 +747,7 @@ struct AppContainer: @unchecked Sendable {
         // Built before TPPBookRegistry, which takes ImageLoading as a required
         // init parameter (a default-arg resolution here would re-enter the lock).
         let imageCache = ImageCache.shared
-        let imageLoader: ImageLoading = ImageLoader(imageCache: imageCache)
+        let imageLoader: ImageLoading = makeProductionImageLoader(imageCache: imageCache)
         // Must be configured before the first TPPBook is constructed (the
         // registry construction below parses records).
         TPPBookImageContext.imageCacheProvider = { imageCache }

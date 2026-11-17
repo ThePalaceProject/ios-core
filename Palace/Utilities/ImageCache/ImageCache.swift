@@ -135,35 +135,40 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
         cacheName: String = "ImageCache",
         encode: @escaping @Sendable (UIImage, CGFloat) -> Data? = { $0.jpegData(compressionQuality: $1) },
         decodedImageBytes: CacheByteCounter = CacheByteCounter(),
-        compressedDataBytes: CacheByteCounter = CacheByteCounter()
+        compressedDataBytes: CacheByteCounter = CacheByteCounter(),
+        memoryRelease: MemoryReleaseCoordinator = .shared
     ) {
         memoryImages = CountedCache(counter: decodedImageBytes)
-        dataCache = GeneralCache<String, Data>(cacheName: cacheName, mode: .memoryAndDisk, byteCounter: compressedDataBytes)
+        // Compressed data stays on disk only (PP-5583): `memoryImages` already
+        // holds the decoded copy, and a disk read is what a miss costs anyway.
+        dataCache = GeneralCache<String, Data>(
+            cacheName: cacheName,
+            mode: .diskOnly,
+            writeData: { try $0.write(to: $1) },
+            byteCounter: compressedDataBytes,
+            memoryRelease: memoryRelease
+        )
         self.encode = encode
         limits = Self.limits(forDeviceMemoryMB: deviceMemoryMB)
         memoryImages.countLimit = limits.countLimit
         processingQueue.maxConcurrentOperationCount = limits.maxConcurrentProcessing
         memoryImages.totalCostLimit = limits.memoryCostLimitMB * 1024 * 1024
 
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleMemoryWarning),
-            name: UIApplication.didReceiveMemoryWarningNotification,
-            object: nil
-        )
+        memoryRelease.register(self, stage: .decodedImages) { cache in
+            cache.handleMemoryWarning()
+        }
     }
 
     /// Drops queued decodes and decoded images, and slows the queue to one
     /// operation for 60 s. Queued writes still run: cancelling them would make
     /// the next sync fetch and encode those covers again.
-    @objc func handleMemoryWarning() {
+    func handleMemoryWarning() {
         for operation in processingQueue.operations where operation is ImageDecodeOperation {
             operation.cancel()
         }
         processingQueue.maxConcurrentOperationCount = 1
 
         memoryImages.removeAllObjects()
-        dataCache.clearMemory()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 60) { [weak self] in
             guard let self = self else { return }
@@ -180,6 +185,10 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
     /// disk are not written again, and when every key is on disk the image is
     /// not resized or encoded at all.
     public nonisolated func set(_ image: UIImage, for keys: [String], expiresIn: TimeInterval?) {
+        // A generated placeholder is not stored (PP-5583): read back from disk
+        // it loses its mark and outranks the real cover, and kept in memory it
+        // answers the next fetch under the cover's key once the network is back.
+        guard !image.isGeneratedCoverPlaceholder else { return }
         var seen = Set<String>()
         let keys = keys.filter { seen.insert($0).inserted }
         guard !keys.isEmpty else { return }
@@ -408,6 +417,13 @@ public nonisolated final class ImageCache: ImageCacheType, @unchecked Sendable {
         let operation = ImageDecodeOperation()
         operation.addExecutionBlock(work)
         processingQueue.addOperation(operation)
+    }
+
+    /// The decoded image for `key` if it is in memory now. Never reads disk, so
+    /// a getter can call it on the main thread.
+    // PUBLIC_INTENT: witness for the public ImageCacheType requirement.
+    public func memoryImage(for key: String) -> UIImage? {
+        memoryImages.object(forKey: key)
     }
 
     public func remove(for key: String) {

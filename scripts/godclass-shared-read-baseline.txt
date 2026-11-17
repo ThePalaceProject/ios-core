@@ -45,4 +45,7 @@
 #   reading LCPPDFOpenProgress.shared at three call sites.
 # 151 -> 150: PP-5381 removed TPPErrorLogger.setUserID, which read
 #   FirebaseManager.shared to set the Crashlytics user ID.
-150
+# 150 -> 146: PP-5584 injects LCPDecryptCache into TPPLCPClient (production
+#   default `.shared`, uncounted as above) instead of reading
+#   LCPDecryptCache.shared at four decrypt call sites.
+146

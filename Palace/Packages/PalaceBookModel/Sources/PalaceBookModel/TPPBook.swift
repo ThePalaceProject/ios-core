@@ -102,14 +102,24 @@ public class TPPBook: NSObject, ObservableObject {
     public let objectWillChange = ObservableObjectPublisher()
 
     // PUBLIC_INTENT: existing book property, now a pass-through to the cover store.
+    // After the store released the cover (PP-5583) this reads the image cache's
+    // decoded copy from memory, so a redraw before the next fetch is not empty.
     public var coverImage: UIImage? {
-        get { coverStore.state(for: coverStoreKey).coverImage }
+        get {
+            let read = coverStore.readCover(for: coverStoreKey)
+            guard read.image == nil, read.released else { return read.image }
+            return imageCache.memoryImage(for: identifier)
+        }
         set { coverStore.update(coverStoreKey) { $0.coverImage = newValue } }
     }
 
     // PUBLIC_INTENT: existing book property, now a pass-through to the cover store.
     public var thumbnailImage: UIImage? {
-        get { coverStore.state(for: coverStoreKey).thumbnailImage }
+        get {
+            let read = coverStore.readThumbnail(for: coverStoreKey)
+            guard read.image == nil, read.released else { return read.image }
+            return imageCache.memoryImage(for: "\(identifier)_thumbnail") ?? imageCache.memoryImage(for: identifier)
+        }
         set { coverStore.update(coverStoreKey) { $0.thumbnailImage = newValue } }
     }
 

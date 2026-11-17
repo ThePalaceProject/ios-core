@@ -299,12 +299,12 @@ final class CoverSourceBadResponseCacheTests: XCTestCase {
     /// It deliberately stops at recovery. The obvious next assertion — that a
     /// LATER failure on the same URL starts from the base interval again —
     /// cannot be written against this seam: the successful fetch stores the
-    /// bytes in the registry's private `sourceDataCache`, so every subsequent
+    /// bytes in the registry's `sourceCache`, so every subsequent
     /// request for that URL is served from cache and never reaches the network.
     /// A test that scripts a later failure therefore measures the positive
     /// cache, not the backoff, and passes whether or not `clearBadResponse`
     /// exists. The reset is still correct and still needed — it matters once
-    /// NSCache evicts under memory pressure — but its effect is not observable
+    /// that entry is gone — but its effect is not observable
     /// here, and asserting it would be theatre.
     func testRecoveryAfterTwoStrikes_isNotSuppressedByTheWidenedWindow() async throws {
         let url = try XCTUnwrap(URL(string: "https://covers.test/recovers.jpg"))

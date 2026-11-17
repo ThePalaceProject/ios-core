@@ -18,7 +18,6 @@ import PalaceBookModel
 enum AppCacheCounters {
     static let decodedImages = CacheByteCounter()
     static let imageData = CacheByteCounter()
-    static let coverSourceData = CacheByteCounter()
     static let opdsFeedData = CacheByteCounter()
     static let lcpDecrypt = CacheByteCounter()
 }
@@ -28,7 +27,6 @@ enum AppCacheSizes {
         var networkResponses: @Sendable () -> Int
         var decodedImages: @Sendable () -> Int
         var imageData: @Sendable () -> Int
-        var coverSourceData: @Sendable () -> Int
         var bookCovers: @Sendable () -> Int
         var opdsFeedData: @Sendable () -> Int
         var pdfPreviews: @Sendable () -> Int
@@ -40,7 +38,6 @@ enum AppCacheSizes {
                 networkResponses: networkResponses,
                 decodedImages: { AppCacheCounters.decodedImages.bytes },
                 imageData: { AppCacheCounters.imageData.bytes },
-                coverSourceData: { AppCacheCounters.coverSourceData.bytes },
                 // The store holds no disk or network state, so creating it here is cheap.
                 bookCovers: { BookCoverStore.defaultStoreImageByteCount },
                 opdsFeedData: { AppCacheCounters.opdsFeedData.bytes },
@@ -58,7 +55,6 @@ enum AppCacheSizes {
         recorder.registerCache(named: "networkResponses", size: sources.networkResponses)
         recorder.registerCache(named: "decodedImages", size: sources.decodedImages)
         recorder.registerCache(named: "imageData", size: sources.imageData)
-        recorder.registerCache(named: "coverSourceData", size: sources.coverSourceData)
         recorder.registerCache(named: "bookCovers", size: sources.bookCovers)
         recorder.registerCache(named: "opdsFeedData", size: sources.opdsFeedData)
         recorder.registerCache(named: "pdfPreviews", size: sources.pdfPreviews)

@@ -1,0 +1,129 @@
+//
+//  MemoryReleaseCoordinator.swift
+//  Palace
+//
+//  The one place that reacts to a memory warning (PP-5580). Each cache
+//  registers a release step under a stage. On a warning the coordinator runs
+//  every step once, in stage order, starting with the memory event record.
+//  What each step releases is unchanged from the separate handlers it
+//  replaces.
+//
+
+import Foundation
+import UIKit
+import PalaceBookModel
+
+/// The order a memory warning runs release steps in: the memory event record
+/// first, then what is cheapest to rebuild, then downloads and disk.
+enum MemoryReleaseStage: Int, CaseIterable, Comparable, Sendable {
+    case record
+    case networkResponses
+    case catalogFeeds
+    case bookCells
+    /// The memory layer of disk-backed caches (image data, OPDS feed data).
+    case cachedData
+    case lcpDecrypt
+    case decodedImages
+    case downloads
+    case diskSpace
+
+    static func < (lhs: Self, rhs: Self) -> Bool { lhs.rawValue < rhs.rawValue }
+}
+
+/// `@unchecked Sendable`: `steps` and `nextIndex` are only touched under
+/// `lock`, which is never held while a step runs. Weak owners are read under
+/// the lock, so an owner's last release can run its `deinit` there: an owner's
+/// `deinit` must not call `register` or `releaseAll`.
+final class MemoryReleaseCoordinator: @unchecked Sendable {
+    static let shared = MemoryReleaseCoordinator()
+
+    private struct Step {
+        let stage: MemoryReleaseStage
+        let index: Int
+        weak var owner: AnyObject?
+        let release: @Sendable (AnyObject) -> Void
+    }
+
+    private let center: NotificationCenter
+    private let lock = NSLock()
+    private var steps: [Step] = []
+    private var nextIndex = 0
+
+    init(center: NotificationCenter = .default) {
+        self.center = center
+        center.addObserver(
+            self,
+            selector: #selector(handleMemoryWarning),
+            name: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil
+        )
+    }
+
+    deinit {
+        center.removeObserver(self)
+    }
+
+    /// Adds a release step. `owner` is held weakly: once it is gone, its step
+    /// stops running. Steps start on the thread that posted the warning (main,
+    /// from UIKit) before `post` returns, in stage order. A step that hops to
+    /// another queue only starts its work in that order.
+    func register<Owner: AnyObject>(
+        _ owner: Owner,
+        stage: MemoryReleaseStage,
+        release: @escaping @Sendable (Owner) -> Void
+    ) {
+        lock.withLock {
+            steps.removeAll { $0.owner == nil }
+            steps.append(Step(stage: stage, index: nextIndex, owner: owner) { object in
+                if let owner = object as? Owner { release(owner) }
+            })
+            nextIndex += 1
+        }
+    }
+
+    @objc private func handleMemoryWarning() {
+        releaseAll()
+    }
+
+    /// The stages `owner` registered, in registration order. Lets tests check
+    /// that each cache is wired to the warning.
+    func stages(registeredFor owner: AnyObject) -> [MemoryReleaseStage] {
+        lock.withLock {
+            steps.filter { $0.owner === owner }.map(\.stage)
+        }
+    }
+
+    /// Adds the cover store's release step once. `BookCoverStore` lives in a
+    /// package that cannot see this type, so the app registers it (PP-5583).
+    /// Every container registers its store; a store already registered is
+    /// skipped, so a shared store gets one step. `keeping` names covers the
+    /// step never releases, such as the playing audiobook's; it is read when
+    /// the step runs.
+    func registerBookCovers(_ store: BookCoverStore, keeping: @escaping @Sendable () -> Set<String> = { [] }) {
+        guard !stages(registeredFor: store).contains(.decodedImages) else { return }
+        register(store, stage: .decodedImages) { store in
+            store.releaseImages(keeping: keeping())
+        }
+    }
+
+    /// Runs every live step once, in stage order and then registration order.
+    func releaseAll() {
+        releaseAll(stages: Set(MemoryReleaseStage.allCases))
+    }
+
+    /// Runs the live steps of `stages` once, in stage order and then
+    /// registration order. A background trim names the stages that hold only
+    /// screen memory (PP-5581).
+    func releaseAll(stages: Set<MemoryReleaseStage>) {
+        let live: [(owner: AnyObject, step: Step)] = lock.withLock {
+            steps.removeAll { $0.owner == nil }
+            return steps
+                .filter { stages.contains($0.stage) }
+                .sorted { ($0.stage, $0.index) < ($1.stage, $1.index) }
+                .compactMap { step in step.owner.map { ($0, step) } }
+        }
+        for (owner, step) in live {
+            step.release(owner)
+        }
+    }
+}

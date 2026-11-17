@@ -223,6 +223,7 @@ final class AccountScopedResetTests: XCTestCase {
         "appRatingService", "ratingPromptPresenter", "activityPolicy",
         "sideloadedBookRegistry", "sideloadedBookManager", "offlineQueueCoordinator",
         "signInModalSheetPresenter", "catalogAPI", "catalogRepository",
+        "backgroundPlaybackTrimmer",
     ]
 
     /// The cells kept behind a lock, read through it so their values can be

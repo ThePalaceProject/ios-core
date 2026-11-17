@@ -6,7 +6,7 @@
 //  `DownloadStateManager`, and every re-application ends by asking the delegate to
 //  re-pump the pending queue. Dropping that pump would strand queued books when a
 //  slot frees (docs/architecture/god-class-decomposition-plan.md §3a-3).
-//  Not pinned: audiobook tasks surviving `pauseAllDownloads`. A fresh
+//  Not pinned: audiobook tasks surviving `pauseAllDownloadsAsync`. A fresh
 //  `URLSessionDownloadTask` already reports `.suspended` and cannot be subclassed,
 //  so that branch is verified on a simulator.
 //
