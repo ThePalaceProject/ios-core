@@ -414,9 +414,8 @@ final class TokenRefreshInterceptorTests: XCTestCase {
     /// reauthenticator is NOT invoked (SAML re-auth is driven by the app's
     /// own SAML state machine, not the sign-in modal).
     ///
-    /// Kills :166 `isSaml == true`→`!= true`: under the mutant a SAML account
-    /// routes to `triggerBrowserReauth` instead → state becomes .downloadNeeded
-    /// AND the reauthenticator IS called — both assertions below flip.
+    /// Inverting the `isSaml == true` check would route a SAML account to
+    /// `triggerBrowserReauth` (.downloadNeeded + reauthenticator called).
     func testHandleDownloadFailure_SAML_401_legacyPath_retriesViaSAMLNotBrowserModal() {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         mockRegistry.addBook(book, state: .downloading)
@@ -460,8 +459,8 @@ final class TokenRefreshInterceptorTests: XCTestCase {
     /// `triggerSAMLReauth` (treats it as a session expiry): state →
     /// .SAMLStarted, startDownload called, reauthenticator NOT invoked.
     ///
-    /// Kills :216 `isSaml == true`→`!= true`: the mutant routes the SAML
-    /// no-active-loan to `triggerBrowserReauth` → .downloadNeeded + reauth.
+    /// Inverting the `isSaml == true` check would route the SAML no-active-loan
+    /// to `triggerBrowserReauth` (.downloadNeeded + reauth).
     func testHandleDownloadFailure_SAML_noActiveLoan_legacyPath_retriesViaSAMLNotBrowserModal() {
         let book = TPPBookMocker.mockBook(distributorType: .EpubZip)
         mockRegistry.addBook(book, state: .downloading)

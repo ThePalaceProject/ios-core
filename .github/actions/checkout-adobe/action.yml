@@ -12,7 +12,12 @@ inputs:
   ref:
     description: "Branch to checkout"
     required: false
-    default: "main"
+    # The ByteBooks (Wipro 2.0) connector lives on a branch so that both
+    # connector generations stay available; main still holds the Adobe-era
+    # drop. AdobeConnectorGeneration.current must name the same generation as
+    # whatever this resolves to, which
+    # testCurrentGenerationDescribesTheLinkedConnector checks.
+    default: "feature/bytebooks-connector-20261104"
   repo:
     description: "Repository to checkout"
     required: false

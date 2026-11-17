@@ -11,7 +11,7 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 | Script | Purpose | When you'll touch it |
 |--------|---------|----------------------|
 | **`verify-pr.sh`** | One-shot pre-PR battery (build, tests, lint, coverage, mutation, a11y). | Before every `gh pr create`. Run `--quick` to skip mutation. |
-| **`pre-push-test-gate.sh`** | Pre-push hook that runs the changed-file test selection before allowing a push. | Automatic via git hook; tune timeouts when CI lag surfaces. |
+| **`pre-push-test-gate.sh`** | Pre-push hook that runs the changed-file test selection before allowing a push. Selects test classes the PalaceTests target compiles, including ones that inherit XCTestCase through a base such as `PalaceTestCase`, and fails when a selected class executes 0 tests. A run stopped at the time cap passes only if every selected class already ran; otherwise raise `PRE_PUSH_TESTS_TIMEOUT_SECS` or set `PRE_PUSH_TESTS_ALLOW_TIMEOUT=1`. | Automatic via git hook; tune timeouts when CI lag surfaces. |
 | **`lint-test-quality.py`** | Static linter for fluff/flake test patterns. Supports `// lint-ignore: FLUFF-XXX` per-line markers. | Every test PR — failures here block CI. |
 | **`snapshot-library-registry.py`** | Snapshots the library registry (account JSON) and produces a diff against the live registry. | Account/auth-doc churn investigations; weekly drift checks. |
 | **`palace_mutate.py`** | Mutation-testing harness (mutate Swift file, run tests, report surviving mutants). | Anything on a critical path (sign-in, borrow, download, DRM). |
@@ -60,21 +60,20 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 |--------|--------------|-----------|
 | `xcode-test-optimized.sh` | Runs the full Palace test plan with caching and timeouts tuned for CI. | `unit-testing.yml` |
 | `verify-pr.sh` | One-shot pre-PR battery: build, tests, lint, coverage, mutation, a11y. | dev/local (run before pushing) |
-| `pre-push-test-gate.sh` | Pre-push hook that runs the changed-file test selection before allowing `git push`. | local git hook |
+| `pre-push-test-gate.sh` | Pre-push hook that runs the changed-file test selection before allowing `git push`; skips test files the PalaceTests target does not compile, fails a class that executes 0 tests, and blocks a timed-out run in which a selected class did not run unless `PRE_PUSH_TESTS_ALLOW_TIMEOUT=1`. | local git hook |
 | `resolve-tests-for.py` | Maps a changed production-file path to the XCTest class selectors that cover it. | `verify-pr.sh`, `palace_mutate.py` |
 | `parse-xcresult.py` | Parses an `.xcresult` bundle into JSON for downstream reporting. | `unit-testing.yml` |
-| `coverage-report.py` | Extracts code coverage from `.xcresult` and writes JSON. | `unit-testing.yml` |
+| `coverage-report.py` | Builds app, package and excluded-source coverage from `.xcresult` and `swift test` exports; marks missing data INCOMPLETE. | `unit-testing.yml` |
+| `ci-xctestrun-package-coverage.py` | Points the xctestrun's coverage metadata at the local package binaries so xccov reports their files. | `unit-testing.yml` |
 | `coverage-floors.json` | Per-target coverage thresholds (see `README_coverage_floors.md`). | `enforce_coverage_floors.py` |
 | `coverage-exclude.json` | Files excluded from the testable-coverage denominator (UI/lifecycle). | `coverage-report.py` |
-| `enforce_coverage_floors.py` | Fails CI if any target drops below its floor. | `unit-testing.yml` |
+| `enforce_coverage_floors.py` | Compares app, module and package coverage to their floors; exit 3 on incomplete data. | `unit-testing.yml` |
 | `test_coverage_classifier.py` | Classifies coverage gaps by surface type. | `coverage-report.py` |
 | `test-history.py` | Compares this run against historical results to flag flakes/regressions. | `unit-testing.yml` |
 | `generate-test-report.py` | Renders a Markdown test report from parsed JSON. | `unit-testing.yml` |
 | `generate-html-report.py` | Renders an interactive HTML test report. | `unit-testing.yml` |
 | `process-snapshots.py` | Generates a snapshot-failure viewer with diff images. | `unit-testing.yml` |
 | `record-snapshots.sh` | Records baseline snapshots for snapshot-test classes. | dev/local |
-| `wire_orphan_tests.py` | Adds orphaned test files into the `PalaceTests` Sources phase. | dev/local (after extracting tests) |
-| `wire_untracked_tests.py` | Wires fully-untracked test files into the Xcode project. | dev/local |
 
 
 ### Mutation and test-quality
@@ -92,8 +91,8 @@ These five scripts handle most of the day-to-day work. Read these first if you o
 |--------|--------------|-----------|
 | `snapshot-library-registry.py` | Snapshots the library registry JSON and diffs against live; surfaces account/auth-doc drift. | dev/local, drift-investigation |
 | `check_registry_snapshot_freshness.sh` | CI guard that fails if the committed registry snapshot is older than the live registry. | `ledger.yml` |
-| `export-module-contracts.py` | Emits module public-API contracts to `.forgeos/contracts/<module>.json`; consumed by the architect agent and `verify-pr.sh --check`. | dev/local, swarm |
 | `crashlytics-sentinel.py` | Compares Crashlytics issue counts week-over-week and alerts on new top issues. | `crashlytics-sentinel.yml` |
+| `check-swift-sources-compiled.py` | Fails when a tracked Swift file under `Palace/`, `PalaceTests/` or `PalaceUITests/` is not compiled by a target, or a Swift reference in `Palace.xcodeproj` is dangling or duplicated. `--list-compiled TARGET` prints the Swift files a target compiles. | `tooling-checks.yml`, `verify-pr.sh`, `pre-commit-phase35-detectors.sh`, `pre-push-test-gate.sh` |
 
 ### Release and TestFlight
 
@@ -132,6 +131,13 @@ switched off for this project, so they were not running for maintainers either.
 The rule they failed is the one this repository already states: only tooling any
 contributor can run unaided belongs here. `verify-pr.sh`, the standalone
 detectors, and `palace_mutate.py` pass that test and stay.
+
+On 2026-09-30 the `.forgeos/` records themselves (intent files, wall-failures,
+changesets, reviews, module contracts) followed, to
+`~/harness/projects/ios-core/forgeos/`, along with the two scripts that only
+read or write them: `check-intent-recorded.py` and `export-module-contracts.py`
+(now in `~/harness/stacks/ios/forgeos/`). The config files CI reads moved to
+`config/ci/`; see its README.
 
 
 The previous one-shot bootstrap scripts (`forgeos-bootstrap-palace-evolution.sh`,

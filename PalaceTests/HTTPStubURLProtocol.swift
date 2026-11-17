@@ -64,8 +64,8 @@ final class HTTPStubURLProtocol: URLProtocol {
         }
     }
 
-    /// Canonical name adopted by the `SingletonResetRegistry` bootstrap path
-    /// (swarm_4b64e4e0 Fix 1). Forwards to `reset()` — both methods clear
+    /// Canonical name used by the `SingletonResetRegistry` bootstrap path.
+    /// Forwards to `reset()` — both methods clear
     /// the handler array under the same queue. Existing `reset()` callers
     /// continue to work unchanged.
     static func removeAllHandlers() {

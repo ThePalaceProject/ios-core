@@ -1,37 +1,9 @@
 //
-//  AccountSwitchLifecycleTests.swift
-//  PalaceTests
-//
-//  Integration tests for the lifecycle of switching between libraries.
-//
-//  Pinned contracts (verified against production code, not assumed):
-//
-//    1. Per-library credential isolation
-//       AccountsManager.userAccount(for:) returns a distinct TPPUserAccount
-//       per UUID. A credential written to library A's instance MUST NOT
-//       appear in library B's keychain reads — see
-//       Palace/Accounts/Library/AccountsManager.swift:298.
-//
-//    2. Authorization header binds to the request's account
-//       TPPNetworkExecutor.request(for:useTokenIfAvailable:accountId:)
-//       resolves credentials via accountsManager.userAccount(for:) — the
-//       Bearer header is sourced from the SPECIFIC account, never the
-//       last-written shared singleton (see TPPNetworkExecutor.swift:248).
-//
-//    3. Registry files are per-account
-//       BookRegistrySync.registryUrl(for:) → application support directory
-//       partitioned by account UUID. Switching A → B MUST NOT delete or
-//       mutate A's on-disk registry file (BookRegistrySync.swift:48).
-//
-//    4. Switching cancels non-essential in-flight network tasks
-//       AccountsManager.currentAccount.didSet → networkExecutor.cancelNonEssentialTasks()
-//       (AccountsManager.swift:221, TPPNetworkExecutor.swift:191).
-//
-//  House rules: hermetic (HTTPStubURLProtocol-only), real types, temp dirs,
-//  no production-code modifications. Mocks only the network + per-library
-//  account resolver — everything else exercises real code.
-//
-//  Copyright 2026 The Palace Project. All rights reserved.
+//  Library-switch lifecycle, hermetic (HTTPStubURLProtocol only). Pins that:
+//  1. each library UUID gets its own TPPUserAccount and keychain credentials;
+//  2. the executor's Bearer header comes from the request's account;
+//  3. switching libraries leaves the other account's registry file untouched;
+//  4. switching cancels non-essential in-flight network tasks.
 //
 
 import XCTest
@@ -144,7 +116,7 @@ class AccountSwitchLifecycleTests: PalaceWiringTestCase {
     /// House rule: A's bearer must NEVER appear in B's request Authorization
     /// header — the executor must resolve credentials via the per-library
     /// account cache, not via a last-write-wins shared singleton.
-    /// Kills the mutant that swaps userAccount(for:) → currentUserAccount in
+    /// Guards against using currentUserAccount instead of userAccount(for:) in
     /// `TPPNetworkExecutor.request(for:useTokenIfAvailable:accountId:)`.
     func testSwitch_ATokenNeverLeaksIntoBRequest() {
         let tokenA = "token-A-\(UUID().uuidString)"
@@ -200,7 +172,7 @@ class AccountSwitchLifecycleTests: PalaceWiringTestCase {
     // MARK: - Registry file isolation
 
     /// A's registry file must remain untouched on disk when B is loaded.
-    /// Kills the mutant: hard-coding registryUrl(for:) to a fixed path.
+    /// Guards against registryUrl(for:) resolving to a fixed path.
     func testSwitch_AtoB_AsRegistryFileIsUntouched() throws {
         // Persist a record under A.
         let bookA = seedAndPersist(identifier: "A-book-\(UUID().uuidString)",
@@ -230,7 +202,7 @@ class AccountSwitchLifecycleTests: PalaceWiringTestCase {
     }
 
     /// Loading B replaces the in-memory store with B's persisted records.
-    /// Kills the mutant: skipping the registry[identifier] = record loop in load.
+    /// Guards against load skipping the registry[identifier] = record loop.
     func testSwitch_AtoB_LoadsBsPersistedRegistry() throws {
         // Persist A's books, then persist B's books at a different identifier.
         _ = seedAndPersist(identifier: "A-only-\(UUID().uuidString)",
@@ -251,7 +223,7 @@ class AccountSwitchLifecycleTests: PalaceWiringTestCase {
     }
 
     /// Switching A → B → A restores A's persisted state byte-for-byte.
-    /// Kills the mutant that conflates account directories.
+    /// Guards against conflating account directories.
     func testSwitch_AtoBtoA_RestoresAsState() {
         // Persist into A.
         let bookA = seedAndPersist(identifier: "ABA-A-\(UUID().uuidString)",
@@ -319,10 +291,10 @@ class AccountSwitchLifecycleTests: PalaceWiringTestCase {
     /// Stronger: directly seed the transport with synthetic live tasks and
     /// assert that `cancelNonEssentialTasks` drives `liveTaskCount` to zero.
     /// Pins both:
-    /// 1) the `liveTaskCount` observation surface itself (kills a mutant
-    ///    that always reports zero), and
+    /// 1) the `liveTaskCount` observation surface itself (it must not always
+    ///    report zero), and
     /// 2) that `cancelNonEssentialTasks` actually de-registers/cancels the
-    ///    seeded tasks (kills a no-op cancel mutant).
+    ///    seeded tasks.
     func testSwitch_LiveTaskCount_DropsToZeroAfterCancel() {
         let executor = makeStubbedExecutor()
         // Sanity: a fresh transport must be empty.
@@ -354,7 +326,7 @@ class AccountSwitchLifecycleTests: PalaceWiringTestCase {
 
     /// Writing B's credentials must NOT overwrite A's keychain entry. This is
     /// the core of the per-library cache contract (AccountsManager.userAccounts).
-    /// Kills mutant: collapsing per-library cache into a singleton.
+    /// Guards against collapsing the per-library cache into a singleton.
     func testSwitch_BsCredentialsDoNotOverwriteAs() {
         let tokenA = "credA-\(UUID().uuidString)"
         let tokenB = "credB-\(UUID().uuidString)"

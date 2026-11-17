@@ -24,7 +24,16 @@ USAGE = 2
 
 
 def write_resolved(path: Path, version: str, revision: str = "deadbeef") -> Path:
-    """Writes a Package.resolved v2 document pinning swift-toolkit."""
+    """Writes a Package.resolved v2 document pinning swift-toolkit.
+
+    An empty `version` omits the key entirely, which is how SwiftPM records a
+    pin taken by bare revision (a fork branch, or a tag that is not valid
+    SemVer). That shape decides which token the gate demands, so it has to be
+    representable here.
+    """
+    state = {"revision": revision}
+    if version:
+        state["version"] = version
     doc = {
         "originHash": "x",
         "pins": [
@@ -38,7 +47,7 @@ def write_resolved(path: Path, version: str, revision: str = "deadbeef") -> Path
                 "identity": "swift-toolkit",
                 "kind": "remoteSourceControl",
                 "location": "https://github.com/readium/swift-toolkit.git",
-                "state": {"revision": revision, "version": version},
+                "state": state,
             },
         ],
         "version": 3,
@@ -176,6 +185,121 @@ def test_stale_entry_for_a_different_version_does_not_satisfy(workspace: Path):
     assert result.returncode == BLOCKED
 
 
+def test_mention_in_an_entry_body_does_not_satisfy(workspace: Path):
+    """PP-5091. The token has to appear in an entry *heading*.
+
+    The matcher used to be an unanchored whole-file grep, so any passing mention
+    counted. The ledger's fork entry describes its pin as "Readium 3.11.0 + the
+    upstream fix-issue-579 series", which means a later move to a genuine
+    upstream 3.11.0 would have been waved through on the strength of a different
+    entry's prose — the gate built to stop false greens producing one. Deleting
+    the heading anchor in `ledger_records_version` turns this test red.
+    """
+    old = write_resolved(workspace / "old.json", "3.9.0")
+    new = write_resolved(workspace / "new.json", "3.11.0")
+    ledger = workspace / "ledger.md"
+    ledger.write_text(
+        "# Readium money-path validation ledger\n"
+        "\n"
+        "## fork @ 58413f868\n"
+        "\n"
+        "- Pin: fork = Readium 3.11.0 + the upstream fix-issue-579 series.\n"
+    )
+
+    result = run(
+        "--old-resolved", str(old),
+        "--new-resolved", str(new),
+        "--ledger", str(ledger),
+    )
+
+    assert result.returncode == BLOCKED, (
+        "a version named only in an older entry's prose must not satisfy the gate"
+    )
+
+
+def test_token_in_a_descriptive_heading_satisfies(workspace: Path):
+    """Headings are not always a bare version.
+
+    A fork pinned by revision is recorded under a heading that names the repo and
+    the SHA, and a fork pinned by tag under one that names both the tag and the
+    SHA. Anchoring to headings must not narrow the gate to `## <semver>` only —
+    that would block the very entry shape the ledger already uses.
+    """
+    old = write_resolved(workspace / "old.json", "", revision="aaa111")
+    new = write_resolved(workspace / "new.json", "", revision="bbb222")
+    ledger = workspace / "ledger.md"
+    ledger.write_text(
+        "# Readium money-path validation ledger\n"
+        "\n"
+        "## 3.11.0-palace.1 — ThePalaceProject/swift-toolkit @ bbb222\n"
+        "\n"
+        "- Validated by: iOS maintainer\n"
+    )
+
+    result = run(
+        "--old-resolved", str(old),
+        "--new-resolved", str(new),
+        "--ledger", str(ledger),
+    )
+
+    assert result.returncode == PASS, result.stderr
+
+
+def test_prefix_of_a_longer_heading_token_does_not_satisfy(workspace: Path):
+    """A fork's heading names a tag built on an upstream version.
+
+    `## 3.11.0-palace.1 — …/swift-toolkit @ 58413f868…` contains "3.11.0" as a
+    substring, so a plain substring test would let a later move to genuine
+    upstream 3.11.0 be satisfied by the fork's entry — an entry describing
+    different code. The token has to stand as a whole token in the heading.
+    """
+    old = write_resolved(workspace / "old.json", "3.9.0")
+    new = write_resolved(workspace / "new.json", "3.11.0")
+    ledger = workspace / "ledger.md"
+    ledger.write_text(
+        "# Readium money-path validation ledger\n"
+        "\n"
+        "## 3.11.0-palace.1 — ThePalaceProject/swift-toolkit @ 58413f868\n"
+        "\n"
+        "- Validated by: iOS maintainer\n"
+    )
+
+    result = run(
+        "--old-resolved", str(old),
+        "--new-resolved", str(new),
+        "--ledger", str(ledger),
+    )
+
+    assert result.returncode == BLOCKED, (
+        "an upstream version must not be satisfied by a fork tag that merely "
+        "starts with it"
+    )
+
+
+def test_pin_by_revision_moving_to_the_same_code_under_a_tag_still_requires_an_entry(
+    workspace: Path,
+):
+    """Same 40-char revision, newly carrying a `version` because the pin moved
+    from a bare revision to an exact tag. The content did not change, but the
+    *pin* did, so the ledger must say so — the gate cannot tell "re-expressed the
+    same commit" from "moved to a tag that points somewhere else" and must not
+    try."""
+    old = write_resolved(workspace / "old.json", "", revision="58413f868")
+    new = write_resolved(workspace / "new.json", "3.11.0-palace.1", revision="58413f868")
+    ledger = write_ledger(workspace / "ledger.md", "ThePalaceProject/swift-toolkit @ 58413f868")
+
+    result = run(
+        "--old-resolved", str(old),
+        "--new-resolved", str(new),
+        "--ledger", str(ledger),
+    )
+
+    assert result.returncode == BLOCKED, (
+        "gaining a version key is a pin change; the old revision-only entry does "
+        "not describe the new pin form"
+    )
+
+
 def test_missing_ledger_blocks_when_pin_moved(workspace: Path):
     old = write_resolved(workspace / "old.json", "3.9.0")
     new = write_resolved(workspace / "new.json", "3.12.0")
@@ -232,7 +356,7 @@ def test_malformed_resolved_does_not_crash(workspace: Path):
 # --- the real repository state ----------------------------------------------
 
 
-def test_repository_ledger_records_the_current_pin():
+def test_repository_ledger_records_the_current_pin(workspace: Path):
     """Dry run against the tree: the committed ledger must already satisfy the
     committed pin, so the gate does not fire on unrelated pull requests."""
     repo = Path(__file__).resolve().parents[2]
@@ -252,6 +376,21 @@ def test_repository_ledger_records_the_current_pin():
     # (check-dependency-money-paths.sh) keys on revision in that case, so mirror it.
     version = state.get("version") or state.get("revision", "")
     assert version, "swift-toolkit pin not found in Package.resolved"
-    assert version in ledger.read_text(), (
-        f"ledger has no entry for the pinned Readium version/revision {version}"
+
+    # Ask the gate, rather than reimplementing its matcher here. A local
+    # reimplementation drifts silently and always in the reassuring direction:
+    # this check previously did a substring search over headings, so once the
+    # gate began demanding a whole token it would have kept passing on a pin the
+    # gate would block in CI. Feed the committed pin in as a change from "absent"
+    # so the gate is forced to consult the ledger.
+    absent = workspace / "absent.json"
+    absent.write_text(json.dumps({"pins": [], "version": 3}))
+    result = run(
+        "--old-resolved", str(absent),
+        "--new-resolved", str(resolved),
+        "--ledger", str(ledger),
+    )
+    assert result.returncode == PASS, (
+        f"the committed ledger does not satisfy the gate for the committed pin "
+        f"{version}:\n{result.stderr}"
     )

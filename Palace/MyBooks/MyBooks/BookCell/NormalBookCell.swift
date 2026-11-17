@@ -10,6 +10,7 @@ import SwiftUI
 import Combine
 import PalaceUIKit
 import PalaceBookModel
+import PalaceUtilities
 
 struct NormalBookCell: View {
     @Environment(\.colorScheme) var colorScheme
@@ -177,7 +178,7 @@ struct NormalBookCell: View {
     }
 
     @ViewBuilder private var titleCoverImageView: some View {
-        BookImageView(book: model.book, width: nil, height: cellHeight, treatImageAsDecorativeInLists: true)
+        BookImageView(book: model.book, width: nil, height: cellHeight)
             .adaptiveShadowLight(radius: 1.5)
             .frame(width: cellHeight * 2.0 / 3.0)
     }
@@ -306,11 +307,9 @@ struct NormalBookCell: View {
         if details.holdPosition > 0 {
             if details.copiesAvailable > 0 {
                 Text(
-                    String(
-                        format: Strings.BookDetailView.holdStatus,
-                        details.holdPosition.ordinal(),
-                        details.copiesAvailable,
-                        details.copiesAvailable == 1 ? Strings.BookDetailView.copy : Strings.BookDetailView.copies
+                    Strings.BookDetailView.holdStatus(
+                        position: details.holdPosition.ordinal(),
+                        copiesInUse: details.copiesAvailable
                     )
                 )
                 .font(.footnote)

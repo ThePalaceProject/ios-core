@@ -10,6 +10,7 @@
 import Combine
 import UIKit
 import WebKit
+import PalaceUtilities
 
 /// Narrow seam over `WKWebView.evaluateJavaScript(_:completionHandler:)` so
 /// the scroll-restore retry loop can be exercised deterministically in tests
@@ -158,6 +159,11 @@ public final class StreamingReaderViewController: UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
+        // `StreamingReaderView` hosts this VC as the root of its own
+        // `UINavigationController`, and that bar carries no other item, so this
+        // title is the only thing naming the screen — in the bar and in
+        // VoiceOver's screen-change announcement.
+        title = viewModel.book.title
         installSubviews()
         bindViewModel()
         webView.navigationDelegate = self

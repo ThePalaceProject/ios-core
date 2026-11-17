@@ -2,13 +2,11 @@
 //  BorrowReducerCoreContractTests.swift
 //  PalaceTests
 //
-//  E2 (WS7) coverage for the pure `BorrowReducerCore` extracted from
-//  `BorrowOperation`. Direct `Equatable` assertions on `responseState`,
-//  `postResponseEffects`, and `alreadyHasActiveLoan` kill mutants (a flipped
-//  F-014 download gate, a dropped race arm, a swapped SQ-007 state). The
-//  `ContractSnapshot` layer interprets `postResponseEffects` into a `CallLog`
-//  using the same seam labels `BorrowOperationContractTests` records, so the
-//  emitted sequence is shape-equal to the E1 service snapshot.
+//  Covers the pure `BorrowReducerCore` extracted from `BorrowOperation`. Direct
+//  `Equatable` assertions on `responseState`, `postResponseEffects`, and
+//  `alreadyHasActiveLoan` catch a flipped F-014 download gate, a dropped race arm,
+//  or a swapped SQ-007 state. The snapshot layer records `postResponseEffects` with
+//  the seam labels `BorrowOperationContractTests` uses, so the two sequences match.
 //
 
 import XCTest
@@ -29,13 +27,15 @@ final class BorrowReducerCoreContractTests: XCTestCase {
 
     func test_responseState_borrowReturnedHold_raceError() {
         // Pre-borrow was a loan-class title (unlimited) but the response is
-        // reserved → CM Loan→Hold race → .holding + hold-copy-unavailable error.
+        // reserved at position 1 → CM Loan→Hold race → .holding + .holdRequeued(position: 1).
         let pre = Self.book(availability: TPPOPDSAcquisitionAvailabilityUnlimited())
         let post = Self.book(availability: TPPOPDSAcquisitionAvailabilityReserved(
             holdPosition: 1, copiesTotal: 1, since: nil, until: nil))
         let r = BorrowReducerCore.responseState(for: post, preBorrowBook: pre)
         XCTAssertEqual(r.state, .holding)
-        XCTAssertNotNil(r.error)
+        guard case .holdRequeued(position: 1)? = r.error else {
+            return XCTFail("expected .holdRequeued(position: 1), got \(String(describing: r.error))")
+        }
     }
 
     func test_responseState_deliberatePlaceHold_noError() {

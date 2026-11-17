@@ -9,14 +9,13 @@ import Foundation
 import PalaceBookModel
 import PalaceCatalog
 
-/// The download-center surface `BookRegistrySync` consumes, injected app-side
-/// (god-class decomposition Wave 2b). `MyBooksDownloadCenter` conforms via an
+/// The download-center surface `BookRegistrySync` consumes, injected app-side.
+/// `MyBooksDownloadCenter` conforms via an
 /// app-target extension.
 ///
 /// `contentFileSatisfied` / `lcpContentFileMissing` exist because SPM targets do
-/// NOT inherit the app's `LCP` compilation condition — the `#if LCP` /
-/// `LCPAudiobooks.canOpenBook` probe logic that used to live inline in
-/// `checkIfBookFileExists` MUST live in the app-side adapter. Palace-noDRM's
+/// not inherit the app's `LCP` compilation condition, so the `#if LCP` /
+/// `LCPAudiobooks.canOpenBook` probe has to live in the app-side adapter. Palace-noDRM's
 /// adapter returns the non-LCP behavior (plain file existence / `false`).
 public protocol RegistryDownloadServicing: Sendable {
     func fileUrl(for book: TPPBook, account: String?) -> URL?
@@ -80,6 +79,19 @@ public enum RegistryContentPresence: Equatable, Sendable {
     case present
 }
 
+/// A registry file write that `BookRegistrySync` is about to perform, as reported
+/// to `RegistryExternalDependencies.beforeRegistryWrite`.
+// PUBLIC_INTENT: parameter type of the public RegistryExternalDependencies.init, which the app target calls.
+public enum RegistryWriteStep: Sendable, Equatable {
+    /// Writing the staged backup copy (`registry.json.bak.tmp`).
+    case backupStaging
+    /// Moving the staged copy to `registry.json.bak`. The previous backup has
+    /// already been removed when this step is reported.
+    case backupReplace
+    /// The `.atomic` write of the primary `registry.json`.
+    case primary
+}
+
 /// The external collaborators `BookRegistrySync` / `BookRegistryStore` resolve
 /// lazily at call time. Each closure carries the SAME deferred-resolution
 /// semantics the pre-extraction inline `AppContainer.production()` closures had —
@@ -100,18 +112,25 @@ public struct RegistryExternalDependencies: Sendable {
     /// Fired when a reconciled record's availability changed (drives the app's
     /// push-notification comparison). App-side no-ops when notifications are off.
     public let onAvailabilityChange: @Sendable (_ cachedRecord: TPPBookRegistryRecord, _ newBook: TPPBook) -> Void
+    /// Runs immediately before each registry file write step. A thrown error
+    /// aborts that step the way an I/O error from the step itself would. The
+    /// production bundle leaves this as a no-op; tests use it to fail a write
+    /// deterministically while the rest of the save runs unchanged.
+    let beforeRegistryWrite: @Sendable (_ step: RegistryWriteStep, _ url: URL) throws -> Void
 
     public init(
         downloadService: @escaping @Sendable () -> any RegistryDownloadServicing,
         loansFeedFetcher: @escaping @Sendable () -> any OPDSFeedFetching,
         sideloadedIdentifiers: @escaping @Sendable () -> Set<String>,
         registryDirectory: @escaping @Sendable (_ accountID: String) -> URL?,
-        onAvailabilityChange: @escaping @Sendable (_ cachedRecord: TPPBookRegistryRecord, _ newBook: TPPBook) -> Void
+        onAvailabilityChange: @escaping @Sendable (_ cachedRecord: TPPBookRegistryRecord, _ newBook: TPPBook) -> Void,
+        beforeRegistryWrite: @escaping @Sendable (_ step: RegistryWriteStep, _ url: URL) throws -> Void = { _, _ in }
     ) {
         self.downloadService = downloadService
         self.loansFeedFetcher = loansFeedFetcher
         self.sideloadedIdentifiers = sideloadedIdentifiers
         self.registryDirectory = registryDirectory
         self.onAvailabilityChange = onAvailabilityChange
+        self.beforeRegistryWrite = beforeRegistryWrite
     }
 }

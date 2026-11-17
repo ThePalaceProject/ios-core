@@ -1,20 +1,12 @@
-//
 //  TPPReaderFootnoteAccessibilityDOMTests.swift
-//  PalaceTests
 //
-//  PP-4531 — the leg that was missing.
-//
-//  `TPPReaderFootnoteAccessibilityTests` covers the Swift classifier and label
-//  composer. It cannot fail on a DOM defect, because the only thing it asserts
-//  about `annotationJavaScript()` is that its SOURCE TEXT contains some
-//  substrings. That is how the shipped build (480) reached QA labelling zero
-//  elements: `querySelectorAll('[epub\:type]')` matches only attributes in NO
-//  namespace, and Readium serves spine documents as `application/xhtml+xml`, so
-//  WKWebView parses them as XML and `epub:type` is in the OPS namespace.
-//
-//  These tests EXECUTE the production script in a real `WKWebView` against both
-//  parse modes and assert the `aria-label`s VoiceOver would actually read.
-//
+//  PP-4531. `TPPReaderFootnoteAccessibilityTests` checks the Swift classifier and
+//  only the source text of `annotationJavaScript()`, so it cannot catch a DOM
+//  defect. Build 480 labelled zero elements: `[epub\:type]` matches only
+//  un-namespaced attributes, and Readium serves XHTML that WKWebView parses as
+//  XML with `epub:type` in the OPS namespace. These tests run the production
+//  script in a real `WKWebView` in both parse modes and assert the `aria-label`s
+//  VoiceOver reads.
 
 import WebKit
 import XCTest
@@ -84,35 +76,94 @@ final class TPPReaderFootnoteAccessibilityDOMTests: XCTestCase {
 
   // MARK: - Harness
 
-  @MainActor
-  private final class LoadWaiter: NSObject, WKNavigationDelegate {
-    private var continuation: CheckedContinuation<Void, Never>?
-    private var finished = false
+  /// How a load ended. Only `.finished` means the document is there to probe.
+  enum LoadOutcome: Equatable {
+    case finished
+    case failed
+    case webContentProcessTerminated
+    case notFinished(within: Duration)
+  }
 
-    /// Suspends until the navigation completes. Deliberately NOT spelled like
-    /// the XCTest waiter: there is no wall-clock deadline here at all — the
-    /// continuation is resumed by the navigation delegate itself, which is the
-    /// deterministic join seam STARVE-001 asks for. The XCTest spelling would
-    /// collide with that rule's pattern on the method name alone.
-    func awaitLoad() async {
-      await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
-        if finished { c.resume(); return }
+  /// Reports the navigation's outcome to one waiter. The navigation delegate is
+  /// the join; `bound` is a backstop for the case in which WebKit never calls
+  /// it at all. On CI runs 36764880844 and 36756983059 the simulator never
+  /// finished launching the WebContent process (runningboardd logged the
+  /// launch request, then nothing for two minutes; no WebContent process
+  /// existed in the spindump), so no delegate method fired and the test sat
+  /// until XCTest's 120 s allowance killed it. An allowance kill is not retried
+  /// by `-retry-tests-on-failure` and fails the job; an ordinary failure is
+  /// retried in seconds.
+  @MainActor
+  final class LoadWaiter: NSObject, WKNavigationDelegate {
+    private var continuation: CheckedContinuation<LoadOutcome, Never>?
+    private var outcome: LoadOutcome?
+
+    /// Suspends until the navigation reports an outcome, or until `bound`
+    /// passes with none. Deliberately NOT spelled like the XCTest waiter,
+    /// whose name the STARVE-001 lint matches.
+    func awaitLoad(within bound: Duration) async -> LoadOutcome {
+      let backstop = Task { @MainActor [weak self] in
+        try? await Task.sleep(for: bound)
+        guard !Task.isCancelled else { return }
+        self?.complete(.notFinished(within: bound))
+      }
+      defer { backstop.cancel() }
+      return await withCheckedContinuation { (c: CheckedContinuation<LoadOutcome, Never>) in
+        if let outcome { c.resume(returning: outcome); return }
         continuation = c
       }
     }
 
-    private func complete() {
-      guard !finished else { return }
-      finished = true
-      continuation?.resume()
+    private func complete(_ result: LoadOutcome) {
+      guard outcome == nil else { return }
+      outcome = result
+      continuation?.resume(returning: result)
       continuation = nil
     }
 
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { complete() }
-    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { complete() }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { complete(.finished) }
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+      complete(.failed)
+    }
     func webView(_ webView: WKWebView,
                  didFailProvisionalNavigation navigation: WKNavigation!,
-                 withError error: Error) { complete() }
+                 withError error: Error) { complete(.failed) }
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+      complete(.webContentProcessTerminated)
+    }
+  }
+
+  /// Well above a loaded runner's normal load time (the class's per-test median
+  /// in CI is under a second), and well below the 120 s allowance.
+  private static let loadBound: Duration = .seconds(30)
+
+  /// One web view for the whole class. Every `WKWebView` that loads a document
+  /// asks the simulator to launch a WebContent process, and that launch is the
+  /// step that stalled on CI; reusing one view makes it once per test process
+  /// instead of once per test. Each test still loads the fixture fresh, which
+  /// replaces the previous document. Discarded only when its WebContent process
+  /// terminates; a slow launch is kept, since discarding it restarts the launch.
+  private static var sharedWebView: WKWebView?
+
+  private static func webViewForLoad() -> WKWebView {
+    if let webView = sharedWebView { return webView }
+    let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+    sharedWebView = webView
+    return webView
+  }
+
+  /// Stops whatever this test's load left in flight, so a slow navigation
+  /// cannot deliver into the next test. The view itself stays for reuse.
+  override func tearDown() async throws {
+    Self.sharedWebView?.stopLoading()
+    Self.sharedWebView?.navigationDelegate = nil
+    try await super.tearDown()
+  }
+
+  /// Releases the shared view, and its WebContent process, once the class is done.
+  override class func tearDown() {
+    MainActor.assumeIsolated { sharedWebView = nil }
+    super.tearDown()
   }
 
   /// Load the fixture under `mimeType`, run the PRODUCTION annotation script,
@@ -120,18 +171,36 @@ final class TPPReaderFootnoteAccessibilityDOMTests: XCTestCase {
   /// `aria-label` probes.
   private func loadAndAnnotate(
     mimeType: String,
+    bound: Duration = TPPReaderFootnoteAccessibilityDOMTests.loadBound,
     file: StaticString = #filePath,
     line: UInt = #line
   ) async throws -> (webView: WKWebView, labelled: Int) {
-    let webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+    let webView = Self.webViewForLoad()
     let waiter = LoadWaiter()
     webView.navigationDelegate = waiter
+    defer { webView.navigationDelegate = nil }
     let data = Data(Self.fixture.utf8)
     webView.load(data,
                  mimeType: mimeType,
                  characterEncodingName: "utf-8",
                  baseURL: URL(fileURLWithPath: NSTemporaryDirectory()))
-    await waiter.awaitLoad()
+    let outcome = await waiter.awaitLoad(within: bound)
+    switch outcome {
+    case .finished:
+      break
+    case .failed:
+      XCTFail("fixture load as \(mimeType) failed", file: file, line: line)
+      throw LoadDidNotFinish(outcome: outcome)
+    case .notFinished:
+      // The simulator's WebContent launch has been measured stalling for minutes
+      // on a memory-pressured CI runner, longer than any wait that fits in the
+      // 120 s allowance. The launch keeps going, so the view is kept for the
+      // next load; this test has nothing to say about labelling.
+      throw XCTSkip("WebContent did not finish loading within \(bound); runner stall, not a labelling result")
+    case .webContentProcessTerminated:
+      Self.sharedWebView = nil
+      throw XCTSkip("WebContent process terminated during the fixture load; runner, not a labelling result")
+    }
 
     // The fixture must have parsed, or a "0 labelled" result below would be
     // meaningless rather than a finding.
@@ -142,6 +211,10 @@ final class TPPReaderFootnoteAccessibilityDOMTests: XCTestCase {
 
     let labelled = try await evalInt(webView, FA.annotationJavaScript())
     return (webView, labelled)
+  }
+
+  private struct LoadDidNotFinish: Error {
+    let outcome: LoadOutcome
   }
 
   private func evalInt(_ webView: WKWebView, _ js: String) async throws -> Int {
@@ -222,5 +295,56 @@ final class TPPReaderFootnoteAccessibilityDOMTests: XCTestCase {
     XCTAssertEqual(second, first, "re-running must re-label the same set")
     let ref = try await label(webView, "a[href='#n1']")
     XCTAssertEqual(ref, "Footnote 1")
+  }
+
+  // MARK: - The load harness fails instead of hanging
+
+  /// A WebContent launch slower than the bound says nothing about labelling: the
+  /// test skips, and the view keeps its in-flight launch for the next load.
+  func testLoad_whenTheLaunchOutlastsItsBound_skipsAndTheNextLoadOnTheSameViewLabels() async throws {
+    Self.sharedWebView = nil
+    do {
+      _ = try await loadAndAnnotate(mimeType: "application/xhtml+xml", bound: .zero)
+      XCTFail("a zero bound cannot see a fresh launch finish")
+    } catch is XCTSkip {}
+    let viewAfterSkip = try XCTUnwrap(Self.sharedWebView, "the slow launch's view must be kept")
+
+    let (webView, labelled) = try await loadAndAnnotate(mimeType: "application/xhtml+xml")
+
+    XCTAssertTrue(webView === viewAfterSkip, "the next load must reuse the launching view")
+    XCTAssertEqual(labelled, 5)
+  }
+
+  /// The CI hang: WebKit never reports the navigation. The waiter must return
+  /// at its bound so the test fails as an ordinary (retried) failure.
+  func testLoadWaiter_whenNoNavigationOutcomeArrives_returnsNotFinishedAtItsBound() async {
+    let waiter = LoadWaiter()
+    let started = ContinuousClock.now
+
+    let outcome = await waiter.awaitLoad(within: .milliseconds(200))
+
+    XCTAssertEqual(outcome, .notFinished(within: .milliseconds(200)))
+    XCTAssertLessThan(ContinuousClock.now - started, .seconds(20),
+                      "the bound must end the wait, not the 120 s allowance")
+  }
+
+  func testLoadWaiter_whenNavigationFinishes_returnsFinishedWithoutWaitingForItsBound() async {
+    let waiter = LoadWaiter()
+    let started = ContinuousClock.now
+    Task { @MainActor in waiter.webView(WKWebView(frame: .zero), didFinish: nil) }
+
+    let outcome = await waiter.awaitLoad(within: .seconds(100))
+
+    XCTAssertEqual(outcome, .finished)
+    XCTAssertLessThan(ContinuousClock.now - started, .seconds(20))
+  }
+
+  func testLoadWaiter_whenWebContentProcessTerminates_reportsItInsteadOfWaiting() async {
+    let waiter = LoadWaiter()
+    Task { @MainActor in waiter.webViewWebContentProcessDidTerminate(WKWebView(frame: .zero)) }
+
+    let outcome = await waiter.awaitLoad(within: .seconds(100))
+
+    XCTAssertEqual(outcome, .webContentProcessTerminated)
   }
 }

@@ -8,6 +8,7 @@
 
 import Foundation
 import PalaceLogging
+import PalaceUtilities
 
 #if FEATURE_DRM_CONNECTOR
 
@@ -29,7 +30,6 @@ extension TPPSignInBusinessLogic {
             TPPErrorLogger.logUserProfileDocumentAuthError(
                 NSError(domain: "ProfileDoc", code: -1),
                 summary: "SignIn: unable to parse user profile doc (non-fatal)",
-                barcode: uiDelegate?.username,
                 metadata: loggingContext)
             finalizeSignIn(forDRMAuthorization: true)
             return
@@ -68,7 +68,6 @@ extension TPPSignInBusinessLogic {
         } catch {
             TPPErrorLogger.logUserProfileDocumentAuthError(error as NSError,
                                                            summary: "SignIn: unable to parse user profile doc",
-                                                           barcode: nil,
                                                            metadata: loggingContext)
             finalizeSignIn(forDRMAuthorization: false,
                            errorMessage: "Error parsing user profile document")
@@ -178,8 +177,11 @@ extension TPPSignInBusinessLogic {
                     var success = success
 
                     if success, let userID = userID, let deviceID = deviceID {
-                        self.userAccount.setUserID(userID)
-                        self.userAccount.setDeviceID(deviceID)
+                        self.userAccount.setAdobeActivation(
+                            userID: userID,
+                            deviceID: deviceID,
+                            generation: AdobeConnectorGeneration.current
+                        )
                     } else {
                         success = false
                         TPPErrorLogger.logLocalAuthFailed(error: box.error as NSError?,
@@ -229,8 +231,7 @@ extension TPPSignInBusinessLogic {
 
     @objc func logInIfUserAuthorized() {
         if let drmAuthorizer = drmAuthorizer,
-           !drmAuthorizer.isUserAuthorized(userAccount.userID,
-                                           withDevice: userAccount.deviceID) {
+           !drmAuthorizer.canUseRecordedActivation(userAccount) {
 
             if userAccount.hasBarcodeAndPIN() && !isValidatingCredentials {
                 // `UITextField.text` is `@MainActor`-isolated; this `@objc`
@@ -245,7 +246,8 @@ extension TPPSignInBusinessLogic {
                     }
                 }
 
-                logIn()
+                // DRM callback boundary: synchronous, so the await needs a Task.
+                Task { await logIn() }
             }
         }
     }

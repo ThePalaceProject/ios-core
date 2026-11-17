@@ -1,18 +1,8 @@
 //
-//  AdobeLicensorRefreshTests.swift
-//  PalaceTests
-//
-//  PP-3649 root cause. The CM's short client token lives 60 minutes
-//  (`expires = {"minutes": 60}`) and the CM enforces expiry on decode. iOS
-//  stored that token once at sign-in and never refreshed it, while PP-3649
-//  moved Adobe activation to first-borrow — arbitrarily later. Adobe rejects
-//  the stale token as "Incorrect barcode or PIN", which reads as a patron
-//  credential problem and is not one.
-//
-//  Android has never had this: `BorrowACSM.adobeDeviceActivate` re-runs the
-//  patron profile request and activates with the token it just received.
-//
-//  These pin the choice of WHICH licensor activation uses.
+//  PP-3649. The CM's client token expires after 60 minutes, and activation now
+//  happens at first borrow, so the token stored at sign-in is often stale; Adobe
+//  rejects it as "Incorrect barcode or PIN". Android re-fetches the patron profile
+//  before activating. These pin which licensor activation uses.
 //
 
 import XCTest

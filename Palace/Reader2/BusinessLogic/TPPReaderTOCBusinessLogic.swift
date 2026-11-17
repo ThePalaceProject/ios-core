@@ -47,10 +47,15 @@ class TPPReaderTOCBusinessLogic {
             switch tocResult {
             case .success(let toc):
                 self.tocElements = flatten(toc)
+                if self.tocElements.isEmpty {
+                    // The condition that can actually occur, and the one worth
+                    // recording: a publication whose TOC really is empty looks
+                    // identical on screen to a regression of PP-5128 (Contents
+                    // blank because the load had not landed). Without this line
+                    // there is nothing to tell the two apart in the field.
+                    Log.error(#file, "Table of contents resolved to no entries")
+                }
             case .failure(let error):
-                // Without this, a genuinely failed or empty TOC is
-                // indistinguishable on screen from a regression of PP-5128
-                // (blank Contents), with nothing to tell them apart.
                 Log.error(#file, "Table of contents failed to load: \(error)")
                 return
             }

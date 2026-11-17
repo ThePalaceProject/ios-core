@@ -70,7 +70,7 @@ final class ReachabilityTests: XCTestCase {
 
     func testDetailedStatus_satisfiedUnknownInterface_reportsUnknownType() {
         // Satisfied path with no recognized interface flag → "Unknown" type,
-        // bare "Connected" details. Pins the default-branch values so a mutation
+        // bare "Connected" details. Pins the default-branch values so a change
         // that dropped the initial assignments would be caught.
         let result = Reachability.detailedStatus(
             status: .satisfied, usesWiFi: false, usesCellular: false,
@@ -93,7 +93,7 @@ final class ReachabilityTests: XCTestCase {
 
     func testDetailedStatus_expensiveOnly_appendsExpensiveNotConstrained() {
         // Independent-flag check: isExpensive must gate ONLY the "(Expensive)"
-        // suffix. A mutation swapping the two conditionals would fail here.
+        // suffix. A regression swapping the two conditionals would fail here.
         let result = Reachability.detailedStatus(
             status: .satisfied, usesWiFi: true, usesCellular: false,
             usesEthernet: false, isExpensive: true, isConstrained: false)

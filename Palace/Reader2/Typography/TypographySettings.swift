@@ -106,10 +106,10 @@ enum MarginLevel: Int, Codable, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .narrow: return "Narrow"
-        case .medium: return "Medium"
-        case .wide: return "Wide"
-        case .extraWide: return "Extra Wide"
+        case .narrow: return Strings.ReaderTypography.marginNarrow
+        case .medium: return Strings.ReaderTypography.marginMedium
+        case .wide: return Strings.ReaderTypography.marginWide
+        case .extraWide: return Strings.ReaderTypography.marginExtraWide
         }
     }
 
@@ -135,8 +135,8 @@ enum TextAlignmentOption: String, Codable, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .left: return "Left"
-        case .justified: return "Justified"
+        case .left: return Strings.ReaderTypography.alignLeft
+        case .justified: return Strings.ReaderTypography.alignJustified
         }
     }
 

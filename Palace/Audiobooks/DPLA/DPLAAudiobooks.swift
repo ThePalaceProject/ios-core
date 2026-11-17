@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceNetwork
 
 /// DPLA Audiobooks DRM helper class
 class DPLAAudiobooks {
@@ -67,7 +68,7 @@ class DPLAAudiobooks {
                 completion(nil, nil, DPLAError.drmKeyError("Error decoding \(DPLAAudiobooks.certificateUrl): response data is empty"))
                 return
             }
-            guard let jwkResponse = try? JSONDecoder().decode(JWKResponse.self, from: jwkData),
+            guard let jwkResponse = try? JSONDecoder().decodeGuarded(JWKResponse.self, from: jwkData),
                   let jwk = jwkResponse.keys.first,
                   let keyData = jwk.publicKeyData
             else {

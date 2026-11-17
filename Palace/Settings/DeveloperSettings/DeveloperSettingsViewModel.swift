@@ -4,12 +4,8 @@
 //
 //  Copyright © 2025 The Palace Project. All rights reserved.
 //
-//  SwiftUI view model backing the Testing (developer settings) screen and the
-//  app-level Advanced screen (PP-4788). This is a faithful, behavior-preserving
-//  port of `TPPDeveloperSettingsTableViewController` — every toggle, action,
-//  confirmation-alert title/message, and service call is reproduced exactly.
-//  Only the presentation layer changed (UITableView → SwiftUI List); the
-//  persistence keys and service entry points are untouched.
+//  View model backing the Testing (developer settings) screen and the
+//  app-level Advanced screen (PP-4788).
 //
 
 import Foundation
@@ -20,18 +16,18 @@ import MessageUI
 import WebKit
 import PalaceCatalog
 import PalaceBookRegistry
+import PalaceUtilities
 
 /// Owns all Testing / Advanced screen state and actions. The two SwiftUI
 /// screens (`DeveloperSettingsView`, `AppAdvancedSettingsView`) share this one
 /// view model so the action logic is written once.
 ///
-/// Toggle state is stored the same way the UIKit controller stored it:
+/// Toggle state is stored in:
 ///   - `TPPSettings` for beta-libraries + LCP passphrase
 ///   - `DebugSettings` (UserDefaults-backed) for badge logging / holds / error sims
 ///   - `RemoteFeatureFlags` local-override UserDefaults keys for the feature flags
-/// The `@Published` mirrors are seeded from the live values on `init` and each
-/// setter writes THROUGH to the same store the controller wrote to, so a flip
-/// here is indistinguishable from a flip in the old UIKit screen.
+/// The `@Published` mirrors are seeded from those stores on `init` and each
+/// setter writes through to them.
 @MainActor
 final class DeveloperSettingsViewModel: ObservableObject {
 
@@ -40,24 +36,17 @@ final class DeveloperSettingsViewModel: ObservableObject {
     private let settings: TPPSettings
     private let accountsManager: AccountsManager
     /// Loans registry — used by the DEBUG test-holds picker to fire the
-    /// holds-changed signal that refreshes the tab badge (swarm_8ce6f5ae WS3).
+    /// holds-changed signal that refreshes the tab badge.
     private let bookRegistry: TPPBookRegistryProvider
     private let debugSettings: DebugSettings
-    /// Wave 1b exception E5: this admin surface is coupled to the CONCRETE
-    /// `RemoteFeatureFlags` on purpose — it toggles the impl's `*LocalOverrideKey`
-    /// statics and the DEBUG force-submit override, none of which live on the
-    /// `FeatureFlagProviding` protocol. Kept concrete (the tests inject a fresh
-    /// concrete instance).
+    /// Concrete on purpose: this screen toggles the `*LocalOverrideKey` statics
+    /// and the DEBUG force-submit override, which are not on `FeatureFlagProviding`.
     private let featureFlags: RemoteFeatureFlags
-    /// The UserDefaults instance the RemoteFeatureFlags overrides are written to.
-    /// The process-wide `RemoteFeatureFlags` singleton reads its overrides from
-    /// `.standard`, and the UIKit controller wrote them via
-    /// `UserDefaults.standard.set(...)`, so this defaults to `.standard` to
-    /// preserve the exact read/write pairing.
+    /// Where the RemoteFeatureFlags overrides are written. Defaults to
+    /// `.standard`, which is where the shared `RemoteFeatureFlags` reads them.
     private let overrideDefaults: UserDefaults
-    /// Wave 1c: log-archive export seam for the dev-tools audiobook-logs email.
-    /// Defaults to a fresh `AudiobookFileLogger()` (NOT `.shared`) — matches the
-    /// pre-wave `emailAudiobookLogs` construction and keeps the `.shared` ratchet.
+    /// Log-archive export seam for the dev-tools audiobook-logs email. Defaults
+    /// to a fresh `AudiobookFileLogger()` rather than `.shared`.
     private let audiobookLogExporter: any LogArchiveExporting
     private let triageBotKeyAdmin = TriageBotKeyAdmin()
 
@@ -132,16 +121,53 @@ final class DeveloperSettingsViewModel: ObservableObject {
         didSet { overrideDefaults.set(sideLoadingEnabled, forKey: RemoteFeatureFlags.sideLoadingLocalOverrideKey) }
     }
 
+    /// Local override for MDM library pre-selection (PP-5070). Defaults OFF,
+    /// and the Firebase flag is global rather than per-device, so this toggle is
+    /// the intended QA switch — exactly as with side loading above, whose
+    /// override shipped in 3.3.0 with no writer and left the feature
+    /// unreachable. The row rendering this is in the Feature Flags section.
+    @Published var managedLibraryConfigurationEnabled: Bool {
+        didSet {
+            overrideDefaults.set(
+                managedLibraryConfigurationEnabled,
+                forKey: RemoteFeatureFlags.managedLibraryConfigurationLocalOverrideKey
+            )
+            refreshManagedLibraryStatus()
+        }
+    }
+
     // MARK: - Library Registry Debugging
 
     /// Bare host, or a full https:// URL. Mirrors
     /// `TPPSettings.customLibraryRegistryServer`.
     @Published var customRegistryInput: String
 
+    // MARK: - MDM Managed App Configuration (PP-5070)
+
+    /// Identifier or catalog URL to push as a stand-in MDM payload.
+    @Published var managedLibraryInput: String = ""
+
+    /// One-line read-out of what the app currently sees. Refreshed after each
+    /// action rather than computed per render, so reading the screen cannot
+    /// itself walk the registry on every SwiftUI pass.
+    @Published var managedLibraryStatus: String = ""
+
     // MARK: - Badge Testing (DEBUG)
 
     @Published var badgeLoggingEnabled: Bool {
         didSet { debugSettings.isBadgeLoggingEnabled = badgeLoggingEnabled }
+    }
+
+    /// PP-4963 — per-book local position trace. Off by default; see
+    /// `DebugSettings.isAudiobookPositionTraceEnabled` for why this is not the
+    /// triage-bot diagnostics toggle.
+    @Published var audiobookPositionTraceEnabled: Bool {
+        didSet { debugSettings.isAudiobookPositionTraceEnabled = audiobookPositionTraceEnabled }
+    }
+
+    /// PP-5285 — format and DRM labels on catalog covers.
+    @Published var coverFormatAndDRMLabelsEnabled: Bool {
+        didSet { debugSettings.showsCoverFormatAndDRMLabels = coverFormatAndDRMLabelsEnabled }
     }
 
     @Published var testHoldsConfiguration: DebugSettings.TestHoldsConfiguration {
@@ -160,7 +186,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
 
     // MARK: - Async-loaded display state
 
-    /// "Loading..." → actual FCM token (or "No token"). Matches the UIKit cell.
+    /// "Loading..." → actual FCM token (or "No token").
     @Published var fcmToken: String = "Loading..."
 
     /// Whether enhanced monitoring is on (drives the "🔍 Enhanced" badge on the
@@ -205,10 +231,18 @@ final class DeveloperSettingsViewModel: ObservableObject {
         self.appRatingForceEligible = featureFlags.isAppRatingForceEligible
         self.chapterScrubberEnabled = featureFlags.isChapterScrubberEnabled
         self.sideLoadingEnabled = featureFlags.isSideLoadingEnabled
+        self.managedLibraryConfigurationEnabled = featureFlags.isManagedLibraryConfigurationEnabled
 
         self.customRegistryInput = settings.customLibraryRegistryServer ?? ""
+        self.managedLibraryStatus = ManagedLibraryDebugOverride.statusDescription(
+            preconfigurator: .production(),
+            defaults: .standard,
+            featureEnabled: featureFlags.isManagedLibraryConfigurationEnabled
+        )
 
         self.badgeLoggingEnabled = debugSettings.isBadgeLoggingEnabled
+        self.audiobookPositionTraceEnabled = debugSettings.isAudiobookPositionTraceEnabled
+        self.coverFormatAndDRMLabelsEnabled = debugSettings.showsCoverFormatAndDRMLabels
         self.testHoldsConfiguration = debugSettings.testHoldsConfiguration
         self.simulatedBorrowError = debugSettings.simulatedBorrowError
         self.simulatedSyncFailure = debugSettings.simulatedSyncFailure
@@ -217,8 +251,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
     // MARK: - Engineering-tools gating (verbatim port)
 
     /// Engineering tools render in DEBUG, simulator, and TestFlight, but are
-    /// hidden from production App Store users. Pure, testable core — identical
-    /// to `TPPDeveloperSettingsTableViewController.shouldShowEngineeringTools`.
+    /// hidden from production App Store users. Pure, testable core.
     nonisolated static func shouldShowEngineeringTools(receiptURL: URL?,
                                                        fileExists: (String) -> Bool) -> Bool {
         guard let receiptURL else { return true }
@@ -234,6 +267,21 @@ final class DeveloperSettingsViewModel: ObservableObject {
             receiptURL: Bundle.main.appStoreReceiptURL,
             fileExists: { FileManager.default.fileExists(atPath: $0) }
         )
+    }
+
+    enum LibrarySettingsRow {
+        case hiddenLibraries
+        case lcpPassphraseManually
+    }
+
+    /// PP-5382: operations staff check test-mode libraries in the App Store
+    /// build before launch, so the hidden-libraries toggle stays on that build.
+    nonisolated static func librarySettingsRows(showEngineeringTools: Bool) -> [LibrarySettingsRow] {
+        showEngineeringTools ? [.hiddenLibraries, .lcpPassphraseManually] : [.hiddenLibraries]
+    }
+
+    var librarySettingsRows: [LibrarySettingsRow] {
+        Self.librarySettingsRows(showEngineeringTools: showEngineeringTools)
     }
 
     // MARK: - Async refreshers
@@ -252,8 +300,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
 
     // MARK: - Triage Bot: Anthropic key
 
-    /// Presents the paste/clear secure-text alert. Verbatim port of
-    /// `presentAnthropicKeyEntry()`.
+    /// Presents the paste/clear secure-text alert.
     func presentAnthropicKeyEntry(from presenter: UIViewController) {
         let hasKey = triageBotKeyAdmin.hasStoredKey
         let alert = UIAlertController(
@@ -290,14 +337,12 @@ final class DeveloperSettingsViewModel: ObservableObject {
 
     // MARK: - Feature Flags: rating actions
 
-    /// Fires the app-rating book-completed trigger immediately. Verbatim from
-    /// the `.featureFlags` row-2 tap handler.
+    /// Fires the app-rating book-completed trigger immediately.
     func triggerRatingPromptNow() {
         AppContainer.production().ratingPromptPresenter.handleTrigger(.bookCompleted)
     }
 
-    /// Clears all app-rating engagement state, then confirms. Verbatim from the
-    /// `.featureFlags` row-3 tap handler.
+    /// Clears all app-rating engagement state, then confirms.
     func resetRatingState(from presenter: UIViewController) {
         // PP-4788: destructive action → confirm before acting (all destructive
         // actions prompt, even engineering-only ones).
@@ -316,9 +361,78 @@ final class DeveloperSettingsViewModel: ObservableObject {
         presenter.present(alert, animated: true, completion: nil)
     }
 
+    // MARK: - MDM Managed App Configuration actions (PP-5070)
+
+    /// Writes the entered value into the real `com.apple.configuration.managed`
+    /// key, then runs the production apply path and reports what it did.
+    ///
+    /// Applying immediately rather than asking the tester to relaunch is
+    /// deliberate: the launch-path call site and this one share the same
+    /// `applyIfNeeded()`, so a result here is a result about production
+    /// behaviour, and a relaunch is still available to exercise the ORDERING
+    /// (bundled snapshot first, network crawl second) that only a cold start
+    /// produces.
+    func applyManagedLibraryConfiguration(from presenter: UIViewController) {
+        let outcome = ManagedLibraryDebugOverride.write(raw: managedLibraryInput, defaults: .standard)
+        switch outcome {
+        case .rejected(let reason):
+            refreshManagedLibraryStatus()
+            presentAlert(title: "Not a valid configuration value", message: reason, from: presenter)
+        case .refusedExternal:
+            refreshManagedLibraryStatus()
+            presentAlert(
+                title: "This device is really managed",
+                message: "A configuration is already present from an MDM. Refusing to overwrite it.",
+                from: presenter)
+        case .written(_, let warnings):
+            let decision = ManagedLibraryPreconfigurator.production().applyIfNeeded()
+            refreshManagedLibraryStatus()
+            let detail = ManagedLibraryDebugOverride.describe(decision)
+            presentAlert(
+                title: "Configuration applied",
+                message: warnings.isEmpty
+                    ? detail
+                    : detail + "\n\nDropped:\n" + warnings.joined(separator: "\n"),
+                from: presenter)
+        }
+    }
+
+    /// Removes a configuration this screen wrote. Leaves a real one alone.
+    func clearManagedLibraryConfiguration(from presenter: UIViewController) {
+        let cleared = ManagedLibraryDebugOverride.clear(defaults: .standard)
+        managedLibraryInput = ""
+        refreshManagedLibraryStatus()
+        presentAlert(
+            title: cleared ? "Configuration cleared" : "Nothing cleared",
+            message: cleared
+                ? "The managed configuration this screen wrote has been removed."
+                : "The configuration present came from an MDM, not from here.",
+            from: presenter)
+    }
+
+    /// Forgets the applied fingerprint so the same value can be tested again
+    /// without reinstalling the app.
+    func forgetManagedLibraryFingerprint(from presenter: UIViewController) {
+        ManagedLibraryDebugOverride.forgetAppliedFingerprint(defaults: .standard)
+        refreshManagedLibraryStatus()
+        presentAlert(title: "Ready to re-apply",
+                     message: "The next attempt will apply the configuration again.",
+                     from: presenter)
+    }
+
+    /// Re-reads the status line. Called after every action so the read-out can
+    /// never lag the state it describes.
+    func refreshManagedLibraryStatus() {
+        managedLibraryStatus = ManagedLibraryDebugOverride.statusDescription(
+            preconfigurator: .production(),
+            defaults: .standard,
+            featureEnabled: featureFlags.isManagedLibraryConfigurationEnabled
+        )
+    }
+
     // MARK: - Library Registry Debugging actions
 
-    /// Clears the custom registry server. Verbatim from `TPPRegistryDebuggingCell.clear`.
+    /// Clears the custom registry server.
     func clearCustomRegistry(from presenter: UIViewController) {
         customRegistryInput = ""
         settings.customLibraryRegistryServer = nil
@@ -328,8 +442,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
                      from: presenter)
     }
 
-    /// Sets the custom registry server + reloads. Verbatim from
-    /// `TPPRegistryDebuggingCell.set`.
+    /// Sets the custom registry server + reloads.
     func setCustomRegistry(from presenter: UIViewController) {
         accountsManager.clearCache()
 
@@ -358,8 +471,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
 
     // MARK: - Data & Reset (support tier — surfaces on the Advanced screen)
 
-    /// Clears the cache + image cache and confirms. Verbatim from the
-    /// `.dataManagement` row-0 tap handler.
+    /// Clears the cache + image cache and confirms.
     func clearCachedData(from presenter: UIViewController) {
         // PP-4788: Clear Cached Data is now patron-reachable via the always-visible
         // Advanced menu, so it must confirm before acting — no destructive action
@@ -380,8 +492,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
         presenter.present(confirm, animated: true, completion: nil)
     }
 
-    /// "Reset This Library" confirmation → `performScopedReset`. Verbatim from
-    /// `confirmResetThisLibrary()`.
+    /// "Reset This Library" confirmation → `performScopedReset`.
     func confirmResetThisLibrary(from presenter: UIViewController) {
         presentResetConfirmation(
             title: "Reset This Library?",
@@ -391,8 +502,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
         ) { logic, done in logic.performScopedReset(completion: done) }
     }
 
-    /// "Full Reset" confirmation → `performForceReset`. Verbatim from
-    /// `confirmFullReset()`.
+    /// "Full Reset" confirmation → `performForceReset`.
     func confirmFullReset(from presenter: UIViewController) {
         presentResetConfirmation(
             title: "Full Reset — All Libraries?",
@@ -402,8 +512,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
         ) { logic, done in logic.performForceReset(completion: done) }
     }
 
-    /// Builds the current-account business logic. Verbatim from
-    /// `currentAccountBusinessLogic()`.
+    /// Builds the current-account business logic.
     private func currentAccountBusinessLogic() -> TPPSignInBusinessLogic? {
         let container = AppContainer.production()
         guard let accountId = container.accountsManager.currentAccountId,
@@ -420,8 +529,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
         )
     }
 
-    /// Presents the destructive confirmation alert. Verbatim from
-    /// `presentResetConfirmation(...)`.
+    /// Presents the destructive confirmation alert.
     private func presentResetConfirmation(title: String, message: String, confirmTitle: String,
                                           from presenter: UIViewController,
                                           action: @escaping (TPPSignInBusinessLogic, @escaping () -> Void) -> Void) {
@@ -443,7 +551,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
     // MARK: - Developer Tools: Send Error Logs (support tier — Advanced screen)
 
     /// Presents the "Device Info" action sheet-style alert with Copy/Preview/Send
-    /// actions. Verbatim from `sendErrorLogs()`.
+    /// actions.
     func sendErrorLogs(from presenter: UIViewController) {
         Task { [weak presenter] in
             let deviceID = DeviceSpecificErrorMonitor.shared.getDeviceID()
@@ -487,7 +595,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
         }
     }
 
-    /// Presents the log-preview view controller. Verbatim from `previewLogs()`.
+    /// Presents the log-preview view controller.
     func previewLogs(from presenter: UIViewController) {
         Task { [weak presenter] in
             let loadingAlert = UIAlertController(
@@ -524,8 +632,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
     /// view model for the composer's lifetime.
     private let audiobookMailDelegate = AudiobookMailComposeDelegate()
 
-    /// Composes the audiobook-logs email. Verbatim from `emailAudiobookLogs()` —
-    /// same recipient, subject, preferred-sender, and per-file attachments.
+    /// Composes the audiobook-logs email with per-file attachments.
     func emailAudiobookLogs(from presenter: UIViewController) {
         guard MFMailComposeViewController.canSendMail() else {
             let alert = TPPAlertUtils.alert(title: "Mail Unavailable", message: "Cannot send email. Please configure an email account.")
@@ -555,8 +662,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
 
     // MARK: - Push Notification Testing (engineering)
 
-    /// Copies the current FCM token to the pasteboard with confirmation. Verbatim
-    /// from `copyFCMToken()`.
+    /// Copies the current FCM token to the pasteboard with confirmation.
     func copyFCMToken(from presenter: UIViewController) {
         Task { [weak presenter] in
             let token = await NotificationService.shared.currentFCMToken()
@@ -613,9 +719,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
         }
     }
 
-    /// Presents the delay-picker action sheet then schedules. Verbatim port of
-    /// `scheduleTestNotification(type:)` (minus the iPad-popover source-rect
-    /// anchoring, which is provided by the SwiftUI `.confirmationDialog`/anchor).
+    /// Presents the delay-picker action sheet then schedules.
     func scheduleTestNotification(type: TestNotificationType, from presenter: UIViewController) {
         let alert = UIAlertController(
             title: "Schedule \(type.title)",
@@ -648,7 +752,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
         presenter.present(alert, animated: true)
     }
 
-    /// Fires the local test notification. Verbatim from `fireTestNotification`.
+    /// Fires the local test notification.
     private func fireTestNotification(type: TestNotificationType, delay: TimeInterval, from presenter: UIViewController) {
         let center = UNUserNotificationCenter.current()
         center.getNotificationSettings { [weak presenter] settings in
@@ -696,8 +800,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
 
     // MARK: - Error Simulation pickers (engineering)
 
-    /// Presents the borrow-error picker action sheet. Verbatim from
-    /// `showErrorSimulationPicker()`.
+    /// Presents the borrow-error picker action sheet.
     func showErrorSimulationPicker(from presenter: UIViewController) {
         let alert = UIAlertController(
             title: "Simulate Borrow Error",
@@ -728,8 +831,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
         presenter.present(alert, animated: true)
     }
 
-    /// Presents the sync-failure picker action sheet. Verbatim from
-    /// `showSyncFailurePicker()`.
+    /// Presents the sync-failure picker action sheet.
     func showSyncFailurePicker(from presenter: UIViewController) {
         let alert = UIAlertController(
             title: "Simulate Sync Failure",
@@ -763,8 +865,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
     // MARK: - DEBUG-only actions
 
     #if DEBUG
-    /// Presents the test-holds config picker action sheet. Verbatim from
-    /// `showTestHoldsPicker()`.
+    /// Presents the test-holds config picker action sheet.
     func showTestHoldsPicker(from presenter: UIViewController) {
         let alert = UIAlertController(
             title: "Test Holds Configuration",
@@ -781,8 +882,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
                 self.testHoldsConfiguration = config
 
                 NotificationCenter.default.post(name: .TPPBookRegistryDidChange, object: nil)
-                // Badge refresh migrated off `.TPPBookRegistryStateDidChange` to
-                // the registry's holds-changed publisher (swarm_8ce6f5ae WS3).
+                // The tab badge refreshes from the holds-changed publisher.
                 self.bookRegistry.notifyHoldsChanged()
 
                 if config != .none {
@@ -800,7 +900,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
         presenter.present(alert, animated: true)
     }
 
-    /// Drives the ErrorDetail preview flow. Verbatim from `showPreviewErrorDetails()`.
+    /// Drives the ErrorDetail preview flow.
     func showPreviewErrorDetails(from presenter: UIViewController) {
         Task { [weak presenter] in
             let tracker = ErrorActivityTracker.shared
@@ -848,8 +948,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
 
     // MARK: - Reset Account Testing (DEBUG, PP-4282)
 
-    /// Step 1: force the patron's app into the broken state. Verbatim from
-    /// `simulateResetAccountStuckState()`.
+    /// Step 1: force the patron's app into the broken state.
     func simulateResetAccountStuckState(from presenter: UIViewController) {
         guard let account = accountsManager.currentAccount else {
             presentResetAccountAlert(title: "No Current Account",
@@ -894,8 +993,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
         )
     }
 
-    /// Step 2: dump the state Reset Account touches. Verbatim from
-    /// `inspectResetAccountState()`.
+    /// Step 2: dump the state Reset Account touches.
     func inspectResetAccountState(from presenter: UIViewController) {
         guard let account = accountsManager.currentAccount else {
             presentResetAccountAlert(title: "No Current Account",
@@ -937,8 +1035,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
         }
     }
 
-    /// Step 3: directly set the one-shot flag. Verbatim from
-    /// `setNextOIDCEphemeralFlagForTesting()`.
+    /// Step 3: directly set the one-shot flag.
     func setNextOIDCEphemeralFlagForTesting(from presenter: UIViewController) {
         UserDefaults.standard.set(true, forKey: TPPSignInBusinessLogic.nextOIDCSessionEphemeralKey)
         presentResetAccountAlert(
@@ -971,7 +1068,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
     }
 
     /// Anchors an action-sheet's iPad popover to the center of the presenter so
-    /// it doesn't crash on iPad (the UIKit version anchored to a table row rect).
+    /// it doesn't crash on iPad.
     private func anchorActionSheet(_ alert: UIAlertController, to presenter: UIViewController) {
         if let popover = alert.popoverPresentationController {
             popover.sourceView = presenter.view
@@ -985,9 +1082,7 @@ final class DeveloperSettingsViewModel: ObservableObject {
 
 // MARK: - Audiobook mail delegate
 
-/// Dismisses the audiobook-logs mail composer on finish. Mirrors the UIKit
-/// controller's `mailComposeController(_:didFinishWith:error:)`, which simply
-/// dismissed the composer.
+/// Dismisses the audiobook-logs mail composer on finish.
 @MainActor
 private final class AudiobookMailComposeDelegate: NSObject, @preconcurrency MFMailComposeViewControllerDelegate {
     func mailComposeController(_ controller: MFMailComposeViewController,

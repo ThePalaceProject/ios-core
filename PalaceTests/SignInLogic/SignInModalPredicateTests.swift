@@ -2,20 +2,12 @@
 //  SignInModalPredicateTests.swift
 //  PalaceTests
 //
-//  Closes the SignInModalView 0% mutation kill rate identified in the
-//  2026-05-11 regression. The `shouldAutoDismiss` predicate was extracted
-//  into a static helper so the mutation gate can verify a regression to
-//  the inverted branch is caught by a focused unit test rather than
-//  escaping as a stuck-modal user report.
+//  Pins `SignInModalView.shouldAutoDismiss(authState:)`, extracted into a
+//  static helper after the 2026-05-11 stuck-modal regression so an
+//  inverted branch is caught by a focused unit test.
 //
-//  Mutation surface covered:
-//    - `SignInModalView.shouldAutoDismiss(authState:)` — `==` flip on .loggedIn
-//
-//  swarm_d8f11437 Module A wave 4 — the 4 `shouldFireDismissCallback`
-//  tests were removed when the wave-4 migration deleted
-//  `SignInModalHostingController` (the predicate's home). The
-//  once-after-fully-dismissed semantics are now pinned at the presenter
-//  level via SignInModalLifecycleTests.swift's state-transition tests.
+//  Once-after-fully-dismissed semantics are pinned at the presenter level
+//  in SignInModalLifecycleTests.swift.
 //
 
 import XCTest
@@ -30,7 +22,7 @@ final class SignInModalPredicateTests: XCTestCase {
     func testShouldAutoDismiss_whenLoggedIn_returnsTrue() {
         // Pair-assert that the inverse predicate (loggedOut) is false on the
         // same call — pinning that the function is NOT a constant `true`. A
-        // mutation that returns true unconditionally would fail the second
+        // a regression that returns true unconditionally would fail the second
         // assertion.
         XCTAssertTrue(SignInModalView.shouldAutoDismiss(authState: .loggedIn),
                       ".loggedIn must auto-dismiss the modal")
@@ -40,7 +32,7 @@ final class SignInModalPredicateTests: XCTestCase {
 
     func testShouldAutoDismiss_whenLoggedOut_returnsFalse() {
         // Pair-assert that .credentialsStale also returns false — so a
-        // mutation that hard-codes false for .loggedOut still wouldn't pass
+        // regression that hard-codes false for .loggedOut still wouldn't pass
         // the multi-state contract.
         XCTAssertFalse(SignInModalView.shouldAutoDismiss(authState: .loggedOut),
                        ".loggedOut must NOT auto-dismiss")

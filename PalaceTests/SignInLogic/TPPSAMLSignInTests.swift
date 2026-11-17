@@ -542,7 +542,7 @@ final class TPPSAMLSignInTests: XCTestCase {
   // MARK: - UI Delegate Loading State Tests
   
   /// Tests that businessLogicWillSignIn is called when sign-in starts.
-  func testSignIn_callsBusinessLogicWillSignIn() {
+  func testSignIn_callsBusinessLogicWillSignIn() async {
     // Setup
     businessLogic.selectedAuthentication = libraryAccountMock.samlAuthentication
     
@@ -550,7 +550,7 @@ final class TPPSAMLSignInTests: XCTestCase {
                    "Precondition: willSignIn should not have been called")
     
     // Act: Trigger sign-in (this will call businessLogicWillSignIn)
-    businessLogic.logIn()
+    await businessLogic.logIn()
     
     // Assert
     XCTAssertTrue(uiDelegate.didCallWillSignIn,

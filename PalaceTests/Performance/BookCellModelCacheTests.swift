@@ -16,7 +16,7 @@ final class BookCellModelCacheTests: XCTestCase {
     var sut: BookCellModelCache!
     var mockImageCache: MockImageCache!
     var mockBookRegistry: TPPBookRegistryMock!
-    /// Per-test isolated AppContainer (swarm_47883816 work package A).
+    /// Per-test isolated AppContainer.
     /// Supplies collaborators (downloadCenter, accountsManager,
     /// samplePreviewManager, readerService) without reaching into the
     /// process-wide production cache. Fresh per `setUp()` so cache
@@ -74,9 +74,8 @@ final class BookCellModelCacheTests: XCTestCase {
         // Identity — second lookup must reuse the cached instance.
         XCTAssertTrue(model1 === model2, "Cache should return same model instance")
 
-        // Count must NOT grow on the second lookup — guards a mutant that
-        // produces same-identity-but-double-stored entries (would silently
-        // bloat memory under heavy scrolling).
+        // Count must NOT grow on the second lookup — double-stored entries
+        // would bloat memory under heavy scrolling.
         XCTAssertEqual(countAfterFirst, 1, "First lookup creates exactly one entry")
         XCTAssertEqual(countAfterSecond, 1, "Re-lookup must NOT add a second entry")
     }
@@ -366,10 +365,9 @@ final class BookCellModelCacheTests: XCTestCase {
     /// Empty-cache safety net: every public mutator must be a no-op (or
     /// safe operation) when the cache is empty — never crash, never
     /// invent entries. Lock all five entry points in one body. After every
-    /// call the count must remain 0. A mutant that adds a placeholder
-    /// entry on any of these paths fails on the count check; a mutant
-    /// that crashes (e.g. force-unwraps a missing key) trips XCTest's
-    /// signal handling.
+    /// call the count must remain 0; a placeholder entry fails the count
+    /// check and a crash (e.g. force-unwrapping a missing key) trips
+    /// XCTest's signal handling.
     func testEmptyCache_survivesAllPublicMutatorsWithoutCrashOrSpuriousEntries() throws {
         XCTAssertEqual(sut.count, 0, "Pre-condition: cache starts empty")
 

@@ -206,7 +206,7 @@ class IsSuppressed(unittest.TestCase):
 class LoadSuppressions(unittest.TestCase):
 
     def _write(self, repo_root, leaf, content_str):
-        d = os.path.join(repo_root, ".forgeos", "mutation-suppressions")
+        d = os.path.join(repo_root, "config", "ci", "mutation-suppressions")
         os.makedirs(d, exist_ok=True)
         with open(os.path.join(d, f"{leaf}.json"), "w", encoding="utf-8") as f:
             f.write(content_str)

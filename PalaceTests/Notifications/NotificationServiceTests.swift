@@ -47,7 +47,7 @@ final class NotificationServiceTests: XCTestCase {
     /// Special-character tokens (URL-encoding-relevant chars + emoji-like
     /// noise) must round-trip through JSON encoding without escape damage.
     /// Asserts the decoded value AND that the wire bytes are valid UTF-8 —
-    /// a mutant that drops the JSON escape would corrupt one or the other.
+    /// a missing JSON escape would corrupt one or the other.
     func testTokenDataWithSpecialCharacters_roundTripsThroughJSON() throws {
         let raw = "token/with+special=chars&more🔑\""
         let tokenData = NotificationService.TokenData(token: raw)
@@ -80,8 +80,7 @@ final class NotificationServiceTests: XCTestCase {
     /// CM backend sends `event_type` to drive notification routing. Each
     /// known enum case must classify deterministically — hold-related cases
     /// MUST return true, non-hold cases MUST return false. Table-driven so
-    /// a mutant that always-true-or-always-false fails on the first
-    /// disagreeing row.
+    /// a constant answer fails on the first disagreeing row.
     func testHoldClassification_byEventType_routesAllKnownEnumCasesCorrectly() {
         let cases: [(eventType: String, expected: Bool, label: String)] = [
             ("HoldAvailable", true,  "hold available — primary positive case"),
@@ -135,7 +134,7 @@ final class NotificationServiceTests: XCTestCase {
     /// classifier defaults to `true` — the "safe" choice that routes the
     /// user to the holds tab where they can see what changed. Lock both the
     /// empty-userInfo case and the "userInfo with unrelated keys" case so a
-    /// mutant that flips the default fails.
+    /// flipped default fails.
     func testHoldClassification_unparseableInputDefaultsToHoldRelated() {
         XCTAssertTrue(classifyAsHoldRelated([:]),
                       "Empty userInfo defaults to hold-related for safe navigation")
@@ -228,10 +227,8 @@ final class NotificationServiceTests: XCTestCase {
     /// `backgroundFetchIsNeeded()` is a static, side-effect-free Bool query.
     /// Without a hook to drive the underlying state, the only behaviour we
     /// can pin is that the function is referentially transparent within a
-    /// single test — three consecutive calls return the same value. This
-    /// rules out a mutant that toggles based on a hidden counter or shared
-    /// mutable state. The previous test was a tautology
-    /// (`XCTAssertNotNil(Bool?)` always succeeds — Swift Bool is non-optional).
+    /// single test — three consecutive calls return the same value, ruling
+    /// out toggling on a hidden counter or shared mutable state.
     func testBackgroundFetchIsNeeded_isReferentiallyTransparent() {
         let a = NotificationService.backgroundFetchIsNeeded()
         let b = NotificationService.backgroundFetchIsNeeded()

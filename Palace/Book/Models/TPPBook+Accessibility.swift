@@ -28,9 +28,8 @@ extension TPPBook {
   /// outermost element after `.accessibilityElement(children: .ignore)` so
   /// SwiftUI can't synthesize a label from the inner subviews and the
   /// underlying cover image cannot leak text via VoiceOver Image Recognition.
-  // de-objc (Wave 2a): plain-Swift — an @objc member in an app-side extension of the
-  // now-external PalaceBookModel.TPPBook would emit an illegal ObjC category into
-  // Palace-Swift.h. Zero ObjC callers; all Swift callers use it as a plain property.
+  // Not @objc: an @objc member in an app-side extension of the package's TPPBook
+  // would emit an illegal ObjC category into Palace-Swift.h.
   var voiceOverLabel: String {
     let cleanedAuthor = authors?.trimmingCharacters(in: .whitespacesAndNewlines)
     let cleanedNarrator = narrators?.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -10,6 +10,7 @@
 
 import Foundation
 import PalaceLogging
+import PalaceUtilities
 
 /// Adobe DRM Certificate structure.
 ///
@@ -367,13 +368,14 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
 
     /// Safely check if a user is authorized for DRM content.
     /// Returns false if DRM is not available.
-    func isUserAuthorized(_ userID: String?, deviceID: String?) -> Bool {
-        guard let adept = adeptInstance,
-              let userID = userID,
-              let deviceID = deviceID else {
-            return false
-        }
-        return adept.isUserAuthorized(userID, withDevice: deviceID)
+    /// Renamed from `isUserAuthorized`: the old name invited callers to treat
+    /// the connector's own verdict as sufficient, which it is not across a
+    /// connector change. Taking the whole activation record makes the bare
+    /// question unaskable through this service, and makes pairing stale
+    /// identifiers with a fresh generation unrepresentable.
+    func canUseRecordedActivation(_ account: AdobeActivationAccount) -> Bool {
+        guard let adept = adeptInstance else { return false }
+        return adept.canUseRecordedActivation(account)
     }
 
     /// Safely set the delegate for DRM callbacks.
@@ -476,22 +478,20 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
         guard let account = AppContainer.production().accountsManager.currentAccount else {
             return nil
         }
-        return await boundedLicensor(timeout: profileDocumentTimeout) { done in
+        return await boundedLicensor(timeout: profileDocumentTimeout, awaiting: {
             // `enableTokenRefresh: true`. This fetch is the whole point of the
             // PP-3649 refresh, and the case it exists for — a session old
             // enough that the stored licensor died — is also the case where the
             // bearer token has expired. Sending it as-is earns a 401 and a
             // fallback to the stale licensor, i.e. no refresh at all.
-            account.getProfileDocument(enableTokenRefresh: true) { document in
-                guard let drm = document?.drm?.first,
-                      let vendor = drm.vendor, !vendor.isEmpty,
-                      let clientToken = drm.clientToken, !clientToken.isEmpty else {
-                    done(nil)
-                    return
-                }
-                done(drm.licensor)
+            let document = await account.getProfileDocument(enableTokenRefresh: true)
+            guard let drm = document?.drm?.first,
+                  let vendor = drm.vendor, !vendor.isEmpty,
+                  let clientToken = drm.clientToken, !clientToken.isEmpty else {
+                return nil
             }
-        }.licensor
+            return drm.licensor
+        }).licensor
     }
 
     /// How long the borrow path will wait for the profile-document fetch before
@@ -503,13 +503,12 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
     /// borrow takes.
     static let profileDocumentTimeout: TimeInterval = 20
 
-    /// Awaits a callback-style licensor producer under a wall-clock deadline.
+/// Awaits a licensor producer under a wall-clock deadline.
     ///
     /// Bounded because this sits on the BORROW path and OUTSIDE the activation
     /// deadline below — `resolve` runs before `activationCoordinator.activate`,
-    /// so nothing downstream would ever have rescued it. `getProfileDocument`
-    /// hands its completion to `URLSession` via the executor, and this branch
-    /// has already shipped one ten-hour hang from an await with no bound; an
+    /// so nothing downstream would ever have rescued it. This branch has
+    /// already shipped one ten-hour hang from an await with no bound; an
     /// unresumed continuation here would wedge the borrow the same way, with
     /// the added cruelty that the fallback it is guarding (activate with the
     /// stored licensor) works perfectly well.
@@ -518,8 +517,18 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
     /// below records why the group cannot work: it awaits every child on scope
     /// exit and `cancelAll()` is only cooperative, so a continuation nobody
     /// resumes keeps the group — and the caller — suspended forever. Whichever
-    /// arrives first here, the producer's completion or the deadline, claims
-    /// the continuation and the caller genuinely unwinds.
+    /// arrives first here, the producer's answer or the deadline, claims the
+    /// continuation and the caller genuinely unwinds.
+    ///
+    /// The producer is `async` rather than callback-shaped because
+    /// `Account.getProfileDocument` is awaited now (PP-5301). There was briefly
+    /// a second, callback-shaped overload beside this one so the existing tests
+    /// could keep driving the old shape; it is gone, because it had no
+    /// production caller and its deadline race was a verbatim copy of this one.
+    /// Only the continuation latch was shared, so the two could have drifted
+    /// with the suite green — which is what a comment here previously claimed
+    /// was impossible.
+    ///
     /// - Returns: the licensor the producer supplied, and whether the DEADLINE
     ///   is what released the await.
     ///
@@ -532,7 +541,7 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
     ///   report to the caller, where it is observable.
     static func boundedLicensor(
         timeout: TimeInterval,
-        produce: @escaping (@escaping ([String: Any]?) -> Void) -> Void
+        awaiting produce: @escaping @Sendable () async -> [String: Any]?
     ) async -> (licensor: [String: Any]?, timedOut: Bool) {
         let box: LicensorBox = await withCheckedContinuation { (continuation: CheckedContinuation<LicensorBox, Never>) in
             let once = OneShotValueContinuation(continuation)
@@ -552,7 +561,8 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
                 once.finish(nil, timedOut: true)
             }
 
-            produce { licensor in
+            Task {
+                let licensor = await produce()
                 deadline.cancel()
                 once.finish(licensor, timedOut: false)
             }
@@ -562,7 +572,6 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
         }
         return (box.licensor, box.timedOut)
     }
-
     /// Reads `account.licensor`, and if it is absent, re-reads it until it
     /// appears or `budget` is exhausted.
     ///
@@ -625,10 +634,34 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
                                isDRMAvailable: Bool,
                                timeout: TimeInterval = AdobeActivationCoordinator.defaultTimeout,
                                licensorGracePeriod: TimeInterval = 0,
+                               // Injected for the same reason as `timeout`: the
+                               // shipped constant is 1, so without a seam the
+                               // Wipro case — the one this whole change exists
+                               // for — can only be tested as pure logic, never
+                               // driven through the gate and the write.
+                               connectorGeneration: Int = AdobeConnectorGeneration.current,
                                refreshLicensor: (() async -> [String: Any]?)? = nil) async throws {
+        // `isUserAuthorized` is the signal that LIES across a connector change:
+        // the Wipro binaries report an Adobe-era activation as authorized and
+        // then fail every operation with `E_ACT_NOT_READY` (PP-5026). So
+        // "already activated" has to mean "activated under THIS connector".
+        //
+        // An absent marker is backfilled to the pre-marker generation rather
+        // than treated as unknown — see `AdobeConnectorGeneration.preMarker`.
+        // The generation is checked BEFORE `isUserAuthorized` so a decision
+        // already known does not enter the non-thread-safe RMSDK.
+        // The identifiers are unwrapped FIRST so `authorizer()` is not evaluated
+        // for a patron who has never activated: it resolves
+        // `NYPLADEPT.sharedInstance()`, which initialises the RMSDK. Folding the
+        // nil-checks into the predicate cost that laziness, which the doc comment
+        // on the convenience overload still claimed.
         if let userID = userAccount.userID,
            let deviceID = userAccount.deviceID,
-           authorizer()?.isUserAuthorized(userID, withDevice: deviceID) == true {
+           authorizer()?.canUseRecordedActivation(
+               userID: userID,
+               deviceID: deviceID,
+               recordedGeneration: userAccount.adobeActivationConnectorGeneration,
+               current: connectorGeneration) == true {
             Log.info(#file, "Adobe device already activated — skipping activation")
             return
         }
@@ -763,8 +796,19 @@ class AdobeDRMService: NSObject, @unchecked Sendable {
                     if success, let userID = userID, let deviceID = deviceID {
                         Log.info(#file, "On-demand Adobe activation succeeded")
                         TPPMainThreadRun.asyncIfNeeded {
-                            userAccount.setUserID(userID)
-                            userAccount.setDeviceID(deviceID)
+                            // One write: the generation belongs to this
+                            // activation. Omitting it would leave a record that
+                            // reads as pre-marker, which re-activates on every
+                            // later Adobe operation once `current` moves past
+                            // `preMarker`.
+                            userAccount.setAdobeActivation(
+                                userID: userID,
+                                deviceID: deviceID,
+                                // The injected value, not the constant: a run
+                                // gated on one generation must not stamp another,
+                                // or the gate never settles.
+                                generation: connectorGeneration
+                            )
                         }
                         once.finish(throwing: nil)
                     } else {
@@ -826,7 +870,7 @@ private final class LicensorBox: @unchecked Sendable {
 
 /// Resumes a non-throwing continuation exactly once.
 ///
-/// Two producers race for it: `getProfileDocument`'s completion handler and the
+/// Two producers race for it: the awaited licensor producer and the
 /// refresh deadline. A completion handler invoked twice, or a deadline that
 /// fires after the fetch landed, would resume a `CheckedContinuation` twice — a
 /// hard runtime trap, not a recoverable error. Sibling of `OneShotContinuation`

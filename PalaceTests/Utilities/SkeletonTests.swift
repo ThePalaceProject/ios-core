@@ -34,7 +34,7 @@ final class SkeletonTests: XCTestCase {
   }
 
   /// Mid-phase the band is centered on the content (offset 0). Catches an
-  /// off-center `phase * travel` vs `phase * travel + k` mutant.
+  /// off-center `phase * travel + k` mapping.
   func testSweepTranslation_centeredAtMidPhase() {
     let band = Skeleton.bandWidth(contentWidth: 200)
     XCTAssertEqual(
@@ -63,7 +63,7 @@ final class SkeletonTests: XCTestCase {
 
   /// The diagonal tilt widens the required travel vs a purely horizontal band:
   /// taller content ⇒ more travel (the height casts a horizontal shadow across
-  /// the tilt). A zero-angle mutant would make height irrelevant.
+  /// the tilt). A zero angle would make height irrelevant.
   func testSweepTranslation_tiltMakesTallerContentTravelFarther() {
     let w: CGFloat = 200
     let band = Skeleton.bandWidth(contentWidth: w)
@@ -194,8 +194,8 @@ final class SkeletonTests: XCTestCase {
   /// skeleton and the loaded feed — no downward pop when content arrives. The
   /// real control is `EntryPointsSelectorView`'s
   /// `Picker(.segmented).frame(minHeight: 44)` with no vertical padding, so the
-  /// placeholder MUST reserve exactly that 44pt. A mutant that zeroes or shrinks
-  /// the placeholder reintroduces the lane pop this fix removed.
+  /// placeholder MUST reserve exactly that 44pt; a smaller placeholder
+  /// reintroduces the lane pop.
   func testEntryPointsSkeleton_reservesRealSelectorFootprint() {
     XCTAssertEqual(CatalogEntryPointsSkeletonView.placeholderHeight, 44, accuracy: 0.001,
                    "Placeholder must reserve the selector's 44pt minHeight footprint")

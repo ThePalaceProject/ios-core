@@ -17,10 +17,8 @@ final class FloatTPPAdditionsTests: XCTestCase {
   /// `=~=` is true iff |a - b| < Float.ulpOfOne. Lock the contract across
   /// the full set of inputs the operator is exposed to in production:
   /// identical, near-equal under epsilon, just-over epsilon, distinct,
-  /// signed differences, and zero. Each case sits inside one test so a
-  /// mutant that flips `<` to `<=` (or `abs` to identity) fails on the
-  /// boundary case without forcing the rest of the suite to re-check the
-  /// trivial cases.
+  /// signed differences, and zero, so `<=` in place of `<` (or a missing
+  /// `abs`) fails on the boundary case.
   func testApproxEqual_returnsTrueOnlyForValuesWithinEpsilon() {
     let a: Float = 1.0
     let identical: Float = 1.0
@@ -36,18 +34,18 @@ final class FloatTPPAdditionsTests: XCTestCase {
                    "Values past ulpOfOne MUST NOT be approximately equal")
     XCTAssertFalse(a =~= differentMagnitude)
 
-    // Zero is its own equivalence class — guard against a mutant that
-    // collapses the abs() and yields true on |0 - 0| < epsilon by accident.
+    // Zero is its own equivalence class — guard against a comparison that
+    // yields true on |0 - 0| < epsilon only by accident.
     XCTAssertTrue(0.0 as Float =~= 0.0 as Float)
 
-    // Sign matters: |-1 - 1| = 2 ≫ epsilon. A mutant that drops `abs()`
-    // would let -1 - 1 = -2 sneak under `< epsilon`.
+    // Sign matters: |-1 - 1| = 2 ≫ epsilon. Without `abs()`, -1 - 1 = -2
+    // would sneak under `< epsilon`.
     XCTAssertFalse((-1.0 as Float) =~= 1.0 as Float)
   }
 
   /// `=~=` is symmetric — a =~= b iff b =~= a. The implementation isn't
   /// obviously symmetric (the right-hand side is Optional), so this is a
-  /// real contract guard against a mutant that tilts the operands.
+  /// real contract guard against operand-order dependence.
   func testApproxEqual_isSymmetric() {
     let a: Float = 42.0
     let b: Float = 42.0
@@ -73,8 +71,8 @@ final class FloatTPPAdditionsTests: XCTestCase {
   /// `roundTo(decimalPlaces:)` formats the float with N digits after the
   /// decimal and appends `%`. Lock the digit count, the rounding behaviour
   /// (banker/half-even on 3.7 → 4 with zero places), and the percent suffix
-  /// in a single test so a mutant that drops the percent sign or shifts the
-  /// digit count fails here.
+  /// in a single test so a dropped percent sign or shifted digit count
+  /// fails here.
   func testRoundTo_formatsAsPercentageWithSpecifiedDecimalPlaces() {
     let pi: Float = 3.14159
     let half: Float = 3.7
@@ -92,16 +90,15 @@ final class FloatTPPAdditionsTests: XCTestCase {
     XCTAssertEqual(threePlaces, "3.142%",
                    "%.3f on 3.14159 → 3.142 (last digit rounds up from 5)")
 
-    // Suffix and decimal-presence pinning — would catch a mutant that drops
-    // the `%%` from the format string.
+    // Suffix and decimal-presence pinning — catches a missing `%%` in the
+    // format string.
     XCTAssertTrue(small.roundTo(decimalPlaces: 1).hasSuffix("%"))
     XCTAssertTrue(pi.roundTo(decimalPlaces: 4).contains("."),
                   "Non-zero decimal places must yield a string with a decimal point")
   }
 
   /// Edge case: roundTo on the integer side (50.0 with 1 place) produces
-  /// "50.0%" — the trailing zero is preserved by %.1f. A mutant that swaps
-  /// %f for %g (which trims trailing zeros) would be caught here.
+  /// "50.0%" — the trailing zero is preserved by %.1f (%g would trim it).
   func testRoundTo_preservesTrailingZerosFromFormatSpecifier() {
     let value: Float = 50.0
     XCTAssertEqual(value.roundTo(decimalPlaces: 1), "50.0%")

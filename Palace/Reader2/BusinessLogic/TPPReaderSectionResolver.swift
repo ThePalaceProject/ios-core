@@ -5,16 +5,8 @@
 //  Resolves "which section am I in?" for the DAISY nav-310 "Where am I?"
 //  announcement (PP-4527).
 //
-//  This exists because `Locator.title` is not the answer. Readium populates it
-//  only when the locator was built from a ToC/nav Link — i.e. when the patron
-//  ARRIVED by navigating. Read into a chapter normally and it is nil, which is
-//  precisely the situation this feature exists to serve. Measured on device
-//  2026-09-18: the announcement was a bare "38% read" on page 1 of Chapter 3,
-//  while the same book announced "Copyright, 2% read" after a ToC jump.
-//
-//  The acceptance criteria are explicit that the section is "derived from the
-//  nearest preceding ToC/nav entry for the current position" — a derivation, not
-//  a field read. That derivation is this type.
+//  `Locator.title` is only set when the patron arrived via a ToC link, so the
+//  section is derived from the nearest preceding ToC/nav entry instead.
 //
 
 import Foundation
@@ -57,16 +49,10 @@ enum TPPReaderSectionResolver {
                 return (entry.progression ?? 0.0) <= progression
             }
 
-        // Tuple comparison rather than an explicit !=/< branch: the branch form
-        // carried a mutation-equivalent arm (inside `resourceIndex !=`, `<` and
-        // `<=` cannot differ), which no test could ever pin.
-        //
-        // `max(by:)` keeps the EARLIER element when neither compares less, so on
-        // a tie the entry declared first in the nav document wins. That matters
-        // more than it looks: every fragment-anchored entry is given progression
-        // 0.0 below, so sub-sections of one chapter all tie, and this is what
-        // makes the announcement name the chapter rather than an arbitrary
-        // sub-heading. Pinned by testSection_whenEntriesTie_prefersNavOrder.
+        // `max(by:)` keeps the earlier element on a tie, so the entry declared
+        // first in the nav document wins. Fragment-anchored sub-sections of one
+        // chapter all tie at 0.0, so this names the chapter rather than an
+        // arbitrary sub-heading.
         let best = candidates.max {
             ($0.resourceIndex, $0.progression ?? 0.0) < ($1.resourceIndex, $1.progression ?? 0.0)
         }

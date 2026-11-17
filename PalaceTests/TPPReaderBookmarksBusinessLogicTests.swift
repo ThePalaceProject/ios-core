@@ -221,8 +221,8 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
 
     /// `bookmark(at:)` guards both ends of the array. Pair negative AND
     /// past-end on an empty registry, plus the same guards on a populated
-    /// registry (where index 0 is now valid). A mutant dropping either
-    /// bound check fails on a different row.
+    /// registry (where index 0 is now valid). Dropping either bound
+    /// check fails on a different row.
     func testBookmarkAtIndex_returnsNilForOutOfRangeIndicesEmptyOrPopulated() {
         // Empty registry — both negative and past-end indices nil.
         XCTAssertNil(bookmarkBusinessLogic.bookmark(at: -1),
@@ -295,11 +295,11 @@ class TPPReaderBookmarksBusinessLogicTests: XCTestCase {
 
     /// Three small static surfaces: the empty-list label, the
     /// always-selectable predicate, and the nil-location guard. Group
-    /// them so a mutant on any one fails here without three near-identical
-    /// single-assert tests.
+    /// them so a regression in any one fails here without three
+    /// near-identical single-assert tests.
     func testReadOnlySurfaces_noBookmarksText_shouldSelect_isBookmarkExisting() {
         // noBookmarksText: must surface the canonical localized string,
-        // not just be non-empty (a mutant returning "" would pass non-empty).
+        // not just be non-empty (returning "" would pass non-empty).
         XCTAssertEqual(bookmarkBusinessLogic.noBookmarksText,
                        Strings.TPPReaderBookmarksBusinessLogic.noBookmarks,
                        "noBookmarksText must match the canonical localization key")

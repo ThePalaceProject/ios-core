@@ -1,25 +1,10 @@
-//
 //  AudioSessionActivatorTests.swift
-//  PalaceTests
 //
-//  WS-2 — CarPlay OpenAccess `.playerNotReady` crash (Crashlytics d45f5aa9).
-//
-//  Red-first tests for the bounded async retry-with-backoff that activates
-//  the audio session during a CarPlay cold launch. The crash happens when a
-//  single `AVAudioSession.setActive` refusal leaves the session inactive, so
-//  the toolkit's OpenAccessPlayer reports not-ready and the CarPlay play
-//  command hits `.playerNotReady`. `AudioSessionActivator` retries the
-//  activation a bounded number of times before giving up, so the session has
-//  time to become active before the play command is issued.
-//
-//  These tests drive the activator with injected closures (no real
-//  AVAudioSession, no real sleeps) so every branch — first-try success,
-//  transient-then-success, persistent-transient bounded at the cap,
-//  non-retriable fail-fast, and the other-audio-playing skip — is exercised
-//  deterministically and CI-safe.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  CarPlay OpenAccess `.playerNotReady` crash (Crashlytics d45f5aa9): a single
+//  `AVAudioSession.setActive` refusal on cold launch leaves the session inactive.
+//  `AudioSessionActivator` retries with bounded backoff. Injected closures (no real
+//  AVAudioSession, no real sleeps) cover first-try success, transient-then-success,
+//  the retry cap, non-retriable fail-fast, and the other-audio-playing skip.
 
 import AVFoundation
 import XCTest

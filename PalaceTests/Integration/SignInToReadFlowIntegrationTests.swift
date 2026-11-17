@@ -1,26 +1,8 @@
 //
-//  SignInToReadFlowIntegrationTests.swift
-//  PalaceTests
-//
-//  End-to-end integration tests covering the happy path and degraded paths of
-//  the sign-in -> catalog load -> borrow -> download -> reader-open flow.
-//
-//  Unlike the unit tests under PalaceTests/SignInLogic/, these tests wire up
-//  REAL collaborators:
-//    * Real `TPPNetworkExecutor` (with a stub URLProtocol-backed URLSession)
-//    * Real `TPPSignInBusinessLogic`
-//    * Real `TPPBookRegistry` (with a fresh AccountsManager) for state
-//      verification
-//
-//  Only the network is mocked (via HTTPStubURLProtocol). The userAccount /
-//  libraryAccount providers are the existing in-process test scaffolding
-//  shipped under PalaceTests/Mocks/ — they exist solely so the keychain layer
-//  isn't reached and so that fixed library metadata is available; nothing
-//  about the flow under test is mocked.
-//
-//  SRS: REQ-INTG-FLOW-001 — Sign-in -> catalog -> borrow -> download flow
-//
-//  Copyright 2026 The Palace Project. All rights reserved.
+//  Sign-in -> catalog -> borrow -> download -> reader-open, happy and degraded
+//  paths, with real TPPNetworkExecutor, TPPSignInBusinessLogic and TPPBookRegistry.
+//  Only the network is stubbed (HTTPStubURLProtocol); the account providers from
+//  PalaceTests/Mocks keep the keychain out of the flow.
 //
 
 import XCTest
@@ -247,7 +229,7 @@ class SignInToReadFlowIntegrationTests: PalaceWiringTestCase {
                                         expirationDate: nil,
                                         patron: nil,
                                         cookies: nil)
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
 
         await waitUntil("sign-in profile request fires") {
             !profileRequests.isEmpty
@@ -326,7 +308,7 @@ class SignInToReadFlowIntegrationTests: PalaceWiringTestCase {
 
         businessLogic.selectedAuthentication = libraryMock.barcodeAuthentication
         businessLogic.userAccount.removeAll()
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
 
         await fulfillment(of: [validationStateExpectation], timeout: 5)
 
@@ -374,14 +356,14 @@ class SignInToReadFlowIntegrationTests: PalaceWiringTestCase {
                                         patron: nil, cookies: nil)
 
         // First attempt: 503.
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
         await waitUntil("first attempt resolves") { callCount >= 1 }
         XCTAssertEqual(callCount, 1)
 
         // Second attempt: 200. The same business-logic + executor pair
         // handles it — no fresh setup, mirroring the way the UI would
         // retry from a single signed-out screen.
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
         await waitUntil("retry succeeds") { callCount >= 2 && lastSuccessRequest != nil }
         XCTAssertEqual(callCount, 2)
         XCTAssertNotNil(lastSuccessRequest,
@@ -438,7 +420,7 @@ class SignInToReadFlowIntegrationTests: PalaceWiringTestCase {
         businessLogic.selectedAuthentication = libraryMock.barcodeAuthentication
         businessLogic.userAccount.setBarcode("u", PIN: "p")
 
-        businessLogic.validateCredentials()
+        await businessLogic.validateCredentials()
         await fulfillment(of: [errorExpectation], timeout: 5)
 
         // Service Unavailable from problem-doc must surface as the

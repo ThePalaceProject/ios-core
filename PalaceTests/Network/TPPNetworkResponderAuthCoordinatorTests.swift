@@ -2,27 +2,15 @@
 //  TPPNetworkResponderAuthCoordinatorTests.swift
 //  PalaceTests
 //
-//  swarm_66819d80 Module C — caller-migration assertions at the
-//  `TPPNetworkResponder` SEAM. Pins the responder's 401 dispatch
-//  behavior end-to-end through a real URLSession + HTTPStubURLProtocol:
+//  Pins `TPPNetworkResponder`'s 401 dispatch end-to-end through a real
+//  URLSession + HTTPStubURLProtocol (classifier coverage itself lives in
+//  PalaceAuthTests/AuthErrorClassifierTests):
 //
-//   - 401 with maxed retries → completion fires with failure (no
-//     coordinator dispatch — retry budget gates).
-//   - 401 on a cross-domain redirect → no markRetried, no coordinator
-//     dispatch (classifier's `.ok` outcome short-circuits — verifies
-//     the ARCH-3 fix routes the classifier outcome to the actual
-//     decision, NOT just logs it).
-//   - 401 → next 401 on the SAME URL → second attempt fails out
-//     because the URL is already marked retried.
-//
-//  Reviewer-fixup (QA-2, swarm_66819d80 Pass 3): the original test file
-//  duplicated the classifier dispatch coverage that lives in
-//  PalaceAuthTests/AuthErrorClassifierTests and never instantiated
-//  TPPNetworkResponder. This rewrite drives a real responder against a
-//  stubbed URLSession and asserts behavior the responder OWNS:
-//  retry-budget gating + completion handler dispatch + the cross-domain
-//  short-circuit that the ARCH-3 fix now drives via the classifier
-//  outcome (replacing the dead classifier call the architect flagged).
+//   - 401 with maxed retries → completion fails, no coordinator dispatch.
+//   - 401 on a cross-domain redirect → no markRetried, no dispatch (the
+//     classifier's `.ok` outcome drives the decision, not just a log).
+//   - 401 → next 401 on the same URL → second attempt fails out because
+//     the URL is already marked retried.
 //
 
 import XCTest
@@ -33,16 +21,25 @@ import PalaceCatalog
 @MainActor
 final class TPPNetworkResponderAuthCoordinatorTests: XCTestCase {
 
+    private var executor: TPPNetworkExecutor!
     private var responder: TPPNetworkResponder!
     private var session: URLSession!
 
+    /// The responder is an executor's, so its 401 handling reads the signed-out
+    /// accounts injected here rather than the simulator's signed-in account.
     override func setUp() {
         super.setUp()
         HTTPStubURLProtocol.reset()
-        responder = TPPNetworkResponder(credentialsProvider: nil, useFallbackCaching: false)
+        TPPUserAccountMock.resetShared()
 
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [HTTPStubURLProtocol.self]
+        executor = TPPNetworkExecutor(credentialsProvider: nil,
+                                      cachingStrategy: .ephemeral,
+                                      sessionConfiguration: config,
+                                      accountsManager: TPPLibraryAccountMock(),
+                                      delegateQueue: nil)
+        responder = executor.responder
         session = URLSession(configuration: config, delegate: responder, delegateQueue: nil)
     }
 
@@ -51,6 +48,7 @@ final class TPPNetworkResponderAuthCoordinatorTests: XCTestCase {
         session.invalidateAndCancel()
         session = nil
         responder = nil
+        executor = nil
         super.tearDown()
     }
 
@@ -138,10 +136,10 @@ final class TPPNetworkResponderAuthCoordinatorTests: XCTestCase {
             // `handleExpiredTokenIfNeeded` returns false (no creds in the
             // test AccountsManager) and the completion fires here.
             //
-            // The latter is the deterministic behavior in a unit-test env
-            // (no logged-in user means handleExpiredTokenIfNeeded returns
-            // false at line 430). The completion fires with failure
-            // because the 401 is treated as a permanent client error.
+            // The latter is the deterministic behavior here: the injected
+            // accounts are signed out, so handleExpiredTokenIfNeeded returns
+            // false. The completion fires with failure because the 401 is
+            // treated as a permanent client error.
             switch result {
             case .failure:
                 exp.fulfill()
@@ -240,7 +238,8 @@ final class TPPNetworkResponderAuthCoordinatorTests: XCTestCase {
     /// itself works; the responder wiring at line 465 is the structural
     /// pairing.
     ///
-    /// Wall-failure 2026-06-05-pr1018-icarus-cross-host-logout.md.
+    /// See #1044: a 401 from a host outside the current library logged the
+    /// patron out (regression from #1018).
     func testClassifier_seam_401_foreignHost_returnsOk_preservingResponderForeignHostGuard() {
         let classifier = AuthErrorClassifier(
             currentAccountHostsProvider: { Set(["minotaur.dev.palaceproject.io"]) }

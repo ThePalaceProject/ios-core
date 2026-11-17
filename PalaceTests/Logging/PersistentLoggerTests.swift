@@ -41,11 +41,9 @@ final class PersistentLoggerTests: XCTestCase {
 
     // MARK: - Init injection seam
 
-    /// Replaces the `testShared_returnsSameInstance` tautology. Pins the
-    /// new `init(logsRootURL:)` surface: a log written via the injected
-    /// instance lands in the injected directory, NOT in the production
-    /// Documents/Logs path. A mutant that silently ignores `logsRootURL`
-    /// (returns the default dir from getLogsDirectory) fails this.
+    /// Pins `init(logsRootURL:)`: a log written via the injected instance
+    /// lands in the injected directory, NOT in the production Documents/Logs
+    /// path (ignoring `logsRootURL` fails this).
     func testInit_withCustomLogsRoot_writesToProvidedDirectory() async {
         let marker = "INJECTED_DIR_\(UUID().uuidString)"
         await sut.log(level: .error, tag: "InitTest", message: marker)
@@ -129,10 +127,9 @@ final class PersistentLoggerTests: XCTestCase {
 
     /// Pins the `i == 0` filename-selection branch in `retrieveAllLogs`.
     /// At index 0 the active file is named `palace_error.log`; at i>0
-    /// it's the rotated `palace_error.<i>.log`. A `i == 0` → `i != 0`
-    /// mutant would invert the selection and emit the wrong filename in
-    /// the per-file header, OR list the active file's header zero times
-    /// when only the active file exists.
+    /// it's the rotated `palace_error.<i>.log`. An inverted check would
+    /// emit the wrong filename in the per-file header, OR list the active
+    /// file's header zero times when only the active file exists.
     func testRetrieveAllLogs_includesActiveFileHeaderExactlyOnce() async {
         let marker = "HEADER_PROBE_\(UUID().uuidString)"
         await sut.log(level: .error, tag: "Header", message: marker)
@@ -146,7 +143,7 @@ final class PersistentLoggerTests: XCTestCase {
             "Active log file header must appear exactly once; got \(occurrences) (mutant: i==0 → i!=0 would change count)"
         )
         // Rotated palace_error.1.log header must NOT appear when no
-        // rotation has occurred — a mutant that emits it would fail.
+        // rotation has occurred.
         XCTAssertFalse(
             logs.contains("=== Log File: palace_error.1.log ==="),
             "No rotated file exists yet; mutant emitting palace_error.1.log header indicates filename-selection bug"

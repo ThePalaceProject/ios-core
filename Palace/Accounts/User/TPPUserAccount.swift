@@ -21,13 +21,16 @@ private enum StorageKey: String {
     case authDefinition = "TPPAccountAuthDefinitionKey"
     case cookies = "TPPAccountAuthCookiesKey"
     case authState = "TPPAccountAuthStateKey"
+    case adobeActivationConnectorGeneration = "TPPAccountAdobeActivationConnectorGenerationKey"
 
     func keyForLibrary(uuid libraryUUID: String?) -> String {
         guard
             // historically user data for NYPL has not used keys that contain the
-            // library UUID.
+            // library UUID. Reads the static (what `AccountsManager.tppAccountUUID`
+            // is set from) so keys can be built in `init`, which must not call
+            // `AppContainer.production()`.
             let libraryUUID = libraryUUID,
-            libraryUUID != AppContainer.production().accountsManager.tppAccountUUID else {
+            libraryUUID != AccountsManager.TPPAccountUUIDs[0] else {
             return self.rawValue
         }
 
@@ -61,11 +64,11 @@ private enum StorageKey: String {
     //     them through that serial queue would re-enter it and deadlock. `controlLock`
     //     is a non-recursive leaf lock with no ordering cycle against `accountInfoQueue`.
     //   • `let` fields (`libraryUUID`, `boundLibraryUUID`, `accountInfoQueue`,
-    //     `controlLock`) are immutable; `lazy var` keychain variables are effectively
-    //     immutable after first access and internally queue-synchronized.
+    //     `controlLock`, `keychainTransaction` and the keychain variables) are set
+    //     in `init` and immutable; the variables are internally queue-synchronized.
     private let accountInfoQueue: DispatchQueue
     private let controlLock = NSLock()
-    private lazy var keychainTransaction = TPPKeychainVariableTransaction(accountInfoQueue: accountInfoQueue)
+    private let keychainTransaction: TPPKeychainVariableTransaction
 
     private var _notifyAccountChange: Bool = true
     private var notifyAccountChange: Bool {
@@ -115,9 +118,9 @@ private enum StorageKey: String {
 
     // MARK: - Initializers
 
-    /// Creates an account bound to a specific library. Keys are computed once
-    /// (lazily on first access) from the immutable `libraryUUID` and never
-    /// change for the lifetime of the instance.
+    /// Creates an account bound to a specific library. Keys are computed once,
+    /// here, from the immutable `libraryUUID` and never change for the lifetime
+    /// of the instance.
     ///
     /// Always construct instances via `AccountsManager.userAccount(for:)` so
     /// there is one cached instance per library — direct `init(libraryUUID:)`
@@ -126,7 +129,25 @@ private enum StorageKey: String {
     init(libraryUUID: String) {
         self.libraryUUID = libraryUUID
         self.boundLibraryUUID = libraryUUID
-        self.accountInfoQueue = DispatchQueue(label: "TPPUserAccount.\(libraryUUID)")
+        let queue = DispatchQueue(label: "TPPUserAccount.\(libraryUUID)")
+        self.accountInfoQueue = queue
+        self.keychainTransaction = TPPKeychainVariableTransaction(accountInfoQueue: queue)
+        _authorizationIdentifier = StorageKey.authorizationIdentifier.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
+        _adobeToken = StorageKey.adobeToken.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
+        _licensor = StorageKey.licensor.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
+        _patron = StorageKey.patron.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
+        _adobeVendor = StorageKey.adobeVendor.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
+        _provider = StorageKey.provider.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
+        _userID = StorageKey.userID.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
+        _deviceID = StorageKey.deviceID.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
+        _adobeActivationConnectorGeneration = StorageKey.adobeActivationConnectorGeneration.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
+        _credentials = StorageKey.credentials.keyForLibrary(uuid: libraryUUID).asKeychainCodableVariable(with: queue)
+        _authDefinition = StorageKey.authDefinition.keyForLibrary(uuid: libraryUUID).asKeychainCodableVariable(with: queue)
+        _cookies = StorageKey.cookies.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
+        _authState = StorageKey.authState.keyForLibrary(uuid: libraryUUID).asKeychainCodableVariable(with: queue)
+        _barcode = StorageKey.barcode.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
+        _pin = StorageKey.PIN.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
+        _authToken = StorageKey.authToken.keyForLibrary(uuid: libraryUUID).asKeychainVariable(with: queue)
         super.init()
     }
 
@@ -136,13 +157,10 @@ private enum StorageKey: String {
     var authDefinition: AccountDetails.Authentication? {
         get {
             guard let read = _authDefinition.read() else {
-                // Phase 2 (swarm_81b5099e follow-up): state-machine-aware
-                // fallback. Returns `nil` until the resolved account is
-                // `.detailsLoaded` — same nil-tolerance as the legacy
-                // `account.details?` read, but no longer races a partially-
-                // loaded auth doc. The fallback only fires when no auth
-                // definition was previously written (e.g. cold-launch
-                // before sign-in), so blocking on the gate is moot anyway.
+                // State-machine-aware fallback: `nil` until the resolved
+                // account is `.detailsLoaded`, so it never reads a partially
+                // loaded auth doc. Only reached when no auth definition was
+                // written yet (e.g. cold launch before sign-in).
                 let accountsManager = AppContainer.production().accountsManager
                 let candidate: Account?
                 if let libraryUUID = self.libraryUUID {
@@ -225,10 +243,6 @@ private enum StorageKey: String {
             // for auth.
             sessionIdentifier = UUID().uuidString
 
-            if case let .barcodeAndPin(barcode: userBarcode, pin: _) = newValue {
-                TPPErrorLogger.setUserID(userBarcode)
-            }
-
             notifyAccountDidChange()
         }
     }
@@ -271,53 +285,29 @@ private enum StorageKey: String {
     }
 
     // MARK: - Storage
-    private lazy var _authorizationIdentifier: TPPKeychainVariable<String> = StorageKey.authorizationIdentifier
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainVariable(with: accountInfoQueue)
-    private lazy var _adobeToken: TPPKeychainVariable<String> = StorageKey.adobeToken
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainVariable(with: accountInfoQueue)
-    private lazy var _licensor: TPPKeychainVariable<[String: Any]> = StorageKey.licensor
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainVariable(with: accountInfoQueue)
-    private lazy var _patron: TPPKeychainVariable<[String: Any]> = StorageKey.patron
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainVariable(with: accountInfoQueue)
-    private lazy var _adobeVendor: TPPKeychainVariable<String> = StorageKey.adobeVendor
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainVariable(with: accountInfoQueue)
-    private lazy var _provider: TPPKeychainVariable<String> = StorageKey.provider
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainVariable(with: accountInfoQueue)
-    private lazy var _userID: TPPKeychainVariable<String> = StorageKey.userID
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainVariable(with: accountInfoQueue)
-    private lazy var _deviceID: TPPKeychainVariable<String> = StorageKey.deviceID
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainVariable(with: accountInfoQueue)
-    private lazy var _credentials: TPPKeychainCodableVariable<TPPCredentials> = StorageKey.credentials
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainCodableVariable(with: accountInfoQueue)
-    private lazy var _authDefinition: TPPKeychainCodableVariable<AccountDetails.Authentication> = StorageKey.authDefinition
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainCodableVariable(with: accountInfoQueue)
-    private lazy var _cookies: TPPKeychainVariable<[HTTPCookie]> = StorageKey.cookies
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainVariable(with: accountInfoQueue)
-    private lazy var _authState: TPPKeychainCodableVariable<TPPAccountAuthState> = StorageKey.authState
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainCodableVariable(with: accountInfoQueue)
+
+    // Built in `init` rather than as `lazy var`s: Swift does not synchronize a
+    // lazy var's first access, and a new account is often first touched from
+    // several threads at once (`TPPNetworkExecutor` reads `authDefinition` on
+    // the requesting thread).
+    private let _authorizationIdentifier: TPPKeychainVariable<String>
+    private let _adobeToken: TPPKeychainVariable<String>
+    private let _licensor: TPPKeychainVariable<[String: Any]>
+    private let _patron: TPPKeychainVariable<[String: Any]>
+    private let _adobeVendor: TPPKeychainVariable<String>
+    private let _provider: TPPKeychainVariable<String>
+    private let _userID: TPPKeychainVariable<String>
+    private let _deviceID: TPPKeychainVariable<String>
+    private let _adobeActivationConnectorGeneration: TPPKeychainVariable<NSNumber>
+    private let _credentials: TPPKeychainCodableVariable<TPPCredentials>
+    private let _authDefinition: TPPKeychainCodableVariable<AccountDetails.Authentication>
+    private let _cookies: TPPKeychainVariable<[HTTPCookie]>
+    private let _authState: TPPKeychainCodableVariable<TPPAccountAuthState>
 
     // Legacy
-    private lazy var _barcode: TPPKeychainVariable<String> = StorageKey.barcode
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainVariable(with: accountInfoQueue)
-    private lazy var _pin: TPPKeychainVariable<String> = StorageKey.PIN
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainVariable(with: accountInfoQueue)
-    private lazy var _authToken: TPPKeychainVariable<String> = StorageKey.authToken
-        .keyForLibrary(uuid: libraryUUID)
-        .asKeychainVariable(with: accountInfoQueue)
+    private let _barcode: TPPKeychainVariable<String>
+    private let _pin: TPPKeychainVariable<String>
+    private let _authToken: TPPKeychainVariable<String>
 
     // MARK: - Check (delegates to UserAccountAuthHelper)
 
@@ -362,6 +352,14 @@ private enum StorageKey: String {
     var needsAgeCheck: Bool { UserAccountAuthHelper.needsAgeCheck(authDefinition: authDefinition) }
 
     var deviceID: String? { _deviceID.read() }
+
+    /// The connector generation that performed this library's device activation,
+    /// or nil when no activation has been recorded by a build that writes it.
+    /// Nil is NOT "never activated": a device activated before this marker shipped
+    /// also reads nil, which is precisely the population the migration targets.
+    var adobeActivationConnectorGeneration: Int? {
+        _adobeActivationConnectorGeneration.read()?.intValue
+    }
     var userID: String? { _userID.read() }
     var adobeVendor: String? { _adobeVendor.read() }
     var provider: String? { _provider.read() }
@@ -437,17 +435,33 @@ private enum StorageKey: String {
 
     @objc(setAuthToken::::)
     func setAuthToken(_ token: String, barcode: String?, pin: String?, expirationDate: Date?) {
+        let written = TPPCredentials.token(authToken: token,
+                                           barcode: barcode,
+                                           pin: pin,
+                                           expirationDate: expirationDate)
         keychainTransaction.perform {
-            _credentials.write(.token(authToken: token, barcode: barcode, pin: pin, expirationDate: expirationDate))
-            // A fresh token is a successful auth signal. Flip authState to
-            // .loggedIn now so silent re-auth paths (TokenRefreshInterceptor
+            _credentials.write(written)
+            // A USABLE token is a successful auth signal. Flip authState to
+            // .loggedIn so silent re-auth paths (TokenRefreshInterceptor
             // OIDC/SAML refresh, OIDC callback handler) don't leave a
             // previously-set .credentialsStale flag persisted across launches.
             // Without this, the user is re-prompted to sign in on the next
             // cold start even though their token is valid — the responder's
             // self-heal block only fires when a subsequent 2xx response
             // happens to come back while this library is foregrounded.
-            _authState.write(.loggedIn)
+            //
+            // Conditional on the token not being expired ALREADY (PP-5318).
+            // Unconditionally, this claimed a healthy session for a dead
+            // token: it made the lapsed-token state unreachable, because
+            // marking credentials stale and then writing an expired token
+            // undid the marking, and it let a refresh that returns an expired
+            // token report itself signed in. A nil expirationDate is NOT
+            // expired — `isTokenExpired` treats it as non-expiring — which is
+            // what keeps OIDCReauth and TokenRefreshInterceptor, the two
+            // callers that pass nil, clearing the flag as before.
+            if !UserAccountAuthHelper.isTokenExpired(credentials: written) {
+                _authState.write(.loggedIn)
+            }
         }
         // Rotate the observable session identifier on successful sign-in.
         // Purely for test observation of session-fixation defense; not used
@@ -480,6 +494,25 @@ private enum StorageKey: String {
         notifyAccountDidChange()
     }
 
+    /// Records an Adobe activation as one unit: the identifiers Adobe returned
+    /// plus the connector generation that produced them.
+    ///
+    /// The identifiers and the generation describe the same event. One
+    /// transaction keeps a reader from observing a half-written record; it does
+    /// not make the three keychain writes durable as a unit.
+    func setAdobeActivation(userID: String, deviceID: String, generation: Int) {
+        keychainTransaction.perform {
+            _userID.write(userID)
+            _deviceID.write(deviceID)
+            _adobeActivationConnectorGeneration.write(NSNumber(value: generation))
+        }
+        // The setters this replaces each posted this, so an activation used to
+        // notify twice. Once, after the transaction, keeps the signal while
+        // matching the single logical change — dropping it would silently stop
+        // telling observers that an activation landed.
+        notifyAccountDidChange()
+    }
+
     func setAuthState(_ state: TPPAccountAuthState) {
         Log.debug(#file, "Auth state changing from \(authState) to \(state)")
         _authState.write(state)
@@ -498,7 +531,25 @@ private enum StorageKey: String {
         setAuthState(.credentialsStale)
     }
 
+    /// Records a successful authentication, unless the credential now stored
+    /// is a token that has already expired.
+    ///
+    /// The guard matches the one in `setAuthToken` (PP-5318). Both production
+    /// writers call this immediately after writing the token —
+    /// `TPPNetworkExecutor.executeTokenRefresh` and
+    /// `TPPSignInBusinessLogic.updateUserAccount` — so an unconditional flip
+    /// here re-marked the account signed in one line after `setAuthToken` had
+    /// declined to, and a refresh answering a 401 with a dead token cleared
+    /// the `.credentialsStale` flag that prompts re-authentication.
+    ///
+    /// `isTokenExpired` is false for barcode/PIN credentials and for a token
+    /// carrying no expiration date, so the basic-auth sign-in path and the
+    /// two nil-expiry re-auth callers reach `.loggedIn` as before.
     func markLoggedIn() {
+        guard !UserAccountAuthHelper.isTokenExpired(credentials: credentials) else {
+            Log.debug(#file, "Not marking logged in - the stored token is already expired")
+            return
+        }
         setAuthState(.loggedIn)
     }
 
@@ -524,6 +575,7 @@ private enum StorageKey: String {
         _provider.invalidateCache()
         _userID.invalidateCache()
         _deviceID.invalidateCache()
+        _adobeActivationConnectorGeneration.invalidateCache()
         _credentials.invalidateCache()
         _authDefinition.invalidateCache()
         _cookies.invalidateCache()
@@ -580,26 +632,11 @@ private enum StorageKey: String {
     /// On bound (per-account) instances the keys are immutable, so this is
     /// inherently race-free without needing a barrier.
     ///
-    /// Cache coherence (CP-D2): this path deliberately does NOT invalidate the
-    /// keychain caches on every read. Each `TPPKeychainVariable` is
-    /// write-through (`write()` updates `cachedValue` AND persists), and
-    /// production keeps exactly one `TPPUserAccount` instance per library UUID
-    /// (`AccountsManager.userAccount(for:)` cache) — the instance that writes
-    /// credentials (sign-in / sign-out via `setBarcode`/`setAuthToken`/
-    /// `removeAll`) is the same instance every reader (`AccountDetailViewModel`,
-    /// `TPPNetworkExecutor`, `TPPNetworkResponder`) reads through. So the cache
-    /// is always coherent without dropping it on every request build. There is
-    /// also no cross-process keychain writer (no app-groups / keychain-sharing /
-    /// extensions in the entitlements), so per-read invalidation was pure
-    /// overhead on the request hot path.
-    ///
-    /// Coherence at the two boundaries where credential state can change out of
-    /// band relative to a given instance's cache is preserved by EVENT-DRIVEN
-    /// invalidation instead: sign-out finalisation (`removeAll()`) and account
-    /// switch (`AccountsManager.currentAccount.didSet` → `invalidateCredentialCaches()`).
-    /// This removes the build-459 staleness (which came from a singleton writer
-    /// vs. per-account reader split that no longer exists) without re-reading
-    /// the keychain on every network request.
+    /// Does not invalidate the keychain caches on every read: each
+    /// `TPPKeychainVariable` is write-through, production keeps one instance per
+    /// library UUID (so writer and readers share the cache), and there is no
+    /// cross-process keychain writer. Caches are invalidated on events instead:
+    /// sign-out (`removeAll()`) and account switch (`invalidateCredentialCaches()`).
     func credentialSnapshot() -> CredentialSnapshot {
         return accountInfoQueue.sync {
             let creds = self.credentials
@@ -676,6 +713,7 @@ private enum StorageKey: String {
             _provider.write(nil)
             _userID.write(nil)
             _deviceID.write(nil)
+            _adobeActivationConnectorGeneration.write(nil)
             _authState.write(nil)
 
             keychainTransaction.perform {

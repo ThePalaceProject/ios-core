@@ -11,7 +11,7 @@ import Foundation
 /// Pure decision function that determines whether a patron is eligible to be
 /// shown the app-rating sentiment gate. Every input is passed explicitly
 /// (state, config, clock) so the policy has no hidden dependencies and is
-/// exhaustively unit- and mutation-testable. It is the single source of truth
+/// exhaustively unit-testable. It is the single source of truth
 /// for the seven eligibility criteria in PP-4088; callers must not re-implement
 /// any of them.
 enum RatingEligibilityPolicy {

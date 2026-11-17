@@ -2,19 +2,13 @@
 //  LoanRenewalService.swift
 //  Palace
 //
-//  Reliability WS-C — in-app loan renewal. Extracts the OPDS renew URL
-//  from a book, POSTs it, and refreshes the registry loan on success.
+//  In-app loan renewal: POSTs the book's OPDS renew URL and refreshes the
+//  registry on success.
 //
-//  INV-5 (auth-error host scoping): the 401/credentials-stale decision
-//  is routed through `AuthErrorClassifier` constructed with the current
-//  account's `currentAccountHostsProvider`. A 401 from a host OUTSIDE the
-//  current account's auth surface classifies as `.ok` and MUST NOT mark
-//  the current account's credentials stale (never a blanket logout). Only
-//  a 401 from an account-surface host marks credentials stale.
-//
-//  The network POST is behind the narrow `RenewalPosting` protocol so the
-//  service is unit-testable without a live URLSession; production wires a
-//  `TPPNetworkExecutor`-backed adapter.
+//  Auth errors are host-scoped: the decision goes through an
+//  `AuthErrorClassifier` bound to the current account's auth-surface hosts,
+//  so only a 401 from one of those hosts marks credentials stale. A 401 from
+//  any other host must never cause a blanket logout.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -48,7 +42,7 @@ final class LoanRenewalService: @unchecked Sendable {
         /// the caller should re-prompt sign-in.
         case reauthRequired
         /// A 401 from a host OUTSIDE the current account's auth surface —
-        /// ignored per INV-5, credentials NOT marked stale.
+        /// ignored, credentials not marked stale.
         case foreignHost401
         /// The book exposes no renew (borrow-rel) URL.
         case noRenewURL
@@ -61,16 +55,13 @@ final class LoanRenewalService: @unchecked Sendable {
     private let poster: RenewalPosting
     private let classifier: AuthErrorClassifier
     private let bookRegistry: TPPBookRegistryProvider
-    /// Side-effect gate invoked ONLY when a 401 is scoped to an
-    /// account-surface host. Injected so tests can assert it is NOT
-    /// called on a foreign-host 401 (INV-5).
+    /// Invoked only when a 401 comes from an account-surface host.
     private let markCredentialsStale: @Sendable () -> Void
 
     /// Designated init. `classifier` is REQUIRED and must be host-scoped
     /// (built with a non-nil `currentAccountHostsProvider`) — use
     /// `LoanRenewalService.production(...)` in app code, which guarantees
-    /// this. A bare `AuthErrorClassifier()` here would disable INV-5
-    /// host scoping. Tests may inject a classifier with a fixed provider.
+    /// this. A bare `AuthErrorClassifier()` here would disable host scoping.
     init(
         poster: RenewalPosting,
         classifier: AuthErrorClassifier,
@@ -113,17 +104,13 @@ final class LoanRenewalService: @unchecked Sendable {
 
         let status = response.statusCode
 
-        // 2xx — the loan was extended. Refresh the registry from the
-        // server so the new expiry lands in My Books. (A full loans-feed
-        // sync is used rather than hand-parsing the entry — it reaches the
-        // same end via existing public registry API.)
+        // Loan extended: a loans-feed sync brings the new expiry into My Books.
         if (200...299).contains(status) {
             bookRegistry.sync(completion: nil)
             return .success
         }
 
-        // Non-2xx — route the auth decision through the host-scoped
-        // classifier so a foreign-host 401 never blanket-logs-out (INV-5).
+        // Host-scoped classification, so a foreign-host 401 never logs out.
         let problemDoc = data.flatMap { TPPProblemDocument.fromProblemResponseData($0) }
         let outcome = classifier.classify(
             response: response,
@@ -134,12 +121,10 @@ final class LoanRenewalService: @unchecked Sendable {
 
         switch outcome {
         case .ok:
-            // Cross-domain / foreign-host 401: not our account's session.
-            // Do NOT mark credentials stale.
+            // Foreign-host 401: not this account's session.
             Log.info(#file, "Renew got a non-account-host response; ignoring per host scoping")
             return .foreignHost401
         case .reauthRequired:
-            // 401 from an account-surface host — real session expiry.
             Log.info(#file, "Renew hit an account-host auth error; marking credentials stale")
             markCredentialsStale()
             return .reauthRequired
@@ -149,21 +134,16 @@ final class LoanRenewalService: @unchecked Sendable {
     }
 }
 
-// MARK: - Production factory (INV-5-safe construction)
+// MARK: - Production factory
 
 extension LoanRenewalService {
-    /// The ONLY sanctioned way to build a production `LoanRenewalService`.
-    /// Binds the classifier's `currentAccountHostsProvider` to the active
-    /// account's auth-surface hosts, mirroring `TPPNetworkResponder` and the
-    /// borrow/return sites — so a 401 from a host outside the current
-    /// account\'s surface classifies as `.ok` and never triggers a blanket
-    /// logout (INV-5). Do NOT construct this service with a bare
-    /// `AuthErrorClassifier()`: its provider defaults to `{ nil }`, which
-    /// disables Rule 4b and re-opens the cross-host logout hole
-    /// (`.forgeos/wall-failures/2026-06-05-pr1018-icarus-cross-host-logout.md`).
+    /// The way to build a production `LoanRenewalService`. Binds the
+    /// classifier to the active account's auth-surface hosts, like
+    /// `TPPNetworkResponder` and the borrow/return sites. A bare
+    /// `AuthErrorClassifier()` defaults its provider to `{ nil }`, which
+    /// disables Rule 4b and reopens the cross-host logout (PR #1018).
     ///
-    /// `poster` and `hostsProvider` are injectable purely for tests; both
-    /// default to the production wiring.
+    /// `poster` and `hostsProvider` are injectable for tests.
     static func production(
         executor: TPPNetworkExecutor,
         bookRegistry: TPPBookRegistryProvider,

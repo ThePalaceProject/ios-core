@@ -108,6 +108,16 @@ VICTIM=""
 SUSPECTS=""
 SIM_UDID=""
 ITERATIONS=1
+# Rolls allowed per pair to get the suspect to run before the victim. The scheme
+# orders tests randomly, so each roll is about a coin flip; 6 leaves roughly a
+# 1.6% chance of still being unjudged, against 50% with a single run.
+ORDER_ATTEMPTS="${ORDER_ATTEMPTS:-6}"
+# Initialised because the script runs under `set -u`: an early read of one of
+# these (a future caller that branches before run_pair_in_order) would abort the
+# script rather than report a verdict.
+PAIR_VERDICT=""
+PAIR_ORDER=""
+PAIR_ATTEMPTS=0
 
 # `$2` under `set -u` with a flag in last position aborts with "unbound
 # variable" and exit 1 -- which this script documents as "a FINDING". A wrapper
@@ -122,6 +132,7 @@ while [ $# -gt 0 ]; do
     --suspects)   need_value $# "$1"; SUSPECTS="$2"; shift 2 ;;
     --sim)        need_value $# "$1"; SIM_UDID="$2"; shift 2 ;;
     --iterations) need_value $# "$1"; ITERATIONS="$2"; shift 2 ;;
+    --order-attempts) need_value $# "$1"; ORDER_ATTEMPTS="$2"; shift 2 ;;
     *) echo "Unknown arg: $1" >&2; exit 2 ;;
   esac
 done
@@ -134,6 +145,14 @@ done
 # remedy for the sampling defect.
 if ! [[ "$ITERATIONS" =~ ^[1-9][0-9]*$ ]]; then
   echo "ERROR: --iterations must be a positive integer (got '$ITERATIONS')." >&2
+  exit 2
+fi
+
+# Same reasoning as (1): a non-numeric cap makes the `-ge` comparison in
+# run_pair_in_order error under `set -u`-adjacent arithmetic and the retry loop
+# would stop after one roll, which is the behaviour this cap exists to replace.
+if ! [[ "$ORDER_ATTEMPTS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR: --order-attempts must be a positive integer (got '$ORDER_ATTEMPTS')." >&2
   exit 2
 fi
 
@@ -514,6 +533,37 @@ order_state() {
   if [ "$line_first" -lt "$line_second" ]; then echo "ok"; else echo "wrong-order"; fi
 }
 
+# >>> run_pair_in_order BEGIN
+# Palace.xcscheme sets testExecutionOrdering = "random", so selecting SUSPECT
+# then VICTIM does not run them in that order. A wrong-order pair can neither
+# implicate nor clear the suspect, and that is not a rare tie-break: a real
+# search on 2026-10-14 (victim TestTargetHermeticityRegressionTests, 7 suspects)
+# left FIVE unjudged for this reason alone and reported INCOMPLETE, which is why
+# a known-flaky victim had no polluter verdict at all.
+#
+# Re-roll the pair until the suspect's last case precedes the victim's first.
+# Only `wrong-order` is worth retrying: an absent class or a log with no
+# per-case lines is a different problem that another roll cannot fix, so those
+# return immediately rather than burning the budget.
+#
+# Sets PAIR_VERDICT, PAIR_ORDER and PAIR_ATTEMPTS. `run_pair_tests` is the
+# injection seam the tests stub; it forwards to `run_tests` in the real script.
+run_pair_tests() { run_tests "$@"; }
+run_pair_in_order() {  # $1 = label, $2 = suspect, $3 = victim
+  local label="$1" suspect="$2" victim="$3" attempt=1
+  while :; do
+    PAIR_VERDICT=$(run_pair_tests "$label" "$suspect" "$victim")
+    PAIR_ORDER=$(order_state "$(log_for "$label")" "$suspect" "$victim")
+    PAIR_ATTEMPTS=$attempt
+    if [ "$PAIR_ORDER" != "wrong-order" ] || [ "$attempt" -ge "$ORDER_ATTEMPTS" ]; then
+      return 0
+    fi
+    echo "       re-rolling: '$suspect' ran after '$victim' (scheme ordering is random) — attempt $attempt of $ORDER_ATTEMPTS" >&2
+    attempt=$((attempt + 1))
+  done
+}
+# <<< run_pair_in_order END
+
 # A run that produced no verdict stops the tool. Reporting anything about the
 # code from here would be inventing a result for work that never happened.
 abort_unrunnable() {
@@ -628,8 +678,9 @@ ATTEMPTED=0
 for s in "${SUSPECT_LIST[@]}"; do
   ATTEMPTED=$((ATTEMPTED + 1))
   LAST_LOG=$(log_for "pair-$s")
-  VERDICT=$(run_tests "pair-$s" "$s" "$VICTIM")
-  case "$(pair_outcome "$VERDICT" "$(order_state "$LAST_LOG" "$s" "$VICTIM")")" in
+  run_pair_in_order "pair-$s" "$s" "$VICTIM"
+  VERDICT="$PAIR_VERDICT"
+  case "$(pair_outcome "$VERDICT" "$PAIR_ORDER")" in
     acquitted)
       echo "    $s -> victim still passes (not the polluter)" ;;
 
@@ -639,8 +690,9 @@ for s in "${SUSPECT_LIST[@]}"; do
       # suspect happened to be running when the dice came up.
       echo "    $s -> victim FAILS after this class ran first — confirming..."
       CONFIRM_LOG=$(log_for "confirm-$s")
-      CONFIRM=$(run_tests "confirm-$s" "$s" "$VICTIM")
-      case "$(pair_outcome "$CONFIRM" "$(order_state "$CONFIRM_LOG" "$s" "$VICTIM")")" in
+      run_pair_in_order "confirm-$s" "$s" "$VICTIM"
+      CONFIRM="$PAIR_VERDICT"
+      case "$(pair_outcome "$CONFIRM" "$PAIR_ORDER")" in
         flip)
           echo "         reproduced ***"
           FOUND="$s"; FOUND_LOG="$CONFIRM_LOG"

@@ -44,7 +44,7 @@ class PlaybackRateTests: XCTestCase {
 
   /// PP-4518 product direction: the user-facing preset chips are even 0.5×
   /// steps across the full rail — [0.5×, 1.0×, 1.5×, 2.0×, 2.5×, 3.0×]. Pinning
-  /// the *order* and the *exact* enum cases together kills mutants that:
+  /// the *order* and the *exact* enum cases together catches changes that:
   ///   - shuffle the order
   ///   - drop/add a preset
   ///   - reintroduce the old 0.75×/1.2× chips
@@ -58,7 +58,7 @@ class PlaybackRateTests: XCTestCase {
   }
 
   /// Independent assertion of the multipliers — separate from enum-case identity —
-  /// so a mutant that re-numbers a case's raw value still trips this test. Also
+  /// so re-numbering a case's raw value still trips this test. Also
   /// asserts the chips are an evenly-spaced 0.5× ladder (each gap == 0.5).
   func testPresets_MultipliersAreEven0p5StepsFrom0p5To3p0() {
     let expected: [Float] = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
@@ -115,8 +115,8 @@ class PlaybackRateTests: XCTestCase {
 
   /// `steps` is the full slider rail: 51 values from 0.50 to 3.00 in 0.05
   /// increments, sorted ascending. Lock the bounds, count, sortedness, AND
-  /// the uniform 0.05 gap in one body so a mutant that drops a step,
-  /// shuffles the order, or changes the increment fails on a single test.
+  /// the uniform 0.05 gap in one body so dropping a step, shuffling the
+  /// order, or changing the increment fails on a single test.
   func testSteps_isMonotonicLadderFromHalfToTripleIn0Point05Increments() {
     let steps = PlaybackRate.steps
     XCTAssertEqual(steps.count, 51,
@@ -175,8 +175,8 @@ class PlaybackRateTests: XCTestCase {
 
   /// `nearest(to:)` clamps out-of-range values to the bounds — sub-minimum
   /// snaps to the slowest step (0.5×), super-maximum snaps to the fastest (3.0×).
-  /// Pin both clamping branches at multiple values per side so a mutant
-  /// that flips one boundary fails immediately.
+  /// Pin both clamping branches at multiple values per side so a flipped
+  /// boundary fails immediately.
   func testNearest_clampsOutOfRangeValuesToBounds() {
     // Sub-minimum → 0.50×
     XCTAssertEqual(PlaybackRate.nearest(to: 0.10), .p050)
@@ -237,7 +237,7 @@ class PlaybackRateTests: XCTestCase {
   /// Every step in the slider rail produces a label that ends with the
   /// multiply sign and is non-empty. Loop guarantees coverage if a future
   /// step is added without updating tests; the tail-suffix check rules out
-  /// a mutant that prepends `×` instead of appending it.
+  /// prepending `×` instead of appending it.
   func testFormatMultiplier_allStepsProduceLabelEndingWithMultiplySign() {
     for rate in PlaybackRate.steps {
       let label = HumanReadablePlaybackRate.formatMultiplier(PlaybackRate.convert(rate: rate))

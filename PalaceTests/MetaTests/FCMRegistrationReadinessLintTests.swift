@@ -2,29 +2,14 @@
 //  FCMRegistrationReadinessLintTests.swift
 //  PalaceTests
 //
-//  Meta-test pinning the PP-4958 ordering contract:
-//
-//    `NotificationService.updateToken()` MUST await account readiness
-//    (`awaitReady`) before it can reach token registration.
-//
-//  Why this is a structural lint rather than a runtime test: the ordering
-//  cannot be driven from a unit test. `Account` is `final`, and
-//  `Account+profileDocument.swift` resolves its networking through
-//  `AppContainer.production().networkExecutor`, so there is no seam to observe
-//  the profile call from. The options were (a) add production surface purely for
-//  a test, (b) leave the ordering unpinned, or (c) assert the structure. A prior
-//  review rejected (a) as duplicated surface and (b) as unfalsifiable, so this
-//  is (c) — zero production cost, and it fails if someone reorders the gate.
-//
-//  Why it matters: registration ran BEFORE the authentication document loaded,
-//  so `Account.details` was nil, `getProfileDocument` returned on its first
-//  guard with no network call and no log, and push registration was silently
-//  skipped — ~53,000 Crashlytics events across ~6,600 patrons in 30 days, who
-//  then never received "your hold is ready". The gate is the fix; this pins it.
-//
-//  Precedent for the shape: the nine sibling lints in this directory, and the
-//  `ws0-inert-quiescence-gate` wall-failure canon requiring a synthetic-violator
-//  self-test so the lint cannot silently stop detecting.
+//  Pins PP-4958: `NotificationService.updateToken()` must `awaitReady` on the account
+//  before it can reach token registration. Registering before the auth document
+//  loaded left `Account.details` nil, so `getProfileDocument` returned early and
+//  push registration was skipped (~53,000 Crashlytics events across ~6,600 patrons
+//  in 30 days, who never got "your hold is ready").
+//  A structural lint because the ordering cannot be driven from a unit test:
+//  `Account` is `final` and resolves networking through the production container.
+//  Each rule has a synthetic-violator self-test so the lint cannot stop detecting.
 //
 
 import XCTest
@@ -128,13 +113,9 @@ final class FCMRegistrationReadinessLintTests: XCTestCase {
     /// Every check this lint performs, as ONE function returning the names of
     /// the checks a body violates.
     ///
-    /// Factored out because the previous shape was inert: the self-tests
-    /// re-implemented each comparison inline, so deleting the real ordering
-    /// assertion left all three of them green — the exact regression they were
-    /// added to catch, one round after it happened. A reviewer caught it. The
-    /// sibling `RuntimeQuiescenceLintTests` already had the right shape
-    /// (`declaresDirectXCTestCaseSubclass` / `fileViolates` are functions the
-    /// self-tests call); this now matches it.
+    /// One function so the self-tests exercise the same checks the real lint
+    /// runs; self-tests that re-implement a comparison inline stay green when
+    /// the real check is deleted. Same shape as `RuntimeQuiescenceLintTests`.
     ///
     /// Returns `[]` for a compliant body.
     static func readinessViolations(inUpdateTokenBody body: String) -> [String] {
@@ -168,17 +149,10 @@ final class FCMRegistrationReadinessLintTests: XCTestCase {
            awaitAt > registerAt {
             violations.append("register-before-await")
         }
-        // Counting form ONLY. There used to be a second, guard-form check here
-        // (`!taskBody.contains("performTokenRegistration")`) that appended the
-        // same violation name. The two mutually MASKED: deleting either left
-        // every self-test green, because whichever survived still fired on the
-        // one fixture that exercised the pair. Reviewer-found and confirmed by
-        // running each deletion against every fixture. The counting form
-        // subsumes the guard form — registration outside the Task means
-        // `total > inside` — so the guard form is deleted rather than given a
-        // fixture it cannot uniquely earn. A body with NO registration at all
-        // is now reported as `register-not-exactly-once`, which is what it
-        // actually is.
+        // Counting form ONLY. A second guard-form check with the same violation
+        // name would mask deletion of either one. Registration outside the Task
+        // means `total > inside`, so the counting form covers it; a body with
+        // NO registration at all is reported as `register-not-exactly-once`.
         let total = body.components(separatedBy: "performTokenRegistration").count - 1
         let inside = taskBody.components(separatedBy: "performTokenRegistration").count - 1
         if total != inside {
@@ -197,16 +171,14 @@ final class FCMRegistrationReadinessLintTests: XCTestCase {
         // to registration, so a timed-out or failed load registers anyway — the
         // gate is present textually and inert in exactly the failure case it
         // exists for. Production uses `try await` inside a do/catch that returns
-        // on every arm. A reviewer found this shape produced zero violations,
-        // and worse, the clean-body fixture itself used it.
+        // on every arm.
         if taskBody.contains("try? await") && taskBody.contains("awaitReady") {
             violations.append("await-error-swallowed")
         }
         // `try?` is only ONE spelling of swallowing the readiness error.
         // `do { try await … } catch { }` — an empty or fall-through catch —
-        // reaches registration on exactly the path the gate exists for, and
-        // round 7 fixed only the `try?` spelling. A reviewer measured the
-        // do/catch form at zero violations. DISTINCT violation name on purpose:
+        // reaches registration on exactly the path the gate exists for.
+        // DISTINCT violation name on purpose:
         // two checks sharing one name is what let the `register-outside-task`
         // pair mask each other's deletion.
         if !catchBlocksAllReturn(in: taskBody) {
@@ -223,32 +195,24 @@ final class FCMRegistrationReadinessLintTests: XCTestCase {
     /// A body with no `catch` at all is compliant: an uncaught throw exits the
     /// Task, which also never reaches registration.
     /// The test is the block's LAST statement, not whether it CONTAINS a
-    /// `return`. `contains` was inert against the only catch shape this file
-    /// will ever have: production's typed block holds three returns, so any one
-    /// of them going missing was invisible, and a rewrite letting `.quiet` and
-    /// `.residual` fall through while `.report` returned also scored clean. The
-    /// guard was exercising `catch { }` — a shape production does not have —
-    /// rather than the shape actually at risk. Reviewer-measured.
+    /// `return`: production's typed block holds three returns, so `contains`
+    /// would miss one of them going missing.
     ///
     /// Every line of sanitized source must have balanced `"` after triple-quote
     /// runs are discounted.
     ///
-    /// The sanitizer is a scanner, not a Swift lexer, and a reviewer measured
-    /// three ways to defeat it — two spurious violations and, worse, one silent
-    /// MISS. Rather than grow a lexer, assert the precondition the scanner
+    /// The sanitizer is a scanner, not a Swift lexer, and some inputs defeat it
+    /// (spurious violations or a missed one). Rather than grow a lexer, assert the precondition the scanner
     /// needs: if a line's quotes do not balance, this file's assumptions no
     /// longer hold and the lint must say so loudly instead of quietly scanning
     /// text as code (or code as text).
     /// The 1-based lines whose `"` do not balance after sanitizing.
     ///
-    /// A pure function with a red-side fixture, like the nine checks in
-    /// `readinessViolations` — it was previously an inline `XCTAssert` loop with
-    /// no self-test, which is the same never-observed-red shape this file has
-    /// now been bitten by four times.
+    /// A pure function with a red-side fixture, like the checks in
+    /// `readinessViolations`.
     ///
     /// No triple-quote discount: `strippingStringLiterals` CONSUMES `"""` runs,
-    /// so none survive into this function's only input. That branch was measured
-    /// dead and deleted rather than left as decoration.
+    /// so none survive into this function's only input.
     static func unbalancedQuoteLines(in sanitized: String) -> [Int] {
         sanitized
             .split(separator: "\n", omittingEmptySubsequences: false)
@@ -266,11 +230,8 @@ final class FCMRegistrationReadinessLintTests: XCTestCase {
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
         guard let last = statements.last else { return false }   // empty catch
-        // Exact, or `return <value>`. `hasPrefix("return")` alone was wrong in
-        // BOTH directions, measured by a reviewer: `returnedEarly()` scored
-        // compliant, and the idiomatic `catch { log(); return }` scored as a
-        // violation — a false positive in the file whose own principle is that
-        // a lint which cries wolf gets deleted.
+        // Exact, or `return <value>`. `hasPrefix("return")` alone would accept
+        // `returnedEarly()` and, split on `;` only, reject `catch { log(); return }`.
         return last == "return" || last.hasPrefix("return ")
     }
 
@@ -331,8 +292,8 @@ final class FCMRegistrationReadinessLintTests: XCTestCase {
                       "the containment check must flag registration that lives outside the awaiting Task")
     }
 
-    /// Contained but mis-ordered. Passes a containment-only check and is
-    /// PP-4958 intact — this is the shape a round-4 regression let through.
+    /// Contained but mis-ordered. Passes a containment-only check and still
+    /// reintroduces PP-4958.
     func testLint_detectsRegistrationBeforeAwaitInsideTheTask() throws {
         let violator = """
         func updateToken() {
@@ -369,9 +330,7 @@ final class FCMRegistrationReadinessLintTests: XCTestCase {
     /// A do/catch whose catch does NOT return. The gate is present, `try` is
     /// not `try?`, and the readiness error is still swallowed — execution falls
     /// out of the catch straight into registration, exactly on the timeout and
-    /// load-failure paths the gate exists for. Round 7 closed the `try?`
-    /// spelling of this and left the do/catch spelling open; a reviewer
-    /// measured it at zero violations.
+    /// load-failure paths the gate exists for.
     func testLint_detectsACatchThatFallsThroughToRegistration() throws {
         let violator = """
         func updateToken() {
@@ -393,10 +352,8 @@ final class FCMRegistrationReadinessLintTests: XCTestCase {
     }
 
     /// The shape production actually has: a typed catch with several arms, one
-    /// of which falls through instead of returning. `contains("return")` scored
-    /// this clean because the other arms return — so the check was inert
-    /// against the only catch this file will ever contain, while passing on the
-    /// synthetic empty-catch violator. Reviewer-measured.
+    /// of which falls through instead of returning. `contains("return")` would
+    /// score this clean because the other arms return.
     func testLint_detectsACatchWhoseLastArmFallsThrough() throws {
         let violator = """
         func updateToken() {
@@ -666,16 +623,13 @@ final class FCMRegistrationReadinessLintTests: XCTestCase {
     /// retries. That is the same silent-suppression class PP-4958 itself is.
     ///
     /// A structural check because the write has no observable seam: `Account`
-    /// is `final` and `hasUpdatedToken` is a plain stored property. Reviewer
-    /// noted the round-2 fix shipped with no test of any kind.
+    /// is `final` and `hasUpdatedToken` is a plain stored property.
     func testMarkTokenRegistered_neverLatchesTheCurrentAccount() throws {
         let source = strippingComments(try String(contentsOf: notificationServicePath, encoding: .utf8))
 
-        // Keying on the single spelling `currentAccount?.hasUpdatedToken =` was
-        // a syntax standing in for a semantic: a reviewer measured two
-        // re-spellings of the IDENTICAL defect at zero hits —
-        // `let cur = accountsManager.currentAccount; cur?.hasUpdatedToken = true`
-        // and `markTokenRegistered(for: accountsManager.currentAccount!)`.
+        // Keying on the spelling `currentAccount?.hasUpdatedToken =` would miss
+        // re-spellings such as
+        // `let cur = accountsManager.currentAccount; cur?.hasUpdatedToken = true`.
         // So assert the invariant instead: this file contains exactly ONE
         // assignment to `hasUpdatedToken`, it lives inside
         // `markTokenRegistered(for:)`, and that function's body never mentions
@@ -705,18 +659,12 @@ final class FCMRegistrationReadinessLintTests: XCTestCase {
                        "markTokenRegistered must latch the account it was PASSED — naming currentAccount in its body reintroduces the cross-account latch regardless of how the write is spelled")
 
         // The remaining spelling: keep the body clean and pass the wrong thing
-        // IN — `markTokenRegistered(for: accountsManager.currentAccount!)`.
-        // A reviewer measured that one at zero hits against the previous check,
-        // so pin the argument too. Every call site must hand over the account
-        // the attempt captured.
-        // `\s*` after the paren, because a formatter wrapping a long argument
-        // produces `markTokenRegistered(\n    for: …\n)`. But the whitespace is
-        // the SMALLER half of this fix. The larger half: a call site the regex
-        // cannot parse DISAPPEARS from the match set rather than failing the
-        // test, and the sibling compliant call keeps `calls.isEmpty` false — so
-        // absence read as success. A reviewer proved it by wrapping one of the
-        // two call sites around the cross-account defect and watching every
-        // assertion here pass. So pin the COUNT against an independent census:
+        // IN — `markTokenRegistered(for: accountsManager.currentAccount!)` — so
+        // pin the argument too. Every call site must hand over the account the
+        // attempt captured. `\s*` after the paren handles a formatter-wrapped
+        // `markTokenRegistered(\n    for: …\n)`. A call site the regex cannot
+        // parse would drop out of the match set instead of failing, so pin the
+        // COUNT against an independent census:
         // every occurrence of the symbol except its declaration must be a call
         // this regex actually parsed.
         let census = try Self.callSiteCensus(in: source)

@@ -1,26 +1,11 @@
-//
 //  TPPAuthDocumentContractTests.swift
-//  PalaceTests
 //
-//  Client-side contract guard for OPDS2 authentication documents.
-//
-//  Motivation — the PP-3452 SAML SLO miss:
-//  The CM added `rel="logout"` to the SAML authentication block on 2026-04-07.
-//  iOS parsed it into `links[]` but the `.saml` branch in Account.swift
-//  hardcoded `samlLogoutHref = nil`, silently dropping the data. No test failed
-//  because no test asserted "every rel CM advertises must be captured."
-//
-//  This file adds that guard. When the CM ships a new rel on any auth type,
-//  this test fails in CI **before** the link can silently land on the floor.
-//
-//  How it works:
-//   - For each auth-document fixture that ships with tests, for each
-//     authentication block, we enumerate every `rel` the CM advertises.
-//   - For each (auth type, rel) pair, a lookup table says which client-side
-//     property captures it (or explicitly that it's ignored by design).
-//   - If a rel is advertised but nothing is mapped, the test fails with
-//     a message pointing the reviewer at the CM contract change.
-//
+//  Client-side contract guard for OPDS2 authentication documents. PP-3452: the
+//  CM added `rel="logout"` to the SAML block and the `.saml` branch in
+//  Account.swift hardcoded `samlLogoutHref = nil`, with no failing test. For
+//  every auth block in the bundled fixtures, each advertised `rel` must map, in
+//  a lookup table, to the client property that captures it or be marked ignored
+//  by design; an unmapped rel fails with a message pointing at the CM change.
 
 import XCTest
 import PalaceCatalog

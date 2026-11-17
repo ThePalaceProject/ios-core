@@ -1,20 +1,10 @@
-//
 //  TPPLastReadPositionPosterTests.swift
-//  PalaceTests
 //
-//  Tests for `TPPLastReadPositionPoster`. As of the PalaceReadingPosition
-//  migration the poster's job is:
-//
-//  1. Reject locators with zero progression and no CSS selector
-//     (`shouldStore` guard).
-//  2. Save the locator locally via `bookRegistry.setLocation`.
-//  3. Build a `PositionSnapshot` and delegate to the injected
-//     `PositionWriter`.
-//
-//  Throttling/queuing now lives in `PositionWriter`; the writer is
-//  exercised in its own SPM tests. Here we verify the poster's
-//  delegation + the snapshot shape it produces.
-//
+//  `TPPLastReadPositionPoster` rejects locators with zero progression and no CSS
+//  selector (`shouldStore`), saves the locator via `bookRegistry.setLocation`,
+//  and hands a `PositionSnapshot` to the injected `PositionWriter`. Throttling
+//  lives in `PositionWriter` (tested in its package); these tests cover the
+//  poster's delegation and the snapshot shape.
 
 import XCTest
 import ReadiumShared
@@ -185,7 +175,60 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
         XCTAssertEqual(snapshot.format, .epubLocator)
         let payloadString = String(data: snapshot.payload, encoding: .utf8) ?? ""
         XCTAssertTrue(payloadString.contains("/chapter1.xhtml"),
-                      "Payload must carry the Readium locator JSON; got \(payloadString)")
+                      "Payload must carry the locator JSON; got \(payloadString)")
+    }
+
+    /// PP-5138: the payload handed to the writer becomes the annotation's
+    /// `selector.value` verbatim, so it must be a spec `LocatorHrefProgression`.
+    /// It used to be `locator.jsonString()` — the Readium shape, which carries
+    /// neither `@type` nor `progressWithinChapter`, and which the Android
+    /// client parses as a legacy CFI locator and then discards for EPUBs.
+    func testStoreReadPosition_postedPayloadIsASpecLocatorHrefProgression() async throws {
+        let locator = createLocator(
+            href: "/chapter1.xhtml",
+            progression: 0.5,
+            totalProgression: 0.25
+        )
+
+        poster.storeReadPosition(locator: locator)
+        for task in poster.pendingWriteTasksForTesting() { await task.value }
+
+        let saved = await spyWriter.savedSnapshots
+        let snapshot = try XCTUnwrap(saved.first)
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: snapshot.payload) as? [String: Any],
+            "the posted payload must be a JSON object"
+        )
+
+        XCTAssertEqual(json["@type"] as? String, "LocatorHrefProgression",
+                       "an untyped locator is read as LocatorLegacyCFI and dropped by the Android EPUB reader")
+        XCTAssertEqual(json["href"] as? String, "/chapter1.xhtml")
+        XCTAssertEqual(json["progressWithinChapter"] as? Double, 0.5,
+                       "progressWithinChapter is required by the spec schema")
+        XCTAssertNil(json["locations"],
+                     "`locations` is the Readium shape and must not reach the wire")
+    }
+
+    /// The bytes posted to the server and the bytes written to the local
+    /// registry must be the same position. They were two different dialects,
+    /// which is what made the sync prompt unable to settle.
+    func testStoreReadPosition_postedPayloadMatchesLocalRegistryBytes() async throws {
+        let locator = createLocator(
+            href: "/chapter1.xhtml",
+            progression: 0.5,
+            totalProgression: 0.25
+        )
+
+        poster.storeReadPosition(locator: locator)
+        for task in poster.pendingWriteTasksForTesting() { await task.value }
+
+        let saved = await spyWriter.savedSnapshots
+        let snapshot = try XCTUnwrap(saved.first)
+        let posted = String(data: snapshot.payload, encoding: .utf8)
+        let stored = bookRegistryMock.location(forIdentifier: testBook.identifier)?.locationString
+
+        XCTAssertEqual(posted, stored,
+                       "the position posted to the server must be the position stored locally")
     }
 
     func testStoreReadPosition_writerThrows_doesNotCrash_localStateUnaffected() async throws {
@@ -325,8 +368,8 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
         // their saved page.
         //
         // Critical: keep totalProgression at 0 AND no cssSelector so
-        // the position-branch is the ONLY accepting path. This pins
-        // the mutant `position > 0 → return true ⇒ return false`.
+        // the position-branch is the ONLY accepting path. This catches
+        // `position > 0 → return true` being changed to `return false`.
         let locations = Locator.Locations(
             totalProgression: 0,
             position: 7
@@ -346,7 +389,7 @@ final class TPPLastReadPositionPosterTests: XCTestCase {
 
     func testShouldStore_positionZero_doesNotStore() {
         // Boundary guard against the `position > 0 → position >= 0`
-        // mutant. A locator with `position == 0` and no other anchor
+        // regression. A locator with `position == 0` and no other anchor
         // must NOT persist — position 0 is the equivalent of "before
         // page 1".
         let locations = Locator.Locations(

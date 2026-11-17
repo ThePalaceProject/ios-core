@@ -115,6 +115,35 @@ public final class TPPBookRegistryRecord: NSObject, @unchecked Sendable {
         return derivedState
     }
 
+    /// The state an existing record takes after a sync reports `book` (PP-5360).
+    /// A hold the server now reports as a loan moves to My Books, and an
+    /// undownloaded loan the server now reports as a hold moves to Holds.
+    /// Downloaded or downloading records keep their state so content on disk and
+    /// an in-flight download are left alone; `unavailable` is ambiguous between
+    /// the two shelves, so it changes nothing.
+    // PUBLIC_INTENT: called by PalaceBookRegistry's sync, in another package.
+    public static func stateAfterServerUpdate(current: TPPBookState, book: TPPBook) -> TPPBookState {
+        var isLoan = false
+        var isHold = false
+        book.defaultAcquisition?.availability.match(
+            unavailable: nil,
+            limited: { _ in isLoan = true },
+            unlimited: { _ in isLoan = true },
+            reserved: { _ in isHold = true },
+            ready: { _ in isHold = true }
+        )
+        switch current {
+        case .unregistered:
+            return isHold ? .holding : current
+        case .holding:
+            return isLoan ? .downloadNeeded : current
+        case .downloadNeeded, .downloadFailed:
+            return isHold ? .holding : current
+        default:
+            return current
+        }
+    }
+
     public init?(record: TPPBookRegistryData) {
         // Log which specific field is missing so we can diagnose why a record
         // silently disappears from the in-memory registry during load.

@@ -2,52 +2,16 @@
 //  RuntimeQuiescenceAuditor.swift
 //  PalaceTests
 //
-//  Structural gate against the cross-test cooperative-pool / main-queue
-//  starvation that has flaked the unit suite intermittently (WS-0 / M0,
-//  3.2.0 release gate). Seven prior PRs (#1050/#1051/#1056/#1057/#1061 …)
-//  point-fixed individual leaks; none added a gate that makes the root
-//  cause structurally impossible to LAND silently. This is that gate.
-//
-//  The documented root cause
-//  =========================
-//  `AccountsManager.deferInitialLoadCatalogsForTesting` is a process-global
-//  flag. While `true` (the test-safe default pinned by `PalaceTestSetup`),
-//  every `AccountsManager.init` — including the one the post-test
-//  `AppContainer._resetForTesting()` rebuilds after EACH test — SKIPS the
-//  background `loadCatalogs` Task. While `false`, that init spawns a live
-//  registry crawl (network + 1142-account bundled-snapshot write) on a
-//  detached background Task.
-//
-//  If any test flips the flag to `false` and does NOT restore it, the flag
-//  leaks forward: the NEXT test class's first incidental
-//  `AppContainer.production()` read rebuilds the cached graph, whose fresh
-//  `AccountsManager` now reads `false` and kicks off a crawl Task that
-//  outlives the test, leaks past the boundary, and starves the shared
-//  cooperative pool / main queue. The victim is whichever async test
-//  happens to run while the pool is saturated — which is exactly why the
-//  observed victim varies per run (CatalogPreloaderTests, OpenAccessAdapter,
-//  the 1735s CatalogRepository outlier, …).
-//
-//  The invariant this gate enforces
-//  ================================
-//  **After every test (post-tearDown), `deferInitialLoadCatalogsForTesting`
-//  MUST be `true`.** A test that legitimately needs the background load
-//  (`AppContainerResetTests`, `TestAppContainerFactoryTests`) flips it
-//  `false` for its scenario and restores it via `tearDown` / `defer`. Any
-//  test that leaves it `false` is, by construction, the polluter — and this
-//  auditor names it instead of letting a random downstream async test time
-//  out anonymously.
-//
-//  Why pure functions
-//  ==================
-//  `deferFlagViolations(deferFlagLeftByTest:)` is deliberately a pure,
-//  input→output function so the MetaTest (`RuntimeQuiescenceGateTests`) can
-//  prove the auditor FAILS a synthetic polluter without staging a real
-//  cross-test leak — the same self-test discipline
-//  `AppContainerIsolationLintTests.testLintCatchesSyntheticViolation` uses.
-//
-//  Test-target-only. Production code MUST NOT reference this type.
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  Gate against cross-test cooperative-pool / main-queue starvation. The
+//  invariant: after every test, `AccountsManager.deferInitialLoadCatalogsForTesting`
+//  MUST be `true`. A test left at `false` makes the next rebuilt
+//  `AccountsManager` spawn a background registry crawl that outlives the
+//  test and starves whichever async test runs next; this auditor names the
+//  polluter instead. Tests that need the load (`AppContainerResetTests`,
+//  `TestAppContainerFactoryTests`) restore the flag in tearDown.
+//  `deferFlagViolations(deferFlagLeftByTest:)` is pure so
+//  `RuntimeQuiescenceGateTests` can prove it fails a synthetic polluter.
+//  Test-target-only.  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
 import Foundation
@@ -203,5 +167,70 @@ enum RuntimeQuiescenceAuditor {
                     + "(weak back-edge) so it deallocates and cancels its sinks."
             )
         ]
+    }
+
+    // MARK: - Selected-library detector (app-container pollution class)
+
+    /// HARD invariant: a test must leave `UserDefaults.standard`'s
+    /// `TPPCurrentAccountIdentifier` as it found it. On a simulator that suite is
+    /// the Palace app's own container, so a test that leaves a fixture uuid there
+    /// decides which library the app opens next for whoever drives that device.
+    ///
+    /// - Parameters:
+    ///   - before: the value the key held before the test ran.
+    ///   - after: the value it holds now.
+    /// - Returns: a one-element violation when the two differ, else empty.
+    ///
+    /// Takes `Any?` rather than `String?` because the key is not type-pinned:
+    /// `SEMigrations` reads it as a legacy `Int`, and sampling such a value
+    /// through `string(forKey:)` answers `nil` on both sides, which reads as
+    /// unchanged while the overwrite stands.
+    ///
+    /// Pure so `SelectedLibraryGateTests` can prove it fires on a synthetic
+    /// polluter and stays silent on clean state.
+    static func selectedLibraryViolations(before: Any?, after: Any?) -> [Violation] {
+        guard !propertyListValuesMatch(before, after) else { return [] }
+        return [
+            Violation(
+                invariant: "UserDefaults.standard[\(currentAccountIdentifierKey)] unchanged by the test",
+                detail:
+                    "This test left the selected library pointing at "
+                    + "\(describeSelectedLibrary(after)) instead of "
+                    + "\(describeSelectedLibrary(before)). On a simulator those are "
+                    + "the app's own defaults, so the app then resolves a fixture "
+                    + "uuid to no account, reports \"No library\", and fails every "
+                    + "borrow with a 401. Build the manager with "
+                    + "makeFreshAccountsManager(defaults: Self.testUserDefaults()) "
+                    + "and run the closure _seedAccountForTesting returns, or undo "
+                    + "the write in tearDown."
+            )
+        ]
+    }
+
+    /// Compare two `UserDefaults` values without narrowing either to a type.
+    ///
+    /// Every value `UserDefaults` stores is a property-list type, so each bridges
+    /// to `NSObject` and `isEqual` is the right comparison. A value that does not
+    /// bridge is reported as a change rather than silently matched, because
+    /// "cannot compare" must not read as "unchanged".
+    static func propertyListValuesMatch(_ lhs: Any?, _ rhs: Any?) -> Bool {
+        if lhs == nil && rhs == nil { return true }
+        guard let lhs = lhs as? NSObject, let rhs = rhs as? NSObject else { return false }
+        return lhs.isEqual(rhs)
+    }
+
+    /// Render a selected-library value for a failure message, naming absence
+    /// rather than printing an empty string.
+    static func describeSelectedLibrary(_ value: Any?) -> String {
+        guard let value else { return "no library" }
+        return String(describing: value)
+    }
+
+    /// Snapshot the live selected-library value, without narrowing its type.
+    ///
+    /// Separate from the pure detector so the gate's self-test can prove this
+    /// reads real state rather than a constant.
+    static func captureSelectedLibrary() -> Any? {
+        return UserDefaults.standard.object(forKey: currentAccountIdentifierKey)
     }
 }

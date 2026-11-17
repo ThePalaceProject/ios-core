@@ -8,6 +8,7 @@
 //
 
 import XCTest
+import PalacePreferences
 @testable import Palace
 
 /// SRS: SET-001 — Migration version comparison drives upgrade paths
@@ -133,5 +134,104 @@ final class TPPMigrationManagerTests: XCTestCase {
         // Adjacent values must still compare correctly
         XCTAssertTrue(TPPMigrationManager.version([4], isLessThan: [5]),
                       "[4] must be less than [5]")
+    }
+
+    // MARK: - LCP keychain migration wiring (PP-5091)
+
+    /// Nothing proved that launch actually reaches the LCP SQLite→Keychain
+    /// migration. `LCPKeychainMigrationTests` covers `runIfNeeded` in isolation,
+    /// which is worthless if `migrate` stops calling it — the migration would
+    /// simply never run, every LCP license would fall back to re-validating from
+    /// its stored `.lcpl`, and nothing anywhere would go red.
+    ///
+    /// This drives the real `migrate` with the two singleton-touching steps stubbed
+    /// out, and asserts against the *migration flag* rather than against the
+    /// injected closure: the flag is written by `LCPKeychainMigration.runIfNeeded`
+    /// itself, so a green here means the call chain is intact end to end, not that
+    /// `migrate` called something the test handed it.
+    func testMigrate_runsTheLCPKeychainMigration() async {
+        let suiteName = "TPPMigrationManagerTests.lcpWiring"
+        guard let lcpDefaults = UserDefaults(suiteName: suiteName),
+              let settingsDefaults = UserDefaults(suiteName: suiteName + ".settings") else {
+            return XCTFail("Could not create isolated UserDefaults suites")
+        }
+        defer {
+            lcpDefaults.removePersistentDomain(forName: suiteName)
+            settingsDefaults.removePersistentDomain(forName: suiteName + ".settings")
+        }
+        lcpDefaults.removePersistentDomain(forName: suiteName)
+        settingsDefaults.removePersistentDomain(forName: suiteName + ".settings")
+
+        let copyRan = LockIsolated<Bool>(false)
+        let otherStepsRan = LockIsolated<[String]>([])
+
+        var substitutions = MigrationSubstitutions()
+        substitutions.runMigrations = { _ in otherStepsRan.withValue { $0.append("runMigrations") } }
+        substitutions.performPostUpdateTasks = { otherStepsRan.withValue { $0.append("postUpdateTasks") } }
+        substitutions.lcpMigration = (defaults: lcpDefaults, work: { @Sendable in copyRan.value = true })
+
+        let settings = TPPSettings(defaults: settingsDefaults)
+        let task = TPPMigrationManager.migrate(settings: settings, substituting: substitutions)
+
+        await task?.value
+
+        XCTAssertEqual(otherStepsRan.value, ["runMigrations", "postUpdateTasks"],
+                       "migrate must still run the ordinary migrations before the LCP one")
+        XCTAssertNil(settings.appVersion,
+                     "Substituting the migrations must NOT stamp appVersion — that stamp says the migrations ran, and they did not")
+        // Both assertions are guarded together, not just the one that names an
+        // LCP-only symbol. In a noDRM build `runLCPKeychainMigration` is empty, so
+        // the substituted closure never runs and `copyRan` stays false — guarding
+        // only the flag assertion would have left this one failing at runtime in
+        // exactly the configuration the guard exists for. There is no noDRM test
+        // target today, so both compile and run.
+        #if LCP
+        XCTAssertTrue(copyRan.value,
+                      "migrate must reach the LCP keychain copy")
+        XCTAssertTrue(lcpDefaults.bool(forKey: LCPKeychainMigration.didMigrateKey),
+                      "The flag is written by LCPKeychainMigration.runIfNeeded — its absence means migrate never reached it, whatever else ran")
+        #endif
+    }
+
+    /// The launch path deliberately does NOT await the returned task, so the task
+    /// has to exist for anyone to be able to. Before PP-5091 the migration was a
+    /// bare `Task { … }` with no handle, which is why the race in
+    /// `docs/architecture/lcp-device-id-migration-validation.md` had no seam to
+    /// close and no way to be observed.
+    func testMigrate_returnsAHandleOnTheLCPMigrationRatherThanDiscardingIt() async {
+        let suiteName = "TPPMigrationManagerTests.lcpHandle"
+        guard let lcpDefaults = UserDefaults(suiteName: suiteName),
+              let settingsDefaults = UserDefaults(suiteName: suiteName + ".settings") else {
+            return XCTFail("Could not create isolated UserDefaults suites")
+        }
+        defer {
+            lcpDefaults.removePersistentDomain(forName: suiteName)
+            settingsDefaults.removePersistentDomain(forName: suiteName + ".settings")
+        }
+        lcpDefaults.removePersistentDomain(forName: suiteName)
+
+        let finished = LockIsolated<Bool>(false)
+
+        var substitutions = MigrationSubstitutions()
+        substitutions.runMigrations = { _ in }
+        substitutions.performPostUpdateTasks = { }
+        substitutions.lcpMigration = (defaults: lcpDefaults, work: { @Sendable in
+            try? await Task.sleep(nanoseconds: 1_000_000)
+            finished.value = true
+        })
+
+        let task = TPPMigrationManager.migrate(
+            settings: TPPSettings(defaults: settingsDefaults),
+            substituting: substitutions
+        )
+
+        // No assertion that the work is *still* in flight here: `migrate` returns
+        // before the Task's first suspension, but the test cannot force that
+        // ordering, and an assertion whose interleaving the test cannot force is
+        // not evidence.
+        XCTAssertNotNil(task, "migrate must hand back the migration task")
+        await task?.value
+        XCTAssertTrue(finished.value,
+                      "Awaiting the returned task must mean the migration has finished")
     }
 }

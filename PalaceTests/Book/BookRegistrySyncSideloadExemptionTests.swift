@@ -2,24 +2,13 @@
 //  BookRegistrySyncSideloadExemptionTests.swift
 //  PalaceTests
 //
-//  THE critical sync-exemption regression (sideloading-plan.md R1).
+//  Sync exemption for side-loaded books. `sync()` evicts any book NOT in the
+//  loans feed and deletes its content; side-loaded books never appear there, so
+//  `recordsToDelete.subtract(sideloadedIDsProvider())` is what keeps them.
 //
-//  The main registry's server `sync()` evicts any book NOT in the loans feed
-//  and deletes its on-disk content. Side-loaded books are registered
-//  `.downloadSuccessful` but of course never appear in the loans feed, so
-//  without the `recordsToDelete.subtract(sideloadedIDsProvider())` exemption
-//  the next sync silently destroys them.
-//
-//  These tests drive the FULL production `sync()` path — real account
-//  readiness gate, a stubbed loans-feed HTTP response, the real reconciliation
-//  barrier, and a spy download center recording on-disk deletes — with a
-//  mutation-grade contrast: the SAME scenario with an EMPTY exemption set must
-//  evict the same book (proving the exemption, not some other guard, is what
-//  saved it — so removing the `subtract` line fails the first test).
-//
-//  Keychain-gated (credentials must be writable for sync() to reach the feed
-//  fetch) — an environment-capability guard, NOT a host-sign-in-state dodge:
-//  the fixture UUID is unique so credential state is deterministic.
+//  Drives production `sync()` with a contrast case (EMPTY exemption evicts the
+//  same book). Keychain-gated. The loans feed is in memory: a first URLProtocol
+//  load waits on CFNetwork starting a default-QoS thread, up to 17.6s under TSan.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -39,7 +28,38 @@ final class BookRegistrySyncSideloadExemptionTests: XCTestCase {
   private var accountsManager: AccountsManager!
   private var spyContentService: SpyLocalContentService!
   private var downloadCenter: MyBooksDownloadCenter!
-  private var savedProtocolClasses: [AnyClass]!
+  private var feedFetcher: LoansFeedFetcher!
+
+  // MARK: - Loans feed fetcher
+
+  /// Serves the loans fixture from memory and records the URLs sync() asked
+  /// for, so a test can tell that sync() resolved the account's loans URL.
+  final class LoansFeedFetcher: OPDSFeedFetching, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _requestedURLs: [URL] = []
+    private let feedXML: String
+
+    init(feedXML: String) { self.feedXML = feedXML }
+
+    var requestedURLs: [URL] {
+      lock.lock(); defer { lock.unlock() }
+      return _requestedURLs
+    }
+
+    func fetchFeed(from url: URL) async throws -> TPPOPDSFeed {
+      try await fetchFeed(from: url, resetCache: false)
+    }
+
+    func fetchFeed(from url: URL, resetCache: Bool) async throws -> TPPOPDSFeed {
+      lock.withLock { _requestedURLs.append(url) }
+      guard let xml = TPPXML.xml(withData: Data(feedXML.utf8)),
+            let feed = TPPOPDSFeed(xml: xml) else {
+        throw NSError(domain: "LoansFeedFetcher", code: -1,
+                      userInfo: [NSLocalizedDescriptionKey: "loans fixture did not parse"])
+      }
+      return feed
+    }
+  }
 
   // MARK: - Spy
 
@@ -60,21 +80,7 @@ final class BookRegistrySyncSideloadExemptionTests: XCTestCase {
   override func setUpWithError() throws {
     try super.setUpWithError()
 
-    // Route the SHARED network executor (used by TPPOPDSFeed.withURL inside
-    // the loans fetch) through the HTTP stub so we control the loans feed.
-    savedProtocolClasses = AppContainer.testExecutorProtocolClasses
-    AppContainer.testExecutorProtocolClasses = [HTTPStubURLProtocol.self, NoNetworkURLProtocol.self]
-    AppContainer._rebuildCachedForTestProtocols()
-
-    HTTPStubURLProtocol.register { [loansURLString] request in
-      guard request.url?.absoluteString.contains("/loans") == true else { return nil }
-      return HTTPStubURLProtocol.StubbedResponse(
-        statusCode: 200,
-        headers: ["Content-Type": "application/atom+xml"],
-        body: Data(Self.loansFeedXML.utf8)
-      )
-    }
-
+    feedFetcher = LoansFeedFetcher(feedXML: Self.loansFeedXML)
     let appContainer = makeTestAppContainer()
     accountsManager = appContainer.accountsManager
     store = BookRegistryStore()
@@ -86,10 +92,7 @@ final class BookRegistrySyncSideloadExemptionTests: XCTestCase {
   }
 
   override func tearDownWithError() throws {
-    HTTPStubURLProtocol.removeAllHandlers()
-    AppContainer.testExecutorProtocolClasses = savedProtocolClasses
-    AppContainer._rebuildCachedForTestProtocols()
-    savedProtocolClasses = nil
+    feedFetcher = nil
     downloadCenter = nil
     spyContentService = nil
     store = nil
@@ -174,7 +177,7 @@ final class BookRegistrySyncSideloadExemptionTests: XCTestCase {
     accountsManager.currentAccount?._setState(.detailsLoaded(details))
 
     // Credentials on the instance sync() reads via sharedAccount → production.
-    let prodUserAccount = AppContainer.production().accountsManager.userAccount(for: fixtureId) // MIGRATED-DEFERRED: SUT BookRegistrySync.sync() reads credentials via the production shared account, so credentials must be seeded on the production user account (swarm_495a88d9)
+    let prodUserAccount = AppContainer.production().accountsManager.userAccount(for: fixtureId) // MIGRATED-DEFERRED: SUT BookRegistrySync.sync() reads credentials via the production shared account, so credentials must be seeded on the production user account
     prodUserAccount.setAuthToken("sideload-token", barcode: "bc", pin: "1234",
                                  expirationDate: Date().addingTimeInterval(3600))
 
@@ -189,7 +192,7 @@ final class BookRegistrySyncSideloadExemptionTests: XCTestCase {
       store: store,
       accountsManager: accountsManager,
       downloadCenterProvider: { [downloadCenter] in downloadCenter! },
-      opdsFeedServiceProvider: { OPDSFeedService() },
+      opdsFeedServiceProvider: { [feedFetcher] in feedFetcher! },
       sideloadedIDsProvider: { sideloadedIDs }
     )
   }
@@ -204,6 +207,8 @@ final class BookRegistrySyncSideloadExemptionTests: XCTestCase {
     )
     wait(for: [exp], timeout: 10.0)
     drainMainQueue()
+    XCTAssertEqual(feedFetcher.requestedURLs.map(\.absoluteString), [loansURLString],
+                   "sync() must fetch the loans URL from the account's auth document, once")
     XCTAssertEqual(received.last, .synced,
                    "sync() must reach reconciliation (.synced); got \(received)")
   }
@@ -236,10 +241,9 @@ final class BookRegistrySyncSideloadExemptionTests: XCTestCase {
   }
 
   func test_sync_withEmptyExemption_evictsTheSameBook_andDeletesItsContent() throws {
-    // Mutation-grade contrast: identical scenario, EMPTY exemption set. Now the
-    // "side-loaded" book is unprotected and MUST be evicted + deleted — this is
-    // what proves the previous test's survival is caused by the exemption
-    // subtract, and kills the "subtract removed" mutant.
+    // Contrast case: identical scenario, EMPTY exemption set. The "side-loaded"
+    // book is now unprotected and MUST be evicted + deleted, proving the previous
+    // test's survival is caused by the exemption subtract.
     let (_, cleanup) = try seedReadyCredentialedAccount()
     defer { cleanup() }
 

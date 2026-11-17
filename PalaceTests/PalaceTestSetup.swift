@@ -26,6 +26,12 @@ class PalaceTestSetup: NSObject {
     /// `addTestObserver(_:)` returns and `testCaseDidFinish(_:)` never
     /// fires. This `static var` retain is load-bearing.
     private static let _observer = LockIsolated<PalaceSingletonResetObserver?>(nil)
+
+    /// What this device held for the LCP-streaming override before the run
+    /// pinned it, so `testBundleDidFinish` can put it back. `nil` means there
+    /// was no override, and restoring that removes the key rather than
+    /// writing a value the device never had.
+    static let streamingOverrideAtLaunch = LockIsolated<Bool?>(nil)
     private static var observer: PalaceSingletonResetObserver? {
         get { _observer.value }
         set { _observer.value = newValue }
@@ -39,11 +45,18 @@ class PalaceTestSetup: NSObject {
     /// Idempotent. Safe to call from a custom test entry point or a unit
     /// test that needs to verify bootstrap state. Real entry is the
     /// principal-class `init()` above.
+    ///
+    /// A repeat call still re-registers the built-in resetters (registration is
+    /// idempotent by name), so a test that emptied the registry can restore
+    /// them by calling this — which is what several tearDowns already do.
     @discardableResult
     static func bootstrap() -> PalaceSingletonResetObserver {
         bootstrapLock.lock()
         defer { bootstrapLock.unlock() }
-        if let existing = observer { return existing }
+        if let existing = observer {
+            registerBuiltInResetters()
+            return existing
+        }
 
         NoNetworkURLProtocol.enable()
 
@@ -56,39 +69,36 @@ class PalaceTestSetup: NSObject {
         // executor's config via AppContainer's non-DEBUG test seam.
         AppContainer.testExecutorProtocolClasses = [NoNetworkURLProtocol.self]
 
-        // swarm_4b64e4e0 Wave 1d fix — pin the
-        // `deferInitialLoadCatalogsForTesting` flag to `true` BEFORE any test
-        // can lazy-trigger `AppContainer.production()`. Without this, the
-        // very first cached AppContainer (built by any incidental
-        // `AppContainer.production()` call — there are dozens of default-arg
-        // sites) fires its `AccountsManager.init` background `loadCatalogs`
-        // Task with the flag at its default `false`. That Task then runs the
-        // bundled-registry cold-load path and the network refresh, writing
-        // 1142+ bundled account entries to `accounts_catalog_<hash>.json`
-        // on disk — OVERWRITING any 171-account fixture seed a wiring test
-        // later writes to the same hash, mid-test. The result is the failure
-        // mode `testDriveCurrentAccountAuthDoc_terminalState_isNoOp` ::
-        // `Setup: currentAccount must resolve after preload` — the test's
-        // explicit `preloadAccountsFromDiskCacheSync()` parses the BUNDLED
-        // 1142 accounts (none of which carry the fixture's UUID space) and
-        // `account(currentUUID)` returns nil. Tests that need the background
-        // `loadCatalogs` to fire (e.g. `AppContainerResetTests`) explicitly
-        // flip the flag back to `false` in their own setUp. Wiring suite
-        // tests inherit `true` and stay deterministic. See the wave 1d
-        // transcript for the full forensic.
+        // Pin `deferInitialLoadCatalogsForTesting` to `true` before any test
+        // can lazy-trigger `AppContainer.production()`. Otherwise the first
+        // cached container's `AccountsManager.init` background `loadCatalogs`
+        // writes the bundled registry to `accounts_catalog_<hash>.json`,
+        // overwriting a fixture seed a wiring test later writes to the same
+        // hash, so `account(currentUUID)` returns nil mid-test. Tests that
+        // need the background load (e.g. `AppContainerResetTests`) flip the
+        // flag back to `false` in their own setUp.
         #if DEBUG
         AccountsManager.deferInitialLoadCatalogsForTesting = true
         #endif
 
-        // PP-4957: pin the LCP-audiobook-streaming flag OFF for the whole test
-        // run. MyBooksDownloadCenter / LCPFulfillmentHandler / AudiobookSessionManager
+        // PP-4957: pin the LCP-audiobook-streaming flag for the whole test run.
+        // MyBooksDownloadCenter / LCPFulfillmentHandler / AudiobookSessionManager
         // default their streaming provider to `RemoteFeatureFlags.shared`, whose
         // value in the test host is otherwise non-deterministic (FirebaseManager
         // state + prior-run `.standard` residue) — which flaked the download-first
         // reconcile / fulfillment tests on unlucky shuffles. Streaming tests inject
         // their own provider (bypassing `.shared`) and are unaffected. Re-pinned
         // after every test by the registered resetter below.
-        UserDefaults.standard.set(false, forKey: RemoteFeatureFlags.lcpAudiobookStreamingLocalOverrideKey)
+        //
+        // The value comes from `PALACE_TEST_LCP_STREAMING` (`on`|`off`, default
+        // `off`). Production runs the flag ON; CI runs the flag consumers' suites a
+        // second time with `on` so an ON-only regression is not hidden by the pin.
+        // Read BEFORE the first pin, so the run can put the device back when
+        // the bundle finishes: on a simulator `.standard` is the Palace app's
+        // own container, and a pin left behind decides the flag for whoever
+        // drives that device next.
+        streamingOverrideAtLaunch.value = LCPStreamingTestPin.currentOverride(in: .standard)
+        LCPStreamingTestPin.apply(LCPStreamingTestPin.selected, to: .standard)
 
         let obs = PalaceSingletonResetObserver()
         XCTestObservationCenter.shared.addTestObserver(obs)
@@ -117,18 +127,21 @@ class PalaceTestSetup: NSObject {
         return obs
     }
 
-    /// Built-in resetter list. Order matters: AppContainer is rebuilt
+    /// Built-in resetter list. Idempotent: every entry is registered by name,
+    /// so calling this again overwrites in place and never reorders. The
+    /// observer calls it at every test boundary, which is what keeps a test
+    /// that empties the registry from disabling cleanup for the rest of the
+    /// process. Order matters: AppContainer is rebuilt
     /// FIRST so subsequent resetters see a clean graph; the static
     /// resetters then clear residue that may have been written via
     /// direct singleton mutation in the just-finished test.
     ///
-    /// `AppContainer._resetForTesting()` is owned by Module B
-    /// (swarm_4b64e4e0). The registration closure references the symbol
+    /// The registration closure references `AppContainer._resetForTesting()`
     /// at the body, NOT at registration time — so as long as the symbol
     /// exists when the bundle loads (which is also when the closure
     /// would first run), the registry resolves. The `#if DEBUG` guard
     /// matches the symbol's own gate.
-    private static func registerBuiltInResetters() {
+    static func registerBuiltInResetters() {
         let registry = SingletonResetRegistry.shared
 
         // Purge the on-disk catalog/auth caches after EVERY test — not just
@@ -162,14 +175,10 @@ class PalaceTestSetup: NSObject {
 
         registry.register("AppContainer._resetForTesting") {
             #if DEBUG
-            // Module B's `Palace/AppInfrastructure/AppContainer.swift`
-            // exposes `internal static func _resetForTesting()` under
-            // `#if DEBUG`. The function is `@MainActor`-isolated so we hop
-            // to MainActor synchronously via `MainActor.assumeIsolated` —
-            // the observer's `testCaseDidFinish(_:)` already runs on the
-            // main thread (XCTest dispatches it there), so the assumption
-            // is sound at runtime. swarm_4b64e4e0 Module A integrated with
-            // Module B.
+            // `AppContainer._resetForTesting()` is `@MainActor`-isolated, so
+            // hop synchronously via `MainActor.assumeIsolated` — the
+            // observer's `testCaseDidFinish(_:)` already runs on the main
+            // thread (XCTest dispatches it there), so the assumption is sound.
             MainActor.assumeIsolated {
                 AppContainer._resetForTesting()
             }
@@ -253,12 +262,12 @@ class PalaceTestSetup: NSObject {
             ChaosURLProtocol.reset()
         }
 
-        // PP-4957: re-pin the LCP-audiobook-streaming flag OFF after every test,
-        // so a test that flips it (e.g. the DeveloperSettings toggle) cannot leak
-        // an ON value into the next test's default streaming providers. See the
-        // bootstrap-time pin above for the rationale.
-        registry.register("RemoteFeatureFlags.lcpStreamingOverride.pinOff") {
-            UserDefaults.standard.set(false, forKey: RemoteFeatureFlags.lcpAudiobookStreamingLocalOverrideKey)
+        // PP-4957: re-pin the LCP-audiobook-streaming flag to the selected value
+        // after every test, so a test that flips it (e.g. the DeveloperSettings
+        // toggle) cannot leak into the next test's default streaming providers.
+        // See the bootstrap-time pin above for the rationale.
+        registry.register("RemoteFeatureFlags.lcpStreamingOverride.pin") {
+            LCPStreamingTestPin.apply(LCPStreamingTestPin.selected, to: .standard)
         }
     }
 }
@@ -290,8 +299,20 @@ class PalaceSingletonResetObserver: NSObject, XCTestObservation {
     /// sample).
     internal var lastObservedDeltaForTesting: Int?
 
+    /// The run is over, so stop imposing its flag choice on this device.
+    func testBundleDidFinish(_ testBundle: Bundle) {
+        // MISSING-001-OK: XCTestObservation callback, not a test method.
+        LCPStreamingTestPin.restore(PalaceTestSetup.streamingOverrideAtLaunch.value, to: .standard)
+    }
+
     func testCaseWillStart(_ testCase: XCTestCase) {
+        // MISSING-001-OK: XCTestObservation callback, not a test method.
         preCount = Self.sampleObserverCount()
+        // Pin the LCP-streaming flag at the start of every test as well as in the
+        // after-each-test resetter, so the value a test starts with does not
+        // depend on what ran at the previous boundary (e.g. a later-registered
+        // resetter, or a registry a suite emptied mid-test).
+        LCPStreamingTestPin.apply(LCPStreamingTestPin.selected, to: .standard)
     }
 
     func testCaseDidFinish(_ testCase: XCTestCase) {
@@ -331,6 +352,11 @@ class PalaceSingletonResetObserver: NSObject, XCTestObservation {
                   testCase.name, poolProbe.latencyMs, poolProbe.completed ? "true" : "false")
         }
 
+        // Re-assert the built-ins before running them. Suites that observe the
+        // registry in isolation empty it, and a tearDown that tries to restore
+        // it can be skipped by a failure. Without this, one such test turns off
+        // every built-in cleanup for the rest of the test process.
+        PalaceTestSetup.registerBuiltInResetters()
         SingletonResetRegistry.shared.invokeAll()
 
         guard let pre = preCount, let post = Self.sampleObserverCount() else {
@@ -399,4 +425,64 @@ class PalaceSingletonResetObserver: NSObject, XCTestObservation {
     private static let observerCountRegex: NSRegularExpression? = {
         return try? NSRegularExpression(pattern: #"observers:\s*(\d+)"#)
     }()
+}
+
+// MARK: - LCPStreamingTestPin
+
+/// Selects the value `PalaceTestSetup` pins `lcp_audiobook_streaming_enabled`
+/// to, from the `PALACE_TEST_LCP_STREAMING` environment variable.
+///
+/// `xcodebuild` forwards it to the test host when set with the runner prefix:
+/// `TEST_RUNNER_PALACE_TEST_LCP_STREAMING=on xcodebuild test …`.
+enum LCPStreamingTestPin {
+    static let environmentKey = "PALACE_TEST_LCP_STREAMING"
+
+    /// `nil` (unset) selects off. Anything other than `on`/`off` returns `nil`,
+    /// so a misspelt value cannot quietly run an ON leg with the flag off.
+    static func parse(_ raw: String?) -> Bool? {
+        guard let raw else { return false }
+        switch raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "on": return true
+        case "off": return false
+        default: return nil
+        }
+    }
+
+    /// Read once per process. An unrecognised value stops the run at bootstrap
+    /// rather than testing the wrong flag state.
+    static let selected: Bool = {
+        let raw = ProcessInfo.processInfo.environment[environmentKey]
+        guard let value = parse(raw) else {
+            fatalError("\(environmentKey) must be 'on' or 'off' (got '\(raw ?? "")')")
+        }
+        return value
+    }()
+
+    static func apply(_ enabled: Bool, to defaults: UserDefaults) {
+        defaults.set(enabled, forKey: RemoteFeatureFlags.lcpAudiobookStreamingLocalOverrideKey)
+    }
+
+    /// Whatever `defaults` holds for the override right now — `nil` when the
+    /// key is absent, which is a different state from `false` and has to stay
+    /// that way through a restore.
+    static func currentOverride(in defaults: UserDefaults) -> Bool? {
+        defaults.object(forKey: RemoteFeatureFlags.lcpAudiobookStreamingLocalOverrideKey) as? Bool
+    }
+
+    /// Put `original` back, removing the key when there was none.
+    ///
+    /// On a simulator, `.standard` for the test host IS the Palace app's own
+    /// container, so an override left behind pins the APP — every later
+    /// simdrive session or manual pass on that device silently exercises the
+    /// path the tests chose rather than the one patrons get. Found on
+    /// 2026-10-21, when a regression simulator still read
+    /// `lcpAudiobookStreamingLocalOverride = false` hours after the run that
+    /// wrote it, while production serves that flag ON at 100%.
+    static func restore(_ original: Bool?, to defaults: UserDefaults) {
+        if let original {
+            defaults.set(original, forKey: RemoteFeatureFlags.lcpAudiobookStreamingLocalOverrideKey)
+        } else {
+            defaults.removeObject(forKey: RemoteFeatureFlags.lcpAudiobookStreamingLocalOverrideKey)
+        }
+    }
 }

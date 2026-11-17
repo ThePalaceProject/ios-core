@@ -548,8 +548,8 @@ final class DownloadStateMachineIntegrationTests: XCTestCase {
         let result = MyBooksDownloadCenter.borrowResponseState(for: postBook, preBorrowBook: preBook)
 
         XCTAssertEqual(result.state, .holding)
-        guard case .bookRegistry(.holdCopyUnavailable) = result.error else {
-            XCTFail("Expected race-loss error for limited→reserved, got \(String(describing: result.error))")
+        guard case .holdRequeued(position: 2) = result.error else {
+            XCTFail("Expected race-loss error with the queue position for limited→reserved, got \(String(describing: result.error))")
             return
         }
     }
@@ -802,9 +802,8 @@ final class RightsManagementDetectionTests: XCTestCase {
 /// Tests for download progress Combine publisher.
 /// Renamed from `DownloadProgressPublisherTests`: that name collided with the
 /// FILE name `DownloadProgressPublisherTests.swift`, whose class is actually
-/// `DownloadProgressPublisherCoreTests`. A `-only-testing:` run aimed at the
-/// publisher's own suite silently selected these two tests instead and reported a
-/// mutant as surviving when it was never exercised.
+/// `DownloadProgressPublisherCoreTests`, so a `-only-testing:` run aimed at the
+/// publisher's own suite selected these two tests instead.
 @MainActor
 final class MyBooksDownloadCenterProgressPublishingTests: XCTestCase {
     private var cancellables: Set<AnyCancellable> = []

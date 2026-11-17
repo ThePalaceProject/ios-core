@@ -24,8 +24,9 @@ Usage:
 import re
 import os
 import sys
+from collections import Counter
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 @dataclass
 class Violation:
@@ -278,19 +279,67 @@ def parse_added_lines(diff_text: str) -> List["_AddedLine"]:
     return added
 
 
+# A deadline wait reduced to the pair that identifies it: the expectations it
+# waits on and the timeout it allows. `wait(for:timeout:)` and
+# `fulfillment(of:timeout:)` are the same wait spelled for a sync and an async
+# caller, so they normalize to the same signature; `waitForExpectations` names
+# no expectations and gets a placeholder, which deliberately matches only
+# another `waitForExpectations`.
+_WAIT_SIGNATURE_RE = re.compile(
+    r'\bwait\(for:\s*(?P<exps_sync>\[[^\]]*\])\s*,\s*timeout:\s*(?P<to_sync>[\w.]+)'
+    r'|\bfulfillment\(of:\s*(?P<exps_async>\[[^\]]*\])\s*,\s*timeout:\s*(?P<to_async>[\w.]+)'
+    r'|\bwaitForExpectations\(\s*timeout:\s*(?P<to_bare>[\w.]+)'
+)
+
+
+def _wait_signature(text: str):
+    """The (expectations, timeout) pair a deadline wait is waiting on, or None."""
+    m = _WAIT_SIGNATURE_RE.search(text)
+    if not m:
+        return None
+    exps = m.group('exps_sync') or m.group('exps_async') or '<unnamed>'
+    timeout = m.group('to_sync') or m.group('to_async') or m.group('to_bare')
+    return (re.sub(r'\s+', '', exps), timeout)
+
+
 def lint_starvation_diff(diff_text: str) -> List[Violation]:
     """DIFF-SCOPED STARVE-001 scan: flag NEW deadline-poll waits on added lines
-    of changed test files. Never scans the full tree (see the module note)."""
+    of changed test files. Never scans the full tree (see the module note).
+
+    A wait that the same hunk also REMOVES, on the same expectations and the
+    same timeout, is not new — it is the pre-existing wait respelled, which is
+    what making an enclosing test `async` forces (`wait(for:)` is unavailable
+    there, so it becomes `await fulfillment(of:)`). Flagging that would report
+    a starvation exposure the diff did not add, against the rule's own scoping
+    note: STARVE-001 fires on genuinely NEW code. Matching is per hunk and
+    consumes one removal per added line, so converting one wait does not excuse
+    four new ones beside it.
+    """
     findings: List[Violation] = []
-    for al in parse_added_lines(diff_text):
-        if not _is_test_swift(al.path):
+    for path, added, removed in _parse_hunks(diff_text):
+        if not _is_test_swift(path):
             continue
-        stripped = al.text.strip()
-        if stripped.startswith('//'):
-            continue
-        if ALLOWLIST_COMMENT_RE['STARVE-001'].search(al.text):
-            continue
-        if any(pat.search(al.text) for pat in STARVE_PATTERNS):
+        converted = Counter(
+            sig for sig in (_wait_signature(t) for t in removed) if sig
+        )
+        for al in added:
+            stripped = al.text.strip()
+            if stripped.startswith('//'):
+                continue
+            if ALLOWLIST_COMMENT_RE['STARVE-001'].search(al.text):
+                continue
+            if not any(pat.search(al.text) for pat in STARVE_PATTERNS):
+                continue
+            sig = _wait_signature(al.text)
+            # `waitForExpectations` names no expectations, so a conversion from
+            # it is matched on the timeout alone.
+            bare = ('<unnamed>', sig[1]) if sig else None
+            if sig and converted[sig] > 0:
+                converted[sig] -= 1
+                continue
+            if bare and converted[bare] > 0:
+                converted[bare] -= 1
+                continue
             findings.append(Violation(
                 file=al.path,
                 line=al.line_no,
@@ -299,6 +348,62 @@ def lint_starvation_diff(diff_text: str) -> List[Violation]:
                 detail=STARVE_DETAIL,
             ))
     return findings
+
+
+def _parse_hunks(diff_text: str):
+    """Yield `(path, added, removed)` per diff hunk.
+
+    `added` holds `_AddedLine`s with post-image line numbers, `removed` the raw
+    text of the `-` lines. Per-hunk grouping is what lets an added line be
+    matched against the removal it replaced.
+    """
+    hunk_re = re.compile(r'^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@')
+    cur_path = None
+    new_lineno = 0
+    added: List[_AddedLine] = []
+    removed: List[str] = []
+
+    def flush():
+        if cur_path is not None and (added or removed):
+            yield_value = (cur_path, list(added), list(removed))
+            added.clear()
+            removed.clear()
+            return yield_value
+        added.clear()
+        removed.clear()
+        return None
+
+    for raw in diff_text.split('\n'):
+        if raw.startswith('+++ '):
+            out = flush()
+            if out:
+                yield out
+            p = raw[4:].strip()
+            if p == '/dev/null':
+                cur_path = None
+            else:
+                cur_path = p[2:] if p.startswith('b/') else p
+            continue
+        if raw.startswith('--- '):
+            continue
+        m = hunk_re.match(raw)
+        if m:
+            out = flush()
+            if out:
+                yield out
+            new_lineno = int(m.group(1))
+            continue
+        if raw.startswith('+'):
+            if cur_path is not None:
+                added.append(_AddedLine(cur_path, new_lineno, raw[1:]))
+            new_lineno += 1
+        elif raw.startswith('-'):
+            removed.append(raw[1:])
+        elif raw.startswith(' '):
+            new_lineno += 1
+    out = flush()
+    if out:
+        yield out
 
 
 def _git_diff(base: str) -> str:
@@ -318,14 +423,92 @@ def _git_diff(base: str) -> str:
     return ''
 
 
-def run_diff_gate(diff_text: str, quiet: bool = False) -> int:
+def uncommitted_test_files() -> Optional[List[str]]:
+    """Test files modified or untracked in the working tree.
+
+    Returns `[]` for a clean tree and `None` when the question could not be
+    answered (git missing, locked index, non-zero exit). Those two are NOT the
+    same and must not render the same: `[]` means "nothing unscanned", `None`
+    means "unknown whether anything is unscanned", and collapsing them is the
+    §7 refusal-renders-as-success shape this function exists to close.
+
+    `_git_diff` is HEAD-based, so anything not committed is invisible to it and
+    the gate reports a clean scan over work it never read. The pass is true for
+    what was scanned and false for what the author is actually holding.
+
+    Measured cost of not saying so: three consecutive edit-and-recheck rounds on
+    2026-09-29, each reporting the same stale finding, because every fix was in
+    the working tree while the scan read HEAD. The same idiom is in
+    `verify-pr.sh` and `check-doc-hygiene.sh`.
+
+    Parsing uses `--porcelain -z`. Porcelain v1 QUOTES any path containing a
+    space or non-ASCII byte (`"PalaceTests/Spaced Probe.swift"`), so newline
+    parsing drops exactly the paths hardest to notice missing. `-z` never
+    quotes. Note the rename field order flips under `-z`: `XY new\0orig\0`,
+    so the record itself is already the new path.
+    """
+    import subprocess
+    try:
+        out = subprocess.run(
+            ['git', 'status', '--porcelain', '-z', '--', 'PalaceTests'],
+            capture_output=True, text=True, check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+        return None
+    files = []
+    records = [r for r in out.stdout.split('\0') if r]
+    skip_next = False
+    for rec in records:
+        if skip_next:                    # the `orig` half of a -z rename pair
+            skip_next = False
+            continue
+        if len(rec) < 4:
+            continue
+        status, path = rec[:2], rec[3:]
+        if status[0] in ('R', 'C'):      # `XY new\0orig\0` — consume the orig
+            skip_next = True
+        if path.endswith('.swift'):
+            files.append(path)
+    return files
+
+
+_UNCOMMITTED_SENTINEL_CHECKED = False
+
+
+def run_diff_gate(diff_text: str, quiet: bool = False,
+                  uncommitted=None) -> int:
     """Run the diff-scoped STARVE-001 gate over `diff_text`; print findings and
     return the process exit code (1 on any hit, else 0)."""
     findings = lint_starvation_diff(diff_text)
+    # Three states, deliberately distinct: a list of names (dirty), an empty
+    # list (clean), and None (could not determine). Rendering the third as the
+    # second is the failure this gate is about.
+    undetermined = uncommitted is None and _UNCOMMITTED_SENTINEL_CHECKED
+    pending = list(uncommitted) if uncommitted else []
     if not findings:
         if not quiet:
-            print("STARVE-001: no new deadline-poll waits in changed test files.")
+            if pending:
+                print("STARVE-001: no new deadline-poll waits in COMMITTED test "
+                      f"files — {len(pending)} uncommitted file(s) were NOT scanned:")
+                for f in pending[:10]:
+                    print(f"    {f}")
+                if len(pending) > 10:
+                    print(f"    ... and {len(pending) - 10} more")
+                print("  The scan reads `git diff <base>...HEAD`. Commit, then re-run.")
+            elif undetermined:
+                print("STARVE-001: no new deadline-poll waits in COMMITTED test "
+                      "files — could NOT determine whether uncommitted test "
+                      "files exist (`git status` failed).")
+                print("  This is not a clean tree; it is an unanswered question.")
+            else:
+                print("STARVE-001: no new deadline-poll waits in changed test files.")
         return 0
+    if pending:
+        print(f"  NOTE: {len(pending)} uncommitted test file(s) were NOT scanned; "
+              "the lines below are HEAD's, not your working tree's.")
+    elif undetermined:
+        print("  NOTE: could NOT determine whether uncommitted test files exist "
+              "(`git status` failed); the lines below are HEAD's.")
     print(f"STARVE-001: {len(findings)} new deadline-poll wait(s) in changed test files:")
     print("=" * 70)
     for v in findings:
@@ -612,7 +795,9 @@ def main():
         idx = sys.argv.index('--changed')
         nxt = sys.argv[idx + 1] if idx + 1 < len(sys.argv) else ''
         base = nxt if (nxt and not nxt.startswith('-')) else 'origin/develop'
-        sys.exit(run_diff_gate(_git_diff(base), quiet=quiet))
+        globals()['_UNCOMMITTED_SENTINEL_CHECKED'] = True
+        sys.exit(run_diff_gate(_git_diff(base), quiet=quiet,
+                               uncommitted=uncommitted_test_files()))
 
     fix_mode = '--fix' in sys.argv
     # `--per-file` emits one line per violation: <relpath>:<line>:<rule>

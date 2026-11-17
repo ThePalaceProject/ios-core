@@ -58,8 +58,8 @@ final class PalaceMotionTests: XCTestCase {
         XCTAssertEqual(PalaceMotion.shimmerOffset(phase: 1, width: 200), 200, accuracy: 0.001)
     }
 
-    /// Mid-phase the band is centered (offset 0). Pins the mapping shape so a
-    /// `phase + width` style mutant (off-center) is caught.
+    /// Mid-phase the band is centered (offset 0). Pins the mapping shape so an
+    /// off-center `phase + width` style mapping is caught.
     func testShimmerOffset_centeredAtMidPhase() {
         XCTAssertEqual(PalaceMotion.shimmerOffset(phase: 0, width: 200), 0, accuracy: 0.001)
     }

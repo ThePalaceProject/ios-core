@@ -11,8 +11,6 @@
 //  flush. Because DispatchQueue.main is FIFO, all earlier-queued blocks have
 //  run by the time the no-op fires — no fixed delay, no timing guess.
 //
-//  Per CLAUDE.md: "never use sleep/delay waits, always use XCTestExpectation".
-//
 
 import XCTest
 

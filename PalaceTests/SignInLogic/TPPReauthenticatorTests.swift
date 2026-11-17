@@ -65,20 +65,30 @@ final class TPPReauthenticatorTests: XCTestCase {
                         "TPPReauthenticator must be castable to the Reauthenticator protocol")
     }
 
-    func testAuthenticateIfNeeded_withNilCompletion_doesNotCrash() {
+    func testAuthenticateIfNeeded_withNilCompletion_stillPresentsSignIn() async {
         // Background auth-refresh paths (e.g. token expiry mid-sync) call
         // authenticateIfNeeded with a nil completion because they don't need
-        // to observe the result. Must not crash, must not corrupt shared state
-        // (the userAccount instance must remain usable for the main flow).
-        let userAccountBefore = userAccount
+        // to observe the result; the sign-in prompt must still be shown.
+        // A spy presenter stands in for the real modal, which would otherwise
+        // land on the host window after the test ends.
+        var presentations = 0
+        let spy = SignInModalSheetPresenter(
+            appContainer: AppContainer.production(), // MIGRATED-DEFERRED: withSignInModalSheetPresenter() derives from the production container, as in SignInModalLifecycleTests.
+            currentAccountIDProvider: { "reauthenticator-tests" },
+            needsAuthProvider: { _ in true },
+            driver: { _, _, completion in
+                presentations += 1
+                completion()
+            }
+        )
+        TPPReauthenticator._testContainerOverride = AppContainer.production().withSignInModalSheetPresenter(spy) // MIGRATED-DEFERRED: see above.
+        defer { TPPReauthenticator._testContainerOverride = nil }
 
         reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: true, authenticationCompletion: nil)
         reauthenticator.authenticateIfNeeded(userAccount, usingExistingCredentials: false, authenticationCompletion: nil)
 
-        XCTAssertNotNil(reauthenticator,
-                        "Reauthenticator must remain valid after authenticateIfNeeded calls")
-        XCTAssertTrue(userAccount === userAccountBefore,
-                      "authenticateIfNeeded must not swap out the caller's userAccount reference")
+        await reauthenticator._awaitPendingAuthenticationsForTesting()
+        XCTAssertEqual(presentations, 2)
     }
 }
 

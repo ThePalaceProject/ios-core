@@ -1,21 +1,11 @@
-//
 //  TPPSAMLLogoutTests.swift
-//  PalaceTests
 //
-//  TDD tests for PP-3452: iOS adoption of CM SP-initiated SAML Single Logout.
-//
-//  CM commit 914bff6 (2026-04-07) added `saml_logout_redirect` which:
-//   - Requires `Authorization: Bearer <token>` header
-//   - Accepts `post_logout_redirect_uri` via RFC 6570 URI template
-//     (`{&post_logout_redirect_uri}`)
-//   - Redirects back with `logout_status=success|partial` query param
-//
-//  iOS today: SAML sign-out is local-only — never calls the CM endpoint,
-//  leaves the CM bearer token valid and IdP session untouched.
-//
-//  Contract source: src/palace/manager/integration/patron_auth/saml/provider.py
-//  (rel=logout link emitted by CM SAML auth document)
-//
+//  PP-3452: SP-initiated SAML Single Logout. CM commit 914bff6 added
+//  `saml_logout_redirect`, which needs `Authorization: Bearer <token>`, takes
+//  `post_logout_redirect_uri` via an RFC 6570 template, and redirects back with
+//  `logout_status=success|partial`. Without it, SAML sign-out was local only and
+//  left the CM token and IdP session live. Contract source:
+//  src/palace/manager/integration/patron_auth/saml/provider.py (rel=logout).
 
 import XCTest
 import PalaceCatalog

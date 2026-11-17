@@ -222,11 +222,9 @@ def test_rejects_unknown_options(tmp_path):
 # in `pytest scripts/tests/` (which tooling-checks.yml runs as a directory glob)
 # while the legacy debt does not block unrelated work. Triage a site, then delete
 # its entry here — moving it to EXEMPT with a reason, or fixing it.
-KNOWN_UNTRIAGED = {
-    ("Palace/Audiobooks/LCP/LCPAudiobooks.swift", "loadContentDictionary"): 6,
-    ("Palace/Reader2/Bookmarks/AudiobookBookmarkBusinessLogic.swift",
-     "saveListeningPosition"): 5,
-}
+# Empty: `LCPAudiobooks.loadContentDictionary` moved to EXEMPT and
+# `AudiobookBookmarkBusinessLogic.saveListeningPosition` now hops to main.
+KNOWN_UNTRIAGED: dict = {}
 
 
 def _tree_findings() -> dict:

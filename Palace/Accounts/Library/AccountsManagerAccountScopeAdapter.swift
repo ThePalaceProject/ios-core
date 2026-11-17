@@ -10,15 +10,11 @@ import Combine
 import PalaceBookRegistry
 
 /// Adapts the concrete `AccountsManager` to the registry's value-only
-/// `AccountScopeProviding` surface (god-class decomposition Wave 2b — the
-/// Book→Accounts dependency inversion). No `Account` / `AccountsManager` /
-/// `TPPUserAccount` type crosses into PalaceBookRegistry; only a uuid, a Void
-/// change signal, a Bool, and a URL do.
+/// `AccountScopeProviding` surface, so no Accounts type crosses into
+/// PalaceBookRegistry.
 ///
-/// `@unchecked Sendable`: the sole stored property is an immutable `let` to the
-/// process-lifetime `AccountsManager` (itself `@unchecked Sendable` — its
-/// `accountSetsLock` guards its reads). This adapter adds no mutable state, so it
-/// inherits the same thread-safety invariant.
+/// `@unchecked Sendable`: the only stored property is an immutable `let` to the
+/// process-lifetime `AccountsManager`; this adapter adds no mutable state.
 final class AccountsManagerAccountScopeAdapter: AccountScopeProviding, @unchecked Sendable {
     private let accountsManager: AccountsManager
 
@@ -40,24 +36,14 @@ final class AccountsManagerAccountScopeAdapter: AccountScopeProviding, @unchecke
         TPPUserAccount.sharedAccount(libraryUUID: accountID).hasCredentials()
     }
 
-    /// Awaits account-details readiness then returns the loans URL — the same
-    /// `awaitReady(timeout:)` → `loansUrl` path the sync engine used to run inline,
-    /// keyed by the captured uuid (AccountsManager's registry is uuid-keyed, so this
-    /// resolves the same `Account` instance and survives a mid-await library switch
-    /// identically). Throws propagate (registry reverts to `.loaded` + retries);
-    /// nil means anonymous (no loansUrl) or account-not-found (safe revert).
+    /// Awaits account-details readiness for the captured uuid, then returns the
+    /// loans URL. Throws propagate (the registry reverts to `.loaded` and retries);
+    /// nil means anonymous (no loansUrl) or account not found.
     ///
-    /// The BOUNDED overload is mandatory here, not a nicety. This is the sole
-    /// bounded `awaitReady` call site in the app: every other consumer is unbounded
-    /// by the ADR's single-timeout policy, because each owns a pipeline-level
-    /// timeout. Registry sync owns none — it is fire-and-forget behind My Books —
-    /// so an unbounded await here is the HelpSpot #18414 load-forever wedge.
-    ///
-    /// Regression history: the Wave 3 S2 seam extraction moved this call out of
-    /// `BookRegistrySync` and silently dropped `timeout:` in the move. The 3.2.3
-    /// hotfix test kept passing because it exercised `Account.awaitReady(timeout:)`
-    /// directly — the helper — never this producer. `BookRegistrySyncTimeoutSeamTests`
-    /// now pins the producer.
+    /// The bounded overload is required. Other `awaitReady` consumers each own a
+    /// pipeline-level timeout; registry sync has none, so an unbounded await here
+    /// is the HelpSpot #18414 load-forever hang. Pinned by
+    /// `BookRegistrySyncTimeoutSeamTests`.
     func loansURL(forAccount accountID: String, readinessTimeout: TimeInterval) async throws -> URL? {
         guard let account = accountsManager.account(accountID) else { return nil }
         let details = try await account.awaitReady(timeout: readinessTimeout)

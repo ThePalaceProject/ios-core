@@ -13,6 +13,7 @@ import FirebaseRemoteConfig
 import FirebaseAnalytics
 import FirebaseCrashlytics
 import PalaceLogging
+import PalaceUtilities
 
 /// Lock-guarded, resume-exactly-once holder for a `CheckedContinuation`, shared
 /// across the two racing tasks in `FirebaseManager.withTimeout`. A
@@ -91,6 +92,7 @@ final class FirebaseManager: @unchecked Sendable {
         case inAppPlaybackNavEnabled = "in_app_playback_nav_enabled"
         case continuationCardsEnabled = "continuation_cards_enabled"
         case sideLoadingEnabled = "side_loading_enabled"
+        case managedLibraryConfigurationEnabled = "managed_library_configuration_enabled"
         case lcpAudiobookStreamingEnabled = "lcp_audiobook_streaming_enabled"
         // App-rating prompt (Epic PP-4086). Master switch + tunable thresholds.
         case appRatingPromptEnabled = "app_rating_prompt_enabled"
@@ -147,7 +149,8 @@ final class FirebaseManager: @unchecked Sendable {
             RemoteConfigKey.inAppPlaybackNavEnabled.rawValue: NSNumber(value: false),
             RemoteConfigKey.continuationCardsEnabled.rawValue: NSNumber(value: false),
             RemoteConfigKey.sideLoadingEnabled.rawValue: NSNumber(value: false),
-            RemoteConfigKey.lcpAudiobookStreamingEnabled.rawValue: NSNumber(value: false),
+            RemoteConfigKey.managedLibraryConfigurationEnabled.rawValue: NSNumber(value: false),
+            RemoteConfigKey.lcpAudiobookStreamingEnabled.rawValue: NSNumber(value: true),
             RemoteConfigKey.appRatingPromptEnabled.rawValue: NSNumber(value: true),
             RemoteConfigKey.appRatingMinSessions.rawValue: NSNumber(value: RatingConfig.fallback.minSessions),
             RemoteConfigKey.appRatingMinBooksCompleted.rawValue: NSNumber(value: RatingConfig.fallback.minBooksCompleted),
@@ -389,19 +392,6 @@ final class FirebaseManager: @unchecked Sendable {
         // Same `@MainActor` UIDevice guard as `getDeviceInfo()` above.
         if let vendorID = Self.currentDeviceConstants().vendorID {
             Crashlytics.crashlytics().setCustomValue(vendorID, forKey: "VendorDeviceID")
-        }
-        #endif
-    }
-
-    /// Sets the user ID for Crashlytics (hashed for privacy).
-    func setCrashlyticsUserID(_ userID: String?) {
-        guard Bundle.main.applicationEnvironment == .production else { return }
-
-        #if FEATURE_CRASH_REPORTING
-        if let userIDmd5 = userID?.md5hex() {
-            Crashlytics.crashlytics().setUserID(userIDmd5)
-        } else {
-            Crashlytics.crashlytics().setUserID("SIGNED_OUT_USER")
         }
         #endif
     }

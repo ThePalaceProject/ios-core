@@ -196,7 +196,12 @@ private struct AccessibilityPreviewView: View {
         }
         .padding(.vertical, 8)
         .animation(preferences.reducedMotion ? nil : .default, value: preferences)
-        .accessibilityElement(children: .contain)
+        // `.ignore`, not `.contain`: everything in here is mock content that
+        // demonstrates contrast and button shapes visually. Under `.contain`
+        // VoiceOver walked "Sample Book Title", "By Sample Author" and a
+        // "Borrow sample book" button whose action is empty. One labelled
+        // element says what the region is and offers nothing to activate.
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel("Preview of accessibility settings")
     }
 }

@@ -17,7 +17,7 @@
 # Usage: scripts/check-objc-witness-nearly-matches.sh <build-log>   ('-' = stdin)
 # Exit 0 = clean; Exit 1 = witness drift found; Exit 2 = usage/log error.
 #
-# Allowlist (optional): OBJC_WITNESS_ALLOWLIST (default .forgeos/objc-witness-allowlist.txt)
+# Allowlist (optional): OBJC_WITNESS_ALLOWLIST (default config/ci/objc-witness-allowlist.txt)
 #   one "substring" per line matched against the offending warning line; '#' comments.
 
 set -uo pipefail
@@ -26,7 +26,7 @@ LOG="${1:-}"
 if [ -z "$LOG" ]; then echo "usage: $0 <build-log|->"; exit 2; fi
 if [ "$LOG" = "-" ]; then SRC=/dev/stdin; else SRC="$LOG"; [ -f "$SRC" ] || { echo "[objc-witness] no such log: $SRC"; exit 2; }; fi
 
-ALLOW="${OBJC_WITNESS_ALLOWLIST:-.forgeos/objc-witness-allowlist.txt}"
+ALLOW="${OBJC_WITNESS_ALLOWLIST:-config/ci/objc-witness-allowlist.txt}"
 
 # For each nearly-matches warning, extract candidate method name (m) and
 # requirement name (r); emit the line only when m == r (same selector = drift).

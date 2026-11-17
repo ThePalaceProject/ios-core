@@ -1,26 +1,12 @@
 //
 //  AudiobookDownloadProgressPolicyTests.swift
-//  PalaceTests
 //
-//  The player's download bar is a promise that something is being waited ON.
-//  For an LCP audiobook the toolkit's "download" is local decryption of tracks
-//  out of the already-present `.lcpa`, and `LCPStreamingPlayer` plays from the
-//  license without waiting for it — so the bar kept running beside working
-//  transport controls. Device recording, build 505: it read 37% then 62% AFTER
-//  the archive had been stored, while the book was playing.
-//
-//  That fix went too far. It hid the bar on `hasStartedPlayback` alone, and
-//  `isDownloading` cannot tell LOCAL DECRYPTION from the NETWORK FETCH of the
-//  `.lcpa` itself. With streaming on, tapping Listen plays immediately while a
-//  0.7-1 GB archive is still transferring — so the bar vanished on the one
-//  transfer whose outcome the patron actually depends on. Measured on Moes Max
-//  (build 507): 'Dungeon Crawler Carl' read `download-successful` in the
-//  registry with NO archive on disk, and would not play in airplane mode.
-//
-//  The rule, stated as the patron experiences it: if playback would FAIL in
-//  airplane mode because the archive is still coming down, show the bar.
-//
-//  Three inputs, eight cells, all eight asserted.
+//  For LCP audiobooks the toolkit's "download" may be local decryption of an
+//  archive already on disk (build 505 showed the bar running during playback)
+//  or the network fetch of a 0.7-1 GB `.lcpa` while streaming plays (build 507:
+//  hiding the bar on playback left a book with no archive on disk). Rule: show
+//  the bar if playback would fail in airplane mode because the archive is still
+//  downloading. Three inputs, eight cells, all asserted.
 //
 
 import XCTest

@@ -2,16 +2,10 @@
 //  CredentialPromptCoordinator.swift
 //  Palace
 //
-//  Owns the start-download credential-prompt path that lived inside
-//  MyBooksDownloadCenter as `requestCredentialsAndStartDownload(for:)`.
-//  This is the path the borrow flow takes when the user account
-//  needs auth but has no stored credentials yet — present a sign-in
-//  modal, gate against concurrent prompts via the shared
-//  CredentialRequestState, and retry the download on success.
-//
-//  Adobe DRM expiry short-circuits the modal with the dedicated
-//  expired-Adobe alert so the user gets a clearer message than a
-//  generic sign-in prompt.
+//  The start-download path for an account that needs auth but has no stored
+//  credentials: present a sign-in modal (deduplicated via the shared
+//  CredentialRequestState) and retry the download on success. An expired
+//  Adobe certificate shows the dedicated alert instead of the modal.
 //
 
 import Foundation
@@ -30,28 +24,13 @@ protocol CredentialPromptCoordinatorDelegate: AnyObject {
 
 /// Coordinates the per-borrow credential-prompt flow.
 ///
-/// `@unchecked Sendable` (Swift 6 `complete`-mode): `requestCredentialsAndStartDownload`
-/// captures `[weak self]` into a `@Sendable Task { @MainActor … }`, so the
-/// coordinator must be `Sendable`. The conformance is honest — every stored
-/// member is immutable-after-init or main-actor-confined:
-///   • `delegate` — `weak var`, wired once during owner (`MyBooksDownloadCenter`)
-///     construction and read only on the main actor (via `self.delegate` inside
-///     the `@MainActor` Task bodies). Never captured directly across the
-///     `@Sendable` boundary — it is re-resolved through `self`.
-///   • `stateManager` — `let`; its mutable storage is the actor-isolated
-///     `DownloadCoordinator`/`SafeDictionary` it owns.
-///   • `userAccountProvider` — `let` closure, invoked only inside the
-///     `@MainActor` Task body.
-///   • `credentialRequestState` — `let`; itself `@unchecked Sendable`
-///     (its `isRequestingCredentials` bool is main-actor-confined by
-///     convention — every access in this coordinator is inside a
-///     `Task { @MainActor }` body; the confinement is not compiler-enforced,
-///     tracked for a follow-up `@MainActor` annotation on the property).
-///   • `presentSignInModal` / `isAdobeDRMExpired` / `presentAdobeExpiredAlert`
-///     — `let` closures; the two UI-presenting ones are `@MainActor`-typed and
-///     are only ever invoked from the `@MainActor` Task body, so no closure
-///     value crosses an isolation boundary in a racy way.
-/// `final`, so the invariant can't be defeated by a subclass.
+/// `@unchecked Sendable` because `requestCredentialsAndStartDownload` captures
+/// `[weak self]` into a `@Sendable` main-actor Task. Every stored member is a
+/// `let` or main-actor-confined: `delegate` is set once during
+/// `MyBooksDownloadCenter` construction and re-resolved through `self` on the
+/// main actor; the closures and `credentialRequestState` are only used inside
+/// the `@MainActor` Task body (the latter's confinement is by convention, not
+/// compiler-enforced). `final`, so a subclass cannot break the invariant.
 final class CredentialPromptCoordinator: @unchecked Sendable {
 
     weak var delegate: CredentialPromptCoordinatorDelegate?

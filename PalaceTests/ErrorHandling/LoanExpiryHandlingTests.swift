@@ -77,6 +77,100 @@ final class ProblemDocumentLoanExpiryTests: XCTestCase {
         let isNoActiveLoan = (errorDict["type"] as? String) == TPPProblemDocument.TypeNoActiveLoan
         XCTAssertTrue(isNoActiveLoan)
     }
+
+    /// A `no-active-loan` failure means the loan ran its course, so the text the
+    /// patron is shown has to say that. "Book not found in registry" and "Book is
+    /// in an invalid state" both report something wrong with the book instead
+    /// (PP-5397).
+    func testNoActiveLoan_messageNamesTheEndedLoan() async throws {
+        let mapped = try await Self.mapNoActiveLoanProblemDocument()
+
+        guard case .bookRegistry(let registryError) = mapped else {
+            return XCTFail("no-active-loan should map to a book-registry error, got \(mapped)")
+        }
+        let description = try XCTUnwrap(registryError.errorDescription)
+        XCTAssertTrue(description.lowercased().contains("loan"),
+                      "the message must name the loan; got \"\(description)\"")
+        XCTAssertFalse(description.lowercased().contains("invalid state"),
+                       "an ended loan is not an invalid state; got \"\(description)\"")
+        XCTAssertFalse(description.lowercased().contains("not found"),
+                       "the book exists and is borrowable; got \"\(description)\"")
+    }
+
+    /// The recovery line has to point at the one action that works: borrow it again.
+    func testNoActiveLoan_recoverySuggestionTellsThemToBorrowAgain() async throws {
+        let mapped = try await Self.mapNoActiveLoanProblemDocument()
+
+        guard case .bookRegistry(let registryError) = mapped else {
+            return XCTFail("no-active-loan should map to a book-registry error, got \(mapped)")
+        }
+        let suggestion = try XCTUnwrap(registryError.recoverySuggestion)
+        XCTAssertTrue(suggestion.lowercased().contains("borrow"),
+                      "the recovery line must name borrowing; got \"\(suggestion)\"")
+    }
+
+    /// A real `no-active-loan` problem document, as the circulation manager
+    /// serves it on a borrow whose loan has ended.
+    static func makeNoActiveLoanProblemDocument() throws -> TPPProblemDocument {
+        let dict: [String: Any] = [
+            "type": TPPProblemDocument.TypeNoActiveLoan,
+            "title": "No active loan",
+            "status": 400,
+            "detail": "You have no active loan for this title."
+        ]
+        let data = try JSONSerialization.data(withJSONObject: dict)
+        return try XCTUnwrap(TPPProblemDocument.fromProblemResponseData(data))
+    }
+
+    /// Walks the whole path the patron's text walks: the production parser, the
+    /// problem-document wrap the feed service throws, and the reconstruction
+    /// every caller does on the way back. Mapping alone is not what decides the
+    /// string, so pinning only the parser would not see a regression here.
+    static func mapNoActiveLoanProblemDocument() async throws -> PalaceError {
+        let problemDoc = try makeNoActiveLoanProblemDocument()
+        let mapped = await OPDSFeedService().parseProblemDocument(problemDoc)
+        let thrown = OPDSFeedService.attachingProblemDocument(problemDoc, to: mapped)
+        return PalaceError.from(thrown)
+    }
+
+    /// The wrap must not lose which error it wrapped. Without this the inner
+    /// case is rebuilt from a fixed table keyed on the top-level case index, so
+    /// every book-registry failure arrives as `invalidState` (PP-5397).
+    func testProblemDocumentWrap_keepsTheInnerRegistryCase() throws {
+        let doc = try Self.makeNoActiveLoanProblemDocument()
+        let wrapped = OPDSFeedService.attachingProblemDocument(doc, to: .bookRegistry(.loanEnded))
+
+        guard case .bookRegistry(let registryError) = PalaceError.from(wrapped) else {
+            return XCTFail("the wrap lost the error's category")
+        }
+        XCTAssertEqual(registryError, .loanEnded,
+                       "the wrap must give back the case it wrapped")
+    }
+
+    /// The same loss applies to every category, so it is pinned beyond the one
+    /// case PP-5397 needed.
+    func testProblemDocumentWrap_keepsOtherCategoriesToo() throws {
+        let doc = try Self.makeNoActiveLoanProblemDocument()
+        let wrapped = OPDSFeedService.attachingProblemDocument(doc, to: .network(.forbidden))
+
+        guard case .network(let networkError) = PalaceError.from(wrapped) else {
+            return XCTFail("the wrap lost the error's category")
+        }
+        XCTAssertEqual(networkError, .forbidden,
+                       "a forbidden response must not come back as an unknown one")
+    }
+
+    /// Preserving the error must not cost the problem document, which is the
+    /// reason the wrap exists: the alert prefers the server's own detail.
+    func testProblemDocumentWrap_stillCarriesTheProblemDocument() throws {
+        let doc = try Self.makeNoActiveLoanProblemDocument()
+        let wrapped = OPDSFeedService.attachingProblemDocument(doc, to: .bookRegistry(.loanEnded))
+
+        XCTAssertNotNil(wrapped.userInfo["problemDocument"] as? TPPProblemDocument,
+                        "the problem document must still ride along")
+        XCTAssertEqual(wrapped.userInfo["problemDocumentDetail"] as? String,
+                       "You have no active loan for this title.")
+    }
 }
 
 // MARK: - Expired Loan Strings

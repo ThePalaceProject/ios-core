@@ -4,6 +4,12 @@ import Foundation
 /// subject / body / attachment set. Lives in TriageBotCore (not TriageBotIOS)
 /// so it can be unit-tested without UIKit or MessageUI, and so a non-email
 /// gateway (server-side, Android, etc.) can reuse the same payload shape.
+///
+/// Every human-readable string names the platform by reading `context.platform`
+/// rather than a compile-time literal. Four strings here used to hardcode iOS,
+/// which meant a reuse of this composition would have stamped "Palace iOS
+/// support" on an Android report while the only accurate answer sat unread in
+/// `palace-diagnostics.json`.
 public enum TicketEmailComposition {
 
     public struct Attachment: Equatable, Sendable {
@@ -20,7 +26,7 @@ public enum TicketEmailComposition {
 
     /// Subject line. Categorizes the issue so support's inbox sorts cleanly.
     public static func subject(for draft: TicketDraft) -> String {
-        "Palace iOS support: \(draft.category.rawValue) issue"
+        "Palace \(draft.context.platform) support: \(draft.category.rawValue) issue"
     }
 
     /// Email body. Short by design — the full payload is in the JSON
@@ -70,7 +76,7 @@ public enum TicketEmailComposition {
         lines.append("  App: \(ctx.appVersion) (\(ctx.appBuild))")
         lines.append("  Build channel: \(ctx.buildChannel ?? "unknown")")
         lines.append("  Device: \(ctx.deviceModel)")
-        lines.append("  iOS: \(ctx.osVersion)")
+        lines.append("  \(ctx.platform): \(ctx.osVersion)")
         if let library = ctx.libraryName { lines.append("  Library: \(library)") }
         if let barcode = ctx.libraryBarcode { lines.append("  Library card (hashed): \(barcode)") }
         if let dist = ctx.distributor { lines.append("  Distributor: \(dist)") }
@@ -92,7 +98,7 @@ public enum TicketEmailComposition {
         lines.append("Full diagnostics: see palace-diagnostics.json attached.")
         lines.append("")
         lines.append("Thanks,")
-        lines.append("(Sent from the Palace iOS in-app triage bot)")
+        lines.append("(Sent from the Palace \(draft.context.platform) in-app triage bot)")
         return lines.joined(separator: "\n")
     }
 
@@ -120,10 +126,10 @@ public enum TicketEmailComposition {
         if !draft.context.recentLogLines.isEmpty {
             let isoFormatter = ISO8601DateFormatter()
             let header = """
-            Palace iOS — recent log tail
+            Palace \(draft.context.platform) — recent log tail
             Captured: \(isoFormatter.string(from: draft.context.capturedAt))
             App: \(draft.context.appVersion) (\(draft.context.appBuild))
-            Device: \(draft.context.deviceModel) / iOS \(draft.context.osVersion)
+            Device: \(draft.context.deviceModel) / \(draft.context.platform) \(draft.context.osVersion)
             Note: tokens, credentials, emails, and account UUIDs are redacted.
 
             """

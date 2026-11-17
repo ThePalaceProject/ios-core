@@ -1,20 +1,10 @@
-//
 //  TPPLastReadPositionSynchronizerTests.swift
-//  PalaceTests
 //
-//  Comprehensive unit tests for TPPLastReadPositionSynchronizer.
-//
-//  This file tests the REAL TPPLastReadPositionSynchronizer class.
-//  Mocks are used ONLY for dependency injection (TPPBookRegistryProvider).
-//
-//  Testing Strategy:
-//  - The `sync()` method relies on static `TPPAnnotations.syncReadingPosition()` which cannot
-//    be easily mocked. We test the sync DECISION LOGIC in isolation using `SyncDecisionHelper`.
-//  - We test the real synchronizer's interaction with the book registry.
-//  - We test bookmark and location data structures used by the synchronizer.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Tests the real TPPLastReadPositionSynchronizer; mocks only stand in for
+//  injected dependencies (TPPBookRegistryProvider). `sync()` calls the static
+//  `TPPAnnotations.syncReadingPosition()`, which cannot be mocked, so the sync
+//  decision logic is tested through `SyncDecisionHelper`, alongside the
+//  synchronizer's registry interaction and bookmark/location data.
 
 import XCTest
 import ReadiumShared
@@ -116,21 +106,16 @@ struct SyncDecisionHelper {
             return false
         }
 
-        let deviceID = bookmark.device ?? ""
-        let serverLocationString = bookmark.location
-
-        // 1. Same device with existing local position - server takes no precedence
-        if deviceID == drmDeviceID && localLocation != nil {
-            return false
-        }
-
-        // 2. Server and client have the same position - no sync needed
-        if localLocation?.locationString == serverLocationString {
-            return false
-        }
-
-        // Server position differs and should be presented to user
-        return true
+        // PP-5138: this used to be a hand-written copy of the production rule,
+        // annotated "mirrors the logic in syncReadPosition". It did not — and
+        // could not fail when production drifted, because the copy was the only
+        // thing under test. Every case below now drives the shipped rule.
+        return TPPLastReadPositionSynchronizer.shouldPresentServerPosition(
+            serverDevice: bookmark.device ?? "",
+            serverLocationString: bookmark.location,
+            localLocationString: localLocation?.locationString,
+            drmDeviceID: drmDeviceID
+        )
     }
 }
 
@@ -456,7 +441,11 @@ final class TPPLastReadPositionSynchronizerTests: XCTestCase {
         XCTAssertTrue(shouldSync, "Should sync when local device ID is nil but server has device")
     }
 
-    func testSyncDecision_WhenServerDeviceIsNilAndLocalDeviceIDEmpty_ReturnsFalse() {
+    /// INVERTED 2026-09-21 (PP-5138 review) — same reasoning as above, for
+    /// the nil spelling. `nil`, `""` and the spec's shared `"null"` are three
+    /// spellings of one fact: this device did not identify itself. Fixing one
+    /// and leaving the others would keep the rejected assumption alive.
+    func testSyncDecision_WhenServerDeviceIsNilAndLocalDeviceIDEmpty_Prompts() {
         // Arrange - server bookmark with nil device becomes ""
         let serverBookmark = MockSyncAnnotationsProvider.createBookmark(
             location: "{\"progressWithinBook\":0.9}",
@@ -474,8 +463,9 @@ final class TPPLastReadPositionSynchronizerTests: XCTestCase {
             drmDeviceID: ""  // Matches "" from bookmark
         )
 
-        // Assert - Same device (both empty) with local position = no sync
-        XCTAssertFalse(shouldSync)
+        // Assert - an absent stamp is not an identity
+        XCTAssertTrue(shouldSync,
+                      "A nil server stamp against an empty local one identifies nothing and must prompt")
     }
 
     func testSyncDecision_WhenBothDeviceIDsNilButLocalExists_ReturnsTrue() {
@@ -636,7 +626,24 @@ final class TPPLastReadPositionSynchronizerTests: XCTestCase {
 
     // MARK: - Edge Cases
 
-    func testSyncDecision_WhenServerBookmarkHasEmptyDevice_AndLocalDeviceEmpty_ReturnsFalse() {
+    /// INVERTED 2026-09-21 (PP-5138 review). This used to assert `false`, on
+    /// the comment "Same device (both empty) with local position = no sync
+    /// needed". That is an assumption, not an observation: an empty stamp
+    /// does not name a device, so two DIFFERENT devices both reporting ""
+    /// were read as one and the patron would be silently never offered the
+    /// other's position.
+    ///
+    /// PRECISION ON THE EVIDENCE (corrected after review): the FIELD report
+    /// behind PP-5138 is the dialect mismatch, not this collision. Both
+    /// production call sites pass `AnnotationDevice.currentID()`, which is
+    /// non-optional and never "", and the `"null"` arm needs
+    /// `FirebaseManager.deviceID` empty when it is a generated-if-absent
+    /// UUID — so these arms are currently unreachable in production. This is
+    /// defence-in-depth against a wrong inference, found in review, and the
+    /// comment previously claimed field evidence it does not have.
+    ///
+    /// Positions differ here, so rule 2 cannot suppress — this isolates rule 1.
+    func testSyncDecision_WhenServerBookmarkHasEmptyDevice_AndLocalDeviceEmpty_Prompts() {
         // Arrange - server returns bookmark with empty device string
         let serverBookmark = MockSyncAnnotationsProvider.createBookmark(
             location: "{\"progressWithinBook\":0.5}",
@@ -654,8 +661,9 @@ final class TPPLastReadPositionSynchronizerTests: XCTestCase {
             drmDeviceID: ""  // Match empty device
         )
 
-        // Assert - Same device (both empty) with local position = no sync needed
-        XCTAssertFalse(shouldSync, "Should not sync when both devices are empty and local position exists")
+        // Assert - two unidentified stamps are not evidence of one device
+        XCTAssertTrue(shouldSync,
+                      "Two empty device stamps identify nothing and must not be read as the same device — suppressing here is the silent loss of cross-device sync PP-5138 reports")
     }
 
     // MARK: - Bookmark Property Tests
@@ -1777,5 +1785,93 @@ final class TPPLastReadPositionSynchronizer_WriterDelegationTests: XCTestCase {
         let storedLocation = bookRegistryMock.location(forIdentifier: testBook.identifier)
         XCTAssertEqual(storedLocation?.locationString, locationString,
                        "Equal server+local locations must not mutate the registry")
+    }
+}
+
+// MARK: - PP-5138 follow-up: a non-identifying stamp is not a device identity
+
+/// Rule 1 of `shouldPresentServerPosition` suppresses the prompt when the
+/// server's position came from THIS device. It compares two `String?` values,
+/// so anything that does NOT identify a device — `nil`, `""`, or the spec's
+/// literal `"null"` fallback (which Android also sends) — compares equal to
+/// itself and satisfies the rule. Two *different* devices both reporting one
+/// of those look like the same device, so the patron is silently never
+/// offered the other device's position.
+///
+/// That is the inverse of the defect PP-5138 fixes, and worse: an over-prompt
+/// is visible and irritating; an under-prompt is invisible. Found in review.
+///
+/// Every case below uses two DIFFERENT positions so rule 2 (`samePosition`)
+/// cannot suppress the prompt — these isolate rule 1.
+final class TPPLastReadPositionSynchronizer_NonIdentifyingDeviceTests: XCTestCase {
+
+    private let serverPos = #"{"@type":"LocatorHrefProgression","href":"/chapter2.xhtml","progressWithinChapter":0.62}"#
+    private let localPos  = #"{"@type":"LocatorHrefProgression","href":"/chapter1.xhtml","progressWithinChapter":0.10}"#
+
+    private func prompts(server: String?, drm: String?) -> Bool {
+        TPPLastReadPositionSynchronizer.shouldPresentServerPosition(
+            serverDevice: server,
+            serverLocationString: serverPos,
+            localLocationString: localPos,
+            drmDeviceID: drm
+        )
+    }
+
+    func testNullSentinelOnBothSides_mustStillPrompt() {
+        XCTAssertTrue(prompts(server: "null", drm: "null"),
+                      "\"null\" is the spec's shared fallback, not a device identity — two devices both reporting it must not be treated as the same device")
+    }
+
+    func testNilOnBothSides_mustStillPrompt() {
+        XCTAssertTrue(prompts(server: nil, drm: nil),
+                      "nil == nil must not suppress the prompt; an absent stamp identifies nothing")
+    }
+
+    func testEmptyStringOnBothSides_mustStillPrompt() {
+        XCTAssertTrue(prompts(server: "", drm: ""),
+                      "an empty stamp identifies nothing and must not suppress the prompt")
+    }
+
+    /// Regression guard: the rule must still do its job for a real identity.
+    func testGenuineSameDevice_doesNotPrompt() {
+        let id = "urn:uuid:11111111-2222-3333-4444-555555555555"
+        XCTAssertFalse(prompts(server: id, drm: id),
+                       "a real, equal device id with a local position present must still suppress the prompt")
+    }
+
+    /// Asymmetric pairs. Recommended in review: the matched pairs above all
+    /// compare equal today, so a future "fix" that NORMALISED every
+    /// non-identifying spelling to one canonical value would make them equal
+    /// again and silently restore the bug. These pin that the three
+    /// spellings may never be collapsed into a shared identity.
+    func testMixedNonIdentifyingSpellings_mustStillPrompt() {
+        XCTAssertTrue(prompts(server: nil, drm: "null"),
+                      "nil and \"null\" are both non-identifying; neither names a device")
+        XCTAssertTrue(prompts(server: "null", drm: ""),
+                      "\"null\" and \"\" are both non-identifying; neither names a device")
+        XCTAssertTrue(prompts(server: "", drm: nil),
+                      "\"\" and nil are both non-identifying; neither names a device")
+    }
+
+    /// The other half of the contract: rule 2 must still suppress when an
+    /// unidentified device is on the SAME page. Without this the inversion
+    /// above could be satisfied by prompting unconditionally.
+    func testUnidentifiedDeviceOnTheSamePage_doesNotPrompt() {
+        let same = #"{"@type":"LocatorHrefProgression","href":"/chapter4.xhtml","progressWithinChapter":0.40}"#
+        XCTAssertFalse(
+            TPPLastReadPositionSynchronizer.shouldPresentServerPosition(
+                serverDevice: "null",
+                serverLocationString: same,
+                localLocationString: same,
+                drmDeviceID: "null"
+            ),
+            "rule 2 must still suppress an identical position regardless of how the device is stamped"
+        )
+    }
+
+    func testDifferentRealDevices_prompt() {
+        XCTAssertTrue(prompts(server: "urn:uuid:aaaaaaaa-0000-0000-0000-000000000001",
+                              drm:    "urn:uuid:bbbbbbbb-0000-0000-0000-000000000002"),
+                      "distinct devices must prompt")
     }
 }

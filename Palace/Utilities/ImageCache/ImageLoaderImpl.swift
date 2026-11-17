@@ -23,23 +23,14 @@ private final class ImageCompletionBox: @unchecked Sendable {
 /// internal — `ImageLoader` is the only thing that knows the registry and the
 /// cache should be talked to together.
 ///
-/// Not `final` so test subclasses can override individual hooks if needed —
-/// per CLAUDE.md "don't make new services final reflexively".
+/// Not `final` so test subclasses can override individual hooks.
 ///
-/// `nonisolated` is load-bearing (Wave 2a), for the same empirical reason as
-/// `ImageCache`: moving the `ImageLoading` protocol out of this app-target
-/// module into the `PalaceBookModel` package changed this conformer's inferred
-/// isolation. That flip stamped a main-executor precondition onto the class —
-/// so constructing it synchronously off the main actor (`_buildCachedAppContainer`
-/// is a nonisolated `static func`, and `AccountsManager`'s background
-/// `loadCatalogs` runs alongside it) tripped `dispatch_assert_queue` →
-/// EXC_BREAKPOINT (SIGTRAP) at launch, crashing the test host before any test
-/// ran. This class is genuinely off-main-safe — every stored property is an
-/// immutable `let` (an actor-backed `TPPBookCoverRegistry` + a `Sendable`
-/// `ImageCacheType`), it holds no mutable state, and every main-only touch
-/// (`UIScreen.main.scale`, the completion callbacks) is already an explicit
-/// `await MainActor.run` hop — so `nonisolated` restores the pre-extraction
-/// base behavior exactly rather than papering over a real main-thread need.
+/// `nonisolated` is required: with `ImageLoading` declared in the
+/// `PalaceBookModel` package, this conformer's inferred isolation became main
+/// actor, and constructing it off-main in `_buildCachedAppContainer` hit
+/// `dispatch_assert_queue` (SIGTRAP) at launch. The class is off-main-safe:
+/// only immutable `let`s, and every main-only touch is an explicit
+/// `MainActor.run` hop.
 public nonisolated class ImageLoader: ImageLoading, @unchecked Sendable {
     // @unchecked Sendable: only immutable `let` collaborators (an actor-backed
     // registry + a shared cache), no mutable state — safe to reference across
@@ -80,9 +71,9 @@ public nonisolated class ImageLoader: ImageLoading, @unchecked Sendable {
     }
 
     /// Returns the cached cover image at the display size if already populated,
-    /// otherwise delegates to the registry. Matches the registry's keying
-    /// (`<identifier>_<px>px`) so a cache pre-warmed by an earlier read at the
-    /// same display height is honored without re-fetch.
+    /// otherwise delegates to the registry. Uses the registry's own sizing and
+    /// key helpers so a cache pre-warmed by an earlier read at the same display
+    /// height is honored without re-fetch.
     public func coverImage(for book: TPPBook, displayPoints: CGFloat) async -> UIImage? {
         // A non-finite / non-positive display size (a view mid-layout) would trap at
         // `Int(neededPixels)` below. Fall back to the unsized cover. PP-4772 / 077218fc.
@@ -90,8 +81,8 @@ public nonisolated class ImageLoader: ImageLoading, @unchecked Sendable {
             return await coverImage(for: book)
         }
         let scale = await MainActor.run { UIScreen.main.scale }
-        let neededPixels = min(displayPoints * scale * 1.5, 1200)
-        let key = "\(book.identifier)_\(Int(neededPixels))px"
+        let neededPixels = TPPBookCoverRegistry.decodePixels(displayPoints: displayPoints, scale: scale)
+        let key = TPPBookCoverRegistry.sizedCoverKey(identifier: book.identifier, pixels: neededPixels)
         if let cached = cache.get(for: key) {
             return cached
         }

@@ -2,19 +2,11 @@
 //  DownloadResumeAfterKillTests.swift
 //  PalaceTests
 //
-//  Deep mutation-killing coverage for the partial-resume / kill / 99 %
-//  late-cancel behaviours of the download lifecycle.
-//
-//  These tests do NOT touch DownloadCoordinator or MyBooksDownloadCenter
-//  production code. They drive the BackgroundDownloadHandler.replaceBook /
-//  moveFile / validateDownloadedFile seams and the
-//  DownloadCancellationHandler late-cancel state machine through their
-//  documented public surfaces, with a real FileManager scoped to a per-
-//  test temp directory and stub URL session tasks. The point is to pin
-//  down the file-integrity contract: under a kill mid-download or a
-//  cancel near completion, the system never leaves truncated payload at
-//  the destination URL and never marks the registry .downloadSuccessful
-//  when the bytes on disk are incomplete or invalid.
+//  Pins the partial-resume / kill / 99 % late-cancel behaviour of the download
+//  lifecycle via BackgroundDownloadHandler.replaceBook / moveFile /
+//  validateDownloadedFile and the DownloadCancellationHandler late-cancel state
+//  machine: a kill or near-complete cancel never leaves a truncated payload at
+//  the destination or marks the registry .downloadSuccessful.
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //

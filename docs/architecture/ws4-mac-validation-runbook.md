@@ -1,9 +1,9 @@
 # WS-4 Mac-validation runbook (the promotion-ceiling gate)
 
 The iPad-on-Mac `_exit(0)` static-destructor bypass (commit `e85119b8a`, ADR
-`ipad-on-mac-exit-static-destructor-bypass.md`, changeset `cs_b77ea7cc`) is
+`ipad-on-mac-exit-static-destructor-bypass.md`) is
 **UNVERIFIED** until both checks below pass on a real Apple Silicon **Mac host**
-(needs Chairman authorization + a Mac — NOT runnable from a sim worktree).
+(needs a Mac; not runnable on a simulator).
 Unit-green ≠ verified. This runbook is executable verbatim.
 
 ## What we're proving
@@ -146,8 +146,8 @@ behavior unchanged.
 
 ## Promotion gate
 
-`cs_b77ea7cc` does **not** advance past the testing/verification gate until
-CHECK 1 = CONFIRMED and CHECK 2 = PASS. Behind M0 regardless. On pass, fold in
+The bypass is not verified until CHECK 1 = CONFIRMED and CHECK 2 = PASS.
+On pass, fold in
 the two non-blocking review findings (stale `iPadOnMacRMSDKGuardTests` file
 header describing the old #928 approach; ADR coverage-section note that the
 side-effecting `registerStaticDestructorBypassIfNeeded` atexit path is covered

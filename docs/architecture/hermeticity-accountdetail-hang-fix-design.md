@@ -1,7 +1,7 @@
 # Design — AccountDetailViewModel hang class (hermeticity leaker hunt)
 
 **Status:** design-for-review (SoD). Investigation complete; see
-`.forgeos/intent/hermeticity-leaker-accountdetail-vm.md` for the real-artifact
+intent `hermeticity-leaker-accountdetail-vm` for the real-artifact
 reproduction + spindump root cause.
 **Owner:** test-hermeticity leaker hunt (palace-hermeticity).
 **Approved direction (Chairman, 2026-06-29):** systemic, not the amplifier patch.

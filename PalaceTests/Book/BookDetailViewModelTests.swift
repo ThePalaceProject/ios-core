@@ -19,7 +19,7 @@ import PalaceBookRegistry
 @MainActor
 final class BookDetailViewModelTests: XCTestCase {
 
-    /// Per-test isolated AppContainer (swarm_47883816 work package A).
+    /// Per-test isolated AppContainer.
     /// Replaces ~22 in-test reads of `AppContainer.production().*`. Fresh
     /// per setUp so collaborators (downloadCenter, accountsManager,
     /// opdsFeedService, samplePreviewManager, readerService) used by the
@@ -1124,7 +1124,7 @@ final class BookDetailViewModelTests: XCTestCase {
     // testBookDetailViewModel_handleAction_readStreaming_callsDidSelectReadStreaming
     // (asserts showHalfSheet flips false). The .read/.listen completion runs
     // through TPPSignInBusinessLogic.ensureAuthenticationDocumentIsLoaded
-    // (async + auth doc load + possible sign-in modal) and BookService.open,
+    // (async + auth doc load + possible sign-in modal) and BookOpenRouter.open,
     // which have no deterministic VM-level seam, so those two remain covered by
     // on-device verification (iPhone + iPad), consistent with the existing
     // (untested) .reserve/.return dismissals.

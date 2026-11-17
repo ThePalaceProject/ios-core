@@ -1,6 +1,6 @@
 # State-Management Doctrine (ADR)
 
-**Status:** Accepted · swarm `swarm_8ce6f5ae` (WS1) · supersedes the ambient,
+**Status:** Accepted · supersedes the ambient,
 undeclared conventions previously spread across `CLAUDE.md` and the code.
 **Authority:** This is the single source of truth for *how state is held, mutated,
 and observed* in Palace. Contracts B–F of this campaign conform to it; Contract F

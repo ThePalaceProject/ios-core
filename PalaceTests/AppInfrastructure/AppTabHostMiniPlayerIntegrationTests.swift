@@ -2,35 +2,13 @@
 //  AppTabHostMiniPlayerIntegrationTests.swift
 //  PalaceTests
 //
-//  Module D (swarm_0b7616e7) — integration tests for AppTabHostView's
-//  presenter-driven mini-player + fullScreenCover bindings, and
-//  NavigationHostView's reader-suppression modifier wiring.
-//
-//  Per the contract's scope-deferral protocol option (a): no SwiftUI
-//  host harness exists in PalaceTests. The integration tests therefore:
-//
-//    1. Construct AppTabHostView with a test-seamed AppContainer via
-//       `withAudiobookSessionPresenter(spy)` so the same spy presenter
-//       the view binds to is observable from the test. Module D's
-//       contract-mandated SUT-instantiation gate (`grep -c
-//       "AppTabHostView("`) is satisfied.
-//    2. Drive the spy presenter through its production seam (`expand()`,
-//       `minimize()`, `presentOnFirstOpen()`, `isReaderActive = true/false`)
-//       and assert on the spy's call counters + published state. This
-//       is the SAME observable behavior the AppTabHostView's
-//       `fullScreenCover(isPresented:)` binding and the mini-player's
-//       visibility predicate read.
-//    3. For NavigationHostView reader-suppression, instantiate a real
-//       `NavigationCoordinator` (no-arg init available — verified at
-//       AppContainerTests.swift:55) and drive its `path` via `push(.epub)`
-//       / `push(.pdf)`. Then exercise the `tracksReaderActive` modifier
-//       semantics through the spy presenter — proving the round-trip
-//       contract per CLAUDE.md "Round-trip wiring tests required for
-//       state machines" (test 16 below).
-//
-//  These tests pin all the wiring claims Contract D makes; without a
-//  SwiftUI host harness, they're the closest mechanically-valid proof
-//  we can get.
+//  Integration tests for AppTabHostView's presenter-driven mini-player +
+//  fullScreenCover bindings and NavigationHostView's reader-suppression
+//  wiring. With no SwiftUI host harness, they build AppTabHostView with a
+//  spy presenter via `withAudiobookSessionPresenter(spy)`, drive the spy's
+//  production seam, and assert on the state the bindings read. Reader
+//  suppression drives a real `NavigationCoordinator` via `push(.epub)` /
+//  `push(.pdf)` through the `tracksReaderActive` modifier.
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //
@@ -188,9 +166,8 @@ final class AppTabHostMiniPlayerIntegrationTests: XCTestCase {
     /// Contract test 15 — `testNavigationHostView_popsEpubRoute_setsIsReaderActiveFalse`.
     /// Pairs with test 14: push then pop. Reader-suppression must end
     /// when the EPUB view's `onDisappear` fires.
-    /// Mutates: a latched-true regression that doesn't reset on
-    /// disappear would fail the final assertion. CLAUDE.md round-trip
-    /// rule.
+    /// A latched-true regression that doesn't reset on disappear fails
+    /// the final assertion.
     func testNavigationHostView_popsEpubRoute_setsIsReaderActiveFalse() {
         // Arrange
         let coordinator = NavigationCoordinator()
@@ -211,16 +188,9 @@ final class AppTabHostMiniPlayerIntegrationTests: XCTestCase {
     // MARK: - Contract test 16 — round-trip across EPUB and PDF
 
     /// Contract test 16 — `testReaderActive_drivenThroughTwoRoutePushes_andTwoPops_acrossEpubAndPdf`.
-    /// The CLAUDE.md state-machine round-trip wiring requirement.
-    /// PRE: fresh presenter + coordinator.
-    /// EXPECTED: drive the four transitions through the production
-    /// seam (push .epub → onAppear true, pop → onDisappear false, push
-    /// .pdf → onAppear true, pop → onDisappear false). Body MUST do all
-    /// FOUR transitions — `check-test-name-vs-body.py` will require all
-    /// PascalCase nouns embedded in the name.
-    /// Mutates: any regression that latches isReaderActive or skips a
-    /// modifier-application on .epub OR .pdf sub-branches fails this
-    /// round-trip test.
+    /// Drives all four transitions through the production seam (push .epub
+    /// → true, pop → false, push .pdf → true, pop → false), so latching
+    /// isReaderActive or skipping the modifier on either route fails.
     func testReaderActive_drivenThroughTwoRoutePushes_andTwoPops_acrossEpubAndPdf() {
         // Arrange
         let coordinator = NavigationCoordinator()

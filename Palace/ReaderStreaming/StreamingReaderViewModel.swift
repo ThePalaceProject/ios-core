@@ -8,8 +8,7 @@
 //  offset on dismiss so reopens land at the saved position.
 //
 //  Online-only: if reachability says offline at init (or after `reload()`),
-//  the VM emits `.offline` and never loads the URL — see anti-claims in
-//  `.forgeos/intent/pp-4161-streaming-html-reader.md`.
+//  the VM emits `.offline` and never loads the URL.
 //
 
 import Combine

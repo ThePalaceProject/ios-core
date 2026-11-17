@@ -1,21 +1,12 @@
 //
 //  AuthDecisionPayloadTests.swift
-//  PalaceAuthTests
 //
-//  Tests that exercise `AuthDecisionPayload` emission shape from the
-//  `AuthErrorClassifier` and `AuthCoordinator` seams. These tests prove:
-//
-//  1. Each instrumented surface point emits exactly one payload per call.
-//  2. The payload fields (idp, library, status, decision, correlation,
-//     callSite) are populated from the right sources.
-//  3. The decision string mapping is stable — Crashlytics dashboard
-//     filters rely on these strings being literal.
-//  4. `dashboardFields` produces a flat dictionary suitable for the main
-//     target's `errorUserInfo` (no nested keys, absent fields dropped).
-//
-//  Spy lives at the bottom of this file so PalaceAuthTests stays
-//  self-contained — `PalaceTests/Mocks/SpyAuthDecisionRecorder.swift` is
-//  the main-target equivalent for the Xcode-bundle tests.
+//  Pins `AuthDecisionPayload` emission from the `AuthErrorClassifier` and
+//  `AuthCoordinator` seams: one payload per call, fields from the right
+//  sources, stable decision strings (Crashlytics dashboard filters match them
+//  literally), and a flat `dashboardFields` dictionary. The spy is at the
+//  bottom so this package stays self-contained;
+//  `PalaceTests/Mocks/SpyAuthDecisionRecorder.swift` is the app-target twin.
 //
 
 import XCTest

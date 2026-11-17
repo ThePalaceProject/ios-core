@@ -53,6 +53,8 @@ at 1x is the thinly-measured one, not the healthy one.
       --workflow W    workflow name (default "Unit Tests")
       --repo R        owner/name (default: inferred from origin)
       --no-cache      re-download logs instead of reusing them
+      --min-results N fewest test results a log must hold to be read
+                      (default 1 for "UI Journeys", 100 otherwise)
 
 Exit 0 whatever the verdict — this is a diagnostic, not a gate.
 """
@@ -62,6 +64,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -75,6 +78,60 @@ PARALLEL = re.compile(
 SERIAL = re.compile(
     r"Test Case '-\[[\w.]*?([\w]+) ([\w]+)\]' (passed|failed) \(([\d.]+) seconds\)"
 )
+
+# XCTest reports a test killed for exceeding its execution-time allowance as an
+# ordinary `failed` iteration whose duration is exactly that allowance: 120 s by
+# default (`-default-test-execution-time-allowance 120` in
+# scripts/xcode-test-optimized.sh), a whole number of minutes when a test raises
+# its own. On 2026-09-29 almost every CI run lost a DIFFERENT test that way, and
+# the spindumps showed the named test was usually not the cause (a log pipe that
+# stopped draining, a clone's app suspended at launch). Label those iterations
+# `killed` so they are not read as the test's own failure (PP-5273).
+ALLOWANCE_MIN_SECONDS = 120.0
+
+
+def iteration_verdict(verdict: str, secs: str) -> str:
+    """-> passed | failed | killed for one iteration."""
+    if verdict != "failed":
+        return verdict
+    seconds = float(secs)
+    on_whole_minute = abs(seconds - round(seconds / 60.0) * 60.0) < 0.0005
+    return "killed" if seconds >= ALLOWANCE_MIN_SECONDS and on_whole_minute else "failed"
+
+
+def failure_label(verdicts: list[str]) -> str:
+    """Heading for a test in the scan: a real failure outranks a kill."""
+    if "failed" in verdicts:
+        return "FAILED AN ITERATION"
+    return "KILLED AT THE TIME LIMIT"
+
+
+# A failure this many times the passing median is a wall-clock event rather
+# than a logic change. 5x is conservative: the observed incident was 22x, and
+# ordinary run-to-run variance on a shared runner stays well under 5x.
+DURATION_OUTLIER_FACTOR = 5.0
+# One failure against at least this many passes is too thin to name a branch.
+THIN_EVIDENCE_PASSES = 10
+
+
+def classify_new_failure(pass_secs, fail_secs):
+    """How much weight the NEW verdict's accusation can carry.
+
+    Returns "duration-outlier", "thin-evidence", or "branch-signature".
+
+    Separated from the printing so it can be asserted directly. The verdict it
+    qualifies is the one a reader acts on — it says "fix the change, not the
+    environment" — so the decision behind it should be checkable without a
+    network round trip.
+    """
+    if pass_secs and fail_secs:
+        pm = statistics.median(pass_secs)
+        fm = statistics.median(fail_secs)
+        if pm > 0 and fm >= DURATION_OUTLIER_FACTOR * pm:
+            return "duration-outlier"
+    if len(fail_secs) == 1 and len(pass_secs) >= THIN_EVIDENCE_PASSES:
+        return "thin-evidence"
+    return "branch-signature"
 
 
 def sh(cmd: list[str]) -> str:
@@ -92,7 +149,7 @@ def infer_repo() -> str:
 
 def runs(repo: str, workflow: str, limit: int, branch: str | None) -> list[dict]:
     cmd = ["gh", "run", "list", "--repo", repo, "--workflow", workflow,
-           "--limit", str(limit), "--json", "databaseId,headBranch,headSha,conclusion,createdAt"]
+           "--limit", str(limit), "--json", "databaseId,headBranch,headSha,conclusion,createdAt,attempt"]
     if branch:
         cmd += ["--branch", branch]
     import json
@@ -104,8 +161,14 @@ def runs(repo: str, workflow: str, limit: int, branch: str | None) -> list[dict]
         raise SystemExit(2)
 
 
-def log_for(repo: str, run_id: int, use_cache: bool) -> str:
-    cache = os.path.join(tempfile.gettempdir(), f"ci-log-{repo.replace('/', '_')}-{run_id}.txt")
+def log_cache_path(repo: str, run_id: int, attempt: int) -> str:
+    """Cache key includes the attempt: a re-run replaces the run's log."""
+    return os.path.join(tempfile.gettempdir(),
+                        f"ci-log-{repo.replace('/', '_')}-{run_id}-a{attempt}.txt")
+
+
+def log_for(repo: str, run_id: int, use_cache: bool, attempt: int = 1) -> str:
+    cache = log_cache_path(repo, run_id, attempt)
     if use_cache and os.path.exists(cache) and os.path.getsize(cache) > 0:
         return open(cache, encoding="utf-8", errors="replace").read()
     text = sh(["gh", "run", "view", str(run_id), "--repo", repo, "--log"])
@@ -134,6 +197,18 @@ def results_for(log: str, cls: str, method: str | None) -> list[tuple[str, str, 
 # suite (the Palace scheme emits ~8,250) and far above any stub.
 MIN_TEST_LINES = 100
 
+# Workflows that run a handful of tests on purpose. UI Journeys runs three
+# journeys serially, so one result line already measured something; a floor of
+# 100 refused every one of its runs. Any other workflow keeps the floor above.
+MIN_RESULTS_BY_WORKFLOW = {"UI Journeys": 1, "ui-journeys.yml": 1}
+
+
+def min_results_for(workflow: str, override: int | None = None) -> int:
+    """The fewest result lines a log of `workflow` must hold before it is read."""
+    if override is not None:
+        return override
+    return MIN_RESULTS_BY_WORKFLOW.get(workflow, MIN_TEST_LINES)
+
 
 class NotATestLog(Exception):
     """Raised when the input has too few test results to have measured anything."""
@@ -147,10 +222,10 @@ def _iter_results(log: str):
     every deliberately-failing test as a flake forever.
     """
     hits = []
-    for rx, groups in ((PARALLEL, (1, 2, 3)), (SERIAL, (1, 2, 3))):
+    for rx, groups in ((PARALLEL, (1, 2, 3, 5)), (SERIAL, (1, 2, 3, 4))):
         for m in rx.finditer(log):
-            c, meth, verdict = (m.group(g) for g in groups)
-            hits.append((m.start(), f"{c}.{meth}", verdict))
+            c, meth, verdict, secs = (m.group(g) for g in groups)
+            hits.append((m.start(), f"{c}.{meth}", iteration_verdict(verdict, secs)))
     hits.sort(key=lambda h: h[0])
     return hits
 
@@ -197,7 +272,7 @@ def scan_log(log: str) -> dict[str, list[str]]:
     per_test: dict[str, list[str]] = defaultdict(list)
     for _, name, verdict in _iter_results(log):
         per_test[name].append(verdict)
-    return {k: v for k, v in per_test.items() if "failed" in v}
+    return {k: v for k, v in per_test.items() if "failed" in v or "killed" in v}
 
 
 # A window this short cannot support a green verdict on its own. Chosen because
@@ -257,7 +332,7 @@ def scan_clean_verdict_line(span: dict) -> str:
     return line
 
 
-def log_is_readable(log: str) -> bool:
+def log_is_readable(log: str, min_results: int = MIN_TEST_LINES) -> bool:
     """Did we actually get a test log? Distinguishes no-data from no-match.
 
     `gh` returning empty (auth expired, wrong repo, a run whose logs have been
@@ -267,12 +342,12 @@ def log_is_readable(log: str) -> bool:
     looks identical to passing", so without this check that failure mode was
     reachable through the tool's own error path.
     """
-    return len(_iter_results(log)) >= MIN_TEST_LINES
+    return len(_iter_results(log)) >= min_results
 
 
-def scan_run(log: str) -> dict[str, list[str]]:
+def scan_run(log: str, min_results: int = MIN_TEST_LINES) -> dict[str, list[str]]:
     """scan_log() that refuses input it cannot have measured."""
-    if len(_iter_results(log)) < MIN_TEST_LINES:
+    if len(_iter_results(log)) < min_results:
         raise NotATestLog(
             "log contains too few test results to scan — this is a refusal, not "
             "a clean bill of health (an empty or truncated download looks exactly "
@@ -288,7 +363,7 @@ def run_meta(repo: str, run_id: int) -> dict:
     """
     import json
     out = sh(["gh", "run", "view", str(run_id), "--repo", repo,
-              "--json", "headBranch,headSha,conclusion,createdAt"])
+              "--json", "headBranch,headSha,conclusion,createdAt,attempt"])
     try:
         r = json.loads(out)
     except json.JSONDecodeError:
@@ -297,8 +372,17 @@ def run_meta(repo: str, run_id: int) -> dict:
     r.setdefault("headSha", "?" * 8)
     r.setdefault("conclusion", "?")
     r.setdefault("createdAt", "-" * 16)
+    r.setdefault("attempt", 1)
     r["databaseId"] = run_id
     return r
+
+
+def unreadable_window_line(refused: int) -> str:
+    """The verdict when every scanned log was refused: there is no evidence
+    either way, so it must not read as "never ran" or as a clean window."""
+    return (f"VERDICT: no run in the scanned window could be read ({refused} refused, 0 readable).\n"
+            "  Nothing can be concluded about any test from it. Check `gh auth status`, the repo,\n"
+            "  and whether the logs have expired, or widen with --limit.")
 
 
 def run_scan_mode(repo: str, args) -> int:
@@ -311,14 +395,17 @@ def run_scan_mode(repo: str, args) -> int:
         return 0
 
     total_masked = 0
+    total_killed_only = 0
+    refused = 0
     for r in found:
-        log = log_for(repo, r["databaseId"], not args.no_cache)
+        log = log_for(repo, r["databaseId"], not args.no_cache, r.get("attempt") or 1)
         stamp = f"{r['createdAt'][5:16]}  {(r['headBranch'] or '?')[:32]:32s}  run={r['conclusion'] or '-'}"
         try:
-            failures = scan_run(log)
+            failures = scan_run(log, min_results_for(args.workflow, args.min_results))
         except NotATestLog as exc:
             print(f"  {stamp}")
             print(f"    REFUSED: {exc}")
+            refused += 1
             continue
         execs, distinct = log_shape(log)
         hist = depth_histogram(log)
@@ -333,15 +420,24 @@ def run_scan_mode(repo: str, args) -> int:
             continue
         total_masked += len(failures)
         for name, verdicts in sorted(failures.items()):
+            label = failure_label(verdicts)
+            if label != "FAILED AN ITERATION":
+                total_killed_only += 1
             where = ", ".join(f"#{i + 1} {v}" for i, v in enumerate(verdicts))
-            print(f"    FAILED AN ITERATION  {name}\n                         {where}")
+            print(f"    {label}  {name}\n                         {where}")
 
     print()
-    if total_masked:
+    if refused == len(found):
+        print(unreadable_window_line(refused))
+    elif total_masked:
         print(f"VERDICT: {total_masked} test(s) failed an iteration inside the scanned run(s).")
         print("  If the run reported green, retry masked every one of them. A green verdict")
         print("  over a masked failure is not a pass; it is an unread failure. Take each name")
         print("  to `ci-test-history.py <name>` for whose it is, then find-test-polluter.sh.")
+        if total_killed_only:
+            print(f"  {total_killed_only} of them only ever died at the time limit. A kill blames")
+            print("  whatever test was running; read the spindump XCTest attached to it (the")
+            print("  run's test-results artifact) before treating it as that test's defect.")
     else:
         print(scan_clean_verdict_line(window_span(found)))
     return 0
@@ -359,7 +455,13 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--workflow", default="Unit Tests")
     ap.add_argument("--repo")
     ap.add_argument("--no-cache", action="store_true")
+    ap.add_argument("--min-results", type=int,
+                    help="fewest test results a log must hold to be read (default: 1 for "
+                         "UI Journeys, %d otherwise)" % MIN_TEST_LINES)
     args = ap.parse_args(argv[1:])
+    if args.min_results is not None and args.min_results < 1:
+        # At 0 an empty or failed download would read as a run with no failures.
+        ap.error("--min-results must be at least 1")
 
     repo = args.repo or infer_repo()
 
@@ -378,16 +480,21 @@ def main(argv: list[str]) -> int:
 
     print(f"{args.test} — {len(found)} run(s) of {args.workflow!r} on {repo}\n")
     per_branch: dict[str, list[str]] = defaultdict(list)
+    # Durations, so the verdict can weigh HOW a test failed and not only WHERE.
+    pass_secs: list[float] = []
+    fail_secs: list[float] = []
     flaky_runs: list[str] = []
     any_seen = False
+    refused = 0
 
     for r in found:
-        log = log_for(repo, r["databaseId"], not args.no_cache)
+        log = log_for(repo, r["databaseId"], not args.no_cache, r.get("attempt") or 1)
         res = results_for(log, cls, method)
         stamp = f"{r['createdAt'][5:16]}  {r['headSha'][:8]}  {(r['headBranch'] or '?')[:34]:34s}"
-        if not log_is_readable(log):
+        if not log_is_readable(log, min_results_for(args.workflow, args.min_results)):
             print(f"  {stamp}  run={r['conclusion'] or '-':8s}  REFUSED: no test results in this "
                   f"log (not the same as 'test did not run')")
+            refused += 1
             continue
         if not res:
             print(f"  {stamp}  run={r['conclusion'] or '-':8s}  (test not in this run)")
@@ -395,6 +502,11 @@ def main(argv: list[str]) -> int:
         any_seen = True
         verdicts = [v for _, v, _ in res]
         detail = " · ".join(f"{v} {s}s" for _, v, s in res)
+        for _, _v, _secs in res:
+            try:
+                (fail_secs if _v == "failed" else pass_secs).append(float(_secs))
+            except (TypeError, ValueError):
+                pass
         mixed = "passed" in verdicts and "failed" in verdicts
         flag = "  <- MIXED, retry is masking this" if mixed else ""
         if mixed:
@@ -403,6 +515,9 @@ def main(argv: list[str]) -> int:
         per_branch[r["headBranch"] or "?"].append("failed" if "failed" in verdicts else "passed")
 
     print()
+    if refused == len(found):
+        print(unreadable_window_line(refused))
+        return 0
     if not any_seen:
         print(f"VERDICT: {args.test} never ran in the scanned window.")
         print("  Widen with --limit, or check the name — a renamed/never-registered test")
@@ -417,8 +532,34 @@ def main(argv: list[str]) -> int:
         print("  Retry reports the run green while the defect stays. Do NOT re-run to")
         print("  clear it; a test that flips on load is measuring the machine, not the code.")
     elif failing and not (failing & passing) and len(passing) > 0:
+        # Branch-exclusivity is not causation. Before telling someone their diff
+        # introduced a failure, check whether the failure looks like the machine.
+        #
+        # Measured 2026-09-11: this verdict told a branch of TWO files — a shell
+        # script and a pytest, zero Swift — that it had introduced a failure in
+        # RemoteFeatureFlagsTests.testWithTimeout_…. That test had 46 passing
+        # samples at a 0.217s median and ONE failure at 4.851s, 22x the median,
+        # against a 2.0s wall-clock assertion. The diff could not reach Swift
+        # execution at all. The verdict was literally true — it did fail only
+        # there — and its CONCLUSION sent the reader at their own diff.
+        kind = classify_new_failure(pass_secs, fail_secs)
+        outlier = kind == "duration-outlier"
+        thin = kind == "thin-evidence"
+
         print(f"VERDICT: NEW — fails only on {', '.join(sorted(failing))}, passes elsewhere.")
-        print("  This branch introduced it. Fix the change, not the environment.")
+        if outlier:
+            _fm, _pm = statistics.median(fail_secs), statistics.median(pass_secs)
+            print(f"  BUT the failure is a DURATION OUTLIER: {_fm:.3f}s against a passing")
+            print(f"  median of {_pm:.3f}s ({_fm / _pm:.0f}x). A wall-clock bound blown by that")
+            print("  margin is evidence of LOAD, not of the diff. Before changing code, ask")
+            print("  whether the diff touches anything this test executes — if it does not,")
+            print("  the runner is the better suspect and the test is asserting a timing")
+            print("  bound it cannot hold under load.")
+        elif thin:
+            print(f"  Weak evidence: ONE failing sample against {len(pass_secs)} passing. A single")
+            print("  loss is not a branch signature — widen with --limit before acting.")
+        else:
+            print("  This branch introduced it. Fix the change, not the environment.")
     elif failing and passing:
         print(f"VERDICT: MIXED across branches — fails on {', '.join(sorted(failing))}, "
               f"passes on {', '.join(sorted(passing))}.")

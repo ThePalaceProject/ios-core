@@ -15,13 +15,15 @@ accessibility going forward and what (if anything) to rebuild.
 | Capability | Tool | Status |
 |---|---|---|
 | Missing `.accessibilityLabel` / `.accessibilityIdentifier` on changed UI files (static) | `scripts/verify-pr.sh` a11y gate (§6) | **active** — blocks PRs that add UI without labels |
+| Static WCAG 2.1 AA analysis of Swift sources, 21 rules (AccessLint, via `ledger.yml`) | AccessLint | **restored 2026-09-29** — the 0.9.6 and 0.9.7 ledger releases ship no accesslint asset and the fallback URL 404s, so from the 0.9.6 bump until that date it reported "0 issues" having scanned 0 files with 0 rules |
 | Contrast / white-on-white, light **and** dark | simdrive `visual_checks` (vision review, both appearances) | **active** — caught the PP-4168 dark-mode contrast bug |
-| VoiceOver announcements + rotor custom actions (dynamic) | simdrive `get_announcements`, `perform_accessibility_action` | **active** — `.simdrive/journeys/PP-4529-print-page-navigation-voiceover.yaml` |
+| VoiceOver announcements + rotor custom actions (dynamic) | simdrive `get_announcements`, `perform_accessibility_action` | **capability, not a standing suite** — driven on demand. No journey files exist in this repo: `.simdrive/` is absent and nothing under it is tracked. An earlier revision cited `.simdrive/journeys/PP-4529-print-page-navigation-voiceover.yaml`, which is not present. |
 | Element-level runtime audit: contrast ratios, hit-region ≥44pt, clipped/truncated text, element-with-no-label, trait mismatches | `XCUIApplication.performAccessibilityAudit` | **GAP** — no runner since the orphan bundle went |
 | Layout integrity across Dynamic Type sizes | (was `DynamicTypeSnapshotTests`) | **GAP** — partially reachable via simdrive per-size screenshots + vision review, but not an automated audit |
 
-The static gate catches *authoring* omissions; the simdrive journeys catch
-*dynamic* VoiceOver behavior and *visual* contrast. The gap is the **automated,
+The static gate catches *authoring* omissions; simdrive can catch *dynamic*
+VoiceOver behavior and *visual* contrast when someone runs it, but there is no
+stored journey set in this repo, so nothing runs on a schedule. The gap is the **automated,
 element-level runtime audit** — the thing `performAccessibilityAudit` uniquely
 does in one call.
 
@@ -39,8 +41,9 @@ does in one call.
 
 2. **Lean on the active layers (recommended if audit coverage is "nice to have").**
    Static label gate (verify-pr) + simdrive contrast `visual_checks` in both
-   appearances on every gate/dialog screen + simdrive VoiceOver journeys for the
-   dynamic paths. This covers the highest-severity, most-regressed classes
+   appearances on every gate/dialog screen + simdrive VoiceOver runs for the
+   dynamic paths. Note this option is written as though the journeys exist; they
+   do not, so adopting it means authoring them first. This covers the highest-severity, most-regressed classes
    (missing labels, contrast, VoiceOver wiring) without a new target. It does
    **not** cover hit-region size or clipped-text-at-large-Dynamic-Type
    automatically.

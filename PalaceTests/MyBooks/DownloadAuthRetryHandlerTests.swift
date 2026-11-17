@@ -8,9 +8,8 @@
 //  (returns false) cases that pass control back to the caller's alert
 //  path.
 //
-//  Per CLAUDE.md, the auth/retry surface handles user access (effectively
-//  user money for paid library access) so every decision branch must
-//  have a test.
+//  The auth/retry surface is a critical path (patron access), so every
+//  decision branch has a test.
 //
 
 import XCTest
@@ -157,14 +156,12 @@ final class DownloadAuthRetryHandlerTests: XCTestCase {
     }
 
     // MARK: - Foreign-host guard (F-006 / PP-4542): line 234 `statusCode == 401`
-    //         + line 240 `return false` mutants.
+    //         + its `return false`.
     //
-    // The guard at DownloadAuthRetryHandler.swift:234-241 short-circuits a
-    // 401 whose originating host is OUTSIDE the current account's auth
-    // surface (PR #1018 cross-host regression — a biblioboard/Icarus 401
-    // is not our account's session expiry). Two surviving mutants:
-    //   :234 `statusCode == 401` → `!= 401`  — must distinguish 401 vs non-401
-    //   :240 `return false`      → `return true` — the short-circuit's value
+    // The guard short-circuits a 401 whose originating host is OUTSIDE the
+    // current account's auth surface (PR #1018 cross-host regression — a
+    // biblioboard/Icarus 401 is not our account's session expiry). The tests
+    // pin both the 401-vs-non-401 distinction and the short-circuit's value.
     //
     // To exercise the guard the handler must be built WITH a
     // `currentAccountHostsProvider`; the default setUp handler has none
@@ -189,14 +186,9 @@ final class DownloadAuthRetryHandlerTests: XCTestCase {
     /// dispatching any re-auth — even though the account is a browser-SAML
     /// account that WOULD otherwise drive a SAML retry on a same-host 401.
     ///
-    /// Kills :234 `statusCode == 401`→`!= 401`: under the `!=` mutant the
-    /// guard's status clause is false for this 401, so the guard does NOT
-    /// fire, the handler falls through to the normal SAML 401 path, marks
-    /// stale, flips state to `.SAMLStarted` and retries the download —
-    /// every assertion below flips.
-    /// Kills :240 `return false`→`return true`: under the `true` mutant the
-    /// handler claims the failure (handled==true), so the `XCTAssertFalse`
-    /// on `handled` flips.
+    /// If the status clause stopped matching this 401, the handler would fall
+    /// through to the SAML 401 path (stale, `.SAMLStarted`, retry); if the
+    /// guard returned true, `handled` would flip.
     func testHandle_401_foreignHost_browserSAML_shortCircuitsReturnsFalse_noReauth() async throws {
         userAccount._authDefinition = makeAuth(typeRaw: "http://librarysimplified.org/authtype/SAML-2.0")
         userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
@@ -257,15 +249,10 @@ final class DownloadAuthRetryHandlerTests: XCTestCase {
     }
 
     /// A NON-401 (403) from a foreign host must NOT be short-circuited by the
-    /// foreign-host guard — the guard is explicitly 401-only. Under the
-    /// :234 `== 401`→`!= 401` mutant the guard WOULD fire for a 403 from a
-    /// foreign host (because `403 != 401` is true) and return false early.
-    /// Here the account is anonymous-free of any 401 path, so the correct
-    /// behavior for a 403 is the normal fall-through (also false) — to make
-    /// the mutant observable we use an account that, absent the guard, would
-    /// take a DIFFERENT action on the non-401 path: no-credentials +
-    /// loginRequired drives the sign-in modal for ANY status code (Branch 5).
-    /// The guard must NOT intercept that 403, so the modal must still fire.
+    /// foreign-host guard — the guard is explicitly 401-only. The account is
+    /// no-credentials + loginRequired, which drives the sign-in modal for ANY
+    /// status code (Branch 5), so an intercepted 403 is observable: the modal
+    /// must still fire.
     func testHandle_403_foreignHost_noCredentials_guardDoesNotIntercept_signInStillFires() {
         userAccount._authDefinition = makeAuth(typeRaw: "http://opds-spec.org/auth/basic")
         userAccount._credentials = nil
@@ -571,8 +558,7 @@ final class DownloadAuthRetryHandlerTests: XCTestCase {
 
     // MARK: - .credentialPrompt strategy explicit coverage (NEEDS-TEST-3)
     //
-    // Per `.forgeos/audits/phase7-DownloadAuthRetryHandler.md`, the
-    // `.credentialPrompt` case is implicitly grouped with `.none` in the
+    // The `.credentialPrompt` case is implicitly grouped with `.none` in the
     // `switch reauthStrategy { ... case .credentialPrompt, .none: }`. The
     // existing test for `.tokenRefresh` proves one arm of the switch; this
     // test proves the `.credentialPrompt` arm fires the SAME outcome
@@ -586,8 +572,8 @@ final class DownloadAuthRetryHandlerTests: XCTestCase {
 
     /// Branch: 401 + has-creds + `.credentialPrompt` → falls through (returns
     /// false) so caller's alert path runs. Pins the `.credentialPrompt` arm
-    /// of the exhaustive `switch reauthStrategy`. A mutant that re-routed
-    /// `.credentialPrompt` to a different arm would fail this test.
+    /// of the exhaustive `switch reauthStrategy`; re-routing
+    /// `.credentialPrompt` to a different arm fails this test.
     func testHandle_401_withCredentials_credentialPromptStrategy_fallsThroughReturnsFalse() {
         userAccount._authDefinition = makeAuth(typeRaw: "http://opds-spec.org/auth/basic")
         userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
@@ -622,8 +608,8 @@ final class DownloadAuthRetryHandlerTests: XCTestCase {
     // un-authenticated session — surfacing the same 401 in a loop.
 
     /// Re-auth cancelled on the no-credentials path (line 260): user never
-    /// signed in, hasCredentials remains false, retry must NOT fire. Kills
-    /// any mutant that drops the hasCredentials check at line 260.
+    /// signed in, hasCredentials remains false, retry must NOT fire. Pins the
+    /// hasCredentials check.
     func testHandle_401_withoutCredentials_loginRequired_userCancelsSignIn_doesNotRetry() async throws {
         userAccount._authDefinition = makeAuth(typeRaw: "http://opds-spec.org/auth/basic")
         userAccount._credentials = nil
@@ -649,7 +635,7 @@ final class DownloadAuthRetryHandlerTests: XCTestCase {
 
     /// Re-auth cancelled on the OIDC browser path (line 286): user dismissed
     /// the in-app browser, authState stayed `.credentialsStale`. Retry must
-    /// NOT fire. Kills the `authState == .loggedIn` -> `!= .loggedIn` mutant.
+    /// NOT fire. Pins the `authState == .loggedIn` check.
     func testHandle_401_withCredentials_browserOIDC_userCancelsReauth_doesNotRetry() async throws {
         userAccount._authDefinition = makeAuth(typeRaw: "http://palaceproject.io/authtype/OpenIDConnect")
         userAccount._credentials = .barcodeAndPin(barcode: "b", pin: "p")
@@ -698,7 +684,7 @@ private final class SpyDelegate: DownloadAuthRetryHandlerDelegate {
 
 // MARK: - Task lifecycle tests
 //
-// swarm_4e47d4d4 F-iii'-1: the 8 fire-and-forget Task launches inside
+// The 8 fire-and-forget Task launches inside
 // DownloadAuthRetryHandler used to leak handles — once dispatched,
 // nothing could cancel them, and `waitForAsyncCleanup()` had to poll
 // a fixed 150ms window to let them drain. The fix retains each Task
@@ -819,9 +805,8 @@ final class DownloadAuthRetryHandlerTaskLifecycleTests: XCTestCase {
     // MARK: - 1. Tracking
 
     /// Drives two distinct retry paths and asserts the handler retains the
-    /// Tasks for both — proves the retention seam exists (a mutant that
-    /// dropped `inFlightTasks.insert(task)` would leave the count at 0 and
-    /// fail this test).
+    /// Tasks for both — proves the retention seam exists (dropping
+    /// `inFlightTasks.insert(task)` would leave the count at 0).
     func testInFlightTasks_areTrackedWhenLaunched_twoRetryPathsBothRetained() async throws {
         let initialCount = handler.inFlightTaskCount
         XCTAssertEqual(initialCount, 0, "Fresh handler must own no Tasks")
@@ -864,8 +849,8 @@ final class DownloadAuthRetryHandlerTaskLifecycleTests: XCTestCase {
     /// Drives the SAML retry path, immediately cancels all in-flight Tasks
     /// before the retry body's MainActor hop runs, then waits. The
     /// post-cancel Task body MUST short-circuit on the `Task.isCancelled`
-    /// guard — the download retry MUST NOT fire. Kills any mutant that
-    /// removes `if Task.isCancelled { return }` from the body.
+    /// guard — the download retry MUST NOT fire. Pins the
+    /// `if Task.isCancelled { return }` check in the body.
     func testCancelAllInFlightTasks_cancelsAndClearsAndPreventsRetry() async throws {
         driveSAMLRetryPath()
 
@@ -940,8 +925,7 @@ final class DownloadAuthRetryHandlerTaskLifecycleTests: XCTestCase {
     /// Drives 5 retries in sequence (each settles before the next). The
     /// retained-Tasks count must return to 0 after each — proves the
     /// auto-removal seam (`inFlightTasks.remove(task)` at end of body)
-    /// works. A mutant that omits the remove would leave the set growing
-    /// monotonically.
+    /// works. Omitting the remove would leave the set growing monotonically.
     func testInFlightTasks_autoRemoveAfterEachCompletion_setDoesNotGrowUnbounded() async throws {
         for i in 0..<5 {
             let b = TPPBookMocker.mockBook(distributorType: .EpubZip)

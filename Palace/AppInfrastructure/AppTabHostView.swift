@@ -5,6 +5,7 @@ import PalaceNetwork
 import PalaceCatalog
 import PalaceBookModel
 import PalaceBookRegistry
+import PalaceUtilities
 
 /// What a tab-bar tap means. PP-5051 — a tap on the already-selected tab is a
 /// distinct gesture from a switch, and SwiftUI cannot tell them apart for you.
@@ -76,36 +77,31 @@ struct AppTabHostView: View {
         // player + manager + CarPlay bridge all use.
         self._audiobookSessionPresenter = ObservedObject(initialValue: appContainer.audiobookSessionPresenter)
         self._ratingPromptPresenter = ObservedObject(initialValue: appContainer.ratingPromptPresenter)
-        let client = URLSessionNetworkClient()
-        let parser = OPDSParser()
-        let api = DefaultCatalogAPI(client: client, parser: parser, featureFlags: appContainer.featureFlags)
-        // Cache isolation: scope by the *current* account UUID so a single
-        // repository instance can never serve library A's catalog to
-        // library B if it somehow survives a library switch. The closure
-        // is re-read on every cache-key derivation, so account changes
-        // take effect immediately. See `CatalogRepository.cacheKey(for:)`.
-        let accountsManager = appContainer.accountsManager
-        let repository = CatalogRepository(
-            api: api,
-            accountID: { [weak accountsManager] in accountsManager?.currentAccount?.uuid }
-        )
-        _catalogViewModel = StateObject(wrappedValue: CatalogViewModel(
-            repository: repository,
+        _catalogViewModel = StateObject(wrappedValue: Self.makeCatalogViewModel(appContainer: appContainer))
+        _myBooksViewModel = StateObject(wrappedValue: MyBooksViewModel(appContainer: appContainer))
+    }
+
+    /// The main catalog tab's view model, built on `appContainer`'s services.
+    @MainActor
+    static func makeCatalogViewModel(appContainer: AppContainer) -> CatalogViewModel {
+        // The container's repository is the one the search and lane screens
+        // use, so the tab shares their account-scoped feed cache and sends
+        // requests through the container's network executor.
+        return CatalogViewModel(
+            repository: appContainer.catalogRepository,
             topLevelURLProvider: { appContainer.settings.accountMainFeedURL },
             bookRegistry: appContainer.bookRegistry,
             imageCache: appContainer.imageCache,
-            // Module D (swarm_495a88d9 / PP-2679): the "Side Loaded" catalog lane.
-            // The flag gate lives HERE (not in the VM) — the provider returns []
-            // when side-loading is off, so the VM never sees the flag and the lane
-            // simply doesn't appear. Read lazily so registry/flag changes take
-            // effect on the next catalog conversion.
+            // PP-2679: the "Side Loaded" catalog lane. The flag gate lives here,
+            // not in the VM — the provider returns [] when side-loading is off.
+            // Read lazily so registry/flag changes take effect on the next
+            // catalog conversion.
             sideloadedLaneBooksProvider: {
                 appContainer.featureFlags.isSideLoadingEnabled
                     ? appContainer.sideloadedBookRegistry.allBooks
                     : []
             }
-        ))
-        _myBooksViewModel = StateObject(wrappedValue: MyBooksViewModel(appContainer: appContainer))
+        )
     }
 
     // Mini-player inset modifier. Applied to each tab's NavigationHostView
@@ -361,17 +357,26 @@ struct AppTabHostView: View {
     @ViewBuilder
     static func tabLabel(for tab: AppTab) -> some View {
         switch tab {
+        // Each `Label`'s title is the tab's accessible name, so the raster
+        // icon beside it is decoration: an element of its own would make
+        // VoiceOver announce every tab twice.
         case .catalog:
             Label { Text(Strings.Settings.catalog) } icon: {
-                Image("Catalog").renderingMode(.template)
+                Image("Catalog")
+                    .renderingMode(.template)
+                    .accessibilityHidden(true)
             }
         case .myBooks:
             Label { Text(Strings.MyBooksView.navTitle) } icon: {
-                Image("MyBooks").renderingMode(.template)
+                Image("MyBooks")
+                    .renderingMode(.template)
+                    .accessibilityHidden(true)
             }
         case .holds:
             Label { Text(Strings.HoldsView.reservations) } icon: {
-                Image("Holds").renderingMode(.template)
+                Image("Holds")
+                    .renderingMode(.template)
+                    .accessibilityHidden(true)
             }
         case .settings:
             Label(Strings.Settings.settings, systemImage: "gearshape")
@@ -510,7 +515,6 @@ private struct TabViewChrome: ViewModifier {
             .onAppear {
                 host.updateHoldsBadge()
             }
-            // Migrated off `.TPPBookRegistryStateDidChange` (swarm_8ce6f5ae WS3).
             // The badge is lifecycle-driven: a background sync flipping a hold
             // reserved→ready changes NO book state (stays `.holding`), so it must
             // watch `registryStatePublisher`. It also watches `bookStatePublisher`
@@ -560,9 +564,7 @@ private struct TabBarMinimizeModifier: ViewModifier {
 }
 
 extension AppTabHostView {
-    /// Pure helpers extracted for unit testability — these were previously
-    /// inline closures inside `updateHoldsBadge()` that could not be exercised
-    /// by tests, leaving mutations like `+= 1` → `-= 1` undetected.
+    /// Pure helpers behind `updateHoldsBadge()`, extracted so they are unit-testable.
     nonisolated static func computeReadyCount(books: [TPPBook]) -> Int {
         var count = 0
         for book in books {

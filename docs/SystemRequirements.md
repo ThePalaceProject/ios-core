@@ -142,7 +142,7 @@ Hard constraints on what the system can target and how it builds.
 | `ios-tenprintcover` | Procedural cover generation when feed has no thumb |
 | `adept-ios` | Adobe RMSDK ADEPT connector — EPUB/PDF DRM fulfillment |
 | `adobe-content-filter` | Adobe content filter — DRM-required bytes pipeline |
-| `mobile-bookmark-spec` | Cross-platform bookmark synchronization spec |
+| `mobile-specs` | Cross-platform bookmark/locator + OPDS specs. Its `bookmarks/` fixture corpus is run as a conformance suite by `PalaceTests/Sync/BookmarkSpecConformanceTests.swift`, and by the Android client. |
 | `ios-audiobook-overdrive` | OverDrive audiobook fulfillment + playback |
 | `ios-audiobooktoolkit` | Audiobook engine — Findaway, OverDrive, LCP audiobook, open-access streams |
 

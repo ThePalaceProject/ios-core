@@ -2,21 +2,11 @@
 //  TPPReaderBlockNavigation.swift
 //  Palace
 //
-//  PP-4533 — "Support screen-reader block-by-block navigation in the iOS reader"
-//  (DAISY reading-810). VoiceOver users need a way to move through reader content
-//  one logical block at a time (paragraph, heading, list item, quote …) rather
-//  than word-by-word or via the coarse chapter granularity. The logical blocks
-//  live INLINE in the spine HTML — not in the Readium manifest — so they are
-//  surfaced to VoiceOver by marking the rendered DOM (see TPPEPUBViewController),
-//  not by parsing `publication`.
-//
-//  This type is the pure, dependency-free core: it owns the block-element
-//  selector, classifies a tag as a block, and builds the JavaScript that (a)
-//  marks the OUTERMOST matching elements as atomic VoiceOver stops and (b)
-//  focus-walks those stops forward/back. It owns no UIKit/Readium state so it is
-//  unit-testable in isolation; the WKWebView injection that applies these marks
-//  is a thin mirror built by `annotationJavaScript()` (mirrors PP-4531's footnote
-//  core).
+//  PP-4533 (DAISY reading-810): block-by-block VoiceOver navigation (paragraph,
+//  heading, list item, quote …). Blocks live inline in the spine HTML, so they
+//  are marked in the rendered DOM (see TPPEPUBViewController). This pure core
+//  owns the block selector and builds the JavaScript that marks the outermost
+//  matching elements as atomic stops and focus-walks them.
 //
 
 import Foundation

@@ -46,12 +46,8 @@ extension UIApplication {
 
   /// Whether a window can host a web-auth sheet.
   ///
-  /// Hoisted out of the fallback above so tests call THIS rather than a copy.
-  /// The first version of `WebAuthPresentationAnchorTests` declared its own
-  /// duplicate of this predicate, so deleting a clause from production left
-  /// every test green — including the one whose name claimed each clause was
-  /// load-bearing. Two reviewers caught it independently. A test that restates
-  /// the rule cannot detect the rule changing.
+  /// Hoisted out of the fallback above so tests exercise this predicate
+  /// rather than a copy of it.
   ///
   /// Note this filter applies only to the FALLBACK: `mainKeyWindow` is returned
   /// unfiltered, because a window reporting `isKeyWindow` is by construction

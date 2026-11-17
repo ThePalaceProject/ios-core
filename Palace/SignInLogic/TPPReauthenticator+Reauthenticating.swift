@@ -8,8 +8,6 @@
 //  3-line extension so the coordinator never has to import main-target
 //  types.
 //
-//  Module C of swarm_66819d80.
-//
 
 import Foundation
 import PalaceAuth

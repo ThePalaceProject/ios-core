@@ -35,8 +35,7 @@ final class SEMigrationsTests: XCTestCase {
     /// Lock the no-op contract for the high-version case (no migrations
     /// applicable) and the nominal-version case (test env), with the
     /// before/after snapshot taken BEFORE any restore so the assertion
-    /// catches a real mutant — earlier this was tautological because the
-    /// test restored the version then asserted equality with originalVersion.
+    /// compares the real post-run value.
     func testRunMigrations_doesNotCrashAndDoesNotMutateAppVersionWhenNoMigrationsApply() {
         // Test-env baseline: appVersion as-is, no migrations applicable.
         let baseline = settings.appVersion
@@ -81,8 +80,8 @@ final class SEMigrationsTests: XCTestCase {
         settings.appVersion = nil
         TPPMigrationManager.runMigrations(settings: settings)
         // Whatever the migrations decide, the post-run value must not be
-        // the literal sentinel that we passed in — guards against a mutant
-        // that no-ops the entire migration pass (which would leave appVersion
+        // the literal sentinel that we passed in — guards against a
+        // no-op migration pass (which would leave appVersion
         // at nil even on first install).
         // We accept either nil-still (genuinely a no-op test env) or a
         // populated string. The crash-free assertion is the load-bearing one.

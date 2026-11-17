@@ -1,19 +1,9 @@
-//
 //  ReaderChromeToggleFadeTests.swift
-//  PalaceTests
 //
-//  PR3 (PP-4746) — reader chrome toggle choreography + bookmark-add bounce gate.
-//
-//  These pin the pure decision seams extracted from
-//  `TPPBaseReaderViewController`. The VC itself is a UIKit view controller whose
-//  `init` reaches into the live app dependency graph (navigator + publication),
-//  so it is not cheaply constructible in a unit test — the presentation logic
-//  is therefore extracted into `static` functions that carry the branch behavior
-//  and are exercised directly here (a static call is the sanctioned alternative
-//  to instantiation for behavior-bearing seams).
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  PP-4746: reader chrome toggle choreography and the bookmark-add bounce gate.
+//  `TPPBaseReaderViewController` needs a live navigator and publication to
+//  construct, so the branch logic is extracted into static functions that
+//  these tests call directly.
 
 import XCTest
 @testable import Palace
@@ -25,8 +15,8 @@ final class ReaderChromeToggleFadeTests: XCTestCase {
 
     /// The overlay chrome (book title + position) belongs to immersive reading:
     /// visible when the nav bar is HIDDEN, hidden when it is SHOWN, and always
-    /// hidden under VoiceOver. This table kills the `||` → `&&` and drop-`!`
-    /// mutations of the decision.
+    /// hidden under VoiceOver. This table catches a `||` → `&&` swap or a
+    /// dropped `!` in the decision.
     func test_overlayLabelsHidden_truthTable() {
         // Immersive (bar hidden), VoiceOver off → labels VISIBLE (not hidden).
         XCTAssertFalse(
@@ -39,7 +29,7 @@ final class ReaderChromeToggleFadeTests: XCTestCase {
             TPPBaseReaderViewController.overlayLabelsHidden(navigationBarHidden: false, voiceOverRunning: false),
             "Bar shown + VoiceOver off: overlay labels must hide so they don't duplicate the nav bar. KEY ROW for the || operator.")
 
-        // VoiceOver on, bar hidden → HIDDEN (kills drop-`!`: without `!`, bar
+        // VoiceOver on, bar hidden → HIDDEN (catches drop-`!`: without `!`, bar
         // hidden would force visible even under VoiceOver).
         XCTAssertTrue(
             TPPBaseReaderViewController.overlayLabelsHidden(navigationBarHidden: true, voiceOverRunning: true),

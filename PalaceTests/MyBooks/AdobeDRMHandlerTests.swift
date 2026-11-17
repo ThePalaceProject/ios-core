@@ -1,20 +1,11 @@
 //
-//  AdobeDRMHandlerTests.swift
-//  PalaceTests
-//
-//  Critical-path coverage of AdobeDRMHandler — the bridge between
-//  NYPLADEPTDelegate (Adobe RMSDK) callbacks and Palace's download lifecycle.
-//  Per CLAUDE.md, DRM fulfilment is a critical path: every branch of the
-//  fulfilment-result handler must have a test, and every error path must be
-//  exercised. Tests use a spy delegate (so we never need a real NYPLADEPT)
-//  and a real FileManager scoped to a per-test temp directory.
+//  AdobeDRMHandler bridges NYPLADEPTDelegate callbacks to the download lifecycle;
+//  every branch and error path of the fulfilment-result handler is exercised with
+//  a spy delegate and a per-test temp directory. AdobeDRMHandler is behind
+//  `#if FEATURE_DRM_CONNECTOR`, reachable via `@testable import Palace` because
+//  the Palace module is built with that flag.
 //
 
-// Note: AdobeDRMHandler lives behind `#if FEATURE_DRM_CONNECTOR` in the Palace
-// target. PalaceTests does NOT define that flag, but `@testable import Palace`
-// pulls the symbol in via the compiled Palace swiftmodule (which IS built with
-// the flag), so tests can reference AdobeDRMHandler / AdobeDRMHandlerDelegate
-// directly without re-guarding here.
 import XCTest
 @testable import Palace
 import PalaceBookModel
@@ -116,6 +107,111 @@ final class AdobeDRMHandlerTests: XCTestCase {
     }
 
     // MARK: - Failure Branches
+
+    /// PP-5541: the alert names Adobe's own error instead of "check your connection".
+    func testHandleFulfillment_didFinishDownloadFalse_passesAdobeErrorToAlert() {
+        let adeptError = NSError(domain: "org.nypl.labs.ADEPTErrorDomain", code: 5,
+                                 userInfo: ["originalCode": "E_ADEPT_REQUEST_EXPIRED"])
+
+        handler.handleFulfillmentResult(
+            didFinishDownload: false,
+            to: sourceFileURL,
+            fulfillmentID: "fulfill-1",
+            isReturnable: true,
+            rightsData: Data("<r/>".utf8),
+            tag: book.identifier,
+            adeptError: adeptError
+        )
+
+        XCTAssertEqual(spy.failedMessages,
+                       ["Error: E_ADEPT_REQUEST_EXPIRED (org.nypl.labs.ADEPTErrorDomain 5)"])
+    }
+
+    /// PP-5541: a failed copy into the book's location shows the file error.
+    func testHandleFulfillment_copyFailure_passesCopyErrorToAlert() throws {
+        try FileManager.default.removeItem(at: sourceFileURL)
+
+        handler.handleFulfillmentResult(
+            didFinishDownload: true,
+            to: sourceFileURL,
+            fulfillmentID: "fulfill-2",
+            isReturnable: true,
+            rightsData: Data("<r/>".utf8),
+            tag: book.identifier,
+            adeptError: nil
+        )
+
+        let message = try XCTUnwrap(spy.failedMessages.first ?? nil)
+        XCTAssertTrue(message.hasPrefix("Error: "), message)
+        XCTAssertTrue(message.hasSuffix("(\(NSCocoaErrorDomain) \(NSFileReadNoSuchFileError))"), message)
+    }
+
+    /// PP-5541: no downloaded file, but Adobe reported why; the alert names it.
+    func testHandleFulfillment_missingDownloadedFileWithAdobeError_passesAdobeErrorToAlert() {
+        let adeptError = NSError(domain: "org.nypl.labs.ADEPTErrorDomain", code: 5,
+                                 userInfo: ["originalCode": "E_ADEPT_IO"])
+
+        handler.handleFulfillmentResult(
+            didFinishDownload: true,
+            to: nil,
+            fulfillmentID: "fulfill-4",
+            isReturnable: true,
+            rightsData: Data("<r/>".utf8),
+            tag: book.identifier,
+            adeptError: adeptError
+        )
+
+        XCTAssertEqual(spy.failedMessages, ["Error: E_ADEPT_IO (org.nypl.labs.ADEPTErrorDomain 5)"])
+    }
+
+    /// When Adobe reported an error and the copy also failed, Adobe's error is the cause shown.
+    func testHandleFulfillment_copyFailureWithAdobeError_prefersAdobeError() throws {
+        try FileManager.default.removeItem(at: sourceFileURL)
+        let adeptError = NSError(domain: "org.nypl.labs.ADEPTErrorDomain", code: 5,
+                                 userInfo: ["originalCode": "E_ADEPT_IO"])
+
+        handler.handleFulfillmentResult(
+            didFinishDownload: true,
+            to: sourceFileURL,
+            fulfillmentID: "fulfill-5",
+            isReturnable: true,
+            rightsData: Data("<r/>".utf8),
+            tag: book.identifier,
+            adeptError: adeptError
+        )
+
+        XCTAssertEqual(spy.failedMessages, ["Error: E_ADEPT_IO (org.nypl.labs.ADEPTErrorDomain 5)"])
+    }
+
+    /// Adobe did not finish and gave no error: nothing to name, so the generic line stays.
+    func testHandleFulfillment_didFinishDownloadFalseWithoutError_passesNilMessage() {
+        handler.handleFulfillmentResult(
+            didFinishDownload: false,
+            to: sourceFileURL,
+            fulfillmentID: "fulfill-6",
+            isReturnable: true,
+            rightsData: Data("<r/>".utf8),
+            tag: book.identifier,
+            adeptError: nil
+        )
+
+        XCTAssertEqual(spy.failedMessages, [nil])
+    }
+
+    /// No downloaded file and no Adobe error: nothing to name, so the generic line stays.
+    func testHandleFulfillment_missingDownloadedFileWithoutError_passesNilMessage() {
+        handler.handleFulfillmentResult(
+            didFinishDownload: true,
+            to: nil,
+            fulfillmentID: "fulfill-3",
+            isReturnable: true,
+            rightsData: Data("<r/>".utf8),
+            tag: book.identifier,
+            adeptError: nil
+        )
+
+        XCTAssertEqual(spy.failedMessages, [nil])
+    }
 
     func testHandleFulfillment_didFinishDownloadFalse_failsAndDoesNotMarkSuccessful() {
         handler.handleFulfillmentResult(
@@ -222,6 +318,117 @@ final class AdobeDRMHandlerTests: XCTestCase {
         XCTAssertEqual(spy.failed, [])
     }
 
+    /// A Return leaves the record in the registry at `.unregistered`, so the
+    /// book lookup still succeeds and the rest of fulfilment would run. Shelving
+    /// there takes `.unregistered` to `.downloadSuccessful`, which is not a legal
+    /// transition, and leaves DRM content for a loan the patron gave back.
+    func testHandleFulfillment_bookReturnedBeforeAdobeFinished_doesNotShelveOrMarkSuccessful() throws {
+        let alreadyThere = Data("content-the-patron-still-has".utf8)
+        try alreadyThere.write(to: destFileURL)
+        registry.setState(.unregistered, for: book.identifier)
+
+        handler.handleFulfillmentResult(
+            didFinishDownload: true,
+            to: sourceFileURL,
+            fulfillmentID: "fulfill-after-return",
+            isReturnable: true,
+            rightsData: Data("<r/>".utf8),
+            tag: book.identifier,
+            adeptError: nil
+        )
+
+        XCTAssertEqual(spy.markedSuccessful, [], "A loan that ended must not be marked downloadSuccessful.")
+        XCTAssertEqual(spy.failed, [], "Discarding a returned book's fulfilment is not a download failure to show the patron.")
+        XCTAssertNil(registry.fulfillmentId(forIdentifier: book.identifier), "A returned book must not gain a fulfilment ID.")
+        XCTAssertEqual(registry.registry[book.identifier]?.state, .unregistered, "The discard must leave the returned state alone.")
+        XCTAssertEqual(try Data(contentsOf: destFileURL), alreadyThere, "The discard must not touch what is already at the destination.")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: sourceFileURL.path), "Adobe's temp file must not be left behind by the discard.")
+    }
+
+    /// `.returning` is the same loan a moment earlier: the cleanup is in flight,
+    /// so writing here re-creates exactly what it is deleting.
+    func testHandleFulfillment_returnInFlight_doesNotShelveOrMarkSuccessful() {
+        registry.setState(.returning, for: book.identifier)
+
+        handler.handleFulfillmentResult(
+            didFinishDownload: true,
+            to: sourceFileURL,
+            fulfillmentID: "fulfill-mid-return",
+            isReturnable: true,
+            rightsData: Data("<r/>".utf8),
+            tag: book.identifier,
+            adeptError: nil
+        )
+
+        XCTAssertEqual(spy.markedSuccessful, [])
+        XCTAssertEqual(spy.failed, [])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destFileURL.path), "A return in flight must not leave content at the destination.")
+    }
+
+    /// The counterpart that keeps the guard honest: a hold is not a loan either,
+    /// so a fulfilment landing against one is discarded the same way.
+    func testHandleFulfillment_bookOnHold_doesNotShelveOrMarkSuccessful() {
+        registry.setState(.holding, for: book.identifier)
+
+        handler.handleFulfillmentResult(
+            didFinishDownload: true,
+            to: sourceFileURL,
+            fulfillmentID: "fulfill-hold",
+            isReturnable: true,
+            rightsData: Data("<r/>".utf8),
+            tag: book.identifier,
+            adeptError: nil
+        )
+
+        XCTAssertEqual(spy.markedSuccessful, [])
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destFileURL.path))
+    }
+
+    /// The event dimension of the same guard: the transfer failed AND the loan
+    /// was already over. No alert, because a download-failed prompt for a
+    /// returned book is not actionable, and nothing shelved. `to: nil` drives
+    /// the discard's own nil binding at the same time.
+    func testHandleFulfillment_transferFailedAfterReturn_isSilentAndShelvesNothing() {
+        registry.setState(.unregistered, for: book.identifier)
+
+        handler.handleFulfillmentResult(
+            didFinishDownload: false,
+            to: nil,
+            fulfillmentID: "fulfill-failed-after-return",
+            isReturnable: true,
+            rightsData: Data("<r/>".utf8),
+            tag: book.identifier,
+            adeptError: NSError(domain: "ADEPT", code: 7, userInfo: nil)
+        )
+
+        XCTAssertEqual(spy.markedSuccessful, [], "A failed transfer for a returned loan must not be marked successful.")
+        XCTAssertEqual(spy.failed, [], "A returned book must not raise a download-failed alert.")
+        XCTAssertEqual(registry.registry[book.identifier]?.state, .unregistered, "The silent discard must leave the returned state alone.")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destFileURL.path), "Nothing may be written for a loan that ended.")
+    }
+
+    /// The discard removes Adobe's temp file with `try?`. A FileManager that
+    /// throws there must not change the outcome: the book still is not shelved.
+    /// Without this, a later `try!` would crash on a path nothing exercises.
+    func testHandleFulfillment_returnedAndTempFileCannotBeRemoved_stillDiscards() {
+        registry.setState(.unregistered, for: book.identifier)
+
+        handler.handleFulfillmentResult(
+            didFinishDownload: true,
+            to: sourceFileURL,
+            fulfillmentID: "fulfill-undeletable",
+            isReturnable: true,
+            rightsData: Data("<r/>".utf8),
+            tag: book.identifier,
+            adeptError: nil,
+            fileManager: RemoveRefusingFileManager()
+        )
+
+        XCTAssertEqual(spy.markedSuccessful, [], "A failing cleanup must not turn the discard into a shelve.")
+        XCTAssertEqual(registry.registry[book.identifier]?.state, .unregistered)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destFileURL.path))
+    }
+
     // MARK: - Cancellation
 
     func testHandleCancellation_setsRegistryStateAndBroadcasts() {
@@ -254,6 +461,16 @@ final class AdobeDRMHandlerTests: XCTestCase {
     }
 }
 
+// MARK: - Fault injection
+
+/// Refuses every removal so the `try?` in the discard arm is exercised rather
+/// than assumed harmless.
+private final class RemoveRefusingFileManager: FileManager {
+    override func removeItem(at URL: URL) throws {
+        throw NSError(domain: NSCocoaErrorDomain, code: NSFileWriteNoPermissionError, userInfo: nil)
+    }
+}
+
 // MARK: - SpyDRMDelegate
 
 private final class SpyDRMDelegate: AdobeDRMHandlerDelegate {
@@ -263,6 +480,7 @@ private final class SpyDRMDelegate: AdobeDRMHandlerDelegate {
 
     private(set) var markedSuccessful: [String] = []
     private(set) var failed: [String] = []
+    private(set) var failedMessages: [String?] = []
     private(set) var broadcastCount: Int = 0
     private(set) var progressUpdates: [(Double, String)] = []
 
@@ -275,10 +493,15 @@ private final class SpyDRMDelegate: AdobeDRMHandlerDelegate {
 
     func failDownloadWithAlert(for book: TPPBook, withMessage message: String?) {
         failed.append(book.identifier)
+        failedMessages.append(message)
     }
 
+    /// Mirrors `MyBooksDownloadCenter.markDownloadSuccessful`, which writes the
+    /// state as well as announcing. Recording the call alone cannot show the
+    /// `.unregistered` to `.downloadSuccessful` move this handler must not make.
     func markDownloadSuccessful(for book: TPPBook) {
         markedSuccessful.append(book.identifier)
+        bookRegistry.setState(.downloadSuccessful, for: book.identifier)
     }
 
     func broadcastUpdate() {

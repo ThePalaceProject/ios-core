@@ -1,23 +1,11 @@
-//
 //  LegacySAMLProblemDocumentPropagationTests.swift
-//  PalaceTests
 //
-//  HelpSpot 17870 — second silent failure surface: when the SAML web-view
-//  sheet encounters a problem-document mid-flow, the
-//  `SignInWebSheetViewModel.problemFoundHandler` is nil and the sheet just
-//  sits there.
-//
-//  These tests pin the `LegacySAMLWebViewPresenter` wiring: a
-//  problem-document handed to the synthesised handler must propagate to
-//  `businessLogic.uiDelegate.businessLogic(_:
-//  didEncounterValidationError:userFriendlyErrorTitle:andMessage:)` with
-//  the problem-doc's title and detail.
-//
-//  Mutation-gate target: removing the `problemFoundHandler:` argument
-//  from the `SignInWebSheetViewModel` construction in
-//  `LegacySAMLWebViewPresenter.presentSAMLWebView(...)` or flipping any
-//  of the title/detail/fallback wiring must fail at least one test here.
-//
+//  HelpSpot 17870: when the SAML web sheet hit a problem document mid-flow,
+//  `SignInWebSheetViewModel.problemFoundHandler` was nil and the sheet stayed
+//  up with no message. Pins `LegacySAMLWebViewPresenter` wiring: the problem
+//  document reaches `businessLogic(_:didEncounterValidationError:
+//  userFriendlyErrorTitle:andMessage:)` with its title and detail, and dropping
+//  the `problemFoundHandler:` argument or the title/detail/fallback wiring fails.
 
 import XCTest
 import PalaceCatalog
@@ -191,7 +179,7 @@ final class LegacySAMLProblemDocumentPropagationTests: XCTestCase {
 
     // MARK: - Test 4: error domain check (mutation surface for domain string)
 
-    /// Pin the error domain so a mutation that flips the domain string to
+    /// Pin the error domain so a regression that flips the domain string to
     /// the empty string or another value is caught.
     func testSAMLPresenter_problemDocument_errorDomainIdentifiesSAMLPath() {
         let expectation = expectation(
@@ -218,9 +206,8 @@ final class LegacySAMLProblemDocumentPropagationTests: XCTestCase {
 
     /// Pin `usernameIsEmailKeyboard` predicate against the
     /// `selectedAuthentication?.patronIDKeyboard == .email` definition. Sits
-    /// in the SAME file we edited (`LegacySAMLAuthAdapter.swift`), so the
-    /// file's mutation kill rate covers the validation bridge too — a
-    /// mutation that flips `==` to `!=` MUST fail this test.
+    /// in `LegacySAMLAuthAdapter.swift`, so the validation bridge is covered
+    /// too — a regression that flips `==` to `!=` must fail this test.
     func testSignInBusinessLogic_usernameIsEmailKeyboard_matchesAuthKeyboard() {
         businessLogic.selectedAuthentication = libraryMock.samlAuthentication
         let samlAuth = libraryMock.samlAuthentication
@@ -239,7 +226,7 @@ final class LegacySAMLProblemDocumentPropagationTests: XCTestCase {
 
     /// Pin `pinAllowsAlphanumeric` predicate against the
     /// `selectedAuthentication?.pinKeyboard != .numeric` definition. Catches a
-    /// mutation that flips `!=` to `==`.
+    /// regression that flips `!=` to `==`.
     func testSignInBusinessLogic_pinAllowsAlphanumeric_isNumericNegation() {
         businessLogic.selectedAuthentication = libraryMock.samlAuthentication
         let samlAuth = libraryMock.samlAuthentication
@@ -260,7 +247,7 @@ final class LegacySAMLProblemDocumentPropagationTests: XCTestCase {
 
     /// Pin the weak-ref lifecycle: if businessLogic is deallocated before
     /// the handler fires, the handler must not crash and must not invoke
-    /// the (now-orphaned) delegate. Catches a mutation that flips `weak`
+    /// the (now-orphaned) delegate. Catches a regression that flips `weak`
     /// → strong (leak) OR drops the nil-guard.
     func testSAMLPresenter_problemHandler_businessLogicReleased_doesNotCrash() {
         let handler = presenter.makeProblemFoundHandler()

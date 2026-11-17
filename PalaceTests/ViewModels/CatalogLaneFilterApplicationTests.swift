@@ -1,22 +1,11 @@
-//
 //  CatalogLaneFilterApplicationTests.swift
-//  PalaceTests
 //
-//  Behavioral tests for CatalogLaneMoreViewModel.applySingleFilters — the
-//  sequential facet-chaining path that applies more than one filter group.
-//
-//  OPDS facets are links, not parameters, so applying N filter groups means N
-//  dependent requests: fetch the base feed, locate the chosen facet among its
-//  links, fetch that, then locate the next chosen facet among the *resulting*
-//  feed's links, and so on. (Android's `FeedFacetOPDS12Composite` does the same
-//  walk for the same reason.)
-//
-//  A filter can therefore drop out mid-walk: the feed we just loaded may not
-//  advertise the group the user picked from. When that happens the request the
-//  user actually got is narrower than the one they asked for, and
-//  `appliedSelections` — which drives the "Filter (N)" badge and the ticks in
-//  the sheet — must reflect what was applied, never what was requested.
-//
+//  CatalogLaneMoreViewModel.applySingleFilters chains facets: OPDS facets are
+//  links, so N filter groups mean N dependent requests, each finding the next
+//  facet in the previous feed's links (as Android's FeedFacetOPDS12Composite
+//  does). A group can be missing mid-walk, so `appliedSelections`, which drives
+//  the "Filter (N)" badge and sheet ticks, must reflect what was applied rather
+//  than what was requested.
 
 import XCTest
 import PalaceCatalog

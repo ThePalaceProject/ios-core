@@ -1,31 +1,9 @@
 //
-//  OverdriveDownloadHandlerTests.swift
-//  PalaceTests
-//
-//  Coverage for OverdriveDownloadHandler — the Overdrive 302-redirect
-//  fulfillment flow (`processOverdriveDownload` → `handleOverdriveResponse`)
-//  and the loans-feed-out-of-sync defer path (`deferOverdriveFulfillment`).
-//
-//  The class is gated `#if FEATURE_OVERDRIVE` because it imports the
-//  external OverdriveProcessor module; this test file inherits the same
-//  gate.
-//
-//  Branches covered:
-//    - Wi-Fi-only enforcement short-circuits before any Overdrive API call.
-//    - Token-auth path issues a `.token(...)` fulfillBook request.
-//    - Basic-auth path issues a `.basic(...)` fulfillBook request when
-//      no token is present.
-//    - Successful response → manifest-request factory invoked with the
-//      parsed `x-overdrive-scope` + `x-overdrive-patron-authorization`
-//      headers; resulting URLRequest handed off to the delegate.
-//    - Header keys are normalized to lowercase (uppercase keys still
-//      route to manifest-request build).
-//    - Response error → publishes a download-failed alert (no manifest
-//      request, no addDownloadTask).
-//    - Missing `location` header → publishes "wrong headers" alert.
-//    - Manifest factory returns nil → publishes "wrong headers" alert.
-//    - `deferOverdriveFulfillment` publishes the "loan already exists"
-//      borrow alert.
+//  OverdriveDownloadHandler's 302-redirect fulfillment and loans-feed defer path
+//  (gated `#if FEATURE_OVERDRIVE`, like this file). Covers Wi-Fi-only
+//  short-circuit, token vs. basic auth, manifest build from lowercased
+//  x-overdrive headers, and the alerts for a response error, missing `location`,
+//  nil manifest request, and a deferred "loan already exists" borrow.
 //
 
 #if FEATURE_OVERDRIVE
@@ -281,6 +259,23 @@ final class OverdriveDownloadHandlerTests: XCTestCase {
         XCTAssertEqual(err.bookId, book.identifier)
         XCTAssertEqual(err.kind, .download,
                        "Error path uses failDownloadWithAlert which publishes a .download-kind error")
+    }
+
+    /// PP-5541: the published alert names the fulfillment error, not the generic line.
+    func testHandleOverdriveResponse_completionWithError_alertNamesTheError() async throws {
+        let book = makeOverdriveBook()
+        userAccount.setAuthToken("tok", barcode: nil, pin: nil, expirationDate: nil)
+
+        handler.processOverdriveDownload(for: book, withState: .downloadNeeded)
+        let completion = try XCTUnwrap(fulfillCalls.first?.completion)
+
+        completion(nil, NSError(domain: "test", code: 7,
+                                userInfo: [NSLocalizedDescriptionKey: "no network"]))
+
+        await waitForPublishedError()
+
+        let err = try XCTUnwrap(capturedErrors.first)
+        XCTAssertTrue(err.message.hasSuffix("\nError: no network (test 7)"), err.message)
     }
 
     func testHandleOverdriveResponse_missingLocationHeader_failsDownload() async throws {

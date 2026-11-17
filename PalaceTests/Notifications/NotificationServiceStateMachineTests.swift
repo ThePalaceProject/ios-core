@@ -1,22 +1,11 @@
-//
 //  NotificationServiceStateMachineTests.swift
-//  PalaceTests
 //
-//  Bucket A migration tests for NotificationService hold-notification
-//  navigation (swarm_81b5099e Phase 1). Targets the
-//  `decideHoldNavigation(currentAccount:)` testable seam extracted from
-//  the `userNotificationCenter(_:didReceive:...)` delegate body — the
-//  delegate itself is impossible to unit-test directly because
-//  `UNNotificationResponse` has no public constructor.
-//
-//  The seam returns a `HoldNavigationOutcome` value; the delegate's
-//  side-effecting `tabRouterHub.navigate(to: .holds)` is only called on
-//  `.navigate`. Each test pins one outcome against an account in a
-//  specific state-machine state. State is driven directly via
-//  `account._setState(...)`.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Hold-notification navigation against the account state machine, via the
+//  `decideHoldNavigation(currentAccount:)` seam extracted from the
+//  `userNotificationCenter(_:didReceive:...)` delegate (which cannot be unit
+//  tested because `UNNotificationResponse` has no public initializer). The
+//  delegate navigates to Holds only on `.navigate`; each test pins one outcome
+//  for an account driven into a given state with `account._setState(...)`.
 
 import XCTest
 import Combine
@@ -147,7 +136,7 @@ final class NotificationServiceStateMachineTests: XCTestCase {
                        "Hold navigation must block on .detailsLoading and resolve to .navigate once state transitions to .detailsLoaded(supports=true)")
     }
 
-    // MARK: - Auth-state-change FCM-retry subscription (swarm_f3b9b087 item #6)
+    // MARK: - Auth-state-change FCM-retry subscription
     //
     // When the user's auth state transitions from any non-`.loggedIn`
     // state to `.loggedIn` AND `hasUpdatedToken == false`, the service

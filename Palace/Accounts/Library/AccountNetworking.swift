@@ -2,30 +2,11 @@
 //  AccountNetworking.swift
 //  Palace
 //
-//  god-class decomposition — Wave 3 seam (3a precondition).
-//
-//  The narrow slice of the shared network executor that `AccountsManager` actually
-//  uses on the account-switch cleanup + catalog/auth-doc fetch paths. Declaring it
-//  as a protocol beside `AccountsManager` removes the manager's last concrete
-//  reference to the app-target `TPPNetworkExecutor` type: S3 already inverted the
-//  ambient REACH (the executor is resolved through `AccountSwitchDependencies`'s
-//  injected provider closure rather than reaching the composition root directly),
-//  but the property and provider were still concretely typed. A SwiftPM `PalaceAccounts`
-//  target cannot name a `Palace/Network` app-target type, so this seam is the
-//  documented precondition for the 3a package move.
-//
-//  Declared in the consuming (lower) module and implemented from above — the
-//  `BorrowReauthResetting` (S1) / `DownloadUserAccount` (S2) precedent. At the 3a
-//  move this protocol travels INTO `PalaceAccounts` with `AccountsManager`; the
-//  app-side `extension TPPNetworkExecutor: AccountNetworking` (in
-//  `TPPNetworkExecutor+AccountNetworking.swift`) stays app-target and gains an
-//  `import PalaceAccounts` + `@retroactive` then.
-//
-//  `AnyObject, Sendable`: the concrete witness `TPPNetworkExecutor` is already
-//  `@objc class … NSObject, @unchecked Sendable`, so this adds ZERO new Sendable
-//  obligation, matches the existing `@Sendable () -> TPPNetworkExecutor` provider,
-//  and is REQUIRED — the async `GET` is awaited inside an owned-crawl `@Sendable`
-//  Task, so the existential must be `Sendable` to survive that capture.
+//  The slice of the network executor `AccountsManager` uses, as a protocol so
+//  Accounts does not name the app-target `TPPNetworkExecutor` (a precondition
+//  for moving Accounts into a `PalaceAccounts` package). Declared on the
+//  consuming side, implemented app-side in `TPPNetworkExecutor+AccountNetworking.swift`.
+//  `Sendable` is required: `GET` is awaited inside a `@Sendable` crawl Task.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

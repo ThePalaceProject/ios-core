@@ -2,38 +2,12 @@
 //  PalacePreferencesSettingsRoundTripTests.swift
 //  PalaceTests
 //
-//  PRE-WAVE gate tests for the god-class decomposition campaign — Wave 1a
-//  (`PalacePreferences`). See docs/architecture/god-class-decomposition-plan.md
-//  §4 Wave 1a and §3b cycles 5/6.
-//
-//  Purpose: pin TODAY's persistence contract of `TPPSettings` — the
-//  `UserDefaults`-backed key-value preferences store — BEFORE it is lifted
-//  into the new Layer-0 leaf package `PalacePreferences`. The move is a pure
-//  relocation, so the risk it introduces is silent WIRE-FORMAT drift: a
-//  renamed key constant, a changed default, or an in-memory cache slipped in
-//  during the port would make every already-installed patron silently lose a
-//  persisted preference. These tests lock the exact `UserDefaults` key strings,
-//  the unset defaults, and the cross-instance persistence so any such drift
-//  fails loudly.
-//
-//  Isolation: every test drives a fresh, per-test `UserDefaults(suiteName:)`
-//  injected through `TPPSettings.init(defaults:)`. NONE of these tests touch
-//  `.standard` — they cannot pollute the shared domain or any sibling test.
-//  The suite is torn down with `removePersistentDomain` in `tearDown`.
-//
-//  Scope note: the passthrough accessors (e.g. `downloadOnlyOnWiFi`,
-//  `appRatingOptedOut`) are NOT fluff-tested with a bare get-after-set — that
-//  would exercise `UserDefaults`, not `TPPSettings`. Instead we pin the
-//  set-typed-API / read-RAW-key mapping, which is the real portable contract
-//  and which a key-rename mutation fails. Accessors with genuine logic
-//  (`appRatingCrashFreeLastSession` default-true, `appRatingLastPromptDate`
-//  nil-clear) get dedicated behavior tests.
-//
-//  Excluded by design: `TPPSettings+SE.settingsAccountIdsList` reads/writes
-//  `UserDefaults.standard` directly (bypassing the injected `defaults`) AND
-//  reaches `AppContainer.production()`, so it is NOT isolatable here and moves
-//  to PalaceAccounts territory (the AccountsManager constant "stays behind" per
-//  the plan). It is intentionally uncovered by this pack.
+//  Pins the persistence contract of `TPPSettings` (exact `UserDefaults` key strings,
+//  unset defaults, cross-instance persistence) across its move into the
+//  `PalacePreferences` package. A renamed key or changed default would make
+//  installed patrons lose a saved preference (docs/architecture/god-class-decomposition-plan.md).
+//  Each test injects a fresh `UserDefaults(suiteName:)` through `TPPSettings.init(defaults:)`.
+//  `settingsAccountIdsList` bypasses the injected defaults and is not covered here.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -71,7 +45,7 @@ final class PalacePreferencesSettingsRoundTripTests: XCTestCase {
     /// When no session has recorded a value, the accessor must assume the
     /// patron is crash-free (returns `true`) — the store special-cases the
     /// absent key rather than falling through to `UserDefaults.bool`'s `false`.
-    /// Mutant killed: replacing the `== nil ? true : …` ternary (or flipping
+    /// Catches: replacing the `== nil ? true : …` ternary (or flipping
     /// the default to `false`) makes an un-primed store report a crash.
     func testCrashFreeLastSession_defaultsToTrueWhenKeyAbsent() {
         XCTAssertNil(defaults.object(forKey: "TPPAppRatingCrashFreeLastSession"),
@@ -82,7 +56,7 @@ final class PalacePreferencesSettingsRoundTripTests: XCTestCase {
 
     /// A stored `false` must survive and be distinguishable from the absent
     /// default. Round-tripping false → true proves the accessor reflects the
-    /// STORED value, not a constant. Mutant killed: an accessor hardcoded to
+    /// STORED value, not a constant. Catches: an accessor hardcoded to
     /// `true` (or reading the wrong key) fails the `false` leg.
     func testCrashFreeLastSession_reflectsStoredFalseThenTrue() {
         settings.appRatingCrashFreeLastSession = false
@@ -99,7 +73,7 @@ final class PalacePreferencesSettingsRoundTripTests: XCTestCase {
     // MARK: - appRatingLastPromptDate — nil-clear vs. store logic
 
     /// Setting a date persists it (under the stable key); setting nil must
-    /// REMOVE it so the getter reads nil again. Mutant killed: dropping the
+    /// REMOVE it so the getter reads nil again. Catches: dropping the
     /// `removeObject` nil-branch (leaving the stale date) fails the clear leg.
     func testLastPromptDate_roundTripsThenClearsToNil() {
         let date = Date(timeIntervalSince1970: 1_700_000_000)
@@ -124,7 +98,7 @@ final class PalacePreferencesSettingsRoundTripTests: XCTestCase {
     /// `customMainFeedURL` (custom catalog override) must persist a URL under
     /// its exact legacy key and read the same URL back. The notification/guard
     /// behavior of the setter is covered by `TPPSettingsTests`; here we pin the
-    /// PERSISTENCE the package move must preserve. Mutant killed: a renamed key
+    /// PERSISTENCE the package move must preserve. Catches: a renamed key
     /// constant leaves the raw read nil.
     func testCustomMainFeedURL_persistsUnderStableKeyAndRoundTrips() {
         let url = URL(string: "https://catalog.example.org/custom-feed")!
@@ -216,7 +190,7 @@ final class PalacePreferencesSettingsRoundTripTests: XCTestCase {
     /// The "never written" contract: a fresh store returns the canonical
     /// empty/zero/false/nil values callers rely on before a patron has touched
     /// any setting. Distinct from the crash-free special-case (which is true).
-    /// Mutant killed: a default value swapped in during the port (e.g. Int
+    /// Catches: a default value swapped in during the port (e.g. Int
     /// default 1, Bool default true) fails here.
     func testUnsetDefaults_areEmptyZeroFalseNil() {
         XCTAssertNil(settings.customMainFeedURL, "customMainFeedURL defaults nil")
@@ -241,7 +215,7 @@ final class PalacePreferencesSettingsRoundTripTests: XCTestCase {
     /// The store is a THIN wrapper over `UserDefaults`, not an in-memory cache:
     /// a value written through one `TPPSettings` instance must be visible to a
     /// SECOND instance built over the same backing suite. This pins "persistence
-    /// across reads" and kills any mutant that starts caching writes in memory
+    /// across reads" and catches any regression that starts caching writes in memory
     /// instead of committing them to `defaults`.
     func testWrites_arePersisted_andVisibleToASecondInstance() {
         let url = URL(string: "https://catalog.example.org/persisted")!

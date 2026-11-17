@@ -287,6 +287,39 @@ final class OfflineActionTests: XCTestCase {
                           "CancelHold and Hold must produce different descriptions")
     }
 
+    // MARK: - Library scope
+
+    /// An action persisted before `libraryID` existed still decodes, with no
+    /// library, so the queue can recognise and drop it.
+    func testDecode_legacyJSONWithoutLibraryID_decodesWithNilLibrary() throws {
+        let scoped = OfflineAction(type: .return, bookID: "b1", bookTitle: "T", libraryID: "lib-A")
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(scoped)) as? [String: Any])
+        json.removeValue(forKey: "libraryID")
+
+        let decoded = try JSONDecoder().decode(
+            OfflineAction.self, from: JSONSerialization.data(withJSONObject: json))
+
+        XCTAssertNil(decoded.libraryID)
+        XCTAssertEqual(decoded.bookID, "b1")
+        XCTAssertFalse(decoded.belongs(toLibrary: "lib-A"), "a legacy action belongs to no library")
+    }
+
+    func testCodableRoundTrip_preservesLibraryID() throws {
+        let original = OfflineAction(type: .borrow, bookID: "b1", bookTitle: "T", libraryID: "lib-A")
+
+        let decoded = try JSONDecoder().decode(OfflineAction.self, from: JSONEncoder().encode(original))
+
+        XCTAssertEqual(decoded.libraryID, "lib-A")
+    }
+
+    func testBelongsToLibrary_matchesOnlyItsOwnLibrary() {
+        let action = OfflineAction(type: .return, bookID: "b1", bookTitle: "T", libraryID: "lib-A")
+
+        XCTAssertTrue(action.belongs(toLibrary: "lib-A"))
+        XCTAssertFalse(action.belongs(toLibrary: "lib-B"))
+        XCTAssertFalse(action.belongs(toLibrary: nil), "no current library matches nothing")
+    }
+
     // MARK: - OfflineActionType
 
     func testActionType_CodableRoundTrip() throws {

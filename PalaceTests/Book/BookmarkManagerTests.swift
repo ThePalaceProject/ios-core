@@ -10,6 +10,7 @@
 //
 
 import XCTest
+import Combine
 @testable import Palace
 import PalaceBookModel
 @testable import PalaceBookRegistry
@@ -20,6 +21,7 @@ final class BookmarkManagerTests: XCTestCase {
     private var store: BookRegistryStore!
     private var manager: BookmarkManager!
     private var saveCallCount: Int!
+    private var savePositionCallCount: Int!
     private var saveSyncCallCount: Int!
     private var lastSavedAccount: String?
 
@@ -29,12 +31,17 @@ final class BookmarkManagerTests: XCTestCase {
         super.setUp()
         store = BookRegistryStore()
         saveCallCount = 0
+        savePositionCallCount = 0
         saveSyncCallCount = 0
         lastSavedAccount = nil
         manager = BookmarkManager(
             store: store,
             save: { [weak self] account in
                 self?.saveCallCount += 1
+                self?.lastSavedAccount = account
+            },
+            savePosition: { [weak self] account in
+                self?.savePositionCallCount += 1
                 self?.lastSavedAccount = account
             },
             saveSync: { [weak self] account in
@@ -48,6 +55,7 @@ final class BookmarkManagerTests: XCTestCase {
         manager = nil
         store = nil
         saveCallCount = nil
+        savePositionCallCount = nil
         saveSyncCallCount = nil
         super.tearDown()
     }
@@ -104,7 +112,9 @@ final class BookmarkManagerTests: XCTestCase {
         if let annotationId = annotationId {
             dict["annotationId"] = annotationId
         }
-        let jsonData = try! JSONSerialization.data(withJSONObject: dict)
+        // Sorted keys: equal inputs give byte-identical records, which the
+        // identity-based replace and delete rely on.
+        let jsonData = try! JSONSerialization.data(withJSONObject: dict, options: [.sortedKeys])
         let jsonString = String(data: jsonData, encoding: .utf8)!
         return TPPBookLocation(locationString: jsonString, renderer: renderer)!
     }
@@ -164,7 +174,9 @@ final class BookmarkManagerTests: XCTestCase {
         XCTAssertNotNil(retrieved)
         XCTAssertEqual(retrieved?.renderer, "test-renderer")
         XCTAssertTrue(retrieved?.locationString.contains("42") ?? false)
-        XCTAssertEqual(saveCallCount, 1, "save should be called once after setting location")
+        XCTAssertEqual(savePositionCallCount, 1, "a location change persists through the position-only save")
+        XCTAssertEqual(saveCallCount, 0, "a location change must not take the shelf save path (PP-5268)")
+        XCTAssertEqual(lastSavedAccount, testAccount)
     }
 
     /// `setLocation` with an empty identifier must short-circuit — neither
@@ -179,6 +191,7 @@ final class BookmarkManagerTests: XCTestCase {
         waitForBarrier()
 
         let beforeSaveCount = saveCallCount
+        let beforePositionCount = savePositionCallCount
 
         // Empty identifier — must do nothing.
         manager.setLocation(makeLocation(page: 1), forIdentifier: "", account: testAccount)
@@ -186,6 +199,8 @@ final class BookmarkManagerTests: XCTestCase {
 
         XCTAssertEqual(saveCallCount, beforeSaveCount,
                        "save must not fire for empty identifier")
+        XCTAssertEqual(savePositionCallCount, beforePositionCount,
+                       "the position-only save must not fire for empty identifier either")
         let stored = manager.location(forIdentifier: other.identifier)
         XCTAssertTrue(stored?.locationString.contains("99") ?? false,
                       "Empty-id setLocation must NOT cross-contaminate another book's location")
@@ -208,7 +223,7 @@ final class BookmarkManagerTests: XCTestCase {
 
     /// Missing-book lookup contracts in one place — `location(forIdentifier:)`
     /// AND the empty/nil readout paths all return absent values without
-    /// inventing entries. A mutant that returns a default `TPPBookLocation`
+    /// inventing entries. A regression that returns a default `TPPBookLocation`
     /// for missing keys fails on the first nil-assertion.
     func test_missingBook_locationAndBookmarkLookups_returnAbsentValues() {
         // Pure read on an empty manager — none of these may invent state.
@@ -231,6 +246,8 @@ final class BookmarkManagerTests: XCTestCase {
 
         XCTAssertEqual(saveSyncCallCount, 1, "saveSync should be called")
         XCTAssertEqual(saveCallCount, 0, "async save should NOT be called")
+        XCTAssertEqual(savePositionCallCount, 0,
+                       "the teardown save stays the full synchronous save; only the periodic path is position-only")
 
         let retrieved = manager.location(forIdentifier: book.identifier)
         XCTAssertNotNil(retrieved)
@@ -238,7 +255,7 @@ final class BookmarkManagerTests: XCTestCase {
 
     /// setLocationSync mirrors setLocation but on the sync queue — empty
     /// identifier must also short-circuit, neither calling saveSync NOR
-    /// triggering the async save path (mutant that conflates the two
+    /// triggering the async save path (a regression that conflates the two
     /// would fire the wrong save).
     func test_setLocationSync_emptyIdentifier_neitherSyncNorAsyncSaveFires() {
         manager.setLocationSync(makeLocation(), forIdentifier: "", account: testAccount)
@@ -328,7 +345,7 @@ final class BookmarkManagerTests: XCTestCase {
     // (Missing-book readiumBookmarks coverage now lives in
     // test_missingBook_locationAndBookmarkLookups_returnAbsentValues above —
     // covering location, readiumBookmarks AND genericBookmarks together so
-    // a mutant that returns nil-for-one-but-default-for-another fails.)
+    // a regression that returns nil-for-one-but-default-for-another fails.)
 
     func test_addReadiumBookmark_toMissingBook_doesNotCrash() {
         let bookmark = makeReadiumBookmark()
@@ -410,6 +427,7 @@ final class BookmarkManagerTests: XCTestCase {
         let original = makeLocation(page: 5, renderer: "r1")
         manager.addGenericBookmark(original, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
+        let savesBefore: Int = saveCallCount
 
         let replacement = makeLocation(page: 50, renderer: "r1")
         manager.replaceGenericBookmark(original, with: replacement, forIdentifier: book.identifier, account: testAccount)
@@ -418,6 +436,60 @@ final class BookmarkManagerTests: XCTestCase {
         let bookmarks = manager.genericBookmarks(forIdentifier: book.identifier)
         XCTAssertEqual(bookmarks.count, 1)
         XCTAssertTrue(bookmarks.first?.locationString.contains("50") ?? false)
+        // The replacement carries the server ID; unsaved, it is lost on relaunch.
+        XCTAssertEqual(saveCallCount, savesBefore + 1)
+    }
+
+    /// A replace that finds no identical record writes and saves nothing.
+    func test_replaceGenericBookmark_NoIdenticalRecord_ChangesAndSavesNothing() {
+        let book = makeBook()
+        addBookToStore(book)
+        let stored = makeLocation(page: 5)
+        manager.addGenericBookmark(stored, forIdentifier: book.identifier, account: testAccount)
+        waitForBarrier()
+        let savesBefore: Int = saveCallCount
+
+        manager.replaceGenericBookmark(makeLocation(page: 5, annotationId: "other"), with: makeLocation(page: 50),
+                                       forIdentifier: book.identifier, account: testAccount)
+        waitForBarrier()
+
+        XCTAssertEqual(manager.genericBookmarks(forIdentifier: book.identifier).map(\.locationString), [stored.locationString])
+        XCTAssertEqual(saveCallCount, savesBefore)
+    }
+
+    /// Deleting by identity removes that record only, not another at the same
+    /// position that a content match would also remove.
+    func test_deleteGenericBookmarkIdenticalTo_RemovesOnlyThatRecordAndSaves() {
+        let book = makeBook()
+        addBookToStore(book)
+        let unsynced = makeLocation(page: 5)
+        let synced = makeLocation(page: 5, annotationId: "srv-1")
+        manager.addGenericBookmark(unsynced, forIdentifier: book.identifier, account: testAccount)
+        manager.addGenericBookmark(synced, forIdentifier: book.identifier, account: testAccount)
+        waitForBarrier()
+        let savesBefore: Int = saveCallCount
+
+        manager.deleteGenericBookmark(identicalTo: makeLocation(page: 5), forIdentifier: book.identifier, account: testAccount)
+        waitForBarrier()
+
+        XCTAssertEqual(manager.genericBookmarks(forIdentifier: book.identifier).map(\.locationString), [synced.locationString])
+        XCTAssertEqual(saveCallCount, savesBefore + 1)
+    }
+
+    /// Deleting a record that is not stored changes and saves nothing.
+    func test_deleteGenericBookmarkIdenticalTo_NoIdenticalRecord_ChangesAndSavesNothing() {
+        let book = makeBook()
+        addBookToStore(book)
+        let stored = makeLocation(page: 5)
+        manager.addGenericBookmark(stored, forIdentifier: book.identifier, account: testAccount)
+        waitForBarrier()
+        let savesBefore: Int = saveCallCount
+
+        manager.deleteGenericBookmark(identicalTo: makeLocation(page: 6), forIdentifier: book.identifier, account: testAccount)
+        waitForBarrier()
+
+        XCTAssertEqual(manager.genericBookmarks(forIdentifier: book.identifier).map(\.locationString), [stored.locationString])
+        XCTAssertEqual(saveCallCount, savesBefore)
     }
 
     func test_addOrReplaceGenericBookmark_addsWhenNew() {
@@ -545,8 +617,79 @@ final class BookmarkManagerTests: XCTestCase {
         manager.deleteGenericBookmark(genericLoc, forIdentifier: book.identifier, account: testAccount)
         waitForBarrier()
 
-        XCTAssertEqual(saveCallCount, 5,
-                       "Each mutation should trigger exactly one save")
+        XCTAssertEqual(saveCallCount, 4,
+                       "Each bookmark mutation should trigger exactly one shelf save")
+        XCTAssertEqual(savePositionCallCount, 1,
+                       "the location change takes the position-only save instead (PP-5268)")
+    }
+
+    // MARK: - Shelf broadcast (PP-5268)
+
+    /// Counts `TPPBookRegistryDidChange` posts and `registrySubject` emissions
+    /// caused by `work`, after the barrier and the main queue have drained.
+    private func shelfBroadcasts(during work: () -> Void) -> (posts: Int, emissions: Int) {
+        drainMainQueue()
+        var posts = 0
+        var emissions = 0
+        let token = NotificationCenter.default.addObserver(
+            forName: .TPPBookRegistryDidChange, object: nil, queue: nil
+        ) { _ in posts += 1 }
+        let subscription = store.registrySubject.dropFirst().sink { _ in emissions += 1 }
+        work()
+        waitForBarrier()
+        drainMainQueue()
+        NotificationCenter.default.removeObserver(token)
+        subscription.cancel()
+        return (posts, emissions)
+    }
+
+    /// A position is saved every ~15 seconds of listening. Announcing each one as
+    /// a shelf change reloaded My Books, Holds, Book Detail and the CarPlay
+    /// library, none of which shows a position.
+    func test_setLocation_doesNotAnnounceAShelfChange() {
+        let book = makeBook()
+        addBookToStore(book)
+
+        let counts = shelfBroadcasts {
+            manager.setLocation(makeLocation(page: 3), forIdentifier: book.identifier, account: testAccount)
+        }
+
+        XCTAssertEqual(counts.posts, 0, "a location change must not post TPPBookRegistryDidChange")
+        XCTAssertEqual(counts.emissions, 0, "a location change must not re-publish the whole registry")
+        XCTAssertTrue(manager.location(forIdentifier: book.identifier)?.locationString.contains("3") ?? false,
+                      "the location is still stored — only the announcement is withheld")
+    }
+
+    /// Control: a bookmark change is still announced, so the test above cannot
+    /// pass because the harness never observes anything.
+    func test_bookmarkChange_stillAnnouncesAShelfChange() {
+        let book = makeBook()
+        addBookToStore(book)
+
+        let counts = shelfBroadcasts {
+            manager.addGenericBookmark(makeLocation(page: 4), forIdentifier: book.identifier, account: testAccount)
+        }
+
+        XCTAssertEqual(counts.posts, 1)
+        XCTAssertEqual(counts.emissions, 1)
+    }
+
+    /// The suppression must not leak into the next mutation. `addBook` writes
+    /// the registry in its own barrier rather than through `mutateRegistry`, so
+    /// it is the path a flag left cleared would silence: a newly borrowed book
+    /// would not appear on the shelf until something else changed.
+    func test_shelfChange_afterALocationChange_isStillAnnounced() {
+        let book = makeBook()
+        addBookToStore(book)
+        manager.setLocation(makeLocation(page: 5), forIdentifier: book.identifier, account: testAccount)
+        waitForBarrier()
+
+        let counts = shelfBroadcasts {
+            store.addBook(makeBook(identifier: "borrowed-next"), state: .downloadNeeded)
+        }
+
+        XCTAssertEqual(counts.posts, 1, "a shelf change after a location change must still be announced")
+        XCTAssertEqual(counts.emissions, 1)
     }
 
     // MARK: - Readium Bookmarks with Nil Initial Array

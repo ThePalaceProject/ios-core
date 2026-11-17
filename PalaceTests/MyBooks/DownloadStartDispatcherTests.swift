@@ -190,10 +190,10 @@ final class DownloadStartDispatcherTests: XCTestCase {
         XCTAssertEqual(spyDelegate.startBorrowCalls.count, 1)
         XCTAssertEqual(spyDelegate.startBorrowCalls.first?.book.identifier, book.identifier)
         // Pin the negative side too — the borrow branch must NOT also call addDownloadTask.
-        // Without this assertion, a mutant that flipped `||` to `&&` (making the predicate
+        // Without this assertion, flipping `||` to `&&` (making the predicate
         // always false) would still leave startBorrowCalls.count == 1 if some other path
-        // added the download task. Closes NT-4 gap noted in the audit for the `.holding`
-        // test (the `.unregistered` test already pins addDownloadTaskCalls.isEmpty).
+        // added the download task (the `.unregistered` test already pins
+        // addDownloadTaskCalls.isEmpty).
         XCTAssertTrue(spyDelegate.addDownloadTaskCalls.isEmpty)
     }
 
@@ -203,8 +203,8 @@ final class DownloadStartDispatcherTests: XCTestCase {
     /// The production guard is `state == .unregistered || state == .holding` → startBorrow.
     /// The two affirmative cases are pinned by the two tests above. This test asserts that
     /// every OTHER `TPPBookState` case routes elsewhere (it does NOT silently call
-    /// startBorrow). This is the "exhaustive switch substitute" referenced in CLAUDE.md
-    /// TDD section — without it, a regression that added an extra state to the routing
+    /// startBorrow). It substitutes for an exhaustive switch — without it, a regression
+    /// that added an extra state to the routing
     /// condition (or that flipped `||` to `&&` in just the right way) could leave 8 of 10
     /// states unconstrained.
     ///
@@ -318,8 +318,8 @@ final class DownloadStartDispatcherTests: XCTestCase {
         XCTAssertTrue(spyDelegate.addDownloadTaskCalls.isEmpty, "Auto-borrow branch must NOT addDownloadTask itself")
         // NT-5: the auto-borrow branch at L161 resets the registry to `.unregistered`
         // before kicking off `startBorrow`. The next sync depends on this state being
-        // observable. Without this assertion, a mutant that drops the `setState` call
-        // (or rewrites it to a no-op self-write like `.downloadNeeded`) would survive.
+        // observable. Dropping the `setState` call (or rewriting it to a no-op
+        // self-write like `.downloadNeeded`) fails this assertion.
         XCTAssertEqual(
             registry.state(for: book.identifier),
             .unregistered,
@@ -331,9 +331,9 @@ final class DownloadStartDispatcherTests: XCTestCase {
 
     /// `.SAMLStarted` state with no cookies must NOT enter the SAML handler — it falls
     /// through to the normal addDownloadTask path (the `if` at L200 requires BOTH the
-    /// state AND `userAccount.cookies`). Without this test, a mutant that flipped
-    /// `state == .SAMLStarted` to `!= .SAMLStarted` would still satisfy the existing
-    /// happy-path test because the cookies guard short-circuits non-SAML calls.
+    /// state AND `userAccount.cookies`). Flipping `state == .SAMLStarted` to
+    /// `!= .SAMLStarted` would still satisfy the happy-path test because the
+    /// cookies guard short-circuits non-SAML calls.
     func testProcessRegularDownload_samlStateWithoutCookies_fallsThroughToAddDownloadTask() {
         let book = openAccessBook()
         registry.addBook(book, location: nil, state: .SAMLStarted, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
@@ -353,9 +353,9 @@ final class DownloadStartDispatcherTests: XCTestCase {
     }
 
     /// A non-SAML state with cookies present must NOT route to the SAML handler.
-    /// This pins the `state == .SAMLStarted` half of the L200 guard. Without it, a
-    /// mutant that drops the state check (leaving only the cookies guard) would
-    /// route every cookied download through the SAML handler.
+    /// This pins the `state == .SAMLStarted` half of the L200 guard. Dropping the
+    /// state check (leaving only the cookies guard) would route every cookied
+    /// download through the SAML handler.
     func testProcessRegularDownload_nonSamlStateWithCookies_doesNotRouteToSAMLHandler() {
         let book = openAccessBook()
         registry.addBook(book, location: nil, state: .downloadSuccessful, fulfillmentId: nil, readiumBookmarks: nil, genericBookmarks: nil)
@@ -381,9 +381,9 @@ final class DownloadStartDispatcherTests: XCTestCase {
     //   processRegularDownload(...)
     //
     // The `defaultBookContentType == .audiobook` clause gates the Overdrive
-    // audiobook branch. Surviving mutant: `==` -> `!=`, which would route
-    // every Overdrive NON-audiobook book through the overdrive handler — the
-    // wrong path for an Overdrive ebook.
+    // audiobook branch. Flipping `==` to `!=` would route every Overdrive
+    // NON-audiobook book through the overdrive handler — the wrong path for
+    // an Overdrive ebook.
     //
     // Existing tests use non-Overdrive distributor + epub MIME, so the
     // first `&&` clause is false and the predicate short-circuits. We need
@@ -392,9 +392,8 @@ final class DownloadStartDispatcherTests: XCTestCase {
     #if FEATURE_OVERDRIVE
     /// Overdrive distributor + non-audiobook content (EPUB) MUST fall
     /// through to `processRegularDownload` (i.e. call `addDownloadTask`), NOT
-    /// route to the overdrive handler. Kills the line-198 `==` -> `!=` mutant
-    /// on `defaultBookContentType == .audiobook` — which would otherwise route
-    /// EPUBs to the audiobook-specific overdrive flow.
+    /// route to the overdrive handler. Pins `defaultBookContentType == .audiobook`,
+    /// which otherwise would route EPUBs to the audiobook-specific overdrive flow.
     func testProcessDownloadWithCredentials_overdriveDistributorEpub_doesNotRouteToOverdriveHandler() {
         // .generic acquisition with epub MIME → non-audiobook content type.
         // Distributor matches the ObjC constant `OverdriveDistributorKey =
@@ -408,7 +407,7 @@ final class DownloadStartDispatcherTests: XCTestCase {
         dispatcher.processDownloadWithCredentials(for: book, withState: .downloadSuccessful, andRequest: nil)
 
         // The non-audiobook Overdrive book MUST fall through to
-        // processRegularDownload → addDownloadTask. If the line-198 mutant
+        // processRegularDownload → addDownloadTask. If the content-type check
         // routed it to the overdrive handler instead, addDownloadTask would
         // NOT fire (the overdriveHandler call early-returns at L203/204).
         XCTAssertEqual(spyDelegate.addDownloadTaskCalls.count, 1,
@@ -428,10 +427,9 @@ final class DownloadStartDispatcherTests: XCTestCase {
     // would block a download whenever EITHER toggle was on, breaking cellular
     // downloads even when the user disabled the Wi-Fi-only setting.
 
-    /// Wi-Fi-only toggle ON, currently ON Wi-Fi: download proceeds. Kills the
-    /// `&&` -> `||` mutant on line 70 (which would fail because `true || false`
-    /// would also fail-wifi). Also kills the `!` drop on `!isOnWiFi()` (which
-    /// would invert: block ON Wi-Fi).
+    /// Wi-Fi-only toggle ON, currently ON Wi-Fi: download proceeds. Fails if
+    /// `&&` becomes `||` (`true || false` would fail-wifi) or if the `!` on
+    /// `!isOnWiFi()` is dropped (which would block ON Wi-Fi).
     func testProcessRegularDownload_wifiOnlyToggleOn_onWifi_proceedsWithDownload() {
         settings.downloadOnlyOnWiFi = true
         isOnWiFiValue = true
@@ -447,11 +445,9 @@ final class DownloadStartDispatcherTests: XCTestCase {
                        "Download must proceed when on Wi-Fi even with the toggle on")
     }
 
-    /// Wi-Fi-only toggle OFF, currently OFF Wi-Fi: download proceeds. Kills the
-    /// `&&` -> `||` mutant on line 70 (which would treat `false || true` as
-    /// fail-wifi). Without this test, the original mutant survives because the
-    /// affirmative test still passes (`true && true` is true and `true || true`
-    /// is also true).
+    /// Wi-Fi-only toggle OFF, currently OFF Wi-Fi: download proceeds. Fails if
+    /// `&&` becomes `||` (`false || true` would fail-wifi), which the
+    /// affirmative test alone cannot detect.
     func testProcessRegularDownload_wifiOnlyToggleOff_offWifi_proceedsWithDownload() {
         settings.downloadOnlyOnWiFi = false
         isOnWiFiValue = false
@@ -481,13 +477,11 @@ final class DownloadStartDispatcherTests: XCTestCase {
     // Missing: an openAccess book where loginRequired=true. In that case:
     //   - openAccess != nil → first `||` half TRUE
     //   - !loginRequired → false → second `||` half FALSE
-    // The book SHOULD register (because the first half is true). A mutant that
-    // flips `||` to `&&` would require BOTH halves true and skip registration —
-    // this test catches that mutant.
+    // The book SHOULD register (because the first half is true). Flipping `||`
+    // to `&&` would require BOTH halves true and skip registration.
 
     /// Open-access book WITH `loginRequired=true`: register because the
-    /// open-access half of the `||` is true. Kills the line-150 `||` -> `&&`
-    /// mutant (which would require BOTH halves true and skip registration).
+    /// open-access half of the `||` is true.
     func testProcessUnregisteredState_openAccessWithLoginRequired_stillRegistersAsDownloadNeeded() {
         let book = openAccessBook()
 
@@ -509,7 +503,7 @@ final class DownloadStartDispatcherTests: XCTestCase {
     //       return
     //   }
     //
-    // Surviving mutants without coverage:
+    // Regressions this pins:
     //   - `!=` → `==` on the borrow-link clause: re-borrow would only fire for
     //     expired books WITHOUT a borrow link, which is nonsense.
     //   - Drop the `isExpired` check: re-borrow would fire on every borrow-link
@@ -565,8 +559,8 @@ final class DownloadStartDispatcherTests: XCTestCase {
     }
 
     /// Expired book WITH borrow link: must auto-rebborrow AND reset registry
-    /// to `.unregistered`. Closes line-241 `!=` -> `==` mutant + line-243
-    /// `setState(.unregistered)` drop mutant.
+    /// to `.unregistered`. Fails if the borrow-link `!=` becomes `==` or the
+    /// `setState(.unregistered)` call is dropped.
     func testProcessRegularDownload_expiredBookWithBorrowLink_triggersReBorrow() {
         let book = expiredBorrowableBook()
         XCTAssertTrue(book.isExpired, "fixture precondition — book must be expired")
@@ -620,30 +614,8 @@ final class DownloadStartDispatcherTests: XCTestCase {
     //       }
     //   }
     //
-    // The 3-clause `&&` predicate is uncovered because the spy never invokes
-    // the borrow-completion closure. Four mutants survive on line 255 (one
-    // per `&&` and one per `!=` per clause).
-    //
-    // We can't directly observe the log call, but we CAN exercise the closure
-    // path through the production seam: capture the closure, then invoke it
-    // with the registry in different post-borrow states. The closure itself
-    // closes over the delegate's `bookRegistry`, so the assertion is
-    // "completion-invocation does not throw / does not modify external state".
-    //
-    // The kill mechanic: a mutated predicate causes a different log message
-    // path inside the closure body. If the closure body had any side effect
-    // (like a state mutation), the mutant would surface. Currently it has
-    // none — only logging. So mutations on log-only branches are
-    // architecturally untestable via outcomes alone.
-    //
-    // HOWEVER, palace_mutate.py skips Log.{trace,debug,info,warn,error} call
-    // lines — so a mutation on the `if newState != ... { Log.warn(...) }`
-    // condition itself is INSIDE the log surround logic. The engine may or
-    // may not skip the `if` line depending on its scope rules; the report
-    // earlier showed line 255 as a real mutation point not a skip, so the
-    // engine treats the `if` predicate as live.
-    //
-    // Approach: capture the borrowCompletion closure, drive it with the
+    // The closure body only logs, so the predicate is not observable through
+    // outcomes. Approach: capture the borrowCompletion closure, drive it with the
     // registry in different states, and assert that subsequent dispatcher
     // calls behave consistently. We're really pinning the **completion
     // contract**: "the closure must read the current registry state".
@@ -652,9 +624,8 @@ final class DownloadStartDispatcherTests: XCTestCase {
 
     /// Drive the auto-borrow completion closure with `newState = .downloading`
     /// — the success arm. The closure must NOT mutate registry state.
-    /// This invocation EXERCISES the closure (production seam), which is the
-    /// minimum needed to put line 255 under coverage; without it the closure
-    /// is dead code under test and all four line-255 mutants survive.
+    /// This invocation exercises the closure through the production seam;
+    /// without it the closure is dead code under test.
     func testProcessRegularDownload_downloadNeededAutoBorrow_completionFires_withDownloadingState() {
         let book = borrowableBook()
         registry.addBook(book, location: nil, state: .downloadNeeded, fulfillmentId: nil,
@@ -680,11 +651,7 @@ final class DownloadStartDispatcherTests: XCTestCase {
     /// the warn-arm of the line-255 predicate (none of the three .downloading
     /// / .downloadSuccessful / .downloadNeeded states match). Together with
     /// the success-arm test above, this exercises both branches of the
-    /// completion predicate. A mutant that flips `&&` to `||` on line 255
-    /// would still log warn on .holding (so this test alone doesn't kill it),
-    /// but the engine measures coverage by execution — driving both arms
-    /// puts line 255 under coverage and exercises the closure-body branch
-    /// the dispatcher emits.
+    /// completion predicate.
     func testProcessRegularDownload_downloadNeededAutoBorrow_completionFires_withHoldingState() {
         let book = borrowableBook()
         registry.addBook(book, location: nil, state: .downloadNeeded, fulfillmentId: nil,
@@ -703,7 +670,7 @@ final class DownloadStartDispatcherTests: XCTestCase {
                        "Completion's warn-arm must NOT mutate the registry — it only logs")
     }
 
-    // MARK: - PP-4161 Wave 4 (Path X): streaming-HTML early-return
+    // MARK: - PP-4161: streaming-HTML early-return
     //
     // Production code at DownloadStartDispatcher.swift:192-203 (the 4-arg
     // `processDownloadWithCredentials` variant) gains a streaming-HTML
@@ -780,7 +747,7 @@ final class DownloadStartDispatcherTests: XCTestCase {
     /// the registry in `.downloadNeeded` so the cell's button mapping
     /// surfaces `.readStreaming` on the next render.
     ///
-    /// Kills the inverse mutant (dropping the streamingHTML guard, which
+    /// Also fails if the streamingHTML guard is dropped, which
     /// would let the call fall through into the asset-download path and
     /// hit `addDownloadTask` with an HTML URL the EPUB pipeline can't
     /// decode).
@@ -829,9 +796,8 @@ final class DownloadStartDispatcherTests: XCTestCase {
     }
 
     /// Regression net: EPUB books still route through the normal branches.
-    /// A mutant that over-applies the streamingHTML guard to all content
-    /// types (e.g. unconditionally returning early) would silently kill
-    /// the EPUB borrow path; this test catches that.
+    /// Over-applying the streamingHTML guard to all content types (e.g.
+    /// unconditionally returning early) would break the EPUB borrow path.
     func testProcessDownloadWithCredentials_epubBook_stillCallsStartBorrow() {
         let book = borrowableBook() // EPUB by default in the existing helper
         XCTAssertNotEqual(book.defaultBookContentType, .streamingHTML,

@@ -2,35 +2,14 @@
 //  MyBooksDownloadCenterAccountIdThreadingTests.swift
 //  PalaceTests
 //
-//  Module A (swarm_eefef87a) — pins the captured-accountId threading
-//  Option 1 from `reference_tpp_user_account_migration_retro.md`. The
-//  bug class: `TPPNetworkExecutor.bearerAuthorized(request:)` re-resolves
-//  `AppContainer.production().accountsManager.currentUserAccount` on
-//  every request, which lets a library swap mid-download produce a
-//  spurious sign-in modal against the wrong account. The fix:
-//  `DownloadStartCoordinator.startDownloadAsync` captures
-//  `currentAccountId` ONCE into a let-binding, threads it through to
-//  `DownloadStartDispatcher.processRegularDownload`, which feeds it
-//  into `TPPNetworkExecutor.bearerAuthorized(request:accountId:)` —
-//  the new instance method that uses the EXECUTOR'S injected
-//  accountsManager rather than `AppContainer.production()`.
-//
-//  Six cases per the contract at
-//  `.forgeos/swarms/swarm_eefef87a/contracts/A-AccountsMyBooksAccountIdThreading.md`:
-//
-//  1. captures-once-doesNotReResolve — verifies the capture happens at the
-//     top of startDownloadAsync, not at each downstream read.
-//  2. nil-at-capture → sentinel — proves nil currentAccountId records the
-//     sentinel rather than silently picking up whatever becomes current
-//     mid-flight.
-//  3. change-after-capture → original-id-used — proves a swap window
-//     immediately after the capture doesn't affect the in-flight download.
-//  4. bearerAuthorized explicit-id → applies-that-token — pins the
-//     happy-path resolution.
-//  5. bearerAuthorized nil-id → resolver-fallback — pins legacy behavior
-//     for the no-arg overload's migration tail.
-//  6. bearerAuthorized explicit-id → no-AppContainer-touch — proves the
-//     instance method uses injected accountsManager exclusively.
+//  Pins captured-accountId threading for downloads. `bearerAuthorized(request:)`
+//  re-resolves the current user account on every request, so a library swap
+//  mid-download could raise a sign-in modal against the wrong account.
+//  `DownloadStartCoordinator.startDownloadAsync` captures `currentAccountId`
+//  once and threads it to `TPPNetworkExecutor.bearerAuthorized(request:accountId:)`,
+//  which uses the executor's injected accountsManager. Covers: capture once, nil
+//  capture → sentinel, swap after capture, explicit-id and nil-id resolution,
+//  and no `AppContainer` access on the explicit-id path.
 //
 
 import XCTest

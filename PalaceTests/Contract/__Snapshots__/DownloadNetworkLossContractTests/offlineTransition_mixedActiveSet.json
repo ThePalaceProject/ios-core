@@ -1,0 +1,55 @@
+[
+  {
+    "args" : {
+      "book" : "a-downloading",
+      "state" : "downloading"
+    },
+    "method" : "registry.state"
+  },
+  {
+    "args" : {
+      "book" : "b-saml",
+      "state" : "saml-started"
+    },
+    "method" : "registry.state"
+  },
+  {
+    "args" : {
+      "book" : "c-finished",
+      "state" : "download-successful"
+    },
+    "method" : "registry.state"
+  },
+  {
+    "args" : {
+      "task" : "1"
+    },
+    "method" : "task.cancel"
+  },
+  {
+    "args" : {
+      "task" : "2"
+    },
+    "method" : "task.cancel"
+  },
+  {
+    "args" : {
+      "task" : "4"
+    },
+    "method" : "task.cancel"
+  },
+  {
+    "args" : {
+      "book" : "a-downloading",
+      "state" : "download-failed"
+    },
+    "method" : "registry.addBook"
+  },
+  {
+    "args" : {
+      "book" : "b-saml",
+      "state" : "download-failed"
+    },
+    "method" : "registry.addBook"
+  }
+]

@@ -1,43 +1,12 @@
 //
 //  AccountRegistryStorePoolStarvationTests.swift
-//  PalaceTests
 //
-//  `AccountRegistryStore` reads must not consume cooperative-pool threads while
-//  waiting on GCD to schedule work.
-//
-//  THE DEFECT. `performRead` was `accountSetsLock.sync { }` on a concurrent
-//  queue, and writes were `.async(flags: .barrier)`. A `.sync` read must wait
-//  for any queued barrier — and that barrier needs a GCD WORKER THREAD to run.
-//  When the readers are Swift Tasks, each blocked reader occupies one
-//  cooperative-pool thread, and that pool's width is the core count. Enough
-//  concurrent readers and every worker is blocked waiting for a barrier that
-//  cannot be scheduled because the threads it needs are the ones blocked. It
-//  resolves only when GCD's thread-explosion heuristic slowly adds threads.
-//
-//  Measured on device/CI: 24 threads (== core count) parked in `__ulock_wait`
-//  inside `performRead`, with NO barrier writer running. Whole-worker freezes of
-//  189-404 SECONDS between two 0.001s tests in an unrelated suite — the CI job
-//  spends 1600-2500s of its 3600s budget stalled, which is what pushes it over
-//  the 60-minute ceiling.
-//
-//  THE CONTRACT PINNED HERE. Reads and writes are safe to issue from Task
-//  context: they block only for an actual critical section, never on thread
-//  availability. The always-on test expresses that as COMPLETION — every
-//  concurrent store operation finishes — because the broken implementation did
-//  not finish at all: it deadlocked the whole bundle (exit 124 at 20 minutes).
-//
-//  It deliberately does NOT require an unrelated Task to be SCHEDULED within a
-//  deadline. That formulation measures the machine rather than the store; it
-//  passed 3/3 CI iterations once and then failed one iteration at 69 SECONDS on
-//  a build whose only delta added `Task { await MainActor.run { … } }` hops
-//  elsewhere. The stress variant that does require scheduling is kept, gated
-//  behind PALACE_STRESS_POOL=1, where a quiet machine makes it meaningful.
-//
-//  The field symptom this all came from:
-//  `CatalogCrawlSchedulerTests.test_productionSpawn_runsOperation` does nothing
-//  but spawn a `.utility` Task and await it, and it hung.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  `AccountRegistryStore` reads must not park cooperative-pool threads waiting
+//  on GCD: a `.sync` read behind a queued `.barrier` write needs a GCD worker,
+//  and enough Task readers can occupy every thread (measured: 189-404s stalls
+//  on CI). The always-on test asserts every concurrent store operation
+//  COMPLETES; the load-sensitive scheduling variant is gated behind
+//  PALACE_STRESS_POOL=1 because it measures the machine, not the store.
 //
 
 import XCTest

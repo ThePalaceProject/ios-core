@@ -895,6 +895,16 @@ final class CatalogSearchViewModelTests: XCTestCase {
         XCTAssertEqual(mockRepository.lastSearchQuery, "Harry's Book & Other Stories (Volume 1)")
     }
 
+    /// Pins that a non-ASCII query reaches the repository unaltered by the view
+    /// model.
+    ///
+    /// It says nothing about a patron typing Japanese. The query is assigned
+    /// straight to the view model, so the iOS input system never runs; and the
+    /// simulator driver puts non-ASCII text on the clipboard and pastes it, which
+    /// bypasses that system too (PP-5035). Substitution, autocorrection and
+    /// predictive insertion are unreachable from here and from any journey —
+    /// that class is manual-only. See docs/Testing/REGRESSION_TEST_MATRIX.md,
+    /// "What automated text input reaches".
     func testSearch_UnicodeCharacters_Works() async {
         let viewModel = createViewModel()
         viewModel.updateSearchQuery("日本語の本")

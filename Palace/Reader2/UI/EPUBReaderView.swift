@@ -43,6 +43,7 @@ struct EPUBReaderView: View {
                         .accessibilityHidden(true) // Error text provides context
                     Text("Failed to open book")
                         .font(.headline)
+                        .accessibilityAddTraits(.isHeader)
                     Text(error.localizedDescription)
                         .font(.caption)
                         .foregroundStyle(.secondary)

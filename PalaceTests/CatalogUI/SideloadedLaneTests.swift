@@ -1,21 +1,10 @@
-//
 //  SideloadedLaneTests.swift
-//  PalaceTests
 //
-//  Module D (swarm_495a88d9 / PP-2679): the "Side Loaded" catalog lane.
-//
-//  Covers two layers:
-//   1. The pure `MappedCatalog.toCatalogContent(prepending:)` bridge — proves the
-//      injected lanes force `.grouped` for every base-feed shape (grouped /
-//      ungrouped / empty) and that an empty prepend list is identical to the
-//      un-injected baseline (lane ABSENT).
-//   2. The `CatalogViewModel` wiring — proves the single choke-point helper
-//      `withSideloadedLane(_:)` runs on the load path AND, critically, on the
-//      `applyFacet` cache-HIT synchronous fast path (:283) that a per-site patch
-//      would silently miss.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  PP-2679: the "Side Loaded" catalog lane. Covers
+//  `MappedCatalog.toCatalogContent(prepending:)` (injected lanes force `.grouped`
+//  for every feed shape; an empty prepend matches the baseline) and the
+//  `CatalogViewModel` wiring: `withSideloadedLane(_:)` runs on the load path and
+//  on the synchronous `applyFacet` cache-hit path.
 
 import XCTest
 import Combine

@@ -41,6 +41,8 @@ struct FacetView: View {
         .frame(width: 65, height: 30)
         .border(Color(TPPConfiguration.mainColor()), width: 1)
         .cornerRadius(2)
+        .frame(minWidth: 44, minHeight: 44)
+        .contentShape(Rectangle())
     }
 
     private var dividerView: some View {

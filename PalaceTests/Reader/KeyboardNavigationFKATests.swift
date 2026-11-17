@@ -1,19 +1,9 @@
-//
 //  KeyboardNavigationFKATests.swift
-//  PalaceTests
 //
-//  Tests for Full Keyboard Access (FKA) behavior and handleCommand
-//  in KeyboardNavigationHandler.
-//
-//  When FKA is enabled, arrow keys are consumed by the system for
-//  focus navigation and should be skipped by our handler.
-//  Space/PageUp/PageDown/Escape remain handled.
-//
-//  Also covers handleCommand (GCKeyboard/pressesBegan path) with
-//  throttling and concurrent-navigation protection.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
-//
+//  Full Keyboard Access behavior in KeyboardNavigationHandler: with FKA on, the
+//  system uses arrow keys for focus navigation, so the handler skips them while
+//  Space/PageUp/PageDown/Escape stay handled. Also covers `handleCommand`
+//  (GCKeyboard / pressesBegan path) throttling and concurrent-navigation guard.
 
 import XCTest
 @testable import Palace

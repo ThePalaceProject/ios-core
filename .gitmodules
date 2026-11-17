@@ -13,9 +13,10 @@
 [submodule "adobe-content-filter"]
 	path = adobe-content-filter
 	url = git@github.com:ThePalaceProject/mobile-adobe-content-filter.git
-[submodule "mobile-bookmark-spec"]
-	path = mobile-bookmark-spec
-	url = git@github.com:ThePalaceProject/mobile-bookmark-spec.git
+[submodule "mobile-specs"]
+	path = mobile-specs
+	url = git@github.com:ThePalaceProject/mobile-specs.git
+	branch = main
 [submodule "ios-audiobook-overdrive"]
 	path = ios-audiobook-overdrive
 	url = git@github.com:ThePalaceProject/ios-audiobook-overdrive.git

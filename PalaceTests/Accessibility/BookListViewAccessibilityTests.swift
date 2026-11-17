@@ -1,39 +1,12 @@
 //
 //  BookListViewAccessibilityTests.swift
-//  PalaceTests
 //
-//  PP-4326 (3.0.2 hotfix). Regression tests for the VoiceOver activation
-//  contract on the shared BookListView row used by search, More…, MyBooks,
-//  and Holds.
-//
-//  Bug: PP-3968's .accessibilityElement(children: .ignore) +
-//  .accessibilityRemoveTraits(.isButton) on the outer Button collapsed
-//  every book row into a single non-button accessibility element. Two
-//  consequences:
-//    1. VoiceOver's synthesized double-tap on the row routed through
-//       SwiftUI hit-test to the first inner action button (Borrow/Read)
-//       instead of firing the outer Button's onSelect closure.
-//    2. The inner action buttons themselves were no longer surfaced as
-//       individual VoiceOver elements (because the parent told VoiceOver
-//       to ignore its children).
-//
-//  Fix: just undo PP-3968. The outer Button + a custom .accessibilityLabel
-//  + .accessibilityHint is enough — SwiftUI's natural Button accessibility
-//  handles the rest. The inner action Buttons in BookButtonsView are real
-//  SwiftUI Buttons with their own .accessibilityLabel, so they surface as
-//  separate accessibility elements automatically. iOS routes a VoiceOver
-//  tap to the topmost accessibility element at the tap location:
-//    - Tap on the Borrow button area → Borrow is topmost → focus Borrow.
-//    - Tap on cover or title → no inner Button there → focus the outer
-//      row Button (which announces "Title, by Author. Button. Opens
-//      book details.").
-//
-//  Tests are source-level sentinels — SwiftUI accessibility trees aren't
-//  materialized in unit tests without VoiceOver running, so we lock the
-//  contract at the source level (same pattern as PP-3980's test in
-//  CatalogLaneRowViewAccessibilityTests).
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  PP-4326: VoiceOver activation contract on the shared BookListView row
+//  (search, More…, MyBooks, Holds). PP-3968's `.accessibilityElement(children:
+//  .ignore)` + `.accessibilityRemoveTraits(.isButton)` collapsed each row into
+//  one element, so double-tap hit the inner Borrow/Read button and the inner
+//  buttons were hidden. Source-level sentinels, because SwiftUI accessibility
+//  trees are not materialized in unit tests (same pattern as PP-3980).
 //
 
 import XCTest

@@ -13,13 +13,42 @@
 private final class MainActorPresentation: @unchecked Sendable {
     let viewController: UIViewController
     let completion: (() -> Void)?
-    init(_ viewController: UIViewController, _ completion: (() -> Void)?) {
+    let rootProvider: @MainActor () -> UIViewController?
+    let scheduleAlertRetry: TPPPresentationUtils.AlertRetryScheduler
+    init(_ viewController: UIViewController,
+         _ completion: (() -> Void)?,
+         _ rootProvider: @escaping @MainActor () -> UIViewController?,
+         _ scheduleAlertRetry: @escaping TPPPresentationUtils.AlertRetryScheduler) {
         self.viewController = viewController
         self.completion = completion
+        self.rootProvider = rootProvider
+        self.scheduleAlertRetry = scheduleAlertRetry
     }
 }
 
+/// Carries a main-actor retry across the `asyncAfter` boundary; created and
+/// run only on the main queue.
+private final class MainActorRetry: @unchecked Sendable {
+    let run: @MainActor () -> Void
+    init(_ run: @escaping @MainActor () -> Void) { self.run = run }
+}
+
 class TPPPresentationUtils: NSObject {
+    /// How often a presentation queued behind a visible alert re-checks
+    /// whether the alert has been dismissed.
+    static let alertDismissalPollInterval: TimeInterval = 0.25
+
+    /// Schedules the next check for a presentation queued behind a visible alert.
+    typealias AlertRetryScheduler = @MainActor (_ retry: @escaping @MainActor () -> Void) -> Void
+
+    @MainActor
+    private class func scheduleAfterPollInterval(_ retry: @escaping @MainActor () -> Void) {
+        let box = MainActorRetry(retry)
+        DispatchQueue.main.asyncAfter(deadline: .now() + alertDismissalPollInterval) {
+            MainActor.assumeIsolated { box.run() }
+        }
+    }
+
     /// Presents the given view controller on top of the topmost currently
     /// displayed view controller in the current window.
     ///
@@ -31,6 +60,9 @@ class TPPPresentationUtils: NSObject {
     /// UINavigationControllers, this method bails presentation if they
     /// both contain a first view controller of the same type.
     ///
+    /// If the topmost view controller is a `UIAlertController`, presentation
+    /// waits until that alert is dismissed (PP-5348).
+    ///
     /// - Parameters:
     ///   - vc: The view controller to be presented.
     ///   - animated: Whether to animate the presentation of not.
@@ -38,6 +70,19 @@ class TPPPresentationUtils: NSObject {
     @objc class func safelyPresent(_ vc: UIViewController,
                                    animated: Bool = true,
                                    completion: (() -> Void)? = nil) {
+        safelyPresent(vc, animated: animated, completion: completion,
+                      rootProvider: { appWindowRootViewController() },
+                      scheduleAlertRetry: { scheduleAfterPollInterval($0) })
+    }
+
+    /// Same as `safelyPresent(_:animated:completion:)`, with the root view
+    /// controller and the retry timing supplied by the caller so tests can use
+    /// their own window and run the retry themselves.
+    class func safelyPresent(_ vc: UIViewController,
+                             animated: Bool,
+                             completion: (() -> Void)?,
+                             rootProvider: @escaping @MainActor () -> UIViewController?,
+                             scheduleAlertRetry: @escaping AlertRetryScheduler) {
         // Box the non-`Sendable` UIKit payload ONCE, here in the nonisolated
         // function region, before any `@Sendable` boundary. Every downstream use
         // (the off-main hop, the coordinator completion, the nested main.async)
@@ -45,29 +90,23 @@ class TPPPresentationUtils: NSObject {
         // `@unchecked Sendable` carrier rather than re-capturing `vc`/`completion`
         // directly — which is what produced the "sending 'completion' risks data
         // races" diagnostic when the box was rebuilt inside `assumeIsolated`.
-        let payload = MainActorPresentation(vc, completion)
+        let payload = MainActorPresentation(vc, completion, rootProvider, scheduleAlertRetry)
 
         // Ensure this block is always executed on the main thread
         if !Thread.isMainThread {
             DispatchQueue.main.async {
-                safelyPresent(payload.viewController, animated: animated, completion: payload.completion)
+                safelyPresent(payload.viewController, animated: animated, completion: payload.completion,
+                              rootProvider: payload.rootProvider,
+                              scheduleAlertRetry: payload.scheduleAlertRetry)
             }
             return
         }
 
         // Past the guard above we are provably on the main thread, so it is safe
         // to assert main-actor isolation for the UIKit work below rather than
-        // hopping again. Behavior is unchanged — the dispatch structure below is
-        // identical to before.
+        // hopping again.
         MainActor.assumeIsolated {
-            let delegate = UIApplication.shared.delegate
-            guard var base = delegate?.window??.rootViewController else {
-                TPPErrorLogger.logError(withCode: .missingExpectedObject,
-                                        summary: "Unable to find rootViewController",
-                                        metadata: [
-                                            "DelegateIsNil": (delegate == nil),
-                                            "WindowIsNil": (delegate?.window == nil)
-                                        ])
+            guard var base = payload.rootProvider() else {
                 return
             }
 
@@ -76,6 +115,22 @@ class TPPPresentationUtils: NSObject {
                     break
                 }
                 base = topBase
+            }
+
+            // A UIAlertController cannot present. Presenting from one throws
+            // "A view controller not containing an alert controller was asked
+            // for its contained alert controller" from UIKit's deferred
+            // CA-commit block, where no catcher can reach it (Crashlytics
+            // fe741015, PP-5348: the sign-in sheet raised by a refused token
+            // refresh at launch, over a visible alert). Wait for the alert to
+            // be dismissed, then walk the hierarchy again.
+            if base is UIAlertController {
+                payload.scheduleAlertRetry {
+                    safelyPresent(payload.viewController, animated: animated, completion: payload.completion,
+                                  rootProvider: payload.rootProvider,
+                                  scheduleAlertRetry: payload.scheduleAlertRetry)
+                }
+                return
             }
 
             if let baseNavController = base as? UINavigationController,
@@ -104,7 +159,9 @@ class TPPPresentationUtils: NSObject {
                 // transfer is data-race-free. Dispatch structure unchanged.
                 coordinator.animate(alongsideTransition: nil) { _ in
                     DispatchQueue.main.async {
-                        safelyPresent(payload.viewController, animated: animated, completion: payload.completion)
+                        safelyPresent(payload.viewController, animated: animated, completion: payload.completion,
+                                      rootProvider: payload.rootProvider,
+                                      scheduleAlertRetry: payload.scheduleAlertRetry)
                     }
                 }
                 return
@@ -112,5 +169,21 @@ class TPPPresentationUtils: NSObject {
 
             base.present(payload.viewController, animated: animated, completion: payload.completion)
         }
+    }
+
+    /// The app window's root view controller; logs when there is none.
+    @MainActor
+    private class func appWindowRootViewController() -> UIViewController? {
+        let delegate = UIApplication.shared.delegate
+        guard let root = delegate?.window??.rootViewController else {
+            TPPErrorLogger.logError(withCode: .missingExpectedObject,
+                                    summary: "Unable to find rootViewController",
+                                    metadata: [
+                                        "DelegateIsNil": (delegate == nil),
+                                        "WindowIsNil": (delegate?.window == nil)
+                                    ])
+            return nil
+        }
+        return root
     }
 }

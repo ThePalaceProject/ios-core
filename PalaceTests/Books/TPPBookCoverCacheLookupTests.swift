@@ -1,32 +1,11 @@
-//
 //  TPPBookCoverCacheLookupTests.swift
-//  PalaceTests
 //
-//  Regression coverage for the cover-image cache lookup in
-//  `TPPBook.fetchCoverImage(forDisplayHeight:)`.
-//
-//  The lookup used to read:
-//
-//      lookupKeys.lazy.compactMap { [weak self] in self?.imageCache.get(for: $0) }.first
-//
-//  `LazySequenceProtocol.compactMap` is implemented as
-//  `map(transform).filter { $0 != nil }.map { $0! }`, so the transform runs
-//  TWICE per element — once for the filter's nil test, once for the trailing
-//  force-unwrap. That force-unwrap is the `closure #2 in compactMap` that
-//  appears in the crash report, and it traps whenever the second evaluation
-//  disagrees with the first. Two ways that happens in production, both real:
-//  the cache evicts the entry between the two reads, or `self` deallocates and
-//  `self?.` starts returning nil.
-//
-//  Crash: `_assertionFailure` → `closure #2 in compactMap` → `Collection.first`
-//  → `TPPBook.fetchCoverImage(forDisplayHeight:)`, reached from
-//  `CatalogContentView.swift:93` (the lane-prefetch `onAppear`).
-//
-//  These tests pin the property that actually prevents the trap — the cache is
-//  consulted exactly ONCE per key — rather than merely asserting the happy-path
-//  return value, which the buggy implementation also satisfied. Restoring the
-//  lazy `compactMap` doubles the call counts below and fails these by name.
-//
+//  Crash in `TPPBook.fetchCoverImage(forDisplayHeight:)` (`closure #2 in
+//  compactMap`). A lazy `compactMap` runs its transform twice per element and
+//  force-unwraps the second result, which traps when a cache eviction or a
+//  deallocated `self` makes the two reads disagree. These tests pin that the
+//  cache is read exactly once per key; restoring the lazy `compactMap` doubles
+//  the call counts and fails them.
 
 import XCTest
 import UIKit

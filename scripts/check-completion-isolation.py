@@ -95,6 +95,9 @@ EXEMPT: dict[str, str] = {
     "Palace/Reader2/BusinessLogic/TPPLastReadPositionSynchronizer.swift:sync":
         "sole completion-taking caller is ReaderModule (not @MainActor); its closure "
         "calls finalizePresentation, which marshals its own UIKit work onto main.",
+    "Palace/Audiobooks/LCP/LCPAudiobooks.swift:loadContentDictionary":
+        "private, and its completion is @Sendable, so it cannot carry main-actor "
+        "isolation; of its three in-file callers, two hop to main and startPrefetch ignores it.",
     "Palace/Reader2/BusinessLogic/TPPLastReadPositionSynchronizer.swift:presentNavigationAlert":
         "the async twin it awaits already wraps its UI in DispatchQueue.main.async; the "
         "completion afterwards carries no main-actor closure.",

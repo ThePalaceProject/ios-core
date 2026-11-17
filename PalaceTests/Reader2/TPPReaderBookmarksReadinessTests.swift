@@ -2,28 +2,12 @@
 //  TPPReaderBookmarksReadinessTests.swift
 //  PalaceTests
 //
-//  Readiness contract for bookmark-sync via
-//  `TPPReaderBookmarksBusinessLogic.postBookmark` and
-//  `didDeleteBookmark` (swarm_81b5099e Bucket A).
-//
-//  Pre-Phase-1 both functions read `currentAccount.details` directly and
-//  silently skipped the server post/delete whenever the auth document
-//  hadn't loaded yet (even if sync permission would have been granted
-//  once details arrived). Local registry add/delete still ran — so the
-//  bookmark was created/removed locally, but never sync'd to the server.
-//
-//  Post-Phase-1 the path is hoisted into a Task that awaits readiness
-//  before reading `details.syncPermissionGranted`. Best-effort silent
-//  failure on `AccountLoadError` (log + local-only persistence).
-//
-//  This test exercises the gate contract at the public surface: drive
-//  state, invoke a bookmark add through the business logic, and verify
-//  the local registry mutation happens regardless of gate state. The
-//  server post itself relies on TPPAnnotations.postBookmark which talks
-//  to a real annotation endpoint — out of scope for a unit test. The
-//  AccountStateMachineTests pin the underlying awaitReady contract; this
-//  file confirms the BookmarksBusinessLogic consumes it without breaking
-//  the local-add invariant.
+//  Readiness contract for bookmark sync in `TPPReaderBookmarksBusinessLogic`
+//  (`postBookmark`, `didDeleteBookmark`). Reading `currentAccount.details` before
+//  the auth document loaded skipped the server post/delete while the local change
+//  still ran; the path now awaits readiness first and falls back to local-only on
+//  `AccountLoadError`. These tests assert the local registry change happens
+//  regardless of gate state; the server post needs a real annotation endpoint.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

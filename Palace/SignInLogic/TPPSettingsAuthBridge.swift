@@ -2,12 +2,9 @@
 //  TPPSettingsAuthBridge.swift
 //  Palace
 //
-//  Wave 1a (PalacePreferences): app-target bridge that re-attaches the
-//  auth-flow protocol conformances TPPSettings carried before it moved into
-//  the PalacePreferences package. These are plain Swift protocols (their only
-//  consumers — TPPSignInBusinessLogic, LegacySAMLAuthAdapter — are all Swift),
-//  so the app-side conformances generate NO ObjC category on the now-external
-//  TPPSettings class; the package stays dependency-free.
+//  App-target auth-flow protocol conformances for TPPSettings, which lives in
+//  the PalacePreferences package. The protocols are plain Swift, so these
+//  conformances add no ObjC category and the package stays dependency-free.
 //
 
 import Foundation

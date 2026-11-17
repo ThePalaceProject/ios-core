@@ -117,8 +117,8 @@ def classify(path: str) -> tuple[str, str]:
     Priority order:
       1. NONE — generated/lifecycle files we won't unit-test
       2. NAME-based UNIT/INTEGRATION rules (Service, ViewModel, Logic, Mapper, …)
-         These run BEFORE path-based UI rules so that BookService.swift living
-         in /UI/ still gets correctly classified as integration.
+         These run BEFORE path-based UI rules so that a *Service.swift file
+         living in /UI/ still gets correctly classified as integration.
       3. E2E — CarPlay, navigation coordinator
       4. SNAPSHOT — path-based UI fallback
       5. Default to unit

@@ -1,22 +1,10 @@
-//
 //  WebAuthPresentationAnchorTests.swift
-//  PalaceTests
 //
-//  `UIApplication.webAuthPresentationAnchor` is the shared anchor resolver for
-//  all three OIDC re-auth paths. I initially claimed it was untestable and
-//  covered it with a source lint; SoD review disproved that — real `UIWindow`s
-//  drive the filter fine, and only the *scene lookup* would need a fake. It also
-//  pointed out that a fresh `UIWindow()` defaults to `isHidden == true`, which a
-//  real test catches and a lint never would.
-//
-//  What is pinned here is the FILTER, which is the part with logic: a candidate
-//  window must be visible, at `.normal` level, and have a root view controller.
-//  Anchoring to a keyboard, hidden, or rootless window fails differently rather
-//  than better — and the original bug was precisely a fallback that handed iOS
-//  an unusable window.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
-//
+//  `UIApplication.webAuthPresentationAnchor` resolves the anchor for all three
+//  OIDC re-auth paths. Pinned: the window filter, which requires a visible,
+//  `.normal`-level window with a root view controller. The original bug was a
+//  fallback that handed iOS an unusable window. Real `UIWindow`s are used; a
+//  fresh `UIWindow()` starts hidden.
 
 import XCTest
 import UIKit
@@ -24,10 +12,8 @@ import UIKit
 
 final class WebAuthPresentationAnchorTests: XCTestCase {
 
-    /// Calls PRODUCTION. The first version of this file declared its own copy
-    /// of the predicate, so deleting a clause from production left all five
-    /// tests green — including `testEachClauseIsLoadBearing`, whose name claimed
-    /// the opposite. Two reviewers caught it independently.
+    /// Calls PRODUCTION, not a local copy of the predicate — a copy would stay
+    /// green when a clause is deleted from production.
     private func isUsableAnchor(_ window: UIWindow) -> Bool {
         UIApplication.isUsableWebAuthAnchor(window)
     }
@@ -69,8 +55,8 @@ final class WebAuthPresentationAnchorTests: XCTestCase {
                        "A window with no rootViewController cannot present")
     }
 
-    /// All three rejection reasons are independent — pinned together so a
-    /// mutant that drops any single clause fails.
+    /// All three rejection reasons are independent — pinned together so
+    /// dropping any single clause fails.
     func testEachClauseIsLoadBearing() {
         XCTAssertFalse(isUsableAnchor(makeWindow(hidden: true, level: .normal, withRoot: true)),
                        "visibility clause")

@@ -10,11 +10,11 @@
 #
 #   - **/.arch/**                          generated architecture IR (regenerable;
 #                                          `harness arch` output — not hand-authored why)
-#   - .forgeos/swarms/*/transcripts/**     agent run transcripts (process, not code)
-#   - .forgeos/swarms/*/HANDOFF.md         campaign handoff scaffolding
-#   - .forgeos/swarms/*/plan.md            campaign plan
-#   - .forgeos/swarms/*/manifest.yaml      campaign manifest
-#   - .forgeos/swarms/*review*.md          raw review dumps (the ADR distills these)
+#   - .forgeos/**                          maintainer governance records: swarm
+#                                          transcripts, plans, manifests, reviews,
+#                                          intent files, wall-failures. They live in
+#                                          the maintainer's local harness; config CI
+#                                          needs lives in config/ci/.
 #   - docs/**/*.html                       generated doc renders (regenerable)
 #
 # It does NOT touch legit docs: docs/architecture/*.md ADRs, **/README.md,
@@ -30,7 +30,7 @@
 # Exit 0 = clean; 1 = denied doc added; 2 = usage/error.
 #
 # Allowlist (optional): DOC_HYGIENE_ALLOWLIST (default
-#   .forgeos/doc-hygiene-allowlist.txt); one path substring per line, '#' comments —
+#   config/ci/doc-hygiene-allowlist.txt); one path substring per line, '#' comments —
 #   for a deliberately-kept artifact, with a reason.
 #
 # bash 3.2 compatible (macOS): no `mapfile`, no arrays under `set -u`.
@@ -50,18 +50,19 @@ case "$MODE" in
   base)   ADDED="$(git diff --name-only --diff-filter=A "${BASE}...HEAD" 2>/dev/null)" ;;
 esac
 
-ALLOW="${DOC_HYGIENE_ALLOWLIST:-.forgeos/doc-hygiene-allowlist.txt}"
+ALLOW="${DOC_HYGIENE_ALLOWLIST:-config/ci/doc-hygiene-allowlist.txt}"
 
 # Denied classes — process/generated docs that do NOT explain the code's what/why.
 is_denied() {
   case "$1" in
     # Generated architecture IR (`harness arch` output — regenerable, not hand-authored why).
     */.arch/*|.arch/*)      return 0 ;;
-    # ALL swarm-campaign artifacts: transcripts, HANDOFF, plan, manifest, reviews, AND
-    # per-workstream contracts. These are the execution plan for one campaign — valuable
-    # during the run, history after it. The durable architecture belongs in an ADR under
-    # docs/architecture/ and in the code's own doc-comments, not in campaign scaffolding.
-    .forgeos/swarms/*)      return 0 ;;
+    # ALL governance records: swarm transcripts, plans, manifests and contracts, intent
+    # files, wall-failures, reviews. They are the record of how work was done, kept in
+    # the maintainer's harness. The durable architecture belongs in an ADR under
+    # docs/architecture/ and in the code's own doc-comments; config that CI reads
+    # belongs in config/ci/.
+    .forgeos/*)             return 0 ;;
   esac
   # Any generated HTML render under docs/ (case globs don't recurse; match by prefix+suffix).
   case "$1" in docs/*) case "$1" in *.html) return 0 ;; esac ;; esac

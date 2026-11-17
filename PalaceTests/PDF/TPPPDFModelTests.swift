@@ -317,12 +317,8 @@ final class TPPPDFReaderModeTests: XCTestCase {
 @MainActor
 final class TPPPDFDocumentTests: XCTestCase {
 
-    // Post-migration: TPPPDFDocument is the non-encrypted/open-access PDF
-    // wrapper only. LCP-protected PDFs are handled by Readium's
-    // PDFNavigator and no longer flow through this class. Tests that
-    // pinned the obsolete encrypted-data init / .isEncrypted /
-    // .encryptedDocument / .decrypt API surface are deleted with the
-    // production code that backed them.
+    // TPPPDFDocument wraps PDFKit only: LCP-protected PDFs reach it as a file
+    // already decrypted to disk, so it has no encrypted-data API.
 
     // SRS: TPPPDFDocument from-data init exposes data field correctly
     func testPDFDocument_initFromData_exposesData() {

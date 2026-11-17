@@ -31,6 +31,17 @@ class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing, @unchecked Sendable {
     // MARK: - Configurable Test Properties
 
     /// Controls what `isUserAuthorized` returns. Default is `true`.
+    /// Counts entries into the connector's own authorization check.
+    ///
+    /// `canUseRecordedActivation` tests the recorded generation FIRST so a
+    /// decision already known does not enter the non-thread-safe RMSDK. Without
+    /// a counter that ordering is unasserted: swapping the two conditions leaves
+    /// every other assertion green.
+    private var _isUserAuthorizedCallCount = 0
+    var isUserAuthorizedCallCount: Int {
+        lock.withLock { _isUserAuthorizedCallCount }
+    }
+
     private var _isUserAuthorizedReturnValue = true
     var isUserAuthorizedReturnValue: Bool {
         get { lock.withLock { _isUserAuthorizedReturnValue } }
@@ -202,6 +213,7 @@ class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing, @unchecked Sendable {
     }
 
     func isUserAuthorized(_ userID: String!, withDevice device: String!) -> Bool {
+        lock.withLock { _isUserAuthorizedCallCount += 1 }
         return isUserAuthorizedReturnValue
     }
 
@@ -277,6 +289,10 @@ class TPPDRMAuthorizingMock: NSObject, TPPDRMAuthorizing, @unchecked Sendable {
             _deferredAuthCompletions = []
             _authorizeDeferralDrained = false
             _drainedOutcome = (true, nil)
+            // The counter is read-only, so it clears here rather than through a
+            // setter. Omitting it left "Resets all tracking properties" false,
+            // and any suite reusing the mock would read a carried count.
+            _isUserAuthorizedCallCount = 0
         }
     }
 }

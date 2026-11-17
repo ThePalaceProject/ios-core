@@ -74,35 +74,6 @@ final class AccountSwitchCleanupTests: XCTestCase {
         wait(for: [expectation], timeout: 3.0)
     }
 
-    func testPauseAllTasks_AfterCancel_ResumeAcceptsNewRequests() {
-        // Arrange
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [HTTPStubURLProtocol.self]
-        HTTPStubURLProtocol.register { _ in
-            HTTPStubURLProtocol.StubbedResponse(statusCode: 200, headers: nil, body: Data("ok".utf8))
-        }
-        defer { HTTPStubURLProtocol.reset() }
-
-        let executor = TPPNetworkExecutor(
-            credentialsProvider: nil,
-            cachingStrategy: .ephemeral,
-            sessionConfiguration: config,
-            delegateQueue: nil
-        )
-
-        // Act: simulate account-switch lifecycle — cancel, pause, then resume
-        XCTAssertNoThrow(executor.cancelNonEssentialTasks())
-        XCTAssertNoThrow(executor.pauseAllTasks())
-        XCTAssertNoThrow(executor.resumeAllTasks())
-
-        // Assert: executor accepts new work after the full pause/resume cycle
-        let expectation = XCTestExpectation(description: "GET completes after pause/resume cycle")
-        executor.GET(URL(string: "https://example.com/ping")!) { (_: NYPLResult<Data>) in
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 3.0)
-    }
-
     // MARK: - TPPUserAccount with isolated factory-minted libraryUUIDs
 
     func testFactoryAccount_WithSpecificUUID_BindsUUIDAndIsIsolated() {

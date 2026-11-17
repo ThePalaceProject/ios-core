@@ -10,6 +10,7 @@
 import XCTest
 import PalaceCatalog
 @testable import Palace
+import PalaceUtilities
 
 @MainActor
 final class OPDS2CatalogWiringTests: XCTestCase {

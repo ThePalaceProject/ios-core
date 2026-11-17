@@ -74,8 +74,9 @@ Run on changed files before opening a PR:
 
 ```bash
 python3 scripts/palace_mutate.py --file Palace/Path/Changed.swift \
-  --tests PalaceTests/Path/ --dry-run
-# Re-run without --dry-run to verify the test catches the mutants.
+  --tests PalaceTests/ChangedTests --dry-run
+# --tests is <TestBundle>/<XCTestCase class>, not a directory; repeat it for
+# more classes. Re-run without --dry-run to verify the tests catch the mutants.
 ```
 
 A test that survives no mutants is fluff regardless of how many assertions it

@@ -1,21 +1,8 @@
 //
-//  LCPPDFAcquisitionPredicateTests.swift
-//  PalaceTests
-//
-//  Behavior tests for `LCPPDFs.hasLCPAcquisition(_:)` — the recursive
-//  predicate that catches Marketplace LCP-wrapped PDFs regardless of which
-//  OPDS feed shape (XML `/loans/` vs. JSON `/groups/`) populated the book
-//  record. Direct mirror of `LCPAcquisitionPredicateTests` (audiobooks).
-//
-//  Closes PP-4454. The structural bug fixed for audiobooks in PR #958 /
-//  3.0.3 hotfix `ca2ff13b6` (PP-4407) was never ported to the PDF path —
-//  `LCPPDFs.canOpenBook` still inspects only `defaultAcquisition.type`, so
-//  Marketplace LCP PDFs whose top-level type is `opds-publication+json`
-//  (with the LCP MIME nested in `indirectAcquisitions`) save with the wrong
-//  on-disk extension and never decrypt cleanly. Patrons see "an error
-//  message" instead of the PDF rendering.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  PP-4454: `LCPPDFs.hasLCPAcquisition(_:)` must find the LCP MIME type nested in
+//  `indirectAcquisitions` for both XML `/loans/` and JSON `/groups/` feed shapes.
+//  Otherwise Marketplace LCP PDFs save with the wrong extension and fail to
+//  decrypt. Mirrors `LCPAcquisitionPredicateTests` (audiobooks, PP-4407).
 //
 
 #if LCP

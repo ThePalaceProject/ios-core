@@ -10,7 +10,7 @@ public protocol NetworkClient: Sendable {
     func send(_ request: NetworkRequest) async throws -> NetworkResponse
 }
 
-public struct NetworkRequest {
+public struct NetworkRequest: Sendable {
     public var method: HTTPMethod
     public var url: URL
     public var headers: [String: String]
@@ -24,7 +24,7 @@ public struct NetworkRequest {
     }
 }
 
-public struct NetworkResponse {
+public struct NetworkResponse: Sendable {
     public let data: Data
     public let response: HTTPURLResponse
 
@@ -34,6 +34,6 @@ public struct NetworkResponse {
     }
 }
 
-public enum HTTPMethod: String {
+public enum HTTPMethod: String, Sendable {
     case GET, POST, PUT, PATCH, DELETE, HEAD
 }

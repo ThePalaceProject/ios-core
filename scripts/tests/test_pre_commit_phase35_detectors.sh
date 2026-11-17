@@ -41,18 +41,14 @@ git add CLAUDE.md
 # Need at least one commit so git diff --cached has a base.
 git -c user.email=t@t -c user.name=t commit -q -m "init"
 
-# Stage a violation that the foreign-host-401 detector catches:
-# statusCode == 401 + markCredentialsStale, no authSurfaceHosts reference.
+# Stage a violation that the raising-unarchiver detector catches:
+# NSKeyedUnarchiver.unarchiveObject(with:), which raises on a corrupt archive.
 cat > Palace/Violation.swift <<'EOF'
 import Foundation
 
-class Violation {
-    func handle(response: HTTPURLResponse, account: TPPUserAccount) -> Bool {
-        if response.statusCode == 401 {
-            account.markCredentialsStale()
-            return true
-        }
-        return false
+enum Violation {
+    static func decode(_ data: Data) -> String? {
+        return NSKeyedUnarchiver.unarchiveObject(with: data) as? String
     }
 }
 EOF
@@ -81,7 +77,7 @@ if [ "$HOOK_EXIT" -eq 0 ]; then
 fi
 
 # --- Assert 2: hook output mentions the detector that fired ---
-if ! echo "$HOOK_OUT" | grep -q "FOREIGN_HOST_401_SCOPING\|foreign-host-401-scoping"; then
+if ! echo "$HOOK_OUT" | grep -q "RAISING_UNARCHIVER\|raising-unarchiver"; then
   echo "FAIL: hook exited non-zero but didn't identify the firing detector"
   echo "$HOOK_OUT" | sed 's/^/    /'
   exit 1
@@ -100,16 +96,18 @@ fi
 
 # --- Assert 4: per-detector bypass envvar honored ---
 set +e
-PERDET_OUT=$(echo "$JSON_INPUT" | SKIP_PHASE35_FOREIGN_HOST_401_SCOPING=1 bash "$HOOK" 2>&1)
+PERDET_OUT=$(echo "$JSON_INPUT" | SKIP_PHASE35_RAISING_UNARCHIVER=1 bash "$HOOK" 2>&1)
 PERDET_EXIT=$?
 set -e
 # Other detectors might still block on this fixture (unlikely but possible);
-# the assertion is just that the foreign-host detector ITSELF was skipped.
-if echo "$PERDET_OUT" | grep -q "FOREIGN_HOST_401_SCOPING.*BLOCK"; then
+# the assertion is just that the raising-unarchiver detector ITSELF was skipped.
+if echo "$PERDET_OUT" | grep -q "RAISING_UNARCHIVER.*BLOCK"; then
   echo "FAIL: per-detector bypass envvar did not skip the named detector"
   echo "$PERDET_OUT" | sed 's/^/    /'
   exit 1
 fi
+git rm -q --cached Palace/Violation.swift
+rm -f Palace/Violation.swift
 
 # --- Assert 5: a CLEAN (non-violating) diff passes ALL detectors with exit 0 ---
 # Regression guard for the LCP-detector wiring bug (2026-06-08). The hook
@@ -119,8 +117,6 @@ fi
 # content. Asserts 1-4 only ever staged a violating diff, so they stayed green
 # while the hook was broken. A clean diff MUST pass: any detector invoked with
 # an interface it rejects errors out and reddens this assertion.
-git rm -q --cached Palace/Violation.swift
-rm -f Palace/Violation.swift
 cat > Palace/Clean.swift <<'EOF'
 import Foundation
 
@@ -194,6 +190,62 @@ if [ "$MOCK_CLEAN_EXIT" -ne 0 ]; then
   exit 1
 fi
 
+# --- Assert 8: OPAQUE_BLOB_EGRESS fires on its fixture, and clears on the fix ---
+# (PR #1508) A whole MDM-supplied payload was interpolated into a Crashlytics
+# report. The fixture is that line verbatim; the clean arm is the narrower
+# replacement, which an earlier looser predicate wrongly flagged — so this
+# asserts BOTH directions, not just that something blocked.
+mkdir -p Palace/AppInfrastructure
+cat > Palace/AppInfrastructure/Leaky.swift <<'EOF'
+import Foundation
+enum Leaky {
+    static func report(fingerprint: String) -> String {
+        TPPErrorLogger.logError(
+            withCode: .appLogicInconsistency,
+            summary: "Managed library configuration names an unknown library",
+            metadata: ["detail": "configuration \(fingerprint) resolved to no library"]
+        )
+        return ""
+    }
+}
+EOF
+git add Palace
+set +e
+EGRESS_OUT=$(echo "$JSON_INPUT" | bash "$HOOK" 2>&1)
+EGRESS_EXIT=$?
+set -e
+if [ "$EGRESS_EXIT" -eq 0 ] || ! echo "$EGRESS_OUT" | grep -q "OPAQUE_BLOB_EGRESS\|opaque-blob-egress"; then
+  echo "FAIL: opaque-blob-egress violation did not block (exit $EGRESS_EXIT)"
+  echo "$EGRESS_OUT" | sed 's/^/    /'
+  exit 1
+fi
+# Clean path: report a value we own, named narrowly → must pass.
+cat > Palace/AppInfrastructure/Leaky.swift <<'EOF'
+import Foundation
+enum Leaky {
+    static func report(configuredValue: String) -> String {
+        TPPErrorLogger.logError(
+            withCode: .appLogicInconsistency,
+            summary: "Managed library configuration names an unknown library",
+            metadata: ["detail": "configured library \(configuredValue) is not in the registry"]
+        )
+        return ""
+    }
+}
+EOF
+git add Palace
+set +e
+EGRESS_CLEAN_OUT=$(echo "$JSON_INPUT" | bash "$HOOK" 2>&1)
+EGRESS_CLEAN_EXIT=$?
+set -e
+if echo "$EGRESS_CLEAN_OUT" | grep -q "OPAQUE_BLOB_EGRESS"; then
+  echo "FAIL: opaque-blob-egress blocked the narrower replacement — it would punish the fix"
+  echo "$EGRESS_CLEAN_OUT" | sed 's/^/    /'
+  exit 1
+fi
+rm -rf Palace/AppInfrastructure/Leaky.swift
+git add -A Palace 2>/dev/null || true
+
 # --- Assert 7: AUTH_CHALLENGE_ASYNC_FORM detector fires on its fixture ---
 # (PP-4895) An authentication-challenge delegate callback written in the
 # completion-handler form must block: the Xcode 26.2 ClangImporter can leave it
@@ -246,8 +298,105 @@ if [ "$ACF_CLEAN_EXIT" -ne 0 ]; then
   exit 1
 fi
 
-echo "PASS: 7 assertions — hook blocks violations, identifies detector, honors both"
+# --- Assert 9: COMMENT_HYGIENE fires on a run ID in an added comment, and ---
+# clears when the comment explains the code instead.
+cat > Palace/Commented.swift <<'EOF'
+import Foundation
+// Extracted in swarm_47883816 B3.
+struct Commented {}
+EOF
+git add Palace/Commented.swift
+set +e
+CH_OUT=$(echo "$JSON_INPUT" | bash "$HOOK" 2>&1)
+CH_EXIT=$?
+set -e
+if [ "$CH_EXIT" -eq 0 ] || ! echo "$CH_OUT" | grep -q "COMMENT_HYGIENE"; then
+  echo "FAIL: comment-hygiene violation did not block (exit $CH_EXIT)"
+  echo "$CH_OUT" | sed 's/^/    /'
+  exit 1
+fi
+cat > Palace/Commented.swift <<'EOF'
+import Foundation
+// Retries once because the server returns 503 on a cold start (PP-1234).
+struct Commented {}
+EOF
+git add Palace/Commented.swift
+set +e
+CH_CLEAN_OUT=$(echo "$JSON_INPUT" | bash "$HOOK" 2>&1)
+CH_CLEAN_EXIT=$?
+set -e
+if [ "$CH_CLEAN_EXIT" -ne 0 ]; then
+  echo "FAIL: a clean comment spuriously blocked (exit $CH_CLEAN_EXIT)"
+  echo "$CH_CLEAN_OUT" | sed 's/^/    /'
+  exit 1
+fi
+
+# --- Assert 10: SWIFT_SOURCES_COMPILED blocks a Swift file no target compiles, ---
+# and passes once every tracked Swift file is in the project's Sources phase.
+# Like the real project, it references the gitignored APIKeys.swift.
+git rm -q -r --cached Palace
+rm -rf Palace
+mkdir -p Palace Palace.xcodeproj
+cat > Palace/App.swift <<'EOF'
+import Foundation
+struct App {}
+EOF
+cat > Palace.xcodeproj/project.pbxproj <<'EOF'
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	objectVersion = 56;
+	objects = {
+		APPBUILDFILE0001 /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = APPFILEREF0001 /* App.swift */; };
+		APPFILEREF0001 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
+		KEYSBUILDFILE0001 /* APIKeys.swift in Sources */ = {isa = PBXBuildFile; fileRef = KEYSFILEREF0001 /* APIKeys.swift */; };
+		KEYSFILEREF0001 /* APIKeys.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppInfrastructure/APIKeys.swift; sourceTree = "<group>"; };
+		MAINGROUP0001 = {isa = PBXGroup; children = (PALACEGROUP0001 /* Palace */, ); sourceTree = "<group>"; };
+		PALACEGROUP0001 /* Palace */ = {isa = PBXGroup; children = (APPFILEREF0001 /* App.swift */, KEYSFILEREF0001 /* APIKeys.swift */, ); path = Palace; sourceTree = "<group>"; };
+		SOURCES0001 /* Sources */ = {isa = PBXSourcesBuildPhase; files = (APPBUILDFILE0001 /* App.swift in Sources */, KEYSBUILDFILE0001 /* APIKeys.swift in Sources */, ); };
+		PROJECT0001 /* Project object */ = {isa = PBXProject; mainGroup = MAINGROUP0001; targets = (); };
+	};
+	rootObject = PROJECT0001 /* Project object */;
+}
+EOF
+git add Palace Palace.xcodeproj
+set +e
+SSC_CLEAN_OUT=$(echo "$JSON_INPUT" | bash "$HOOK" 2>&1)
+SSC_CLEAN_EXIT=$?
+set -e
+if [ "$SSC_CLEAN_EXIT" -ne 0 ]; then
+  echo "FAIL: a project that compiles every tracked Swift file spuriously blocked (exit $SSC_CLEAN_EXIT)"
+  echo "$SSC_CLEAN_OUT" | sed 's/^/    /'
+  exit 1
+fi
+cat > Palace/Orphan.swift <<'EOF'
+import Foundation
+struct Orphan {}
+EOF
+git add Palace/Orphan.swift
+set +e
+SSC_OUT=$(echo "$JSON_INPUT" | bash "$HOOK" 2>&1)
+SSC_EXIT=$?
+set -e
+if [ "$SSC_EXIT" -eq 0 ] || ! echo "$SSC_OUT" | grep -q "SWIFT_SOURCES_COMPILED" \
+   || ! echo "$SSC_OUT" | grep -q "Palace/Orphan.swift: unreferenced"; then
+  echo "FAIL: a tracked Swift file missing from the project did not block (exit $SSC_EXIT)"
+  echo "$SSC_OUT" | sed 's/^/    /'
+  exit 1
+fi
+set +e
+SSC_BYPASS_OUT=$(echo "$JSON_INPUT" | SKIP_PHASE35_SWIFT_SOURCES_COMPILED=1 bash "$HOOK" 2>&1)
+SSC_BYPASS_EXIT=$?
+set -e
+if [ "$SSC_BYPASS_EXIT" -ne 0 ]; then
+  echo "FAIL: SKIP_PHASE35_SWIFT_SOURCES_COMPILED=1 did not skip the detector (exit $SSC_BYPASS_EXIT)"
+  echo "$SSC_BYPASS_OUT" | sed 's/^/    /'
+  exit 1
+fi
+
+echo "PASS: 10 assertions — hook blocks violations, identifies detector, honors both"
 echo "      bypass envvars, passes a clean diff (no detector spuriously blocks),"
-echo "      and the unsynchronized-sendable-mock + auth-challenge-async-form"
-echo "      detectors each fire on a violation and clean-pass on the fix."
+echo "      and the unsynchronized-sendable-mock, auth-challenge-async-form,"
+echo "      opaque-blob-egress and swift-sources-compiled detectors each fire on a"
+echo "      violation and clean-pass on the fix."
 exit 0

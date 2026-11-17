@@ -1,28 +1,12 @@
 //
 //  AccountsManagerCatalogLoadJoinTests.swift
-//  PalaceTests
 //
-//  PP-4754 root-fix tests for the OWNED, deterministically-joinable catalog
-//  crawl. Drives the real cold-load spawn chain fully OFFLINE (the test host
-//  routes `URLSession.shared` + the network executor through
-//  `NoNetworkURLProtocol`, so both the registry crawler and the fallback GET
-//  fail fast) and asserts:
-//
-//   1. The whole-set join seam `_awaitCatalogLoadForTesting()` drives every
-//      owned crawl Task — init/first-run → crawl → fallback GET — to quiescence
-//      with NO wall-clock (grow-until-stable Task-join). After it returns, the
-//      owned set is empty.
-//   2. The scheduling contract: the first-run task is a detached `.utility`
-//      spawn, the crawl an inheriting `.userInitiated` spawn, and — the crux of
-//      the fix — the fallback GET is now an OWNED detached `.utility` spawn
-//      (previously a fire-and-forget closure the drain could not await).
-//   3. Drain completeness: `cancelAndDrainBackgroundWork()` leaves the owned set
-//      empty — the wrapped fallback GET is awaited, not leaked past the boundary.
-//
-//  Isolation is inherited from `PalaceWiringTestCase` (per-test singleton reset,
-//  `deferInitialLoadCatalogsForTesting`, tearDown drain, disk-cache purge).
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
+//  PP-4754: the catalog crawl is owned and deterministically joinable. Runs the
+//  real cold-load spawn chain offline (`NoNetworkURLProtocol`) and asserts that
+//  `_awaitCatalogLoadForTesting()` joins every owned Task without a wall-clock
+//  wait, that the spawn priorities are as designed (the fallback GET is now an
+//  owned detached `.utility` spawn, not fire-and-forget), and that
+//  `cancelAndDrainBackgroundWork()` leaves the owned set empty.
 //
 
 import XCTest

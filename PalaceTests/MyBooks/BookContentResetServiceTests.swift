@@ -22,6 +22,7 @@ final class BookContentResetServiceTests: XCTestCase {
     private var reporter: DownloadProgressReporter!
     private var localContent: SpyLocalContentService!
     private var service: BookContentResetService!
+    private let removedOfflineLibraries = LockIsolated<[String]>([])
 
     override func setUpWithError() throws {
         try super.setUpWithError()
@@ -44,8 +45,12 @@ final class BookContentResetServiceTests: XCTestCase {
             stateManager: stateManager,
             bookFileManager: bookFileManager,
             progressReporter: reporter,
-            localContentService: localContent
+            localContentService: localContent,
+            offlineActionRemover: { [removedOfflineLibraries] libraryID in
+                removedOfflineLibraries.withValue { $0.append(libraryID) }
+            }
         )
+        removedOfflineLibraries.value = []
     }
 
     override func tearDownWithError() throws {
@@ -105,6 +110,16 @@ final class BookContentResetServiceTests: XCTestCase {
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: otherURL.path),
                        "Per-account reset must remove the content directory for the named account")
+    }
+
+    /// Sign-out resets the account's content; its queued offline actions are
+    /// removed with it so they cannot run for the next patron.
+    func testResetAccount_removesThatAccountsQueuedOfflineActions() {
+        let account = "signed-out-library-\(UUID().uuidString)"
+
+        service.reset(account: account)
+
+        XCTAssertEqual(removedOfflineLibraries.value, [account])
     }
 }
 

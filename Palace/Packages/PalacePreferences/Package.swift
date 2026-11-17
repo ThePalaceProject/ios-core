@@ -1,14 +1,10 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
-// Layer-0 leaf package (god-class decomposition Wave 1a): the UserDefaults-
-// backed key-value preferences store (TPPSettings), its DI protocol, and the
-// two settings-change Notification.Names. Depends on NOTHING — keep it that
-// way; anything needing Accounts/UI/network types belongs app-side.
-// No in-package test target: the characterization pack lives in
-// PalaceTests/Decomp/PalacePreferencesSettingsRoundTripTests.swift plus
-// PalaceTests/Settings/* (PalaceNetwork precedent — tests stay in the app's
-// test bundle).
+// Layer-0 leaf package: the UserDefaults-backed preferences store
+// (TPPSettings), its DI protocol, and the settings-change notification names.
+// Has no dependencies; anything needing Accounts/UI/network belongs app-side.
+// Tests live in PalaceTests (PalacePreferencesSettingsRoundTripTests, Settings/).
 let package = Package(
     name: "PalacePreferences",
     platforms: [

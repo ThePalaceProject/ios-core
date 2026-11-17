@@ -11,7 +11,7 @@ import XCTest
 @MainActor
 final class ErrorDetailTests: XCTestCase {
 
-    // Wave 1c: ErrorReportingContext.libraryNameProvider is process-global
+    // ErrorReportingContext.libraryNameProvider is process-global
     // registered state; reset it so a set value can't bleed into the next test.
     override func tearDown() {
         ErrorReportingContext.libraryNameProvider = nil
@@ -185,7 +185,7 @@ final class ErrorDetailTests: XCTestCase {
         XCTAssertNil(detail.bookInfo, "BookInfo should be nil when identifier is nil")
     }
 
-    // MARK: - Library Name Provider (Wave 1c cycle-2 inversion)
+    // MARK: - Library Name Provider
 
     func testCapture_usesRegisteredLibraryNameProvider() async {
         ErrorReportingContext.libraryNameProvider = { "Springfield Public Library" }

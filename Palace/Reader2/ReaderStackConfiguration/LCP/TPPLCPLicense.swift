@@ -9,6 +9,7 @@
 #if LCP
 
 import Foundation
+import PalaceNetwork
 import ReadiumShared
 
 struct TPPLCPLicenseLink: Codable {
@@ -34,6 +35,36 @@ enum TPPLCPLicenseRel: String {
 
     let links: [TPPLCPLicenseLink]
 
+    /// When the licence was issued; nil when the field is absent or unreadable.
+    /// Lenient on purpose: an open or fulfilment that reads a licence must not
+    /// start failing over a field only PP-5440 uses.
+    let issued: Date?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, links, issued
+    }
+
+    required init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        links = try container.decode([TPPLCPLicenseLink].self, forKey: .links)
+        let issuedString = (try? container.decodeIfPresent(String.self, forKey: .issued)) ?? nil
+        issued = issuedString.flatMap(Self.date(fromISO8601:))
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(links, forKey: .links)
+    }
+
+    private static func date(fromISO8601 string: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        if let date = formatter.date(from: string) { return date }
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: string)
+    }
+
     /// Objective-C visible identifier
     @objc var identifier: String {
         id
@@ -42,9 +73,10 @@ enum TPPLCPLicenseRel: String {
     /// Initializes with license URL
     @objc init?(url: URL) {
         if let data = try? Data(contentsOf: url),
-           let license = try? JSONDecoder().decode(TPPLCPLicense.self, from: data) {
+           let license = try? JSONDecoder().decodeGuarded(TPPLCPLicense.self, from: data) {
             self.id = license.id
             self.links = license.links
+            self.issued = license.issued
         } else {
             return nil
         }

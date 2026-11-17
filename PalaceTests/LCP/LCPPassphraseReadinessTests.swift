@@ -2,21 +2,12 @@
 //  LCPPassphraseReadinessTests.swift
 //  PalaceTests
 //
-//  Readiness contract for `LCPPassphraseAuthenticationService` (swarm_
-//  81b5099e Bucket A). Pre-Phase-1 the LCP passphrase loan-retrieval
-//  path read `currentAccount?.loansUrl` directly and returned nil
-//  during the cold-launch window — which then surfaced to the user as
-//  "LCP open failed" even though the only problem was the auth document
-//  hadn't loaded yet.
-//
-//  Post-Phase-1 the path is gated on `currentAccount.awaitReady()`. The
-//  function was already `async throws`; per the ADR's single-timeout
-//  policy the existing LCP fulfillment timeout is the only timeout.
-//
-//  LCP TEST MATRIX DISCIPLINE (CLAUDE.md MANDATORY):
-//  These tests are guarded by `#if LCP` so the Palace-noDRM build (which
-//  doesn't compile LCPPassphraseAuthenticationService at all) doesn't
-//  trip on missing symbols. Both targets must build green.
+//  Readiness contract for `LCPPassphraseAuthenticationService`: loan retrieval is
+//  gated on `currentAccount.awaitReady()` instead of reading
+//  `currentAccount?.loansUrl` directly, which returned nil during cold launch and
+//  surfaced as "LCP open failed" before the auth document loaded. The existing
+//  LCP fulfillment timeout is the only timeout. Guarded by `#if LCP` because
+//  Palace-noDRM does not compile the service.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

@@ -1,20 +1,10 @@
-//
 //  AdobeActivationDedupTests.swift
-//  PalaceTests
 //
-//  Producer-level coverage for the borrow-time Adobe activation de-duplication
-//  (PP-4952 / Crashlytics `ed05e903c2777582d68747b624e4f548`).
-//
-//  `AdobeActivationCoordinatorTests` proves the GATE works in isolation. This
-//  file proves the gate is actually WIRED into the method borrows call —
-//  `AdobeDRMService.ensureDeviceActivated`. That distinction matters here: the
-//  recurring failure mode in this codebase is a green test on a helper the real
-//  caller bypasses, so these tests drive the production entry point and assert
-//  on how many times the RMSDK seam (`TPPDRMAuthorizing.authorize`) was entered.
-//
-//  Only the SDK seam is mocked. The guard order, licensor parsing, coalescing,
-//  and account write-back are the real production code.
-//
+//  PP-4952: pins that the activation gate is wired into
+//  `AdobeDRMService.ensureDeviceActivated`, the method borrows call, by counting
+//  entries into the RMSDK seam (`TPPDRMAuthorizing.authorize`).
+//  `AdobeActivationCoordinatorTests` covers the gate alone. Only the SDK seam is
+//  mocked; guard order, licensor parsing and account write-back are real.
 
 import XCTest
 @testable import Palace
@@ -23,8 +13,8 @@ final class AdobeActivationDedupTests: XCTestCase {
 
     /// In-memory stand-in for the user account.
     ///
-    /// Deliberately NOT a real `TPPUserAccount`. CLAUDE.md forbids tests
-    /// touching real keychain state, and a concurrency test has a specific
+    /// Deliberately NOT a real `TPPUserAccount`: tests stay off the real
+    /// keychain, and a concurrency test has a specific
     /// reason to care: `TPPUserAccount` serializes its credentials through a
     /// synchronous `accountInfoQueue.sync(flags: .barrier)`, so 10 racing
     /// activations would sit in blocking dispatch work on cooperative-pool
@@ -45,8 +35,11 @@ final class AdobeActivationDedupTests: XCTestCase {
         var userID: String? { lock.withLock { _userID } }
         var deviceID: String? { lock.withLock { _deviceID } }
         var licensor: [String: Any]? { _licensor }
-        func setUserID(_ id: String) { lock.withLock { _userID = id } }
-        func setDeviceID(_ id: String) { lock.withLock { _deviceID = id } }
+        private var _generation: Int?
+        var adobeActivationConnectorGeneration: Int? { lock.withLock { _generation } }
+        func setAdobeActivation(userID: String, deviceID: String, generation: Int) {
+            lock.withLock { _userID = userID; _deviceID = deviceID; _generation = generation }
+        }
         // PP-3649: activation now re-mints the licensor before use, so the
         // double must be able to record the write.
         func setLicensor(_ licensor: [String: Any]) { lock.withLock { _licensor = licensor } }
@@ -256,8 +249,13 @@ final class AdobeActivationDedupTests: XCTestCase {
     // MARK: - Guard order (the coalescer must sit BEHIND these)
 
     func test_ensureDeviceActivated_whenDeviceAlreadyActivated_neverEntersAdobe() async throws {
-        account.setUserID("existing-user")
-        account.setDeviceID("existing-device")
+        // Seeded as a CURRENT-generation activation: the gate skips only when the
+        // recorded connector matches, so a record stamped with an older
+        // generation would re-activate and this test would no longer be
+        // measuring deduplication.
+        account.setAdobeActivation(userID: "existing-user",
+                                   deviceID: "existing-device",
+                                   generation: AdobeConnectorGeneration.current)
         drm.isUserAuthorizedReturnValue = true
 
         try await service.ensureDeviceActivated(authorizer: { [drm] in drm },
@@ -270,7 +268,11 @@ final class AdobeActivationDedupTests: XCTestCase {
         XCTAssertEqual(attempts, 0, "the fast path must not even claim the single-flight slot")
     }
 
-    func test_ensureDeviceActivated_whenDRMUnavailable_throwsWithoutEnteringAdobe() async {
+    /// Renamed: this asserts `authorizeCallCount`, i.e. that no activation was
+    /// attempted. It does NOT observe whether the authorizer closure was
+    /// resolved, which is what constructs the RMSDK — that invariant is pinned
+    /// by `AdobeActivationGenerationGateTests`.
+    func test_ensureDeviceActivated_whenDRMUnavailable_throwsWithoutAttemptingAuthorize() async {
         do {
             try await service.ensureDeviceActivated(authorizer: { [drm] in drm },
                                                     userAccount: account,

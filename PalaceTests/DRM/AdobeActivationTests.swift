@@ -1,29 +1,9 @@
 //
-//  AdobeActivationTests.swift
-//  PalaceTests
-//
-//  Critical-path coverage for Adobe RMSDK device activation + deauthorization
-//  + ACSM-fulfillment error mapping. These flows back F-001 on Crashlytics
-//  (Adobe activation surface) and PP-3649 (on-demand device activation at
-//  borrow time).
-//
-//  Per the CLAUDE.md TDD policy, we mock only the SDK seam — TPPDRMAuthorizing
-//  conforms to NYPLADEPT's public surface, so TPPDRMAuthorizingMock stands in
-//  for the C++ Adobe library in tests. The Swift error-mapping + state-
-//  management glue is the production code under test; we never instantiate
-//  the real NYPLADEPT singleton.
-//
-//  AdobeDRMHandler ACSM-fulfillment branches live in
-//  PalaceTests/MyBooks/AdobeDRMHandlerTests.swift — this file focuses on
-//  the activation/deauthorize lifecycle + the E_ADEPT_NOT_READY surface that
-//  appeared in this morning's Adobe log (2026-05-14).
-//
-//  AdobeDRMHandler / AdobeDRMService live behind `#if FEATURE_DRM_CONNECTOR`
-//  in the Palace target. PalaceTests does NOT define that flag, but
-//  `@testable import Palace` pulls the symbols in via the Palace swiftmodule
-//  (built with the flag), so tests can reference them directly. ACSM
-//  fulfillment error-NSError construction uses the NYPLADEPTErrorDomain
-//  exposed via the bridging header.
+//  Adobe RMSDK device activation, deauthorization, and E_ADEPT_NOT_READY
+//  handling (PP-3649). Only the SDK seam is mocked: TPPDRMAuthorizingMock stands
+//  in for NYPLADEPT, so the Swift error-mapping and state glue is what runs.
+//  ACSM-fulfillment branches live in MyBooks/AdobeDRMHandlerTests.swift. The
+//  `FEATURE_DRM_CONNECTOR` symbols are reachable via `@testable import Palace`.
 //
 
 import XCTest

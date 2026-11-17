@@ -2,6 +2,7 @@ import PalaceLogging
 import PalacePreferences
 import PalaceCatalog
 import PalaceBookModel
+import PalaceUtilities
 
 private let userAboveAgeKey              = "TPPSettingsUserAboveAgeKey"
 private let accountSyncEnabledKey        = "TPPAccountSyncEnabledKey"
@@ -251,10 +252,8 @@ protocol AccountLogoDelegate: AnyObject {
         /// `isOauth || isOidc` (which excludes SAML and represents a
         /// different concern, e.g. profile-fetch decisions).
         ///
-        /// Substituted at six scattered predicate sites by Module B of
-        /// swarm_66819d80; broadens BorrowOperation / BookReturnService
-        /// browser-reauth routing to also cover OAuth-intermediary
-        /// (Clever). See `BorrowOperationCleverReauthTests`.
+        /// Includes OAuth-intermediary (Clever) in browser re-auth routing;
+        /// see `BorrowOperationCleverReauthTests`.
         var isBrowserBased: Bool {
             isOauth || isSaml || isOidc
         }
@@ -547,88 +546,8 @@ protocol AccountLogoDelegate: AnyObject {
 }
 
 // MARK: Account
-/// Object representing one library account in the app. Patrons may
-/// choose to sign up for multiple Accounts.
-///
-/// `@unchecked Sendable` rationale (Swift 6 Phase B): `Account` is an
-/// auth-adjacent value-holder that is, by design, referenced across actor
-/// boundaries — SwiftUI/UIKit on `@MainActor`, the background `loadCatalogs`
-/// crawl, and the `awaitReady()` readiness-gate consumers (audiobook open,
-/// token refresh, bookmark sync, CarPlay, OPDS loans). Marking it Sendable
-/// clears the "sending 'currentAccount' risks causing data races" /
-/// "capture of non-Sendable Account in a @Sendable closure" crossings at
-/// DLNavigator, OPDSFeedService, and UnifiedOPDSService WITHOUT editing those
-/// consumers. Mirrors how `AccountsManager` (this module's sibling singleton)
-/// and `AccountStateStore` were made `@unchecked Sendable`, and how the
-/// nested `AccountDetails` above already is.
-///
-/// The crux — the genuinely cross-actor readiness state that `awaitReady()`
-/// gates on — does NOT live in `Account` instance storage. It is externalized
-/// into `AccountStateStore.shared` (keyed by `uuid`, guarded by an `NSLock`,
-/// itself `@unchecked Sendable`); `loadState` / `stateStream` / `_setState`
-/// all delegate there. So this conformance does not smuggle unsynchronized
-/// shared state across the readiness boundary — that boundary is already
-/// lock-protected in the store.
-///
-/// Per-stored-property audit (every stored property justified; no lock added
-/// — mutation semantics are preserved, additively isolating only):
-///   - `uuid: String` (let)                    — immutable, Sendable value.
-///   - `name: String` (let)                    — immutable, Sendable value.
-///   - `subtitle: String?` (let)               — immutable, Sendable value.
-///   - `catalogUrl: String?` (let)             — immutable, Sendable value.
-///   - `authenticationDocumentUrl: String?` (let) — immutable, Sendable value.
-///   - `imageCache: ImageCacheType` (let)      — immutable ref; the cache is
-///        the caller-supplied shared cache and is itself the synchronization
-///        owner for image storage (`get`/`set`/`remove` by uuid), unchanged.
-///   - `logo: UIImage` (var)                   — set-once-default then updated
-///        from the logo fetch's main-queue hop (`fetchImage` → `.main.async`)
-///        and from cell/view code (`TPPAccountList`, `FacetViewModel`), all on
-///        the main thread. UI-associated state; no cross-thread writer. UIImage
-///        is immutable/Sendable in practice here.
-///   - `supportEmail: EmailAddress?` (var)     — written only in `init` and
-///        `EmailTicketGateway` (main); read for the support-row predicate.
-///        Effectively write-once during account construction/config.
-///   - `supportURL: URL?` (var)                — same as `supportEmail`: set in
-///        `init`; `URL` is a Sendable value type.
-///   - `details: AccountDetails?` (var)        — populated synchronously by the
-///        `authenticationDocument.didSet`; `AccountDetails` is `@unchecked
-///        Sendable`. Written on the load flow, read via `awaitReady()`
-///        (lock-gated in the store) or the documented legacy-tolerant `details?`
-///        readers. `AccountDetails?` is Sendable given the payload conformance.
-///   - `homePageUrl: String?` (var)            — set in `init` only (no external
-///        writer found in the audit grep); `String?` is a Sendable value.
-///   - `hasSupportOption: Bool` (lazy var)     — memoized pure function of
-///        `supportEmail`/`supportURL`; read on main. Lazy init is not
-///        concurrency-safe in general, but this is UI-thread accessed.
-///   - `logoDelegate: AccountLogoDelegate?` (weak var) — set from view/cell
-///        code and invoked from the logo fetch's main-queue hop; all main.
-///   - `hasUpdatedToken: Bool` (var)           — a plain flag toggled from
-///        sign-in / sign-out / force-reset / notification / account-switch
-///        paths (`Sendable` `Bool`). Reads and writes are on the app's
-///        auth-flow threads; no lock is added because doing so would change
-///        the existing (un-torn `Bool`) semantics and no torn-read hazard
-///        exists for a word-sized value.
-///   - `authenticationDocument: OPDS2AuthenticationDocument?` (var w/ didSet) —
-///        assigned during the load flow (`loadAuthenticationDocument`,
-///        AccountsManager carry-over); the `didSet` synchronously builds
-///        `details`. Written on the load path; `OPDS2AuthenticationDocument`
-///        is a Codable value graph.
-///   - `logoUrl: URL?` (var)                   — set in `init` only; `URL?` is
-///        a Sendable value type.
-///   - `isLoadingLogo: Bool` (private var)     — re-entrancy guard for
-///        `loadLogo()`; both the guard-check and the completion reset run on
-///        the main thread (`loadLogo` is called from view code; the reset is
-///        inside the `fetchImage` main-queue hop). Not shared cross-actor.
-///
-/// Honesty note: the `var`s above are not lock-guarded — they are confined to
-/// the main-associated UI/load flows that already mutate them today. No writer
-/// was found that mutates a given property concurrently from a background
-/// actor; the one truly cross-actor concern (readiness) is externalized and
-/// locked in `AccountStateStore`. If a future change adds a background writer
-/// to any of these `var`s, the correct fix is to confine that writer or add a
-/// lock — NOT to widen this rationale.
-/// Lock-backed `Bool` holder — the honest synchronization for `Account`'s one
-/// concurrently-written flag (`hasUpdatedToken`). Mirrors `AccountsManagerBoolFlag`.
+/// Lock-backed `Bool` for `Account.hasUpdatedToken`, the one property written
+/// concurrently. Mirrors `AccountsManagerBoolFlag`.
 private final class AccountBoolFlag: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: Bool
@@ -639,6 +558,14 @@ private final class AccountBoolFlag: @unchecked Sendable {
     }
 }
 
+/// One library account in the app. Patrons may use several.
+///
+/// `@unchecked Sendable`: referenced across actors (UI, the background catalog
+/// crawl, `awaitReady()` consumers). Readiness state lives in
+/// `AccountStateStore`, not here. Stored `let`s are immutable; the `var`s are
+/// written only on the main thread or during the load flow, except
+/// `hasUpdatedToken`, which is lock-backed. A new background writer to any
+/// `var` must be confined or locked.
 @objcMembers final class Account: NSObject, @unchecked Sendable {
     var logo: UIImage
     let uuid: String
@@ -651,13 +578,8 @@ private final class AccountBoolFlag: @unchecked Sendable {
     var homePageUrl: String?
     lazy var hasSupportOption = { supportEmail != nil || supportURL != nil }()
     weak var logoDelegate: AccountLogoDelegate?
-    // `hasUpdatedToken` is written from genuinely concurrent, unserialized flows:
-    // `NotificationService.markTokenRegistered()` (= true) runs on the network
-    // delegate queue (off-main), while `AccountsManager.currentAccount`'s setter
-    // (= false) runs from the non-@MainActor account-switch path — driven by
-    // independent events with no common queue. A plain `var Bool` is a data race
-    // (UB regardless of width). Back it with a lock so `Account: @unchecked
-    // Sendable` is honest for this property. Public get/set contract is unchanged.
+    // Lock-backed: `NotificationService.markTokenRegistered()` sets it off-main
+    // while the account-switch path clears it, with no common queue.
     private let _hasUpdatedToken = AccountBoolFlag(false)
     var hasUpdatedToken: Bool {
         get { _hasUpdatedToken.value }
@@ -677,11 +599,14 @@ private final class AccountBoolFlag: @unchecked Sendable {
 
     let imageCache: ImageCacheType
 
-    /// Wave 1c (cycle 2): error-reporting seam. Production default forwards to
-    /// TPPErrorLogger via TPPErrorReporter; tests inject a spy. Existential is
-    /// not ObjC-representable so @objcMembers skips it (by design). Becomes
-    /// constructor-injected when Account moves to PalaceAccounts (Wave 3).
+    /// Error-reporting seam. Production forwards to TPPErrorLogger; tests inject
+    /// a spy. The existential is not ObjC-representable, so @objcMembers skips it.
     var errorReporter: any ErrorReporting = TPPErrorReporter()
+
+    /// Fetch seam for the authentication document. Production goes through the
+    /// shared network executor; tests inject a stub to drive the success and
+    /// failure completions of `loadAuthenticationDocument`.
+    var authDocumentGetter: any AuthDocumentGetting = NetworkExecutorAuthDocumentGetter()
 
     var loansUrl: URL? {
         return details?.loansUrl
@@ -701,12 +626,10 @@ private final class AccountBoolFlag: @unchecked Sendable {
     // auth surface (auth-doc, catalog, loans, home-page). Consumed by
     // AuthErrorClassifier's `currentAccountHostsProvider` closure and the two
     // legacy sibling auth-classification sites (TokenRefreshInterceptor,
-    // DownloadAuthRetryHandler) to short-circuit a 401 from a foreign host as
-    // "not our account's session" — fixes the cross-host logout regression
-    // documented in .forgeos/wall-failures/2026-06-05-pr1018-icarus-cross-host-logout.md.
+    // DownloadAuthRetryHandler) to treat a 401 from a foreign host as "not our
+    // account's session", so it does not sign the patron out (PR #1018).
     //
-    // Hosts are lowercased AT THE PRODUCER (defense-in-depth against a
-    // consumer that forgets to lowercase). Empty set is the cold-launch
+    // Hosts are lowercased here so consumers cannot forget. Empty set is the cold-launch
     // signal — auth doc not yet loaded; consumers must fall back to legacy
     // behavior (do not false-block) when this is empty.
     var authSurfaceHosts: Set<String> {
@@ -801,6 +724,14 @@ private final class AccountBoolFlag: @unchecked Sendable {
 
             self.authenticationDocument = authenticationDocument
 
+            // Sign-in reads details only through `loadState`, so a load that
+            // succeeds outside the state machine (a retry after `.detailsFailed`)
+            // must record them there too, before the caller's completion runs.
+            if let details = self.details,
+               let next = Self.loadStateAfterSuccessfulAuthDocLoad(from: self.loadState, details: details) {
+                self._setState(next)
+            }
+
             // Completion should be called before announcements,
             // otherwise the code that presents alerts interferes with catalog presentation.
             completion(true)
@@ -818,6 +749,20 @@ private final class AccountBoolFlag: @unchecked Sendable {
         }
     }
 
+    /// The state a successful `loadAuthenticationDocument` leaves, or nil to
+    /// leave the current state alone. `.detailsLoading` belongs to the state
+    /// machine's own fetch, which writes its terminal on completion, and
+    /// `.detailsEvicted` must survive so awaiters fail fast and redrive (see
+    /// `AuthDocumentLoader.fetchCompletionMayWriteTerminal`).
+    static func loadStateAfterSuccessfulAuthDocLoad(from current: LoadState, details: AccountDetails) -> LoadState? {
+        switch current {
+        case .detailsLoading, .detailsEvicted:
+            return nil
+        case .notLoaded, .basicInfoLoaded, .detailsLoaded, .detailsFailed:
+            return .detailsLoaded(details)
+        }
+    }
+
     private func fetchAuthenticationDocument(_ urlString: String, completion: @escaping (OPDS2AuthenticationDocument?) -> Void) {
         var document: OPDS2AuthenticationDocument?
 
@@ -832,7 +777,7 @@ private final class AccountBoolFlag: @unchecked Sendable {
             return
         }
 
-        AppContainer.production().networkExecutor.GET(url, useTokenIfAvailable: false) { result in
+        authDocumentGetter.get(url) { result in
             switch result {
             case .success(let serverData, _):
                 do {
@@ -872,60 +817,47 @@ private final class AccountBoolFlag: @unchecked Sendable {
         guard !isLoadingLogo else { return }
         isLoadingLogo = true
 
-        self.fetchImage(from: url, completion: { [weak self] in
-            self?.isLoadingLogo = false
-            guard let image = $0, let self else { return }
+        // `Account` is not isolated, so the guard and the flag above run in
+        // whatever isolation the caller had — in practice a SwiftUI view, on
+        // the main actor. What this change moves is everything after the fetch:
+        // `logo`, the `logoDelegate` callback and `imageCache` used to reach
+        // the main queue through a `DispatchQueue.main.async` inside the
+        // network completion, carrying the non-`Sendable` values in a box
+        // (PP-5301). `fetchImage` is `@MainActor`, so the language places them
+        // now, and the cache-hit path resets the flag on the main actor too,
+        // which the hop-based version did not.
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let image = await self.fetchImage(from: url)
+            self.isLoadingLogo = false
+            guard let image else { return }
             self.logo = image
             self.logoDelegate?.logoDidUpdate(in: self, to: image)
-        })
+        }
     }
 
     private var isLoadingLogo = false
 
-    private func fetchImage(from url: URL, completion: @escaping (UIImage?) -> Void) {
+    @MainActor
+    private func fetchImage(from url: URL) async -> UIImage? {
         if let cachedImage = imageCache.get(for: self.uuid) {
-            completion(cachedImage)
-            return
+            return cachedImage
         }
-        AppContainer.production().networkExecutor.GET(url, useTokenIfAvailable: false) { result in
-            // The GET completion is a plain (non-Sendable) escaping closure, so
-            // `result`, `self`, and `completion` are captured safely here. They
-            // are carried across the main-queue hop in a documented box — each
-            // is only touched on that single main-queue block, never
-            // concurrently — to satisfy the `@Sendable` `DispatchQueue.main.async`.
-            let payload = LogoFetchPayload(account: self, result: result, completion: completion)
-            DispatchQueue.main.async {
-                switch payload.result {
-                case .success(let serverData, _):
-                    guard let image = UIImage(data: serverData) else {
-                        payload.completion(nil)
-                        return
-                    }
-                    payload.account.imageCache.set(image, for: payload.account.uuid)
-                    payload.completion(image)
-                case .failure(let error, _):
-                    payload.account.errorReporter.report(
-                        code: .authDocLoadFail,
-                        summary: "Logo image failed to load",
-                        metadata: ["loadError": error.localizedDescription, "url": url.absoluteString]
-                    )
-                    payload.completion(nil)
-                }
-            }
+        switch await AppContainer.production().networkExecutor.fetchResult(
+            from: url, useTokenIfAvailable: false) {
+        case .success(let serverData, _):
+            guard let image = UIImage(data: serverData) else { return nil }
+            imageCache.set(image, for: self.uuid)
+            return image
+        case .failure(let error, _):
+            errorReporter.report(
+                code: .authDocLoadFail,
+                summary: "Logo image failed to load",
+                metadata: ["loadError": error.localizedDescription, "url": url.absoluteString]
+            )
+            return nil
         }
     }
-}
-
-/// Documented carrier for `Account.fetchImage`'s network completion, which
-/// hops to the main queue to touch `imageCache` and invoke `completion`.
-/// `result` (`NYPLResult<Data>`), the `completion` closure, and the
-/// `Account` are all non-Sendable; they are only ever read on that single
-/// main-queue hop, never concurrently, so they are safe to carry in an
-/// `@unchecked Sendable` box.
-private struct LogoFetchPayload: @unchecked Sendable {
-    let account: Account
-    let result: NYPLResult<Data>
-    let completion: (UIImage?) -> Void
 }
 
 extension AccountDetails {
@@ -979,5 +911,17 @@ extension Account {
             Log.error(#file, "Invalid init parameter for PatronPINKeyboard: \(stringValue ?? "nil")")
             return nil
         }
+    }
+}
+
+/// Fetches an account's authentication document.
+protocol AuthDocumentGetting: Sendable {
+    func get(_ url: URL, completion: @escaping (NYPLResult<Data>) -> Void)
+}
+
+/// Production fetch: an unauthenticated GET through the shared network executor.
+struct NetworkExecutorAuthDocumentGetter: AuthDocumentGetting {
+    func get(_ url: URL, completion: @escaping (NYPLResult<Data>) -> Void) {
+        AppContainer.production().networkExecutor.GET(url, useTokenIfAvailable: false, completion: completion)
     }
 }

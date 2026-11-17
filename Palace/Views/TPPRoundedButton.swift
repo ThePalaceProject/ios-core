@@ -7,6 +7,7 @@
 //
 
 import UIKit
+import PalaceUtilities
 
 private let TPPRoundedButtonPadding: CGFloat = 6.0
 

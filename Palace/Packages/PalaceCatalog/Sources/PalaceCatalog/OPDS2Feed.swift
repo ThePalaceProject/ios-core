@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceNetwork
 
 // MARK: - OPDS2 Feed Model
 
@@ -332,6 +333,6 @@ public extension OPDS2Feed {
 
     /// Parse OPDS2 feed from JSON data
     static public func from(data: Data) throws -> OPDS2Feed {
-        try makeDecoder().decode(OPDS2Feed.self, from: data)
+        try makeDecoder().decodeGuarded(OPDS2Feed.self, from: data)
     }
 }

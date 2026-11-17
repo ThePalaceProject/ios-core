@@ -402,6 +402,32 @@ public class TPPBook: NSObject, ObservableObject {
     ///                    for availability and acquisitions).
     /// - Returns: A book with fresh state and preserved-non-empty metadata.
     public func mergingPreservingMetadata(from fresh: TPPBook) -> TPPBook {
+        merging(from: fresh, acquisitions: fresh.acquisitions)
+    }
+
+    /// Enrichment-only merge, for an entry that is NOT authoritative about the
+    /// loan: the catalog.
+    ///
+    /// Same metadata rules as `mergingPreservingMetadata(from:)`, but keeps
+    /// `self`'s acquisitions. A catalog entry describes the work, not the loan:
+    /// for a book currently on loan it advertises a borrow link, while the
+    /// loans feed supplied the fulfillment links the app actually needs.
+    /// Adopting the catalog's set is a downgrade, and "prefer non-empty" does
+    /// not protect against it because the catalog's set is non-empty.
+    ///
+    /// For an LCP audiobook it also erases the only signal that the book IS an
+    /// LCP audiobook — the license MIME that `LCPAudiobooks.hasLCPAcquisition`
+    /// matches — so the shelf offers Download for a book that could have been
+    /// played immediately (PP-5400).
+    ///
+    /// - Parameter fresh: The incoming book from a catalog feed, authoritative
+    ///                    for metadata only.
+    public func mergingMetadataOnly(from fresh: TPPBook) -> TPPBook {
+        merging(from: fresh, acquisitions: self.acquisitions)
+    }
+
+    private func merging(from fresh: TPPBook,
+                         acquisitions: [TPPOPDSAcquisition]) -> TPPBook {
         func preferNonEmpty(_ a: String?, _ b: String?) -> String? {
             if let a, !a.isEmpty { return a }
             return b
@@ -412,7 +438,7 @@ public class TPPBook: NSObject, ObservableObject {
         }
 
         let merged = TPPBook(
-            acquisitions: fresh.acquisitions,
+            acquisitions: acquisitions,
             authors: preferNonEmpty(fresh.bookAuthors, self.bookAuthors),
             categoryStrings: preferNonEmpty(fresh.categoryStrings, self.categoryStrings),
             distributor: preferNonEmpty(fresh.distributor, self.distributor),

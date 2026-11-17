@@ -1,56 +1,40 @@
-# Commit and PR format for JIRA
+# Commit and PR format
 
-> This is the **authored layer** of the [PR Report Contract](../docs/architecture/pr-report-contract.md).
-> The contract explains *why* the format exists (durable forensic record + fleet telemetry for an
-> agent-authored, human-orchestrated codebase); this file is the concrete commit/PR format. The PR
-> **body** is now driven by [`.github/PULL_REQUEST_TEMPLATE.md`](./PULL_REQUEST_TEMPLATE.md), which adds
-> `Evidence` / `Repro` / `Class` / `Obligations` to the Root-cause/Solution/How-to-verify below.
+Commits and PRs are linked to Jira, so their text is what a colleague sees when
+they expand a ticket. Write for someone opening the repo cold. The full rules are
+in the "Writing conventions" section of [`CLAUDE.md`](../CLAUDE.md).
 
-When commits or PRs are linked to JIRA, the default post often shows only hash, author, date, one-line message, and file list. To make JIRA posts **useful** (root cause, what changed, how to verify), use the formats below.
-
----
-
-## Commit message format
-
-Use a short subject line with ticket id, then a body with **Root cause** and **Solution**. The body is what shows up when someone expands the commit in JIRA or in changelogs.
+## Commit messages
 
 ```
-Short imperative summary (PP-XXXX)
+Short imperative subject, 72 chars max (PP-XXXX)
 
-Root cause: One or two sentences on why the bug happened or why the change is needed.
-Solution: What this commit does (behavior change, not file list).
+Optional body, about 10 lines at most: what changed and why, in behavior
+terms rather than a file list.
 ```
 
-**Example:**
+Example:
 
 ```
-Fix My Books from audiobook player returning to catalog (PP-3783)
+Keep book detail under the audiobook player in the nav stack (PP-3783)
 
-Root cause: pushAudioRoute() cleared the entire nav stack before pushing the
-player, so the stack became [Audio] instead of [BookDetail, Audio]. Tapping
-My Books then popped to root (catalog).
-
-Solution: Track whether the top route is audio; only clear the stack when
-replacing an existing player (e.g. switching audiobooks). When opening from
-book detail, push audio without clearing so back goes to book detail.
+pushAudioRoute() cleared the whole stack before pushing the player, so
+My Books popped back to the catalog. Clear the stack only when replacing
+an existing player.
 ```
 
----
+- Put the Jira key in the subject (prefix or suffix). The post-commit and PR
+  workflows pick it up from there.
+- No `Co-Authored-By` trailer for AI tools and no "Generated with" line.
+- No internal run or campaign identifiers in the subject or body.
 
-## PR description: "Summary for JIRA" block
+## PR descriptions
 
-In the PR description, fill in the **Summary for JIRA** section (see the PR template). That block is easy to copy into the JIRA ticket or to use for release notes. Include:
+Use the template in [`PULL_REQUEST_TEMPLATE.md`](./PULL_REQUEST_TEMPLATE.md):
+**What**, **Why**, **How verified**, and optionally **Not done**. Aim for about
+20 lines; `scripts/check-pr-hygiene.py` fails a body over ~1,500 characters
+(images and HTML comments excluded).
 
-- **JIRA:** Ticket id(s).
-- **Root cause:** Why the bug happened or why we're making the change.
-- **Solution:** What the PR does (user-visible and key technical points).
-- **How to verify:** Short QA steps or test instructions.
-
----
-
-## Why this helps
-
-- **JIRA:** Linked commits/PRs show *why* and *what*, not just "Fix X" and file names.
-- **Code review:** Reviewers see context without opening the ticket.
-- **Release notes:** Copy the Summary for JIRA block into release notes.
-- **Future you:** In six months, the commit and PR still explain the change.
+When the PR is opened, `jira-pr-opened.yml` copies the **What** and **Why**
+sections into a comment on each linked ticket and uses **How verified** as the
+testing steps, so keep those sections readable on their own.

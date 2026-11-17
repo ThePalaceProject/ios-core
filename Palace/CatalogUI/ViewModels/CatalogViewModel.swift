@@ -624,7 +624,11 @@ extension CatalogViewModel {
            let title = link.title, !title.isEmpty {
           let urlMatch = currentURL.map { urlsMatchForFacet(href, $0) } ?? false
           let isActive = urlMatch || link.properties?.numberOfItems != nil
-          entryPoints.append(CatalogFilter(id: link.href, title: title, href: href, active: isActive))
+          entryPoints.append(CatalogFilter(
+            id: link.href,
+            title: localizedEntryPointTitle(href: href, serverTitle: title),
+            href: href,
+            active: isActive))
         }
       }
     }
@@ -639,12 +643,51 @@ extension CatalogViewModel {
       }
       guard !filters.isEmpty else { continue }
       if entryPointGroupNames.contains(facetGroup.title.lowercased()) {
-        entryPoints = filters
+        entryPoints = filters.map { f in
+          guard let href = f.href else { return f }
+          return CatalogFilter(id: f.id,
+                               title: localizedEntryPointTitle(href: href, serverTitle: f.title),
+                               href: href,
+                               active: f.active)
+        }
       } else {
         groups.append(CatalogFilterGroup(id: facetGroup.title, name: facetGroup.title, filters: filters))
       }
     }
     return (groups, entryPoints)
+  }
+
+  /// Localized label for a format-selector facet.
+  ///
+  /// The circulation manager supplies these titles, and it supplies them in
+  /// English: the app sends an empty `Accept-Language` on every request
+  /// (TPPNetworkExecutor), deliberately, because populating it re-introduces
+  /// language-based catalog filtering. So a German catalog showed Katalog,
+  /// Meine Bücher and Einstellungen around a selector reading
+  /// All / Ebooks / Audiobooks.
+  ///
+  /// Keyed on the href's `entrypoint` value, not on the title. The value is a
+  /// stable token the CM routes on; the title is display text it may reword,
+  /// or localize itself one day, and either would silently break a
+  /// title-keyed match. An entrypoint with no string of ours keeps the
+  /// server's own words, so a newly added format still shows its label
+  /// instead of a blank or a wrong one.
+  static func localizedEntryPointTitle(href: URL, serverTitle: String) -> String {
+    guard let comps = URLComponents(url: href, resolvingAgainstBaseURL: false),
+          let value = comps.queryItems?.first(where: { $0.name.lowercased() == "entrypoint" })?.value,
+          !value.isEmpty
+    else { return serverTitle }
+
+    switch value.lowercased() {
+    case "all":
+      return NSLocalizedString("All", comment: "Catalog format selector: every format")
+    case "book":
+      return NSLocalizedString("Ebooks", comment: "Catalog format selector: ebooks only")
+    case "audio":
+      return NSLocalizedString("Audiobooks", comment: "Catalog format selector: audiobooks only")
+    default:
+      return serverTitle
+    }
   }
 
   /// OPDS 2 has no standard "active facet" flag. The CM reloads the feed at

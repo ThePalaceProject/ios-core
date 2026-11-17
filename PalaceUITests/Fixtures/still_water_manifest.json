@@ -1,0 +1,19 @@
+{
+  "@context": "https://readium.org/webpub-manifest/context.jsonld",
+  "metadata": {
+    "@type": "http://schema.org/Audiobook",
+    "identifier": "urn:palace-fixtures:book:still-water",
+    "title": "Still Water",
+    "author": "June Calloway",
+    "language": "en",
+    "duration": 2
+  },
+  "readingOrder": [
+    {
+      "href": "https://palace-fixtures.test/library/works/still-water/still-water.m4a",
+      "type": "audio/mp4",
+      "duration": 2,
+      "title": "Chapter One: Slack Tide"
+    }
+  ]
+}

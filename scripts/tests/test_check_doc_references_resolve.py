@@ -509,7 +509,7 @@ def test_dangling_workflow_still_blocks_when_nothing_ignores_it(tmp_path):
 
 
 def test_ignore_exemption_does_not_swallow_other_forgeos_targets(tmp_path):
-    """CONTROL. `.forgeos/intent/` is live and tracked; only swarms/ is denied."""
+    """CONTROL. Only the swarms/ prefix is exempt; any other `.forgeos/` target a doc names still blocks."""
     root = make_repo(
         tmp_path,
         docs={"docs/a.md": "See `.forgeos/intent/pp-1234.yaml` for the contract.\n"},

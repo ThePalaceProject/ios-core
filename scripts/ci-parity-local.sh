@@ -151,14 +151,7 @@ except Exception:
 
 echo "════════════════════════════════════════════════════════════════"
 if [ "$FAILED" = "0" ] && [ "$SCRIPT_EXIT" = "0" ]; then
-    # Stamp this exact commit as CI-parity-verified so the pre-push gate
-    # (scripts/check-ci-parity-stamp.sh) can require it before a PR/merge.
-    GIT_DIR="$(git rev-parse --git-dir 2>/dev/null)"
-    if [ -n "$GIT_DIR" ]; then
-        git rev-parse HEAD > "$GIT_DIR/ci-parity-pass.sha" 2>/dev/null || true
-    fi
     echo "✅ CI-PARITY PASS — no test failed all retries. Safe to PR/merge."
-    echo "   Stamped $(git rev-parse --short HEAD 2>/dev/null) as CI-parity-verified."
     exit 0
 else
     echo "🔴 CI-PARITY FAIL — failed=$FAILED, script exit=$SCRIPT_EXIT"

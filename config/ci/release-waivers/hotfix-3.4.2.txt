@@ -1,0 +1,44 @@
+# Release-only commits on hotfix/3.4.2 that are deliberately not on develop.
+# Inherited from release/3.4.1, which this branch was cut from:
+#1794   version 3.4.1 build 520 for the 3.4.1 release; develop keeps its own version
+# Inherited from release/3.4.0, which this branch was cut from:
+#1730   build number 516 for the first 3.4.0 release candidate; develop takes the next number
+f54fb0761 build number 517 for the 3.4.0 release candidate; develop takes the next number
+5f3934711 build number 518 for the 3.4.0 release candidate; develop takes the next number
+#1790   build number 519 for the 3.4.0 release candidate; develop takes the next number
+# Ported by merge here and squashed on develop, so commit-level matching cannot pair them.
+120a719be PP-5414 is on develop as 188205313 (#1766)
+59c178c97 on develop as 6dca5b02b
+f6eea3dd6 on develop as 93f7da624
+8e7feb814 PP-4970 is on develop as 0ac02265d (#1768)
+45399e415 PP-4970 is on develop as 0ac02265d (#1768)
+55aa3bc1c PP-5440 is on develop as 1e224ebf8 (#1771)
+573e7bb83 PP-5440 is on develop as 1e224ebf8 (#1771)
+6b455bddc PP-5440 is on develop as 1e224ebf8 (#1771)
+7ef1bf7ea PP-5440 is on develop as 1e224ebf8 (#1771)
+b6858aa0b PP-5440 is on develop as 1e224ebf8 (#1771)
+e55cb44cb PP-5440 is on develop as 1e224ebf8 (#1771)
+56b2c5866 PP-5450 is on develop as 59c926524 (#1775)
+70961e096 PP-5450 is on develop as 59c926524 (#1775)
+e892160da PP-5450 is on develop as 59c926524 (#1775)
+59dacd63a PP-5450 is on develop as 59c926524 (#1775)
+16db90e7c PP-5450 is on develop as 59c926524 (#1775)
+599001d0d PP-5450 is on develop as 59c926524 (#1775)
+7a7c045bc PP-5450 is on develop as 59c926524 (#1775)
+31c6d15c5 PP-5449 is on this branch through #1782
+4e14712b2 PP-5415 comment-only change; no behavior to ship
+7cc7c20e9 PP-5415 test comment-only change; no behavior to ship
+#1843   build number 521 set on release/3.4.1 and reverted before 3.4.1 shipped
+#1846   reverts #1842 and #1843 so 3.4.1 ships as build 520; PP-5532 returns in 3.4.2
+#1849   version 3.4.2 build 521 for the hotfix; develop keeps its own version
+# develop fixes held for the next release; 3.4.2 ships only PP-5532 and PP-5541.
+#1800   PP-5472 held for the next release from develop
+#1804   PP-5473 held for the next release from develop
+#1813   PP-5507 held for the next release from develop
+#1821   PP-5473 held for the next release from develop
+#1828   PP-5508 held for the next release from develop
+#1855   PP-5544 held for the next release from develop
+#1851   waiver list for this hotfix only; develop has no 3.4.2 waivers to receive
+#1871   waiver list for this hotfix only; develop has no 3.4.2 waivers to receive
+#1702   3.3.2-line copy of #1701, which develop and this hotfix already carry (same code lines)
+#1870   PP-5558 held for the next release from develop

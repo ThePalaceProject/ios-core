@@ -14,14 +14,9 @@ import PalaceLogging
 
 extension TPPReadiumBookmark {
 
-    /// Full-field initializer. Lives app-side (rather than in the PalaceBookModel
-    /// package alongside the rest of TPPReadiumBookmark) because it derives the
-    /// location string via the Readium-backed `TPPBookLocation(href:type:...)`
-    /// convenience initializer in `TPPBookLocation+Locator.swift`, which imports
-    /// ReadiumShared — a dependency the leaf model package must not carry. It
-    /// resolves the location string here, then delegates to the package
-    /// designated initializer. Behavior is byte-identical to the designated
-    /// initializer this replaced (Wave 2a extraction, PP god-class decomp).
+    /// Full-field initializer. Lives app-side because it derives the location
+    /// string via the Readium-backed `TPPBookLocation(href:type:...)`, and the
+    /// PalaceBookModel package must not depend on ReadiumShared.
     convenience init?(annotationId: String?,
           href: String?,
           chapter: String?,

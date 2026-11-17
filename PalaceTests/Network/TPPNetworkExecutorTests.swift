@@ -150,38 +150,6 @@ final class TPPNetworkExecutorAPITests: XCTestCase {
         XCTAssertGreaterThan(AppContainer.production().networkExecutor.requestTimeout, 0,
                         "requestTimeout must remain positive after cache cleared")
     }
-
-    // MARK: - Task Management
-
-    func testPauseAllTasks_doesNotCrash() {
-        AppContainer.production().networkExecutor.pauseAllTasks()
-        // Pause then immediately resume must not crash (common sequence on app background/foreground)
-        AppContainer.production().networkExecutor.resumeAllTasks()
-        let req = AppContainer.production().networkExecutor.request(for: URL(string: "https://example.com")!)
-        XCTAssertNotNil(req.url, "Executor must remain functional after pause+resume")
-        XCTAssertGreaterThan(AppContainer.production().networkExecutor.requestTimeout, 0,
-                        "requestTimeout must remain positive after pause+resume")
-    }
-
-    func testResumeAllTasks_doesNotCrash() {
-        // Resume without prior pause must be safe
-        AppContainer.production().networkExecutor.resumeAllTasks()
-        AppContainer.production().networkExecutor.resumeAllTasks()
-        let req = AppContainer.production().networkExecutor.request(for: URL(string: "https://example.com")!)
-        XCTAssertNotNil(req.url, "Executor must remain functional after multiple resumes")
-        XCTAssertGreaterThan(AppContainer.production().networkExecutor.requestTimeout, 0,
-                        "requestTimeout must remain positive after multiple resumes")
-    }
-
-    func testCancelNonEssentialTasks_doesNotCrash() {
-        AppContainer.production().networkExecutor.cancelNonEssentialTasks()
-        // Cancelling twice in quick succession must not crash
-        AppContainer.production().networkExecutor.cancelNonEssentialTasks()
-        let req = AppContainer.production().networkExecutor.request(for: URL(string: "https://example.com")!)
-        XCTAssertNotNil(req.url, "Executor must remain functional after repeated cancellations")
-        XCTAssertGreaterThan(AppContainer.production().networkExecutor.requestTimeout, 0,
-                        "requestTimeout must remain positive after repeated cancellations")
-    }
 }
 
 // MARK: - Stubbed HTTP Tests

@@ -4,6 +4,7 @@ import Combine
 import PalaceUIKit
 import PalaceBookModel
 import PalaceBookRegistry
+import PalaceUtilities
 
 struct MyBooksView: View {
     @EnvironmentObject private var coordinator: NavigationCoordinator

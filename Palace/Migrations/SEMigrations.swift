@@ -10,7 +10,10 @@ import PalacePreferences
 import PalaceLogging
 
 extension TPPMigrationManager {
-    static func runMigrations(settings: TPPSettings = AppContainer.production().settings) {
+    static func runMigrations(
+        settings: TPPSettings = AppContainer.production().settings,
+        defaults: UserDefaults = .standard
+    ) {
         // Fetch and parse app version
         let appVersion = settings.appVersion ?? ""
         let appVersionTokens = appVersion.split(separator: ".").compactMap({ Int($0) })
@@ -24,6 +27,9 @@ extension TPPMigrationManager {
         }
         if version(appVersionTokens, isLessThan: [3, 3, 0]) { // v3.3.0
             migrate2()
+        }
+        if version(appVersionTokens, isLessThan: [3, 4, 0]) { // v3.4.0
+            migrate3_4_0(defaults: defaults)
         }
 
         // Migrate Network Queue DB
@@ -141,5 +147,16 @@ extension TPPMigrationManager {
         if FileManager.default.fileExists(atPath: origProdUrl.absoluteString) {
             Log.error(#file, "Old prod cache still exists")
         }
+    }
+
+    // v3.4.0
+    // Removes the per-book last-opened map. Its writer was deleted after its
+    // only reader, the catalog "Continue" rows, went away in PP-4910, and the
+    // map was never pruned.
+    private static let legacyBookLastOpenedKey = "TPPBookLastOpenedAt"
+
+    private static func migrate3_4_0(defaults: UserDefaults) {
+        Log.info(#file, "Running 3.4.0 migration — remove book last-opened map")
+        defaults.removeObject(forKey: legacyBookLastOpenedKey)
     }
 }

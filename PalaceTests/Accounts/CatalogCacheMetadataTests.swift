@@ -137,7 +137,7 @@ final class CatalogCacheMetadataTests: XCTestCase {
     func testInvariant_ExpiredImpliesStale() {
         // Across a span of ages past 24h, isExpired must always imply isStale.
         // (Stale TTL ≤ 12h, expiry = 24h, so this is structural — but a
-        // mutant flipping the comparison operator would break it.)
+        // flipped comparison operator would break it.)
         for hoursOld in [25, 48, 168, 720] {
             let metadata = CatalogCacheMetadata(
                 timestamp: Date().addingTimeInterval(-Double(hoursOld) * 3600),
@@ -198,8 +198,8 @@ final class CatalogCacheMetadataTests: XCTestCase {
         // Convenience initializer omits isBundled so existing call sites
         // and legacy decoded metadata continue to behave like network caches.
         // Pair-assert that the EXPLICIT isBundled=true overload IS true so
-        // a mutation that hard-codes isBundled=false (and ignores the
-        // explicit-initializer arg) is caught.
+        // hard-coding isBundled=false (ignoring the explicit-initializer
+        // arg) is caught.
         let metadata = CatalogCacheMetadata(timestamp: Date(), hash: "h")
         let explicitBundled = CatalogCacheMetadata(timestamp: Date(), hash: "h", isBundled: true)
         XCTAssertFalse(metadata.isBundled,

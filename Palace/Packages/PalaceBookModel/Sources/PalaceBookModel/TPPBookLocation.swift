@@ -64,6 +64,14 @@ extension TPPBookLocation {
         return dictionary
     }
 
+    /// True when both name the same stored record: same renderer and the same
+    /// location string, byte for byte. Unlike `isSimilarTo`, a record at the
+    /// same position but saved at another time, or re-encoded, is not the same.
+    // PUBLIC_INTENT: called from the Palace app target and PalaceBookRegistry, both outside this package.
+    public func isSameRecord(as other: TPPBookLocation) -> Bool {
+        renderer == other.renderer && locationString == other.locationString
+    }
+
     public func isSimilarTo(_ location: TPPBookLocation) -> Bool {
         guard renderer == location.renderer,
               let locationDict = locationStringDictionary(),

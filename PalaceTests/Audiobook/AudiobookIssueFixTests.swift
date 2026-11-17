@@ -309,24 +309,49 @@ final class PostUpdateMigrationTests: XCTestCase {
                         "After storing a build, it must be retrievable")
     }
 
-    func testMigrate_doesNotCrash() {
+    /// Keeps the LCP keychain migration off the real Keychain and out of
+    /// `UserDefaults.standard`. Without it these tests start a detached migration
+    /// against the shared store that outlives the test and races
+    /// `LCPKeychainMigrationTests` (PP-5091). The versioned migrations are left
+    /// real — exercising them is the point of these tests.
+    private func inertLCPMigration(suite: String) throws -> (MigrationSubstitutions, UserDefaults) {
+        // XCTUnwrap, not fatalError: a fatalError here would abort the whole test
+        // process rather than fail this one test, and take every other suite's
+        // result down with it.
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite),
+                                     "Could not create isolated UserDefaults suite \(suite)")
+        defaults.removePersistentDomain(forName: suite)
+        var substitutions = MigrationSubstitutions()
+        substitutions.lcpMigration = (defaults: defaults, work: { @Sendable in })
+        return (substitutions, defaults)
+    }
+
+    func testMigrate_doesNotCrash() throws {
+        let suite = "PostUpdateMigrationTests.doesNotCrash"
+        let (substitutions, isolated) = try inertLCPMigration(suite: suite)
+        defer { isolated.removePersistentDomain(forName: suite) }
+
         // Running migrate() in test environment should complete without errors
         let settings = TPPSettings()
-        TPPMigrationManager.migrate(settings: settings)
+        TPPMigrationManager.migrate(settings: settings, substituting: substitutions)
         // After migration the app version must be set to the current bundle version
         let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
         XCTAssertNotNil(currentVersion, "Bundle must expose a short version string")
         // Running migrate again must be idempotent
-        TPPMigrationManager.migrate(settings: settings)
+        TPPMigrationManager.migrate(settings: settings, substituting: substitutions)
         XCTAssertEqual(settings.appVersion, currentVersion,
                        "Repeated migration must not change the stored version")
     }
 
-    func testMigrate_updatesStoredVersion() {
+    func testMigrate_updatesStoredVersion() throws {
+        let suite = "PostUpdateMigrationTests.updatesStoredVersion"
+        let (substitutions, isolated) = try inertLCPMigration(suite: suite)
+        defer { isolated.removePersistentDomain(forName: suite) }
+
         let expectedVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
         let settings = TPPSettings()
 
-        TPPMigrationManager.migrate(settings: settings)
+        TPPMigrationManager.migrate(settings: settings, substituting: substitutions)
 
         XCTAssertEqual(settings.appVersion, expectedVersion,
                        "After migration, stored version should match current bundle version")

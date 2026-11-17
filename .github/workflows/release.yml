@@ -46,16 +46,7 @@ jobs:
       - name: Create or update release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if gh release view "$VERSION_NUM" > /dev/null 2>&1; then
-            gh release edit "$VERSION_NUM" \
-              --title "$VERSION_NUM" \
-              --notes-file "$RELEASE_NOTES_PATH"
-          else
-            gh release create "$VERSION_NUM" \
-              --title "$VERSION_NUM" \
-              --notes-file "$RELEASE_NOTES_PATH"
-          fi
+        run: ./scripts/create-or-update-release.sh "$VERSION_NUM" "$RELEASE_NOTES_PATH"
 
   jira-sync:
     needs: create-release

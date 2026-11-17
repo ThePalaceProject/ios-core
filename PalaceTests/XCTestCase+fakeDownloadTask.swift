@@ -1,20 +1,10 @@
-//
 //  XCTestCase+fakeDownloadTask.swift
-//  PalaceTests
 //
-//  Returns a `URLSessionDownloadTask` suitable for identity / equality
-//  comparisons in tests. The task is constructed against an ephemeral
-//  URLSession whose only registered protocol is `NoNetworkURLProtocol`,
-//  so even if a buggy test calls `.resume()` it will fail loudly with
-//  `NSURLErrorNotConnectedToInternet` instead of escaping to real network.
-//
-//  Replaces 16 `URLSession.shared.downloadTask(with: ...)` sites in
-//  PalaceTests/MyBooks/. Those sites construct a task *only* to hand a
-//  concrete `URLSessionDownloadTask` to a SUT that takes one for identity
-//  comparison — none of them ever resume the task. Hitting URLSession.shared
-//  was a smell: any future change that DOES resume (refactor, mistake) would
-//  leak to real network from a unit test.
-//
+//  Returns a `URLSessionDownloadTask` for identity comparisons in tests, built on
+//  an ephemeral session whose only protocol is `NoNetworkURLProtocol`, so a
+//  `.resume()` fails with `NSURLErrorNotConnectedToInternet` instead of reaching
+//  the network. Used by PalaceTests/MyBooks/ in place of
+//  `URLSession.shared.downloadTask(with:)`.
 
 import Foundation
 import XCTest

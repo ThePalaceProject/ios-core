@@ -68,7 +68,14 @@ public final class DefaultCatalogAPI: CatalogAPI, Sendable {
                 return try await fetchFeed(at: url)
             } else {
                 var comps = URLComponents(url: opds2SearchURL, resolvingAgainstBaseURL: false)
-                var items = comps?.queryItems ?? []
+                // A search link discovered inside a browsed feed carries that
+                // feed's facets, `order` among them. Forwarding the browse sort
+                // ranks the search by it, so an exact-title match can land off
+                // the first page (PP-5391). Dropping the item lets the server
+                // apply its own search ordering. The scope facets
+                // (`available`, `distributor`, `collectionName`, `entrypoint`)
+                // stay: they describe the shelf the patron chose to search in.
+                var items = (comps?.queryItems ?? []).filter { $0.name != "order" }
                 items.append(URLQueryItem(name: "q", value: query))
                 comps?.queryItems = items
                 if let url = comps?.url {

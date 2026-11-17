@@ -7,10 +7,6 @@
 //  AccountsManager test opt-out enabled, so the next test runs against a
 //  freshly-built graph with no in-flight background `loadCatalogs` race.
 //
-//  swarm_4b64e4e0 Fix 2 — closes the H1 finding from swarm_f88ae9e3 A
-//  (the `static let _cached` AccountsManager() that spawned a
-//  process-lifetime background loadCatalogs Task without the opt-out).
-//
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
 
@@ -128,6 +124,27 @@ final class AppContainerResetTests: PalaceTestCase {
                        "_resetForTesting() must hand back a fresh presenter instance, not the polluted one")
     }
 
+    /// After a reset, the container-owned services must come from the rebuilt
+    /// graph. A presenter or cache that survived would keep the previous
+    /// graph's accounts manager and registry alive into the next test class.
+    func testResetForTesting_containerOwnedServicesFollowTheRebuiltGraph() {
+        let prePresenter = AppContainer.production().signInModalSheetPresenter
+        let preCache = AppContainer.production().bookCellModelCache
+        let preRepository = AppContainer.production().catalogRepository as AnyObject
+
+        AppContainer._resetForTesting()
+
+        let post = AppContainer.production()
+        XCTAssertFalse(post.signInModalSheetPresenter === prePresenter,
+                       "Reset must hand back a sign-in presenter built against the rebuilt graph")
+        XCTAssertFalse(post.bookCellModelCache === preCache,
+                       "Reset must hand back a book cell cache built against the rebuilt graph")
+        XCTAssertFalse(post.catalogRepository as AnyObject === preRepository,
+                       "Reset must hand back a catalog repository built against the rebuilt graph")
+        XCTAssertTrue(AppContainer.production().signInModalSheetPresenter === post.signInModalSheetPresenter,
+                      "After the reset, production() reads must again share one presenter")
+    }
+
     /// Reset must produce a cached graph whose AccountsManager was built
     /// with the `deferInitialLoadCatalogsForTesting` flag set to `true`.
     /// The observable consequence: immediately after reset, the new
@@ -136,11 +153,10 @@ final class AppContainerResetTests: PalaceTestCase {
     /// `true` (the task handle is nil because the init returned before the
     /// dispatch).
     ///
-    /// Kill case: a regression that flips the flag AFTER `_buildCachedAppContainer`
-    /// runs (or flips it `false` BEFORE the rebuild) leaves the new
-    /// AccountsManager spawning the background fetch — observable as
-    /// `_backgroundFetchTaskIsCancelledOrCleared == false` if mutation
-    /// reorders the lines.
+    /// Flipping the flag AFTER `_buildCachedAppContainer` runs (or to `false`
+    /// BEFORE the rebuild) leaves the new AccountsManager spawning the
+    /// background fetch — observable as
+    /// `_backgroundFetchTaskIsCancelledOrCleared == false`.
     func testResetForTesting_disablesBackgroundLoadCatalogs() {
         // Arrange: ensure we start from a normal state (flag false, prior
         // graph cached).
@@ -279,6 +295,44 @@ final class AppContainerResetTests: PalaceTestCase {
         XCTAssertFalse(
             secondManager === thirdManager,
             "Third consecutive `_resetForTesting()` must also produce a fresh AccountsManager"
+        )
+    }
+
+    /// The offline-queue coordinator is retained in a process-wide slot so its
+    /// `[weak self]` executor closure stays alive, and
+    /// `ensureOfflineQueueExecutorRegistered()` is a no-op once the slot is
+    /// filled. Both are deliberate. What was not deliberate: the slot captures
+    /// the `downloadCenter` and `bookRegistry` of whichever container
+    /// registered first, and `_resetForTesting()` cleared its two siblings —
+    /// the side-loaded registry and manager — but not this one. So a rebuilt
+    /// graph kept being served by the previous graph's collaborators, and the
+    /// no-op meant it could never install its own.
+    ///
+    /// This is the same shape as the leaked audiobook presenter above: a graph
+    /// member the reset did not reach.
+    func testResetForTesting_clearsTheOfflineQueueCoordinatorSlot() {
+        AppContainer.production().ensureOfflineQueueExecutorRegistered()
+        let registered = AppContainer._offlineQueueCoordinatorForTesting
+        XCTAssertNotNil(
+            registered,
+            "Premise: registering must fill the slot, or this test proves nothing about clearing it"
+        )
+
+        AppContainer._resetForTesting()
+
+        XCTAssertNil(
+            AppContainer._offlineQueueCoordinatorForTesting,
+            "_resetForTesting() must clear the offline-queue coordinator; a surviving slot serves the rebuilt graph "
+            + "with the previous container's downloadCenter and bookRegistry, and the registration no-ops so the new "
+            + "graph never installs its own"
+        )
+
+        AppContainer.production().ensureOfflineQueueExecutorRegistered()
+        let reregistered = AppContainer._offlineQueueCoordinatorForTesting
+        XCTAssertNotNil(reregistered, "After a reset the next container must be able to register its own coordinator")
+        XCTAssertFalse(
+            registered === reregistered,
+            "The re-registered coordinator must be a new instance, not the one built from the discarded graph"
         )
     }
 }

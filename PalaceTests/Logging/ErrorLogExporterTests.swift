@@ -77,20 +77,6 @@ final class ErrorLogExporterTests: XCTestCase {
                       "ErrorLogExporter.shared must return the same instance on every access")
     }
 
-    // MARK: - Patron ID in Device Info Tests (PP-3651)
-
-    /// Regression test for PP-3651: Collected logs should contain patron ID in device info
-    func testPP3651_collectLogsForPreview_containsPatronIDField() async {
-        // Exercise the device-info seam directly. The prior version called
-        // `collectLogsForPreview()` → `collectAllLogs()`, which enumerates 7
-        // days of OSLogStore via `DeviceLogCollector.collectLogs(lastDays:)`.
-        // In a log-saturated CI process that enumeration hung past the per-test
-        // execution-time allowance and crashed the run. The assertion only ever
-        // cared about the device-info / Patron-ID field, which `collectDeviceInfo`
-        // builds directly — no OSLogStore, no network.
-        let deviceInfo = await ErrorLogExporter.shared.collectDeviceInfo()
-
-        XCTAssertTrue(deviceInfo.contains("Patron ID:"),
-                      "Device info in error logs should include a Patron ID field")
-    }
+    // The device-info patron line is covered by SupportReportContextTests,
+    // which injects the context instead of reading the signed-in account.
 }

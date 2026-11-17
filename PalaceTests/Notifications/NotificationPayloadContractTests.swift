@@ -90,8 +90,8 @@ final class NotificationEventTypeContractTests: XCTestCase {
 
     /// Unknown raw values return nil — production classifier falls back
     /// to APS keyword matching. Pin multiple distinct unknown values
-    /// (including empty string) so a mutant that special-cases one
-    /// unknown into a default enum case fails on a distinct row.
+    /// (including empty string) so mapping any one unknown to a default
+    /// enum case fails on a distinct row.
     func testUnknownEventType_returnsNilForAllUnrecognizedRawValues() {
         for rawValue in ["SomeNewType", "FutureEvent_v3", "garbage", ""] {
             XCTAssertNil(
@@ -143,8 +143,8 @@ final class NotificationPayloadContractTests: XCTestCase {
     /// `identifier` and `library` are both required, non-empty string
     /// fields on every CM notification payload. iOS uses `identifier` to
     /// deduplicate and `library` to route to the right account. Pin both
-    /// fields' presence + non-emptiness in one test so a mutant that
-    /// drops emptiness validation on one of them is caught.
+    /// fields' presence + non-emptiness in one test so dropping emptiness
+    /// validation on either is caught.
     func testAllPayloads_haveIdentifierAndLibraryAsNonEmptyStrings() {
         XCTAssertGreaterThanOrEqual(payloads.count, 4,
                                     "Fixture must have all 4 payload types — guards against an empty fixture mutant")

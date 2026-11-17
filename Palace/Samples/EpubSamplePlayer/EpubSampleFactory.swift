@@ -28,52 +28,38 @@ import PalaceBookModel
 // invariant as the `EpubLocationSampleURL` superclass — no added mutable state.
 @objc class EpubSampleWebURL: EpubLocationSampleURL, @unchecked Sendable {}
 
-/// Carries the non-`Sendable` `createSample` completion across the `@Sendable`
-/// `fetchSample` / `main.async` boundaries. Invoked exactly once. Mirrors
-/// `ImageCompletionBox`.
-private final class SampleCompletionBox: @unchecked Sendable {
-    let call: (EpubLocationSampleURL?, Error?) -> Void
-    init(_ call: @escaping (EpubLocationSampleURL?, Error?) -> Void) { self.call = call }
-}
-
-@objc class EpubSampleFactory: NSObject {
+class EpubSampleFactory: NSObject {
     private static let samplePath = "TestApp.epub"
 
-    @objc static func createSample(book: TPPBook, completion: @escaping (EpubLocationSampleURL?, Error?) -> Void) {
-        // Box the non-`Sendable` completion so it can cross the `@Sendable`
-        // `fetchSample` / `main.async` boundaries below; invoked exactly once.
-        let completionBox = SampleCompletionBox(completion)
-        guard let epubSample = book.sample as? EpubSample
-        else {
-            completionBox.call(nil, SamplePlayerError.noSampleAvailable)
-            return
+    /// Prepare a playable location for `book`'s sample.
+    ///
+    /// `@MainActor` and `async` (PP-5301). Both callers are `@MainActor`
+    /// (`BookCellModel`, `BookDetailViewModel`), so the completion they passed
+    /// inherited main-actor isolation — and this method delivered the success
+    /// case through `DispatchQueue.main.async` while handing every failure
+    /// straight back on the network executor's own thread. `BookCellModel`'s
+    /// closure then read `self.isLoading` and presented a view controller from
+    /// there, which is the PP-5299 crash class on a sample whose download
+    /// fails. Returning instead of calling back puts every arm on the caller's
+    /// actor, so the asymmetry cannot be written.
+    @MainActor
+    static func createSample(book: TPPBook) async throws -> EpubLocationSampleURL {
+        guard let epubSample = book.sample as? EpubSample else {
+            throw SamplePlayerError.noSampleAvailable
         }
 
-        if epubSample.type.needsDownload {
-            epubSample.fetchSample { result in
-                switch result {
-                case .failure(let error, _):
-                    completionBox.call(nil, error)
-                case .success(let data, _):
+        guard epubSample.type.needsDownload else {
+            return EpubSampleWebURL(url: epubSample.url)
+        }
 
-                    do {
-                        guard let location = try save(data: data) else {
-                            completionBox.call(nil, SamplePlayerError.fileSaveFailed(nil))
-                            return
-                        }
-
-                        let epubLocationURL = EpubLocationSampleURL(url: location)
-                        DispatchQueue.main.async {
-                            completionBox.call(epubLocationURL, nil)
-                        }
-                    } catch {
-                        completionBox.call(nil, error)
-                    }
-                }
+        switch await epubSample.fetchSample() {
+        case .failure(let error, _):
+            throw error
+        case .success(let data, _):
+            guard let location = try save(data: data) else {
+                throw SamplePlayerError.fileSaveFailed(nil)
             }
-        } else {
-            let webURL = EpubSampleWebURL(url: epubSample.url)
-            completionBox.call(webURL, nil)
+            return EpubLocationSampleURL(url: location)
         }
     }
 

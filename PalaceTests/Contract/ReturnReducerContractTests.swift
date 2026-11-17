@@ -2,14 +2,11 @@
 //  ReturnReducerContractTests.swift
 //  PalaceTests
 //
-//  E2 (WS7) coverage for the pure `ReturnReducer` extracted from
-//  `BookReturnService`. Direct `Equatable` assertions on `startRoute`,
-//  `classifyError`, and `cleanupEffects` kill mutants (flipped guards, dropped
-//  ladder arms, swapped teardown order). The `ContractSnapshot` layer
-//  interprets `cleanupEffects` into a `CallLog` using the SAME collaborator
-//  labels `BookReturnServiceContractTests` records, so the emitted teardown is
-//  shape-equal to the cleanup tail of the E1 service snapshots (the
-//  behavior-preservation proof Contract E requires).
+//  Covers the pure `ReturnReducer` extracted from `BookReturnService`. Direct
+//  `Equatable` assertions on `startRoute`, `classifyError`, and `cleanupEffects`
+//  catch flipped guards, dropped ladder arms, and swapped teardown order. The
+//  snapshot layer records `cleanupEffects` with the collaborator labels
+//  `BookReturnServiceContractTests` uses, so the teardown matches the service's.
 //
 
 import XCTest

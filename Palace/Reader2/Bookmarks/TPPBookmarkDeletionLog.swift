@@ -20,7 +20,8 @@ import PalaceLogging
 /// accessed exclusively through `queue` — a concurrent dispatch queue whose
 /// writes use `.barrier` and whose reads use `sync` — so there is no
 /// unsynchronized shared mutable access. The other stored properties
-/// (`userDefaultsKey`, `queue`, `defaults`) are immutable `let`s. This makes
+/// (`userDefaultsKey`, `queue`, `persistenceQueue`, `defaults`) are immutable
+/// `let`s. This makes
 /// the queue-guarded singleton safe to reference from the `@Sendable` closures
 /// dispatched onto `queue`.
 @objcMembers
@@ -30,6 +31,19 @@ final class TPPBookmarkDeletionLog: NSObject, @unchecked Sendable {
 
     private let userDefaultsKey = "TPPBookmarkDeletionLog"
     private let queue = DispatchQueue(label: "org.thepalaceproject.bookmarkDeletionLog", attributes: .concurrent)
+
+    /// Serial queue for `UserDefaults` writes, kept separate from `queue`.
+    ///
+    /// `UserDefaults.set` posts `didChangeNotification` synchronously, and
+    /// posting waits for any observer registered with an operation queue —
+    /// `queue: .main` makes it wait for the main thread. Writing while a
+    /// barrier on `queue` is held therefore deadlocks whenever the main
+    /// thread is blocked in `pendingDeletions` (`queue.sync`): the barrier
+    /// waits on main, main waits on the barrier. Barriers snapshot the log
+    /// and hand the write to this queue instead, so nothing that can wait on
+    /// another thread runs while `queue` is held. Enqueueing from inside the
+    /// barrier keeps writes in mutation order, so the last write wins.
+    private let persistenceQueue = DispatchQueue(label: "org.thepalaceproject.bookmarkDeletionLog.persistence")
 
     /// In-memory cache of pending deletions: [bookIdentifier: Set<annotationId>]
     private var deletionLog: [String: Set<String>] = [:]
@@ -120,12 +134,25 @@ final class TPPBookmarkDeletionLog: NSObject, @unchecked Sendable {
 
     // MARK: - Persistence
 
+    /// Blocks until every mutation dispatched so far has been written to
+    /// `defaults`. Tests only.
+    func _waitForPendingWritesForTesting() {
+        queue.sync(flags: .barrier) {}
+        persistenceQueue.sync {}
+    }
+
+    /// Must be called from inside a barrier on `queue`. Encodes the current
+    /// log there and performs the `UserDefaults` write on `persistenceQueue`
+    /// — see that property for why the write must not happen under `queue`.
     private func saveToDisk() {
         // Convert Set to Array for JSON serialization
         let serializable = deletionLog.mapValues { Array($0) }
 
-        if let data = try? JSONEncoder().encode(serializable) {
-            defaults.set(data, forKey: userDefaultsKey)
+        guard let data = try? JSONEncoder().encode(serializable) else { return }
+        let defaults = self.defaults
+        let key = userDefaultsKey
+        persistenceQueue.async {
+            defaults.set(data, forKey: key)
         }
     }
 

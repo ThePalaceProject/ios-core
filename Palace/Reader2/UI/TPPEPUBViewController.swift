@@ -90,7 +90,7 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
         // DRM-protected flag. DRM titles get an empty action list (no
         // long-press menu); non-DRM titles get Readium's defaults plus the
         // Palace Highlight action.
-        let highlight = EditingAction(title: "Highlight",
+        let highlight = EditingAction(title: Strings.ReaderTypography.highlight,
                                       action: #selector(highlightSelection))
         let editingActions = ReaderEditingActions.resolve(
             for: book,
@@ -849,7 +849,12 @@ class TPPEPUBViewController: TPPBaseReaderViewController {
 
         navigationController?.navigationBar.isTranslucent = true
 
-        navigationController?.setNavigationBarHidden(true, animated: false)
+        // Through the tracked value, not the navigation controller directly:
+        // viewWillAppear runs on every reappearance (back from the TOC or
+        // settings sheet, back from the background), and a direct write left
+        // `navigationBarHidden` saying the bar was showing while it was not, so
+        // the next tap hid what was already hidden.
+        resetNavigationBarToHidden()
         navigationController?.setToolbarHidden(true, animated: false)
     }
 

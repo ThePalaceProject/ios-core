@@ -133,7 +133,7 @@ final class AudiobookSAMLReauthTests: XCTestCase {
 
     func testShouldNotTriggerSAMLReauthForNilError() {
         let mock = TPPUserAccountMock()
-        let result = AudiobookSessionManager.shouldTriggerSAMLReauthForPlaybackFailure(
+        let result = AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForPlaybackFailure(
             error: nil,
             userAccount: mock,
             currentBook: TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
@@ -145,7 +145,7 @@ final class AudiobookSAMLReauthTests: XCTestCase {
         let mock = makeSAMLMockAccount()
 
         let error = NSError(domain: "com.other.domain", code: 5)
-        let result = AudiobookSessionManager.shouldTriggerSAMLReauthForPlaybackFailure(
+        let result = AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForPlaybackFailure(
             error: error,
             userAccount: mock,
             currentBook: TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
@@ -157,7 +157,7 @@ final class AudiobookSAMLReauthTests: XCTestCase {
         let mock = makeSAMLMockAccount()
 
         let error = NSError(domain: "org.nypl.labs.NYPLAudiobookToolkit.OpenAccessPlayer", code: 99)
-        let result = AudiobookSessionManager.shouldTriggerSAMLReauthForPlaybackFailure(
+        let result = AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForPlaybackFailure(
             error: error,
             userAccount: mock,
             currentBook: TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
@@ -171,7 +171,7 @@ final class AudiobookSAMLReauthTests: XCTestCase {
         // No credentials set = hasCredentials() returns false
 
         let error = NSError(domain: "org.nypl.labs.NYPLAudiobookToolkit.OpenAccessPlayer", code: 5)
-        let result = AudiobookSessionManager.shouldTriggerSAMLReauthForPlaybackFailure(
+        let result = AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForPlaybackFailure(
             error: error,
             userAccount: mock,
             currentBook: TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
@@ -183,7 +183,7 @@ final class AudiobookSAMLReauthTests: XCTestCase {
         let mock = makeSAMLMockAccount()
 
         let error = NSError(domain: "org.nypl.labs.NYPLAudiobookToolkit.OpenAccessPlayer", code: 5)
-        let result = AudiobookSessionManager.shouldTriggerSAMLReauthForPlaybackFailure(
+        let result = AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForPlaybackFailure(
             error: error,
             userAccount: mock,
             currentBook: nil
@@ -198,7 +198,7 @@ final class AudiobookSAMLReauthTests: XCTestCase {
         // authDefinition is nil -> isSaml is false
 
         let error = NSError(domain: "org.nypl.labs.NYPLAudiobookToolkit.OpenAccessPlayer", code: 5)
-        let result = AudiobookSessionManager.shouldTriggerSAMLReauthForPlaybackFailure(
+        let result = AudiobookPlaybackRecoveryReducer.shouldTriggerSAMLReauthForPlaybackFailure(
             error: error,
             userAccount: mock,
             currentBook: TPPBookMocker.mockBook(distributorType: .OpenAccessAudiobook)
@@ -283,8 +283,8 @@ final class AudiobookNetworkValidationTests: XCTestCase {
     /// Fully-downloaded books bypass network rules entirely — they must
     /// play under every (connected × onWiFi × wifiOnly) combination,
     /// including offline-with-Wi-Fi-only-on. Pin every cell of the matrix
-    /// across both downloaded states (.downloadSuccessful and .used) so a
-    /// mutant that adds a network gate to the downloaded path fails on
+    /// across both downloaded states (.downloadSuccessful and .used) so
+    /// adding a network gate to the downloaded path fails on
     /// the offline-with-Wi-Fi-only row.
     func testFullyDownloaded_bypassesNetworkRulesAcrossAllConnectivityCombinations() {
         for state in [TPPBookState.downloadSuccessful, .used] {
@@ -303,7 +303,7 @@ final class AudiobookNetworkValidationTests: XCTestCase {
 
     /// Streaming-state full validation matrix. The bug PP-XXXX exposed was
     /// that the open path skipped the Wi-Fi-only gate; the fix restored it.
-    /// Lock every cell in one body so a mutant that flips ANY cell fails.
+    /// Lock every cell in one body so flipping ANY cell fails.
     /// Additionally pins the offline-preempt-wifi rule (offline must report
     /// .networkUnavailable, not .wifiRequired — that wording would mislead
     /// users into thinking Wi-Fi could solve a no-network situation).
@@ -337,8 +337,8 @@ final class AudiobookNetworkValidationTests: XCTestCase {
 
 /// Covers which errors surface a user-facing alert on the phone when emitted
 /// through `errorPublisher`, and which are intentionally suppressed because
-/// they have another dedicated presentation path (BookService.
-/// showAudiobookTryAgainError or the cold-load alert branch).
+/// they have another dedicated presentation path (`AudiobookOpenFailureAlert`
+/// or the cold-load alert branch).
 @MainActor
 final class AudiobookPhoneAlertContentTests: XCTestCase {
 
@@ -373,7 +373,7 @@ final class AudiobookPhoneAlertContentTests: XCTestCase {
     func testLoaderAndUnknownErrors_returnNil_toAvoidDoubleAlerts() {
         // These errors are already alerted through other paths:
         //   - .manifestLoadFailed / .playerCreationFailed → loader path calls
-        //     BookService.showAudiobookTryAgainError
+        //     AudiobookOpenFailureAlert
         //   - .unknown("Playback failed") → cold-load branch in
         //     handleManagerState(.playbackFailed)
         //   - .alreadyLoading → programmer-facing signal, not user-facing

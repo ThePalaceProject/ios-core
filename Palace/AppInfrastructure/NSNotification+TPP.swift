@@ -16,16 +16,14 @@ extension Notification.Name {
     static let TPPCatalogDidLoad = Notification.Name("TPPCatalogDidLoad")
     static let TPPCrawlProgressDidUpdate = Notification.Name("TPPCrawlProgressDidUpdate")
     // TPPSyncBegan / TPPSyncEnded / TPPSyncFailed / TPPBookRegistryDidChange
-    // relocated to PalaceBookRegistry (god-class decomp Wave 2b) — the engine
-    // posts them. Imported above; string values unchanged. Do not re-declare.
+    // live in PalaceBookRegistry, which posts them. Do not re-declare.
     static let TPPUserAccountDidChange = Notification.Name("TPPUserAccountDidChangeNotification")
     static let TPPDidSignOut = Notification.Name("TPPDidSignOut")
     static let TPPIsSigningIn = Notification.Name("TPPIsSigningIn")
     static let TPPAppDelegateDidReceiveCleverRedirectURL = Notification.Name("TPPAppDelegateDidReceiveCleverRedirectURL")
     // .TPPBookRegistryDidChange relocated to PalaceBookRegistry (see note above).
-    // .TPPBookRegistryStateDidChange removed in swarm_8ce6f5ae WS3 — the registry
-    // dual-write to NotificationCenter was killed in favor of the registry's
-    // Combine publishers (bookStatePublisher / registryStatePublisher /
+    // .TPPBookRegistryStateDidChange was replaced by the registry's Combine
+    // publishers (bookStatePublisher / registryStatePublisher /
     // holdsDidChangePublisher). Do not re-introduce this name.
 
     /// The `userInfo` dictionary contains the following key-value pairs:
@@ -54,7 +52,6 @@ extension Notification.Name {
     public static let TPPIsSigningIn = Notification.Name.TPPIsSigningIn
     public static let TPPAppDelegateDidReceiveCleverRedirectURL = Notification.Name.TPPAppDelegateDidReceiveCleverRedirectURL
     public static let TPPBookRegistryDidChange = Notification.Name.TPPBookRegistryDidChange
-    // .TPPBookRegistryStateDidChange removed in swarm_8ce6f5ae WS3 (see above).
     public static let TPPBookProcessingDidChange = Notification.Name.TPPBookProcessingDidChange
     public static let TPPMyBooksDownloadCenterDidChange = Notification.Name.TPPMyBooksDownloadCenterDidChange
     public static let TPPBookDetailDidClose = Notification.Name.TPPBookDetailDidClose

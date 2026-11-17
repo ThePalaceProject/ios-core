@@ -67,7 +67,7 @@ import sys
 # Storage for human-curated equivalent-mutant suppressions, keyed by source
 # file leaf (basename without the .swift extension). Documented in the README
 # committed alongside this module.
-SUPPRESSIONS_DIRNAME = os.path.join(".forgeos", "mutation-suppressions")
+SUPPRESSIONS_DIRNAME = os.path.join("config", "ci", "mutation-suppressions")
 
 # Bound the xccov subprocess so a wedged invocation can never hang a mutation
 # run. Coverage extraction on a single file is sub-second in practice; a
@@ -249,7 +249,7 @@ def _suppressions_path(repo_root: str, source_relpath: str) -> str:
 def load_suppressions(repo_root: str, source_relpath: str) -> list:
     """Load human-curated equivalent-mutant suppressions for this source file.
 
-    Storage: .forgeos/mutation-suppressions/<file-leaf-without-.swift>.json,
+    Storage: config/ci/mutation-suppressions/<file-leaf-without-.swift>.json,
     a JSON list of objects:
         {"line_text": "...", "original": ">=", "mutated": ">",
          "reason": "loop bound is provably equivalent"}

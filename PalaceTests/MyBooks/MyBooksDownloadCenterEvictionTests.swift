@@ -1,20 +1,9 @@
 //
-//  MyBooksDownloadCenterEvictionTests.swift
-//  PalaceTests
-//
-//  Coverage for the LRU eviction path in MyBooksDownloadCenter that previously
-//  deleted downloaded book files without updating the registry. Pre-fix,
-//  evicted books reverted to .downloadNeeded only on the next cold launch or
-//  library switch (when BookRegistrySync.load() ran file-existence
-//  reconciliation), leaving users confused.
-//
-//  These tests pin down the new contract:
-//   - Evicting a file atomically flips the registry record to .downloadNeeded.
-//   - LCP license/audiobook files (.lcpl/.lcpa) are preserved during eviction.
-//   - Orphan files (no matching registry record) are still reclaimed but
-//     don't mutate the registry.
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
+//  LRU eviction in MyBooksDownloadCenter used to delete book files without
+//  updating the registry, so books reverted to .downloadNeeded only at the next
+//  reconciliation. Pins: eviction flips the record to .downloadNeeded, `.lcpl` /
+//  `.lcpa` files are preserved, and orphan files are reclaimed without touching
+//  the registry.
 //
 
 import XCTest

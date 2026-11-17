@@ -3,7 +3,7 @@
 //  PalaceReadingPosition
 //
 //  Unified reading position across EPUB, audiobook, and PDF formats.
-//  Migrated from Palace/Platform/ on 2026-05-21 (Swarm 2, Deviation 4).
+//  Migrated from Palace/Platform/ into this package on 2026-05-21.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -15,7 +15,7 @@ import Foundation
 ///
 /// Note: `Palace/Stats/Models/ReadingSession.swift` declares an
 /// `internal` enum named `ReadingFormat` with the same cases. That is
-/// intentional duplication during the post-Swarm-2 cutover — stats are
+/// intentional duplication during the package-extraction cutover — stats are
 /// not consumers of `PalaceReadingPosition`. The two enums will be
 /// reconciled in a future cleanup pass.
 public enum ReadingFormat: String, Codable, Sendable, CaseIterable {

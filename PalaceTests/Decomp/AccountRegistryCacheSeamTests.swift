@@ -1,21 +1,10 @@
-//
 //  AccountRegistryCacheSeamTests.swift
-//  PalaceTests
 //
-//  Pins the Wave 3 / 3a-1 `AccountRegistryCache` seam: `AccountsManager` reaches
-//  the on-disk catalog cache ONLY through the injected `any AccountRegistryCaching`
-//  collaborator, never inline FileManager bodies. This is the extraction that lets
-//  the hub carry no disk-I/O and move into `PalaceAccounts` cleanly.
-//
-//  Two lenses:
-//   1. Routing (spy) — `clearCache()` clears the file caches through the injected
-//      seam (a mutant that drops the call, or clears inline, flips it red).
-//   2. Behaviour (real impl) — `DiskAccountRegistryCache` round-trips a write→read
-//      and honours the `isBundled` always-stale rule; covers the moved disk bodies
-//      end-to-end (the concrete path the spy tests intentionally bypass).
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Pins that `AccountsManager` reaches the on-disk catalog cache only through the
+//  injected `any AccountRegistryCaching`, so it carries no disk I/O and can move
+//  into `PalaceAccounts`. A spy checks `clearCache()` routes through the seam; the
+//  real `DiskAccountRegistryCache` is checked for write -> read round trips and
+//  the rule that `isBundled` entries are always stale.
 
 import XCTest
 import PalaceCatalog
@@ -30,7 +19,7 @@ final class AccountRegistryCacheSeamTests: PalaceWiringTestCase {
     /// Contract: `AccountsManager.clearCache()` clears the on-disk caches through
     /// the injected `AccountRegistryCaching`, not an inline FileManager sweep.
     ///
-    /// Kill case: dropping `registryCache.clearFileCaches()` (or reverting to the
+    /// Regression caught: dropping `registryCache.clearFileCaches()` (or reverting to the
     /// inline loop) → the spy never records `clearFileCaches` → fails.
     func testClearCache_routesThroughInjectedRegistryCache() {
         let spy = RecordingRegistryCache()
@@ -53,7 +42,7 @@ final class AccountRegistryCacheSeamTests: PalaceWiringTestCase {
     /// for a hash, reports freshness after a write, and treats a bundled-origin
     /// write as always-stale (the refresh-keeps-firing rule).
     ///
-    /// Kill cases: breaking the write/read URL derivation → read returns nil;
+    /// Regressions caught: breaking the write/read URL derivation → read returns nil;
     /// dropping the `isBundled` short-circuit in `isStale` → bundled write reports
     /// not-stale; negating `isExpired` → fresh write reports not-fresh.
     func testDiskCache_roundTripsAndHonorsBundledStaleness() {

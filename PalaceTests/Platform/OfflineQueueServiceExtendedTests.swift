@@ -26,14 +26,15 @@ final class OfflineQueueServiceExtendedTests: XCTestCase {
         // disconnected region to be `sending`-passed into the actor init (the
         // test also retains self.userDefaults for cleanup). Shares backing store.
         //
-        // S8 seam (swarm_ad0b4c65 Wave-3): inject a no-op retry backoff so the
+        // Inject a no-op retry backoff so the
         // retry state machine runs with zero wall-clock delay. Because
         // enqueue/retry/networkStatusChanged all `await processQueue()` to full
         // drain, every action reaches its terminal state before the call
         // returns — no post-call settle-sleep is needed to observe it.
         service = OfflineQueueService(
             userDefaults: UserDefaults(suiteName: "OfflineQueueServiceExtendedTests")!,
-            backoffSleep: { _ in }
+            backoffSleep: { _ in },
+            currentLibraryID: { OfflineAction.testLibraryID }
         )
         cancellables = Set<AnyCancellable>()
     }
@@ -96,7 +97,8 @@ final class OfflineQueueServiceExtendedTests: XCTestCase {
         await service.enqueue(OfflineAction(type: .return, bookID: "b2", bookTitle: "Book 2"))
 
         // Create new service instance using same UserDefaults
-        let newService = OfflineQueueService(userDefaults: UserDefaults(suiteName: "OfflineQueueServiceExtendedTests")!)
+        let newService = OfflineQueueService(userDefaults: UserDefaults(suiteName: "OfflineQueueServiceExtendedTests")!,
+                                             currentLibraryID: { OfflineAction.testLibraryID })
         let status = await newService.currentStatus()
 
         XCTAssertEqual(status.pendingCount, 2)
@@ -107,7 +109,8 @@ final class OfflineQueueServiceExtendedTests: XCTestCase {
         await service.enqueue(OfflineAction(type: .borrow, bookID: "b1", bookTitle: "T"))
 
         // Create new service - processing state should be reset to pending
-        let newService = OfflineQueueService(userDefaults: UserDefaults(suiteName: "OfflineQueueServiceExtendedTests")!)
+        let newService = OfflineQueueService(userDefaults: UserDefaults(suiteName: "OfflineQueueServiceExtendedTests")!,
+                                             currentLibraryID: { OfflineAction.testLibraryID })
         let processing = await newService.actions(withState: .processing)
         XCTAssertEqual(processing.count, 0)
     }

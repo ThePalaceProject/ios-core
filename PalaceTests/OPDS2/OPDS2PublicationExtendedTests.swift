@@ -175,8 +175,8 @@ final class OPDS2PublicationExtendedTests: XCTestCase {
 
     func testConvertAvailabilityUnknownState() {
         // Try several distinct unknown state strings — all must default to
-        // Unlimited (the failsafe/permissive choice). A mutant that defaults
-        // to Unavailable would block the user from acquiring a book whose
+        // Unlimited (the failsafe/permissive choice). Defaulting to
+        // Unavailable would block the user from acquiring a book whose
         // state we simply don't recognize.
         for state in ["something_else", "futureState", "garbage_value", ""] {
             let avail = OPDS2Availability(state: state)
@@ -193,8 +193,8 @@ final class OPDS2PublicationExtendedTests: XCTestCase {
 
     /// `convertIndirectAcquisitions(nil)` and `convertIndirectAcquisitions([])`
     /// must both yield an empty result without crashing. Pin both shapes.
-    /// A mutant that returned a single empty placeholder on nil would fail
-    /// the count assertion.
+    /// Returning a single empty placeholder on nil fails the count
+    /// assertion.
     func testConvertIndirectAcquisitions_nilOrEmptyInputYieldsEmptyResult() {
         XCTAssertTrue(OPDS2BookBridge.convertIndirectAcquisitions(nil).isEmpty,
                       "nil input must yield empty array")
@@ -425,8 +425,8 @@ final class OPDS2PublicationExtendedTests: XCTestCase {
     }
 
     /// `OPDS2FullPublication.id` delegates to `metadata.identifier`. Lock
-    /// distinct ids across two instances to catch a mutant that returns a
-    /// hard-coded constant from `id`. Identifiable-instance distinctness
+    /// distinct ids across two instances to catch a hard-coded constant
+    /// from `id`. Identifiable-instance distinctness
     /// matters for SwiftUI list diffing.
     func testFullPublicationId_delegatesToMetadataIdentifierAcrossInstances() {
         let pubA = OPDS2FullPublication(
@@ -806,8 +806,8 @@ final class OPDS2PublicationExtendedTests: XCTestCase {
     }
 
     /// Sanity: a publication whose ONLY acquisition is a truly unsupported
-    /// MIME (e.g. text/csv) is still dropped. Catches a mutant that made
-    /// the filter universally permissive after the streaming-HTML edit.
+    /// MIME (e.g. text/csv) is still dropped. Catches a filter made
+    /// universally permissive after the streaming-HTML edit.
     func testOPDS2Publication_toBook_trulyUnsupportedFormat_stillDropped() {
         let indirect = OPDS2IndirectAcquisition(
             type: "text/csv",

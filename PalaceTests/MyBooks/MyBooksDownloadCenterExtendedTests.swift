@@ -8,6 +8,7 @@
 
 import XCTest
 @testable import Palace
+import PalaceBookModel
 
 // MARK: - Download State Machine Tests
 
@@ -98,22 +99,18 @@ final class DownloadStateMachineTests: XCTestCase {
         XCTAssertEqual(mockBookRegistry.state(for: book.identifier), .downloading)
     }
 
-    func testState_downloadNeeded_canTransitionToDownloadSuccessful() {
-        let book = TPPBookMocker.mockBook(distributorType: .AdobeAdept)
-
-        mockBookRegistry.addBook(
-            book,
-            location: nil,
-            state: .downloadNeeded,
-            fulfillmentId: nil,
-            readiumBookmarks: nil,
-            genericBookmarks: nil
-        )
-
-        // Simulate download completion
-        mockBookRegistry.setState(.downloadSuccessful, for: book.identifier)
-
-        XCTAssertEqual(mockBookRegistry.state(for: book.identifier), .downloadSuccessful)
+    /// A download completing against a record that reconciliation parked at
+    /// `.downloadNeeded` must be a legal move, not a reported violation.
+    ///
+    /// Asserted against `TPPBookState.allowedTransitions` rather than by writing
+    /// the state to the mock registry and reading it back: the mock applies
+    /// whatever it is given and consults no table, so the previous version of
+    /// this test passed whether or not the pair was legal.
+    func testState_downloadNeededToDownloadSuccessful_isALegalCompletion() {
+        XCTAssertTrue(TPPBookState.canTransition(from: .downloadNeeded, to: .downloadSuccessful),
+                      "content landing on a reconciled record completes the download")
+        XCTAssertFalse(TPPBookState.canTransition(from: .downloadNeeded, to: .used),
+                       "but completion is not the same as being opened")
     }
 }
 

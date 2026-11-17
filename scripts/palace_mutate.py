@@ -49,6 +49,9 @@ import sys
 import time
 from typing import Callable, Iterable
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import sim_lock  # noqa: E402  (shared with verify-pr.sh)
+
 # Derive REPO_ROOT from this script's location (scripts/palace_mutate.py) so the
 # tool works on any host — local dev, GitHub Actions runners, contributors'
 # clones. The previous absolute path silently broke CI: palace_mutate.py would
@@ -67,15 +70,118 @@ PROJECT = "Palace.xcodeproj"
 SCHEME = "Palace"
 
 # SIM_ID: prefer the harness-allocated UDID (HARNESS_SESSION_SIM_UDID env var)
-# so parallel agents and CI can each pin a different sim. Fall back to the
-# author's local sim for direct dev invocation; the script is still allowed to
-# pick a different UDID via env without code changes.
-SIM_ID = os.environ.get("HARNESS_SESSION_SIM_UDID", "DF4A2A27-9888-429D-A749-2E157A049A37")
-DEFAULT_CACHE_DIR = os.path.join(REPO_ROOT, ".forgeos", "mutation-cache")
+# so parallel agents and CI can each pin a different sim.
+#
+# The fallback below is a convenience for ONE machine and is absent from most
+# others — any outside contributor's, and this repo's own after a simulator
+# wipe. It is NOT trusted blindly, because an unresolvable
+# `-destination id=...` does not fail in a way that names the cause: xcodebuild
+# prints "The requested device could not be found" and exits without running a
+# test, which this tool would score as every mutant ERRORED — a mutation report
+# that looks like a tooling result and is really a missing simulator.
+#
+# So resolve the id against devices that actually exist, and if none does, say
+# so and stop. Mirrors resolve_sim_id() in scripts/verify-pr.sh; keep the two in
+# step. Resolution is LAZY (not at import) so this module still imports on a
+# machine with no `xcrun` — scripts/tests/ runs on ubuntu in CI.
+SIM_FALLBACK_UDID = "DF4A2A27-9888-429D-A749-2E157A049A37"
+
+_UDID_RE = re.compile(r"[0-9A-Fa-f]{8}-(?:[0-9A-Fa-f]{4}-){3}[0-9A-Fa-f]{12}")
+# CLAUDE.md documents iPhone 16 Pro as the destination; accept newer iPhones
+# too rather than fail on a machine that has moved on.
+_IPHONE_RE = re.compile(r"iPhone (?:1[6-9]|2[0-9])")
+
+
+def simctl_available_devices() -> str:
+    """Raw `xcrun simctl list devices available` output, or "" if unobtainable.
+
+    Returns "" rather than raising so the caller reports "no usable simulator"
+    once, instead of this failing differently on a host with no Xcode.
+    """
+    try:
+        return subprocess.run(
+            ["xcrun", "simctl", "list", "devices", "available"],
+            capture_output=True, text=True, timeout=60,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def resolve_sim_id(want: str | None, available: str,
+                   held: Callable[[str], bool] = lambda _udid: False) -> str | None:
+    """The UDID to build against, or None when nothing usable exists.
+
+    `want` wins only if it is actually present in `available` — that check is
+    the whole point, since a stale UDID is indistinguishable from a good one
+    until xcodebuild fails in a way that blames the diff. The fallback scan
+    skips any simulator `held` reports as another checkout's.
+    """
+    if want and want in available:
+        return want
+    for line in available.splitlines():
+        if _IPHONE_RE.search(line):
+            found = _UDID_RE.search(line)
+            if found and not held(found.group(0)):
+                return found.group(0)
+    return None
+
+
+def _checkout_roots() -> list[str]:
+    """Paths whose simulator locks count as this run's own."""
+    return [os.path.dirname(os.path.dirname(os.path.abspath(__file__))), REPO_ROOT]
+
+
+_RESOLVED_SIM_ID: str | None = None
+
+
+def require_sim_id() -> str:
+    """resolve_sim_id() or exit 2, naming the simulator as the cause."""
+    global _RESOLVED_SIM_ID
+    if _RESOLVED_SIM_ID is not None:
+        return _RESOLVED_SIM_ID
+    want = os.environ.get("HARNESS_SESSION_SIM_UDID") or SIM_FALLBACK_UDID
+    roots = _checkout_roots()
+    resolved = resolve_sim_id(
+        want, simctl_available_devices(),
+        held=lambda udid: sim_lock.foreign_holder(udid, roots) is not None,
+    )
+    if resolved is not None:
+        holder = sim_lock.foreign_holder(resolved, roots)
+        if holder is not None:
+            sys.stderr.write(
+                f"FATAL: {sim_lock.describe(resolved, holder)}\n"
+                "NOTHING WAS MEASURED.\n"
+            )
+            raise SystemExit(2)
+    if resolved is None:
+        sys.stderr.write(
+            "FATAL: no usable iOS simulator found — NOTHING WAS MEASURED.\n"
+            f"  HARNESS_SESSION_SIM_UDID={os.environ.get('HARNESS_SESSION_SIM_UDID', '<unset>')}\n"
+            f"  fallback {SIM_FALLBACK_UDID} is not present on this host,\n"
+            "  and no available iPhone simulator matched"
+            f"{' that another checkout does not hold' if os.environ.get(sim_lock.LOCK_DIR_ENV) else ''}.\n\n"
+            "This is 'could not run', NOT 'mutants survived'. Create a simulator\n"
+            "(Xcode > Window > Devices and Simulators), or run under an allocator\n"
+            "that exports HARNESS_SESSION_SIM_UDID.\n"
+        )
+        raise SystemExit(2)
+    if resolved != os.environ.get("HARNESS_SESSION_SIM_UDID"):
+        sys.stderr.write(
+            f"note: using simulator {resolved} "
+            "(HARNESS_SESSION_SIM_UDID unset or unavailable)\n"
+        )
+    _RESOLVED_SIM_ID = resolved
+    return resolved
+DEFAULT_CACHE_DIR = os.path.join(REPO_ROOT, ".build", "mutation-cache")
 # Per-mutant incremental cache lives in a subdir so it never collides with the
 # whole-file cache files (which sit directly in DEFAULT_CACHE_DIR).
 DEFAULT_MUTANT_CACHE_DIR = os.path.join(DEFAULT_CACHE_DIR, "mutants")
-CACHE_VERSION = 2  # bump when cache schema changes (v2: keys include test CONTENT)
+# Bump when the cache schema changes, which evicts entries the old scheme wrote.
+# v2: keys include test CONTENT.
+# v3: per-mutant keys include the MUTATED LINE, and the run's fingerprint now
+#     actually reaches them. Entries written under v2 can carry a verdict that
+#     another mutant on the same line earned, or one whose test no longer exists.
+CACHE_VERSION = 3
 
 # Coverage-gating support is OPTIONAL — palace_mutate must still run if Component
 # A's mutate_coverage.py is somehow absent (fresh checkout before that file lands,
@@ -339,10 +445,21 @@ def apply_mutation(file_path: str, mutation: Mutation) -> None:
     with open(file_path, "r") as f:
         lines = f.readlines()
     target = lines[mutation.line - 1]
-    # Recompute current matching to avoid clobbering on shifted lines
-    if mutation.original not in target:
-        raise RuntimeError(f"Could not find original `{mutation.original}` on line {mutation.line}")
-    lines[mutation.line - 1] = target.replace(mutation.original, mutation.mutated, 1)
+    # Apply at the column it was discovered at, not at the first match. A line
+    # like `guard a > 0, b > 0` yields two mutants of the same operator; a
+    # first-occurrence replace writes an identical file for both, so one mutant
+    # is compiled twice and the other is graded without ever being applied —
+    # which reports `survived` for a mutant a test kills, and can equally
+    # report `killed` for one still live.
+    start = mutation.col - 1
+    end = start + len(mutation.original)
+    if target[start:end] != mutation.original:
+        raise RuntimeError(
+            f"Could not find original `{mutation.original}` at line {mutation.line} "
+            f"column {mutation.col} (found `{target[start:end]}`) — the file moved "
+            f"under the run, so no verdict is available for this mutant"
+        )
+    lines[mutation.line - 1] = target[:start] + mutation.mutated + target[end:]
     with open(file_path, "w") as f:
         f.writelines(lines)
 
@@ -422,7 +539,7 @@ def build_xcodebuild_command(test_class_paths: list[str],
         "xcodebuild",
         "-project", PROJECT,
         "-scheme", SCHEME,
-        "-destination", f"platform=iOS Simulator,id={SIM_ID}",
+        "-destination", f"platform=iOS Simulator,id={require_sim_id()}",
         "test",
     ] + derived_data_args + fast_flags + coverage_args + only_testing_args
 
@@ -700,22 +817,34 @@ def cache_store(cache_dir: str, file_relpath: str, key: str, report: dict) -> st
 
 def compute_mutant_key(tests: list[str], context_before: str, line_text: str,
                        context_after: str, original: str, mutated: str,
-                       tests_fingerprint: str | None = None) -> str:
+                       *, tests_fingerprint: str | None,
+                       mutated_line: str = "") -> str:
     """Stable 16-hex key for one mutant.
 
     Hashed over (CACHE_VERSION, sorted(tests), tests_fingerprint, context_before
-    + '\\n' + line_text + '\\n' + context_after, original, mutated). Properties:
+    + '\\n' + line_text + '\\n' + context_after, original, mutated,
+    mutated_line). Properties:
       - STABILITY: identical inputs -> identical key (so a re-run on an
         unchanged file reuses the cached status).
       - LOCALITY: edits ELSEWHERE in the file don't change a mutant's key
         (context is only the immediate neighbours, not line numbers).
       - DISAMBIGUATION: two byte-identical lines in different surrounding
-        context get DIFFERENT keys, so their results never collide.
+        context get DIFFERENT keys, so their results never collide. So do two
+        mutants ON THE SAME LINE: `guard a > 0, b > 0` mutates `>` to `>=`
+        twice, and every other input is identical, so `mutated_line` is what
+        separates them. Without it the second inherited the first's verdict
+        without being run — which reported `survived` for a mutant an existing
+        test killed, and can equally report `killed` for one still live.
       - TEST-SENSITIVITY: a change to the TESTS changes every key, so a stored
         `killed` cannot outlive the assertion that produced it. This cache is
         the more dangerous of the two — it persists per-mutant verdicts across
         runs, so without the fingerprint a deleted test left "killed" in place
         indefinitely.
+    `tests_fingerprint` is keyword-only and has NO default. It carried one, the
+    sole caller omitted it, and every key hashed the "UNRESOLVED" placeholder
+    instead — so this cache was test-INSENSITIVE in production while the unit
+    tests above proved the opposite about the function. A verdict then outlived
+    the test written to change it.
     Pure — unit-tested for stability, disambiguation and test-sensitivity.
     """
     h = hashlib.sha256()
@@ -733,6 +862,9 @@ def compute_mutant_key(tests: list[str], context_before: str, line_text: str,
     h.update(original.encode())
     h.update(b"\n")
     h.update(mutated.encode())
+    h.update(b"\n")
+    h.update(b"--mutated-line--\n")
+    h.update(mutated_line.encode())
     h.update(b"\n")
     return h.hexdigest()[:16]
 
@@ -1169,7 +1301,9 @@ def main() -> int:
 
         # PER-MUTANT CACHE: reuse a prior status for an unchanged-context mutant.
         mkey = compute_mutant_key(args.tests, m.context_before, m.line_text,
-                                  m.context_after, m.original, m.mutated)
+                                  m.context_after, m.original, m.mutated,
+                                   tests_fingerprint=fingerprint,
+                                   mutated_line=m.mutated_line)
         if not cache_disabled and mkey in mutant_cache:
             cached_entry = mutant_cache[mkey]
             cached_status = cached_entry.get("status")

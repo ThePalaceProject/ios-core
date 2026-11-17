@@ -8,9 +8,6 @@
 //  under `"<storageKey>_test-uuid-<UUID>"`), and a registered resetter
 //  clears the residue at `testCaseDidFinish`.
 //
-//  Per CLAUDE.md TDD: every test below performs Arrange → Act → Assert with
-//  a real Act, exercises an isolation invariant, and avoids tautologies.
-//
 
 import XCTest
 @testable import Palace

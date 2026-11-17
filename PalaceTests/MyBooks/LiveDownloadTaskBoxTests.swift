@@ -1,18 +1,9 @@
 //
-//  LiveDownloadTaskBoxTests.swift
-//  PalaceTests
-//
-//  PP-4997. `LiveDownloadTaskBox.capture(_:)` is the PRODUCER of the
-//  `[Int: URL]` map that launch reconciliation adopts on. Every reconcile test
-//  hand-builds that dictionary, which tests the consumer's handling of a map
-//  and says nothing about whether the real thing is built correctly — and
-//  PP-4997's root cause was precisely a URL that was present on the task and
-//  never read. So these drive the producer with real `URLSessionDownloadTask`
-//  objects rather than a fixture.
-//
-//  Tasks are created from a real session and deliberately NOT resumed: nothing
-//  here needs a network, and `capture` only reads `originalRequest` /
-//  `currentRequest` / `taskIdentifier`, all of which are populated at creation.
+//  PP-4997: `LiveDownloadTaskBox.capture(_:)` produces the `[Int: URL]` map that
+//  launch reconciliation adopts on. Reconcile tests hand-build that map, and the
+//  PP-4997 root cause was a URL present on the task but never read, so these drive
+//  the producer with real `URLSessionDownloadTask`s. Tasks are not resumed:
+//  `capture` only reads request and identifier fields populated at creation.
 //
 
 import XCTest

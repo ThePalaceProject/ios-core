@@ -2,16 +2,9 @@
 //  BookContentResetService.swift
 //  Palace
 //
-//  Owns the bulk-reset flows that lived on MyBooksDownloadCenter via the
-//  TPPBookDownloadsDeleting conformance: per-account content
-//  obliteration (reset(account:) / reset()), audiobook deletion
-//  (deleteAudiobooks(forAccount:)), and audiobook cache purging
-//  (purgeAllAudiobookCaches(force:)).
-//
-//  Extracted so the cleanup state machine can be exercised without
-//  standing up MBDC. MBDC keeps the TPPBookDownloadsDeleting
-//  conformance as 1-line delegators so the
-//  TPPSignInBusinessLogic.bookDownloadsCenter contract is preserved.
+//  Bulk-reset flows behind MyBooksDownloadCenter's TPPBookDownloadsDeleting
+//  conformance: per-account content removal, audiobook deletion, and
+//  audiobook cache purging. MBDC's conformance delegates here.
 //
 
 import Foundation
@@ -43,6 +36,7 @@ final class BookContentResetService: @unchecked Sendable {
     private let progressReporter: DownloadProgressReporter
     private let localContentService: LocalBookContentService
     private let fileManager: FileManager
+    private let offlineActionRemover: @Sendable (String) -> Void
 
     init(
         bookRegistry: TPPBookRegistryProvider,
@@ -51,7 +45,8 @@ final class BookContentResetService: @unchecked Sendable {
         bookFileManager: BookFileManager,
         progressReporter: DownloadProgressReporter,
         localContentService: LocalBookContentService,
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        offlineActionRemover: @escaping @Sendable (String) -> Void = OfflineQueueService.productionRemoveActions
     ) {
         self.bookRegistry = bookRegistry
         self.accountsManager = accountsManager
@@ -60,6 +55,7 @@ final class BookContentResetService: @unchecked Sendable {
         self.progressReporter = progressReporter
         self.localContentService = localContentService
         self.fileManager = fileManager
+        self.offlineActionRemover = offlineActionRemover
     }
 
     // MARK: - reset(account:)
@@ -69,6 +65,9 @@ final class BookContentResetService: @unchecked Sendable {
     /// bookkeeping; otherwise just deletes audiobooks + the content
     /// directory for the named account.
     func reset(account: String) {
+        // Queued offline actions were made with this account's loans and
+        // credentials; after a sign-out they would run for whoever signs in next.
+        offlineActionRemover(account)
         if accountsManager.currentAccountId == account {
             reset()
         } else {
@@ -138,37 +137,12 @@ final class BookContentResetService: @unchecked Sendable {
     /// segments) from the system Caches directory. Skipped when there
     /// are still active audiobooks in the registry, unless `force` is
     /// true (i.e. the caller is in a return / sign-out context).
+    ///
+    /// The sweep itself lives in `AudiobookCacheSweep` so the per-book delete
+    /// path in `LocalBookContentService` can reach it without depending on
+    /// this service (PP-5127).
     func purgeAllAudiobookCaches(force: Bool = false) {
-        if !force && hasActiveAudiobooks() { return }
-        guard let cachesDir = fileManager.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
-        let audioExtensions: Set<String> = ["mp3", "m4a", "mp4", "aac", "oga", "wav"]
-        if let contents = try? fileManager.contentsOfDirectory(at: cachesDir, includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey], options: [.skipsHiddenFiles]) {
-            for url in contents {
-                do {
-                    let rv = try url.resourceValues(forKeys: [.isDirectoryKey])
-                    if rv.isDirectory == true { continue }
-                    if audioExtensions.contains(url.pathExtension.lowercased()) {
-                        try? fileManager.removeItem(at: url)
-                    }
-                } catch {
-                    // ignore
-                }
-            }
-        }
-    }
-
-    /// Returns true if the current account has any audiobooks in
-    /// downloadNeeded / downloading / downloadSuccessful / used state —
-    /// the proxy used by `purgeAllAudiobookCaches` to decide whether
-    /// purging is safe.
-    private func hasActiveAudiobooks() -> Bool {
-        let matchingStates: [TPPBookState] = [.downloadNeeded, .downloading, .downloadSuccessful, .used]
-        var hasActive = false
-        let accountId = accountsManager.currentAccountId ?? ""
-        bookRegistry.with(account: accountId) { registry in
-            let audiobooks = registry.myBooks.filter { $0.defaultBookContentType == .audiobook }
-            hasActive = audiobooks.contains { matchingStates.contains(registry.state(for: $0.identifier)) }
-        }
-        return hasActive
+        AudiobookCacheSweep(bookRegistry: bookRegistry, fileManager: fileManager)
+            .purge(force: force)
     }
 }

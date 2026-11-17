@@ -1,28 +1,10 @@
 //
-//  BookCellModelOfflineTests.swift
-//  PalaceTests
-//
-//  Regression coverage for PP-4114 — "iOS: F-063: Download buttons become
-//  stale on network loss". Before the fix, tapping Download (or Reserve)
-//  while offline would set `isLoading = true`, fire a network request that
-//  hung against URLSession's default timeout, and leave the button stuck
-//  with a spinner for ~60s. Recovery only happened when the user backgrounded
-//  the app and a `.TPPReachabilityChanged` notification eventually fired.
-//
-//  These tests pin the post-fix behavior:
-//    1. Pre-flight reachability check on Download/Reserve — if offline, we
-//       surface a retryable "No connection" alert and DO NOT call into
-//       MyBooksDownloadCenter (no spinner-of-death).
-//    2. While a request is in flight, a connectivity transition to offline
-//       clears `isLoading` and surfaces the same alert (covers the
-//       race where reachability drops mid-borrow).
-//    3. The alert's primary action retries — and when reachability has
-//       returned, the retry actually fires the download.
-//
-//  Each test simulates an offline reachability state via `MockReachability`,
-//  which overrides `isConnectedToNetwork()` and `connectivityPublisher`. The
-//  alternative — driving real `NWPathMonitor` — would couple the suite to
-//  the host's network state and flake on CI.
+//  PP-4114 (F-063): tapping Download/Reserve offline left a spinner up for ~60s.
+//  Pins: an offline pre-flight shows a retryable "No connection" alert without
+//  calling MyBooksDownloadCenter; going offline mid-request clears `isLoading`
+//  and shows the same alert; the alert's retry fires the download once online.
+//  `MockReachability` stands in for NWPathMonitor so results don't depend on the
+//  host's network.
 //
 
 import Combine

@@ -47,7 +47,6 @@ struct CatalogLaneRowView: View {
                             width: nil,
                             height: 150,
                             usePulseSkeleton: true,
-                            treatImageAsDecorativeInLists: true,
                             // Shadow rides the settled cover only — never the
                             // pulsing skeleton — so the 4-layer shadow blur is
                             // not re-rasterized every animation frame.

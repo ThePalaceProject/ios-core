@@ -3,22 +3,12 @@
 //  PalaceTests
 //
 //  Migration coverage for `OPDSFeedService.fetchLoans()` to the
-//  Account state machine (`awaitReady()` readiness gate). Pins the two
-//  Bucket-A behaviors required by swarm_81b5099e contract Network-OPDS:
-//
-//    1. fetchLoans blocks while the account is in `.detailsLoading`,
-//       then proceeds once the state transitions to `.detailsLoaded`.
-//       This is the F-016 → audiobook regression class: previously,
-//       reads of `currentAccount?.loansUrl` could fire before
-//       `loadCatalogs` had populated `details`, silently taking a
-//       no-loans-URL path. The gate prevents that race entirely.
-//    2. fetchLoans surfaces `.detailsFailed` errors instead of falling
-//       through to a generic `.accountNotFound` symptom.
-//
-//  Test isolation: drives transitions through `AccountStateStore.shared`
-//  (the production store, since `Account.awaitReady()` reads from
-//  `.shared` per the frozen API). Each test resets the store in tearDown
-//  so transitions in one case don't bleed into the next.
+//  Account state machine (`awaitReady()` readiness gate). Pins:
+//    1. fetchLoans waits in `.detailsLoading` and proceeds on
+//       `.detailsLoaded`, so `loansUrl` is never read before `details`.
+//    2. fetchLoans surfaces `.detailsFailed` instead of `.accountNotFound`.
+//  Drives `AccountStateStore.shared` (what `Account.awaitReady()` reads);
+//  each test resets the store in tearDown.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

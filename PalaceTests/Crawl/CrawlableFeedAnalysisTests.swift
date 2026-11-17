@@ -159,8 +159,8 @@ final class CrawlableFeedAnalysisTests: XCTestCase {
 
     /// `isFullCrawlComplete` defaults to true when there's nothing left to
     /// crawl. Pin both nil-links and empty-links shapes (no `next` rel
-    /// → done). Catches a mutant that defaults to false (which would
-    /// loop the crawler forever on an empty feed).
+    /// → done). Defaulting to false would loop the crawler forever on an
+    /// empty feed.
     func testIsFullCrawlComplete_returnsTrueForNilOrEmptyLinks() {
         XCTAssertTrue(CrawlableFeedAnalysis.isFullCrawlComplete(makeFeed(links: nil)),
                       "nil links must yield true — there's no 'next' to follow")

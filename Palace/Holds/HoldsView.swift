@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import PalaceBookModel
+import PalaceUtilities
 
 struct HoldsView: View {
     @EnvironmentObject private var coordinator: NavigationCoordinator
@@ -88,6 +89,7 @@ struct HoldsView: View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
+                .accessibilityHidden(true)
             Text(error.message)
                 .font(.caption)
                 .foregroundStyle(.primary)

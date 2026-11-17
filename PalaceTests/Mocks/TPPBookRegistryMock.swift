@@ -13,7 +13,7 @@ import PalaceBookModel
 /// (ba4a03c69). Concurrency tests may legitimately share one instance across
 /// tasks/threads.
 ///
-/// Locking rules (architect-reviewed, fix/sync-mock-race-segv-bookmark-keys):
+/// Locking rules:
 /// - Public methods take the lock EXACTLY ONCE and delegate any work shared
 ///   between public entry points to private UNLOCKED `_`-prefixed helpers
 ///   (`preloadData` → `_addGenericBookmark`). No public method calls another
@@ -66,6 +66,13 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider, @unchecked Sendabl
         }
     }
     var registryState: TPPBookRegistry.RegistryState { state }
+
+    private var _loadedAccountID: String?
+    /// Which library the mock claims to have loaded; nil until a test sets it.
+    var loadedAccountID: String? {
+        get { lock.withLock { _loadedAccountID } }
+        set { lock.withLock { _loadedAccountID = newValue } }
+    }
 
     var registryPublisher: AnyPublisher<[String: TPPBookRegistryRecord], Never> {
         registrySubject.eraseToAnyPublisher()
@@ -208,10 +215,20 @@ class TPPBookRegistryMock: NSObject, TPPBookRegistryProvider, @unchecked Sendabl
         lock.withLock { _registry[bookIdentifier]?.genericBookmarks?.removeAll { $0.isSimilarTo(location) } }
     }
 
+    /// Identity match, as in the production BookmarkManager
+    /// (GenericBookmarkReplaceParityTests keeps the two in step).
     func replaceGenericBookmark(_ oldLocation: TPPBookLocation, with newLocation: TPPBookLocation, forIdentifier bookIdentifier: String) {
         lock.withLock {
-            if let index = _registry[bookIdentifier]?.genericBookmarks?.firstIndex(where: { $0.isSimilarTo(oldLocation) }) {
+            if let index = _registry[bookIdentifier]?.genericBookmarks?.firstIndex(where: { $0.isSameRecord(as: oldLocation) }) {
                 _registry[bookIdentifier]?.genericBookmarks?[index] = newLocation
+            }
+        }
+    }
+
+    func deleteGenericBookmark(identicalTo location: TPPBookLocation, forIdentifier bookIdentifier: String) {
+        lock.withLock {
+            if let index = _registry[bookIdentifier]?.genericBookmarks?.firstIndex(where: { $0.isSameRecord(as: location) }) {
+                _registry[bookIdentifier]?.genericBookmarks?.remove(at: index)
             }
         }
     }

@@ -1,0 +1,10 @@
+Testing started
+Test Suite 'Selected tests' started at 2026-10-13 11:20:01.000.
+Test Suite 'PalaceTests.xctest' started at 2026-10-13 11:20:01.001.
+Test Suite 'WidgetTests' started at 2026-10-13 11:20:01.100.
+Test Case '-[PalaceTests.WidgetTests testA]' started.
+Test Case '-[PalaceTests.WidgetTests testA]' passed (0.001 seconds).
+Test Case '-[PalaceTests.WidgetTests testB]' started.
+/repo/PalaceTests/WidgetTests.swift:12: error: -[PalaceTests.WidgetTests testB] : XCTAssertEqual failed: ("1") is not equal to ("2")
+Test Case '-[PalaceTests.WidgetTests testB]' failed (0.002 seconds).
+Test Case '-[PalaceTests.WidgetTests testC]' started.

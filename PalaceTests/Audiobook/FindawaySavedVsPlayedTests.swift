@@ -1,22 +1,12 @@
 //
 //  FindawaySavedVsPlayedTests.swift
-//  PalaceTests
 //
-//  App-side end-to-end for the 3.2.0 Findaway dual chapter-numbering regression
-//  ("Dune", Findaway id 32884). Device log: saved key findaway:1:4 while the engine
-//  played (1,3); "Part 1 Chapter 2/3/4" all resolved onto physical file 1:3. With
-//  the toolkit's TOC collapse, the chapter SHOWN == the chapter SAVED == the played
-//  track, so a saved bookmark round-trips back to the file it was taken on.
-//
-//  GREEN-ONLY (by construction): this asserts the POST-FIX invariant
-//  (saved == played) rather than red-firsting the bug at the app layer. The
-//  collapse that produces the invariant lives in the ios-audiobooktoolkit submodule
-//  (already bumped to the fix here), so an app-layer red-first would require
-//  reverting the submodule. The BUG DIRECTION -- pre-fix the uncollapsed list
-//  resolved several chapters onto one physical key, so saved 1:4 != played 1:3 -- is
-//  proven red-first in the toolkit suite (FindawayOversubdividedTOCTests: toc 5->3,
-//  three indices on findaway:1:3). This app test is the consumer-side smoke that the
-//  invariant holds through toAudioBookmark + the position round-trip.
+//  App-side check for the 3.2.0 Findaway dual chapter-numbering regression
+//  ("Dune", Findaway id 32884): the engine played 1:3 while findaway:1:4 was
+//  saved. With the toolkit's TOC collapse, shown == saved == played. Asserts
+//  the post-fix invariant only; the red-first proof lives in the toolkit's
+//  FindawayOversubdividedTOCTests, since reproducing the bug here would mean
+//  reverting the submodule.
 //
 
 import XCTest

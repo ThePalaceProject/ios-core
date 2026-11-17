@@ -32,7 +32,7 @@ final class TPPPerAccountIsolationTests: XCTestCase {
     /// Instance-cache invariant: same UUID always returns same instance,
     /// different UUIDs return different instances, AND `boundLibraryUUID`
     /// is preserved on each cached instance. Pin all three contracts
-    /// across multiple lookups so a mutant that returns a fresh instance
+    /// across multiple lookups so returning a fresh instance
     /// per call (or aliases two UUIDs to the same instance) fails on a
     /// distinct row.
     func testInstanceCache_isStableSameUUID_distinctDifferentUUIDs_andPreservesBinding() {

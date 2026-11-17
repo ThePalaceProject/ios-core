@@ -14,5 +14,12 @@
       "title" : "Borrow Failed"
     },
     "method" : "presentBorrowErrorAlert"
+  },
+  {
+    "args" : {
+      "bookId" : "HOLD-PRE",
+      "presentsAlert" : "false"
+    },
+    "method" : "publishBorrowError"
   }
 ]

@@ -3,53 +3,13 @@
 //  PalaceTests
 //
 //  SMOKE-MATRIX: audiobook
-//  This class is THE entry point for the audiobook cross-vendor smoke gate.
-//  `scripts/verify-pr.sh` (Module C of swarm_eefef87a) selects it via
-//      -only-testing:PalaceTests/AudiobookCrossVendorSmokeTests
-//  when any `Palace/Audiobooks/` or `ios-audiobooktoolkit/` file is in the
-//  diff. Renaming or removing this class WILL fail the gate. See:
-//    .forgeos/swarms/swarm_eefef87a/contracts/B-AudiobookCrossVendorSmoke.md
-//    .forgeos/swarms/swarm_eefef87a/contracts/C-Tooling.md
-//
-//  Why this exists: `PalaceAudiobookToolkit` is the highest-risk dependency
-//  in the project — 25+ revisions across releases with frequent regressions
-//  requiring reverts (see `reference_audiobook_toolkit_risk_profile.md`).
-//  Each audiobook fix risks breaking another playback path because all four
-//  active vendor adapters share the same player infrastructure. This file is
-//  the breadth-not-depth smoke net that runs on every toolkit-touching PR.
-//
-//  Active vendors covered (one method each):
-//    1. LCP        — DRM-fulfilled audiobook (LCP license + Readium)
-//    2. BearerToken — Overdrive-shape two-leg fulfill (wrapper → manifest)
-//    3. OpenAccess  — single-leg unauthenticated manifest fetch
-//    4. LocalFile   — manifest already on disk (post-download replay)
-//
-//  Findaway is referenced in the toolkit risk-profile memory pin but is NOT
-//  an active adapter in `Palace/Audiobooks/Vendors/` — `grep findaway` only
-//  surfaces a constant in `TPPOPDSAcquisitionPath.swift`. The four above are
-//  the active adapter set; Findaway absence is intentional, not missed.
-//
-//  Smoke contract per case (adapter seam, not deep playback):
-//    - Build the vendor's `AudiobookVendorAdapter` with stubbed collaborators
-//      from the existing per-adapter test pattern (no real network/disk/DRM).
-//    - Pump a single-track Readium webpub manifest through `resolveManifest`.
-//    - Assert success: non-nil JSON, `readingOrder` non-empty (single track).
-//    - Assert the vendor's wire-through seam was hit exactly once.
-//  Deep per-adapter behavior (every failure-mode branch, source-selection
-//  precedence, MIME nesting) lives in `PalaceTests/Audiobook/Vendors/*` —
-//  this file is intentionally shallow.
-//
-//  Scope honesty (QA review rev_0d6da02f): these tests verify **adapter
-//  wire-through**, NOT playback-state advancement. The method names use
-//  `_wiresThrough*` rather than `_singleTrackLoadAndAdvance` to reflect
-//  this — the toolkit's 25+-revision regression history is largely about
-//  playback-engine bugs (chapter-transition crashes, position-write races,
-//  continuation-misuse SIGABRT) which live INSIDE `PalaceAudiobookToolkit`,
-//  not at the Palace-side adapter seam. This smoke matrix is the cheap
-//  first-line net for adapter-level regressions; playback-engine regressions
-//  belong to (a) toolkit-internal tests and (b) the simdrive E2E corpus
-//  under `.simdrive/replays/chaos/`. Do NOT rely on this file for playback
-//  coverage.
+//  Audiobook cross-vendor smoke tests: one shallow case per active vendor
+//  adapter (LCP, BearerToken, OpenAccess, LocalFile — Findaway is not an
+//  adapter). Each pumps a single-track manifest through `resolveManifest`
+//  with stubbed collaborators and asserts the vendor's seam was hit once.
+//  These verify adapter wire-through only, NOT playback; engine behaviour
+//  lives in the toolkit's own tests. Per-adapter depth is in
+//  `PalaceTests/Audiobook/Vendors/*`.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -161,13 +121,10 @@ final class AudiobookCrossVendorSmokeTests: XCTestCase {
         var stubbedError: Error?
         private(set) var getCallCount = 0
 
-        func GET(
-            _ reqURL: URL,
-            completion: @escaping (Data?, URLResponse?, Error?) -> Void
-        ) -> URLSessionDataTask? {
+        func fetchLicense(from reqURL: URL) async throws -> (Data, URLResponse?) {
             getCallCount += 1
-            completion(stubbedData, stubbedResponse, stubbedError)
-            return nil
+            if let stubbedError { throw stubbedError }
+            return (stubbedData ?? Data(), stubbedResponse)
         }
     }
 
@@ -211,13 +168,9 @@ final class AudiobookCrossVendorSmokeTests: XCTestCase {
             }
         )
 
-        let resolveExpectation = expectation(description: "LCP smoke resolveManifest completes")
         var observedError: AudiobookLoadError?
-        adapter.resolveManifest(for: book) { result in
+        let result = await adapter.resolveManifest(for: book)
             if case .failure(let err) = result { observedError = err }
-            resolveExpectation.fulfill()
-        }
-        await fulfillment(of: [resolveExpectation], timeout: 2.0)
 
         XCTAssertEqual(factoryCallCount, 1,
                        "LCP wire-through: factory must be invoked exactly once when local source resolves")
@@ -246,15 +199,10 @@ final class AudiobookCrossVendorSmokeTests: XCTestCase {
         var stubbedError: Error?
         private(set) var requestedURLs: [URL] = []
 
-        func fetchData(
-            from url: URL,
-            completion: @escaping (Data?, URLResponse?, Error?) -> Void
-        ) {
+        func fetchData(from url: URL) async throws -> (Data, URLResponse?) {
             requestedURLs.append(url)
-            let box = SendableBox(value: completion)
-            DispatchQueue.main.async { [stubbedData, stubbedResponse, stubbedError] in
-                box.value(stubbedData, stubbedResponse, stubbedError)
-            }
+            if let stubbedError { throw stubbedError }
+            return (stubbedData ?? Data(), stubbedResponse)
         }
     }
 
@@ -266,14 +214,10 @@ final class AudiobookCrossVendorSmokeTests: XCTestCase {
 
         func fetchManifest(
             with token: MyBooksSimplifiedBearerToken,
-            for book: TPPBook,
-            completion: @escaping ([String: Any]?) -> Void
-        ) {
+            for book: TPPBook
+        ) async -> [String: Any]? {
             callCount += 1
-            let box = SendableBox(value: (json: stubbedJSON, completion: completion))
-            DispatchQueue.main.async {
-                box.value.completion(box.value.json)
-            }
+            return stubbedJSON
         }
     }
 
@@ -301,13 +245,9 @@ final class AudiobookCrossVendorSmokeTests: XCTestCase {
 
         let adapter = BearerTokenAdapter(network: network, manifestFetcher: fetcher)
 
-        let resolveExpectation = expectation(description: "BearerToken smoke resolveManifest completes")
         var observed: (json: [String: Any], decryptor: DRMDecryptor?)?
-        adapter.resolveManifest(for: book) { result in
+        let result = await adapter.resolveManifest(for: book)
             if case .success(let value) = result { observed = value }
-            resolveExpectation.fulfill()
-        }
-        await fulfillment(of: [resolveExpectation], timeout: 2.0)
 
         assertSingleTrackManifest(observed)
         XCTAssertEqual(network.requestedURLs.count, 1,
@@ -333,15 +273,10 @@ final class AudiobookCrossVendorSmokeTests: XCTestCase {
         var stubbedError: Error?
         private(set) var requestedURLs: [URL] = []
 
-        func fetchData(
-            from url: URL,
-            completion: @escaping (Data?, URLResponse?, Error?) -> Void
-        ) {
+        func fetchData(from url: URL) async throws -> (Data, URLResponse?) {
             requestedURLs.append(url)
-            let box = SendableBox(value: completion)
-            DispatchQueue.main.async { [stubbedData, stubbedResponse, stubbedError] in
-                box.value(stubbedData, stubbedResponse, stubbedError)
-            }
+            if let stubbedError { throw stubbedError }
+            return (stubbedData ?? Data(), stubbedResponse)
         }
     }
 
@@ -360,13 +295,9 @@ final class AudiobookCrossVendorSmokeTests: XCTestCase {
 
         let adapter = OpenAccessAdapter(network: network)
 
-        let resolveExpectation = expectation(description: "OpenAccess smoke resolveManifest completes")
         var observed: (json: [String: Any], decryptor: DRMDecryptor?)?
-        adapter.resolveManifest(for: book) { result in
+        let result = await adapter.resolveManifest(for: book)
             if case .success(let value) = result { observed = value }
-            resolveExpectation.fulfill()
-        }
-        await fulfillment(of: [resolveExpectation], timeout: 2.0)
 
         assertSingleTrackManifest(observed)
         XCTAssertEqual(network.requestedURLs.count, 1,
@@ -433,13 +364,9 @@ final class AudiobookCrossVendorSmokeTests: XCTestCase {
     /// branch so refresh stays off the wire and the case is keychain-free.
     private final class StubLocalTokenRefresher: BearerTokenRefreshing {
         private(set) var callCount: Int = 0
-        func refreshToken(
-            from fulfillURL: URL,
-            completion: @escaping (MyBooksSimplifiedBearerToken?) -> Void
-        ) {
+        func refreshToken(from fulfillURL: URL) async -> MyBooksSimplifiedBearerToken? {
             callCount += 1
-            let box = SendableBox(value: completion)
-            DispatchQueue.main.async { box.value(nil) }
+            return nil
         }
     }
 
@@ -471,13 +398,9 @@ final class AudiobookCrossVendorSmokeTests: XCTestCase {
         XCTAssertTrue(adapter.canHandle(book),
                       "LocalFile.canHandle must return true when both URL and file-exists check succeed")
 
-        let resolveExpectation = expectation(description: "LocalFile smoke resolveManifest completes")
         var observed: (json: [String: Any], decryptor: DRMDecryptor?)?
-        adapter.resolveManifest(for: book) { result in
+        let result = await adapter.resolveManifest(for: book)
             if case .success(let value) = result { observed = value }
-            resolveExpectation.fulfill()
-        }
-        await fulfillment(of: [resolveExpectation], timeout: 2.0)
 
         assertSingleTrackManifest(observed)
         XCTAssertEqual(fileReader.readURLs.count, 1,

@@ -1,19 +1,10 @@
-//
 //  TPPCrossLibrarySignOutTests.swift
-//  PalaceTests
 //
-//  Regression tests for cross-library credential contamination during sign-out.
-//
-//  Bug: Signing out of a non-active library would clear the *active* library's
-//  credentials instead, because the error handler in performLogOut() called
-//  TPPUserAccount.sharedAccount().removeAll() (which defaults to currentAccountId) // MIGRATED: comment-only reference, no call site
-//  instead of self.userAccount.removeAll() (which is scoped to the target library).
-//
-//  Also fixes unscoped sharedAccount() calls in refreshAuthIfNeeded and logIn
-//  that could read the wrong library's token/auth state.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Signing out of a non-active library cleared the active library's
+//  credentials: the error path in performLogOut() called the unscoped
+//  sharedAccount().removeAll() (current account) instead of
+//  self.userAccount.removeAll(). Also covers the scoped reads in
+//  refreshAuthIfNeeded and logIn.
 
 import XCTest
 @testable import Palace
@@ -156,7 +147,7 @@ final class TPPCrossLibrarySignOutTests: XCTestCase {
         // if two business-logic instances for different libraries shared a
         // user-account instance, credentials from library A would leak to
         // library B. Assert instance identity AND distinct libraryAccountIDs
-        // so a mutation that re-introduces a shared singleton can't pass this.
+        // so a regression that re-introduces a shared singleton can't pass this.
         XCTAssertFalse(
             activeBusinessLogic.userAccount === targetBusinessLogic.userAccount,
             "Each library should have its own user account instance"
@@ -183,7 +174,7 @@ final class TPPCrossLibrarySignOutTests: XCTestCase {
     // MARK: - Tests: Cross-Library Sign-Out Isolation
 
     /// Signing out of a non-active library must not affect the active library's credentials.
-    func testSignOut_ofNonActiveLibrary_doesNotClearActiveLibraryCredentials() {
+    func testSignOut_ofNonActiveLibrary_doesNotClearActiveLibraryCredentials() async {
         signIn(businessLogic: activeBusinessLogic,
                authentication: libraryMock.barcodeAuthentication,
                barcode: "active-patron",
@@ -202,8 +193,8 @@ final class TPPCrossLibrarySignOutTests: XCTestCase {
         let exp = expectation(description: "Target library sign-out completes")
         targetUIDelegate.didFinishDeauthorizingHandler = { exp.fulfill() }
 
-        targetBusinessLogic.performLogOut()
-        wait(for: [exp], timeout: 10.0)
+        await targetBusinessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 10.0)
 
         XCTAssertFalse(targetBusinessLogic.userAccount.hasCredentials(),
                        "Target library credentials should be cleared")
@@ -214,7 +205,7 @@ final class TPPCrossLibrarySignOutTests: XCTestCase {
     }
 
     /// Sign out of non-active library with OAuth credentials preserves active library's token.
-    func testSignOut_ofNonActiveOAuthLibrary_doesNotClearActiveLibraryToken() {
+    func testSignOut_ofNonActiveOAuthLibrary_doesNotClearActiveLibraryToken() async {
         signInWithToken(businessLogic: activeBusinessLogic,
                         authentication: libraryMock.oauthAuthentication,
                         token: "active-oauth-token")
@@ -226,8 +217,8 @@ final class TPPCrossLibrarySignOutTests: XCTestCase {
         let exp = expectation(description: "Target sign-out completes")
         targetUIDelegate.didFinishDeauthorizingHandler = { exp.fulfill() }
 
-        targetBusinessLogic.performLogOut()
-        wait(for: [exp], timeout: 10.0)
+        await targetBusinessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 10.0)
 
         XCTAssertNil(targetBusinessLogic.userAccount.authToken,
                      "Target library token should be cleared")
@@ -236,7 +227,7 @@ final class TPPCrossLibrarySignOutTests: XCTestCase {
     }
 
     /// Sign out of non-active library with SAML credentials preserves active library's cookies.
-    func testSignOut_ofNonActiveSAMLLibrary_doesNotClearActiveLibraryCookies() {
+    func testSignOut_ofNonActiveSAMLLibrary_doesNotClearActiveLibraryCookies() async {
         activeBusinessLogic.selectedAuthentication = libraryMock.samlAuthentication
         activeBusinessLogic.updateUserAccount(
             forDRMAuthorization: true,
@@ -266,8 +257,8 @@ final class TPPCrossLibrarySignOutTests: XCTestCase {
         let exp = expectation(description: "Target SAML sign-out completes")
         targetUIDelegate.didFinishDeauthorizingHandler = { exp.fulfill() }
 
-        targetBusinessLogic.performLogOut()
-        wait(for: [exp], timeout: 10.0)
+        await targetBusinessLogic.performLogOut()
+        await fulfillment(of: [exp], timeout: 10.0)
 
         XCTAssertNil(targetBusinessLogic.userAccount.authToken)
         XCTAssertEqual(activeBusinessLogic.userAccount.authToken, "active-saml-token",
@@ -277,7 +268,7 @@ final class TPPCrossLibrarySignOutTests: XCTestCase {
     }
 
     /// Signing out of one library and then another should not corrupt either.
-    func testSequentialSignOuts_ofMultipleLibraries_clearCorrectCredentials() {
+    func testSequentialSignOuts_ofMultipleLibraries_clearCorrectCredentials() async {
         signIn(businessLogic: targetBusinessLogic,
                authentication: libraryMock.barcodeAuthentication,
                barcode: "patron-target", pin: "pinT")
@@ -289,8 +280,8 @@ final class TPPCrossLibrarySignOutTests: XCTestCase {
         // Sign out target library first
         let exp1 = expectation(description: "Target sign-out completes")
         targetUIDelegate.didFinishDeauthorizingHandler = { exp1.fulfill() }
-        targetBusinessLogic.performLogOut()
-        wait(for: [exp1], timeout: 10.0)
+        await targetBusinessLogic.performLogOut()
+        await fulfillment(of: [exp1], timeout: 10.0)
 
         XCTAssertFalse(targetBusinessLogic.userAccount.hasCredentials())
         XCTAssertTrue(activeBusinessLogic.userAccount.hasCredentials(),

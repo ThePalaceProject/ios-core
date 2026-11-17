@@ -1,40 +1,11 @@
-//
 //  AudiobookEngineMock.swift
-//  PalaceTests
 //
-//  Protocol-shaped test double standing in for the vendor audiobook engines
-//  Palace plumbs through at load time: Findaway (AudioEngine), Overdrive,
-//  and LCP. The real engines are opaque SDKs (Findaway is closed-source,
-//  Overdrive lives in an Apple-Silicon-only XCFramework, LCP is a Readium
-//  module) — none expose mock-friendly entry points. This file gives the
-//  test target a single seam to drive load/open/release semantics
-//  without dragging the vendor stacks into a unit test.
-//
-//  Shape mirrors Palace's existing mock pattern (TPPDRMAuthorizingMock,
-//  TPPMyBooksDownloadsCenterMock): subclassable, observable counters +
-//  captured args, and a `removeAll()` reset hook for tearDown. The class
-//  is intentionally `class` (not `final`) so individual test files can
-//  subclass to add scenario-specific behaviour without re-implementing
-//  the bookkeeping.
-//
-//  WHY THIS EXISTS (forward-pointing seam):
-//  Three Crashlytics signatures persist in 3.0.0 with effectively zero
-//  unit-test coverage on the engine side of the audiobook stack:
-//    F-001 Adobe RMSDK background watchdog          (47 users / 156 events)
-//    F-003 FAEChapterStatus _cacheForChapterDescription EXC_BREAKPOINT
-//    F-004 AudiobookLoader.finalizeBuild EXC_BREAKPOINT
-//
-//  The fix for any of these will eventually require a protocol-shaped seam
-//  in Palace/Audiobooks/ so test doubles can verify the open/release/
-//  background-shutdown contracts. This mock is the consumer-side of that
-//  future seam: when AudiobookLoader / AudioBookVendorsHelper / the
-//  Findaway lifecycle wrapper gain protocol surfaces, swap an
-//  `AudiobookEngineMock` in via the existing dependency-injection seam
-//  in AudiobookLoader.load() (already takes a `DRMDecryptor?`, just needs
-//  one more knob for the engine handle).
-//
-//  Copyright (c) 2026 The Palace Project. All rights reserved.
-//
+//  Test double for the vendor audiobook engines (Findaway, Overdrive, LCP), which
+//  are opaque SDKs with no mock-friendly entry points. Follows the existing mock
+//  pattern: counters, captured args, `removeAll()` for tearDown, and non-final so
+//  tests can subclass. It is the consumer side of an engine seam that does not
+//  exist yet; Crashlytics F-001, F-003 and F-004 all need that seam in
+//  Palace/Audiobooks/ before the open/release/shutdown contracts can be tested.
 
 import Foundation
 @testable import Palace

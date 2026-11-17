@@ -212,8 +212,8 @@ final class TPPUserAccountGapTests: XCTestCase {
         // calls to sharedAccount() must return the SAME instance.
         // Replacing with TPPUserAccountTestFactory would invert the
         // test's meaning (the factory deliberately bypasses the cache).
-        // Per swarm_47883816 contract C, the lint allows these bare
-        // calls because of the // MIGRATED: marker on each line.
+        // The isolation lint allows these bare calls because of the
+        // // MIGRATED: marker on each line.
         let account = TPPUserAccount.sharedAccount() // MIGRATED: keep — identity test of shared cache
         XCTAssertNotNil(account, "sharedAccount() should return non-nil account")
         XCTAssertTrue(account === TPPUserAccount.sharedAccount(), // MIGRATED: keep — identity test of shared cache

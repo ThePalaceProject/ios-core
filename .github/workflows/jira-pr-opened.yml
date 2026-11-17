@@ -133,28 +133,32 @@ jobs:
           # Parse structured sections from PR body
           PR_BODY=$(cat /tmp/pr_body.txt 2>/dev/null || true)
 
-          # Extract Summary (root cause / what was fixed)
+          # Extract What + Why (legacy: Summary)
           ROOT_CAUSE=$(echo "$PR_BODY" | python3 -c "
           import sys, re
           body = sys.stdin.read()
-          # Match ## Summary section until next ## heading or end
-          m = re.search(r'##\s*Summary\s*\n(.*?)(?=\n##|\Z)', body, re.DOTALL)
-          if m:
-              text = m.group(1).strip()
+          # Strip template comments, then take ## What + ## Why (or a legacy ## Summary)
+          body = re.sub(r'<!--.*?-->', '', body, flags=re.DOTALL)
+          parts = [m.group(1).strip() for h in ('Summary', 'What', 'Why')
+                   for m in [re.search(r'##\s*' + h + r'\s*\n(.*?)(?=\n##|\Z)', body, re.DOTALL)] if m]
+          parts = [p for p in parts if p]
+          if parts:
+              text = '\n\n'.join(parts)
               # Clean up markdown bullet points for plain text
               text = re.sub(r'^\s*[-*]\s*', '• ', text, flags=re.MULTILINE)
               print(text)
           " 2>/dev/null || true)
 
-          # Extract Test plan (preferred) or "How to verify" from Summary for JIRA
+          # Extract How verified / Test plan, or a legacy "How to verify" line
           TESTING_STEPS=$(echo "$PR_BODY" | python3 -c "
           import sys, re
           body = sys.stdin.read()
-          # Try ## Test Plan section first
-          m = re.search(r'##\s*Test [Pp]lan\s*\n(.*?)(?=\n##|\Z)', body, re.DOTALL)
+          body = re.sub(r'<!--.*?-->', '', body, flags=re.DOTALL)
+          # ## How verified (template) or a legacy ## Test Plan section first
+          m = re.search(r'##\s*(?:How verified|Test [Pp]lan)\s*\n(.*?)(?=\n##|\Z)', body, re.DOTALL)
           if m:
               text = m.group(1).strip()
-              lines = [re.sub(r'^\s*[-*]\s*\[.\]\s*', '', l).strip()
+              lines = [re.sub(r'^\s*[-*]\s*(?:\[.\]\s*)?', '', l).strip()
                        for l in text.splitlines() if l.strip()]
               for i, line in enumerate(lines, 1):
                   print(f'{i}. {line}')

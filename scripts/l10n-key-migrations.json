@@ -1,0 +1,22 @@
+{
+  "_comment": "Transifex keys whose English text was later recased, repunctuated, or switched between bare and positional format specifiers. The translation is still correct, so it is carried forward to the current key instead of being re-translated. Consumed by palace_strings.py (load_migrations).",
+  "migrations": {
+    "%1$@ (file %2$@ of %3$d)": "%@ (file %@ of %d)",
+    "%1$@ played. %2$@ remaining.": "%@ played. %@ remaining.",
+    "%1$d hour and %2$d minute": "%d hour and %d minute",
+    "%1$d hour and %2$d minutes": "%d hour and %d minutes",
+    "%1$d hours and %2$d minute": "%d hours and %d minute",
+    "%1$d hours and %2$d minutes": "%d hours and %d minutes",
+    "%1$d hours, %2$d minutes and %3$d seconds": "%d hours, %d minutes and %d seconds",
+    "%1$d minutes and %2$d seconds": "%d minutes and %d seconds",
+    "A Problem Has Occurred": "A problem has occurred.",
+    "Add Bookmark": "Add bookmark",
+    "Cancel": "CANCEL",
+    "Downloading": "Downloading...",
+    "More…": "More",
+    "Narrators:": "Narrators",
+    "Playback Speed": "Playback speed",
+    "Reader settings": "Reader Settings",
+    "Sleep Timer": "Sleep timer"
+  }
+}

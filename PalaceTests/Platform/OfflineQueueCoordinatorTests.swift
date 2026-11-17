@@ -10,6 +10,7 @@
 //  path (a genuine failure is retryable).
 //
 
+import Combine
 import XCTest
 @testable import Palace
 import PalaceBookModel
@@ -32,21 +33,21 @@ final class OfflineQueueCoordinatorTests: XCTestCase {
 
         func handlers() -> OfflineQueueCoordinator.Handlers {
             OfflineQueueCoordinator.Handlers(
-                performReturn: { [weak self] id in
-                    self?.lock.withLock { self?.returnIDs.append(id) }
-                    return self?.returnSucceeds ?? false
+                performReturn: { [weak self] action in
+                    self?.lock.withLock { self?.returnIDs.append(action.bookID) }
+                    return self?.returnSucceeds == true ? .confirmed : .failed
                 },
-                performBorrow: { [weak self] id in
-                    self?.lock.withLock { self?.borrowIDs.append(id) }
-                    return self?.borrowSucceeds ?? false
+                performBorrow: { [weak self] action in
+                    self?.lock.withLock { self?.borrowIDs.append(action.bookID) }
+                    return self?.borrowSucceeds == true ? .confirmed : .failed
                 },
-                performHold: { [weak self] id in
-                    self?.lock.withLock { self?.holdIDs.append(id) }
-                    return true
+                performHold: { [weak self] action in
+                    self?.lock.withLock { self?.holdIDs.append(action.bookID) }
+                    return .confirmed
                 },
-                performCancelHold: { [weak self] id in
-                    self?.lock.withLock { self?.cancelHoldIDs.append(id) }
-                    return true
+                performCancelHold: { [weak self] action in
+                    self?.lock.withLock { self?.cancelHoldIDs.append(action.bookID) }
+                    return .confirmed
                 })
         }
 
@@ -57,15 +58,29 @@ final class OfflineQueueCoordinatorTests: XCTestCase {
     private final class FakeRegistrar: OfflineExecutorRegistering, @unchecked Sendable {
         private let lock = NSLock()
         private var _executor: OfflineActionExecutor?
+        private var _currentLibraryID: (@Sendable () -> String?)?
         var executor: OfflineActionExecutor? { lock.withLock { _executor } }
-        func setExecutor(_ executor: @escaping OfflineActionExecutor) async {
-            lock.withLock { _executor = executor }
+        var currentLibraryID: (@Sendable () -> String?)? { lock.withLock { _currentLibraryID } }
+        private var _drainCount = 0
+        var drainCount: Int { lock.withLock { _drainCount } }
+        func setExecutor(
+            _ executor: @escaping OfflineActionExecutor,
+            currentLibraryID: @escaping @Sendable () -> String?
+        ) async {
+            lock.withLock {
+                _executor = executor
+                _currentLibraryID = currentLibraryID
+            }
+        }
+        func drainIfOnline() async {
+            lock.withLock { _drainCount += 1 }
         }
     }
 
     private func coordinator(_ spy: HandlerSpy, queue: OfflineExecutorRegistering = FakeRegistrar())
         -> OfflineQueueCoordinator {
-        OfflineQueueCoordinator(queue: queue, handlers: spy.handlers())
+        OfflineQueueCoordinator(queue: queue, handlers: spy.handlers(),
+                                runnableLibraryID: { OfflineAction.testLibraryID })
     }
 
     // MARK: - INV-8: dedupe
@@ -81,8 +96,8 @@ final class OfflineQueueCoordinatorTests: XCTestCase {
         let r1 = await coord.execute(a1)
         let r2 = await coord.execute(a2)
 
-        XCTAssertTrue(r1)
-        XCTAssertTrue(r2, "the deduped duplicate is reported as already-done")
+        XCTAssertEqual(r1, .confirmed)
+        XCTAssertEqual(r2, .confirmed, "the deduped duplicate is reported as already-done")
         XCTAssertEqual(spy.withLock { spy.returnIDs }, ["book-1"],
             "INV-8: the underlying return side effect runs exactly once")
     }
@@ -108,6 +123,32 @@ final class OfflineQueueCoordinatorTests: XCTestCase {
         XCTAssertEqual(spy.withLock { spy.borrowIDs }, ["x"])
     }
 
+    /// A return of a book completed at one library must not suppress a queued
+    /// return of the same book ID at another library.
+    func testSameBookAndTypeAtDifferentLibraries_areNotDeduped() async {
+        let spy = HandlerSpy()
+        let coord = coordinator(spy)
+
+        let atA = await coord.execute(OfflineAction(type: .return, bookID: "x", bookTitle: "X", libraryID: "lib-A"))
+        let atB = await coord.execute(OfflineAction(type: .return, bookID: "x", bookTitle: "X", libraryID: "lib-B"))
+
+        XCTAssertEqual(atA, .confirmed)
+        XCTAssertEqual(atB, .confirmed)
+        XCTAssertEqual(spy.withLock { spy.returnIDs }, ["x", "x"],
+            "each library's return runs; a completion at A is not a completion at B")
+    }
+
+    /// The same holds for a borrow of the same book ID at two libraries.
+    func testSameBookBorrowAtDifferentLibraries_areNotDeduped() async {
+        let spy = HandlerSpy()
+        let coord = coordinator(spy)
+
+        _ = await coord.execute(OfflineAction(type: .borrow, bookID: "x", bookTitle: "X", libraryID: "lib-A"))
+        _ = await coord.execute(OfflineAction(type: .borrow, bookID: "x", bookTitle: "X", libraryID: "lib-B"))
+
+        XCTAssertEqual(spy.withLock { spy.borrowIDs }, ["x", "x"])
+    }
+
     // MARK: - Failure rollback (retryable)
 
     func testFailedReturn_isRetryable_notPermanentlyDeduped() async {
@@ -118,8 +159,8 @@ final class OfflineQueueCoordinatorTests: XCTestCase {
         let r1 = await coord.execute(OfflineAction(type: .return, bookID: "f", bookTitle: "F"))
         let r2 = await coord.execute(OfflineAction(type: .return, bookID: "f", bookTitle: "F"))
 
-        XCTAssertFalse(r1)
-        XCTAssertFalse(r2)
+        XCTAssertEqual(r1, .failed)
+        XCTAssertEqual(r2, .failed)
         XCTAssertEqual(spy.withLock { spy.returnIDs }, ["f", "f"],
             "a genuine failure rolls back the dedupe key so the queue can retry")
     }
@@ -153,11 +194,11 @@ final class OfflineQueueCoordinatorTests: XCTestCase {
         let coord = coordinator(spy)
 
         let r1 = await coord.execute(OfflineAction(type: .borrow, bookID: "bfail", bookTitle: "B"))
-        XCTAssertFalse(r1, "an unconfirmed borrow must return false, not an optimistic true")
+        XCTAssertEqual(r1, .failed, "an unconfirmed borrow must report .failed, not an optimistic .confirmed")
 
         // Not deduped-as-done: a retry re-dispatches (the queue keeps it).
         let r2 = await coord.execute(OfflineAction(type: .borrow, bookID: "bfail", bookTitle: "B"))
-        XCTAssertFalse(r2)
+        XCTAssertEqual(r2, .failed)
         XCTAssertEqual(spy.withLock { spy.borrowIDs }, ["bfail", "bfail"],
             "a failed borrow is retryable, not silently dropped")
     }
@@ -209,6 +250,7 @@ final class OfflineQueueCoordinatorTests: XCTestCase {
         let clock = MutableClock(Date(timeIntervalSince1970: 0))
         let coord = OfflineQueueCoordinator(
             queue: FakeRegistrar(), handlers: spy.handlers(),
+            runnableLibraryID: { OfflineAction.testLibraryID },
             dedupeTTL: 100, now: { clock.now })
 
         _ = await coord.execute(OfflineAction(type: .return, bookID: "k", bookTitle: "K"))
@@ -240,8 +282,60 @@ final class OfflineQueueCoordinatorTests: XCTestCase {
         XCTAssertNotNil(executor, "setExecutor must have been called")
 
         let ok = await executor?(OfflineAction(type: .borrow, bookID: "wired", bookTitle: "W"))
-        XCTAssertEqual(ok, true)
+        XCTAssertEqual(ok, .confirmed)
         XCTAssertEqual(spy.withLock { spy.borrowIDs }, ["wired"],
             "the installed executor dispatches through the coordinator to the handler")
+    }
+
+    /// The queue scopes its drain with the coordinator's current-library
+    /// reader, installed alongside the executor.
+    func testRegisterExecutor_installsCurrentLibraryReader() async {
+        let registrar = FakeRegistrar()
+        let coord = OfflineQueueCoordinator(queue: registrar, handlers: HandlerSpy().handlers(),
+                                            runnableLibraryID: { "library-under-test" })
+
+        await coord.registerExecutor()
+
+        XCTAssertEqual(registrar.currentLibraryID?(), "library-under-test")
+    }
+
+    /// Registration drains once, and each library-ready signal drains again.
+    func testRegisterExecutor_drainsNowAndOnEachLibraryReadySignal() async {
+        let registrar = FakeRegistrar()
+        let ready = PassthroughSubject<Void, Never>()
+        let coord = OfflineQueueCoordinator(queue: registrar, handlers: HandlerSpy().handlers(),
+                                            runnableLibraryID: { "lib" },
+                                            libraryReady: ready.eraseToAnyPublisher())
+
+        await coord.registerExecutor()
+        XCTAssertEqual(registrar.drainCount, 1)
+
+        ready.send(())
+        await coord._awaitTriggeredDrainsForTesting()
+        XCTAssertEqual(registrar.drainCount, 2)
+    }
+
+    /// A released coordinator stops listening for registry loads; otherwise a
+    /// coordinator discarded by a container reset keeps draining the queue.
+    func testReleasedCoordinator_noLongerReceivesLibraryReadySignals() async {
+        let registrar = FakeRegistrar()
+        let ready = PassthroughSubject<Void, Never>()
+        let delivered = LockIsolated(0)
+        let observed = ready
+            .handleEvents(receiveOutput: { _ in delivered.withValue { $0 += 1 } })
+            .eraseToAnyPublisher()
+        var coord: OfflineQueueCoordinator? = OfflineQueueCoordinator(
+            queue: registrar, handlers: HandlerSpy().handlers(),
+            runnableLibraryID: { "lib" }, libraryReady: observed)
+        await coord?.registerExecutor()
+        ready.send(())
+        await coord?._awaitTriggeredDrainsForTesting()
+        XCTAssertEqual(delivered.value, 1, "precondition: the live coordinator is subscribed")
+
+        coord = nil
+        ready.send(())
+
+        XCTAssertEqual(delivered.value, 1, "a released coordinator must not receive the signal")
+        XCTAssertEqual(registrar.drainCount, 2, "only the registration drain and the live signal's drain ran")
     }
 }

@@ -385,7 +385,7 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
 
     // MARK: - Sync Bookmarks Tests
 
-    func testSyncBookmarks_MergesLocalAndRemote() {
+    func testSyncBookmarks_WithNoServerBookmarks_ReturnsStoredLocalBookmark() {
         mockRegistry = TPPBookRegistryMock()
         mockRegistry.addBook(fakeBook, state: .downloadSuccessful)
         mockAnnotations = TPPAnnotationMock()
@@ -400,15 +400,18 @@ class AudiobookBookmarkBusinessLogicTests: XCTestCase {
             time: 1000
         )
 
-        let expectation = XCTestExpectation(description: "Sync bookmarks")
+        mockRegistry.addGenericBookmark(localBookmark.toTPPBookLocation()!, forIdentifier: fakeBook.identifier)
 
-        sut.syncBookmarks(localBookmarks: [localBookmark]) { mergedBookmarks in
-            // Should return merged bookmarks
-            XCTAssertNotNil(mergedBookmarks)
+        let expectation = XCTestExpectation(description: "Sync bookmarks")
+        var merged: [AudioBookmark] = []
+
+        sut.syncBookmarks { mergedBookmarks in
+            merged = mergedBookmarks
             expectation.fulfill()
         }
 
         wait(for: [expectation], timeout: 5.0)
+        XCTAssertEqual(merged.map(\.annotationId), ["local-123"])
     }
 
     // MARK: - Flush Pending Operations Tests

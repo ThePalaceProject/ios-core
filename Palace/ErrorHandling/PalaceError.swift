@@ -37,6 +37,12 @@ enum PalaceError: LocalizedError {
     // MARK: - Audiobook Errors
     case audiobook(AudiobookError)
 
+    /// A Borrow came back as a hold at `position` in the queue, e.g. after the
+    /// server let an expired ready hold go and placed a new one (PP-5453).
+    /// Declared last: the bridged NSError code is the case index, which
+    /// `palaceErrorFromCode` decodes and crash reports group by.
+    case holdRequeued(position: UInt)
+
     // MARK: - LocalizedError Implementation
     var errorDescription: String? {
         switch self {
@@ -49,6 +55,7 @@ enum PalaceError: LocalizedError {
         case .storage(let error): return error.errorDescription
         case .bookReader(let error): return error.errorDescription
         case .audiobook(let error): return error.errorDescription
+        case .holdRequeued: return BookRegistryError.holdCopyUnavailable.errorDescription
         }
     }
 
@@ -63,6 +70,7 @@ enum PalaceError: LocalizedError {
         case .storage(let error): return error.recoverySuggestion
         case .bookReader(let error): return error.recoverySuggestion
         case .audiobook(let error): return error.recoverySuggestion
+        case .holdRequeued(let position): return Strings.Error.holdRequeued(position: position)
         }
     }
 
@@ -77,6 +85,7 @@ enum PalaceError: LocalizedError {
         case .storage(let error): return 7000 + error.rawValue
         case .bookReader(let error): return 8000 + error.rawValue
         case .audiobook(let error): return 9000 + error.rawValue
+        case .holdRequeued: return 2000 + BookRegistryError.holdCopyUnavailable.rawValue
         }
     }
 }
@@ -153,7 +162,7 @@ enum NetworkError: Int, LocalizedError {
 
 // MARK: - Book Registry Errors
 
-enum BookRegistryError: Int, LocalizedError {
+enum BookRegistryError: Int, CaseIterable, LocalizedError {
     case bookNotFound = 0
     case registryCorrupted = 1
     case syncFailed = 2
@@ -163,6 +172,10 @@ enum BookRegistryError: Int, LocalizedError {
     case concurrencyViolation = 6
     case alreadyBorrowed = 7
     case holdCopyUnavailable = 8
+    /// The patron's loan ran its course. Distinct from `bookNotFound`, which
+    /// says the registry has no such book: here the book exists and is
+    /// borrowable, and the only thing missing is the loan (PP-5397).
+    case loanEnded = 9
 
     var errorDescription: String? {
         switch self {
@@ -184,6 +197,8 @@ enum BookRegistryError: Int, LocalizedError {
             return "This book is already borrowed"
         case .holdCopyUnavailable:
             return "This title isn't ready for checkout yet"
+        case .loanEnded:
+            return "Your loan for this book has ended"
         }
     }
 
@@ -205,6 +220,8 @@ enum BookRegistryError: Int, LocalizedError {
             return "The book is already in your library. Please check My Books."
         case .holdCopyUnavailable:
             return "Another patron checked out the copy first. You're still in line — we'll notify you when another copy becomes available."
+        case .loanEnded:
+            return "Borrow it again to keep reading."
         }
     }
 }
@@ -294,9 +311,7 @@ enum ParsingError: Int, LocalizedError {
             return "Text encoding error"
         case .opdsFeedInvalid:
             // TODO(design): final copy pending design review per feedback_no_new_copy_without_design
-            // Previously displayed the raw technical string "Invalid OPDS feed" to
-            // end users, leaking the protocol name. swarm_f3b9b087 item #9 replaces
-            // it with a placeholder NSLocalizedString key the design team can wire.
+            // Avoids showing patrons the protocol name ("Invalid OPDS feed").
             return NSLocalizedString(
                 "opds.error.feed_invalid",
                 value: "We can't load your library catalog right now — try again in a moment.",
@@ -544,6 +559,11 @@ enum AudiobookError: Int, LocalizedError {
 // MARK: - Error Conversion Utilities
 
 extension PalaceError {
+    /// Key under which a wrap carries the error it wrapped. Bridging an enum
+    /// error to `NSError` keeps only the top-level case index, so the inner
+    /// case cannot be read back out of the code (PP-5397).
+    static let wrappedErrorKey = "palaceError"
+
     /// Converts NSError to PalaceError when possible
     static func from(_ error: Error) -> PalaceError {
         if let palaceError = error as? PalaceError {
@@ -551,6 +571,13 @@ extension PalaceError {
         }
 
         let nsError = error as NSError
+
+        // A wrap that kept the error gives it back exactly. The table below can
+        // only turn a top-level case index into one representative inner case,
+        // so every book-registry failure would arrive as `invalidState`.
+        if let wrapped = nsError.userInfo[Self.wrappedErrorKey] as? PalaceError {
+            return wrapped
+        }
 
         // OPDSFeedService wraps PalaceErrors in NSErrors to attach problem
         // documents. When this happens, the domain is "Palace.PalaceError" and the code
@@ -587,6 +614,8 @@ extension PalaceError {
         case 6: return .storage(.insufficientSpace)
         case 7: return .bookReader(.bookNotAvailable)
         case 8: return .audiobook(.playbackError)
+        // `.holdRequeued`; the position does not survive bridging.
+        case 9: return .bookRegistry(.holdCopyUnavailable)
         default: return .network(.unknown)
         }
     }

@@ -2,34 +2,13 @@
 //  AppContainerAuthCoordinatorWiringTests.swift
 //  PalaceTests
 //
-//  swarm_66819d80 Module C — registration test for
-//  `AppContainer.production().authCoordinator`.
-//
-//  This test class verifies the AppContainer composition root WIRES the
-//  PalaceAuth.AuthCoordinator into the production graph as a singleton
-//  reachable through `AppContainer.production().authCoordinator`. It is
-//  deliberately NOT a coordinator-behavior test — the coordinator's
-//  silent-refresh / modal / cooldown / single-flight dispatch is exercised
-//  in `PalaceAuthTests/AuthCoordinatorTests.swift` (with the real actor +
-//  test seams), and the caller-routing through the coordinator is
-//  exercised in the per-caller `<Site>AuthCoordinatorTests` suites that
-//  instantiate real production callers.
-//
-//  Reviewer-fixup (ARCH-2, swarm_66819d80 Pass 3): the original version
-//  of this file claimed to "round-trip" through the production
-//  coordinator but discarded `prod.authCoordinator` and built a fresh
-//  one with spies (duplicating `AuthCoordinatorTests`). The end-to-end
-//  test the contract called for would require HTTPStubURLProtocol + the
-//  real `TPPReauthenticator` driven through the network stack — that's
-//  an integration test the existing `TokenRefreshAndRetryQueueTests`
-//  already covers at the responder seam.
-//
-//  This rewritten file pins what AppContainer is actually responsible for:
-//  the coordinator is constructed once, available everywhere, the SAME
-//  instance across `production()` calls (singleton), and reachable on the
-//  production code paths that consume it (MyBooksDownloadCenter →
-//  BookReturnService / BorrowOperation / TokenRefreshInterceptor /
-//  DownloadAuthRetryHandler).
+//  Verifies AppContainer wires PalaceAuth.AuthCoordinator as a singleton
+//  reachable through `AppContainer.production().authCoordinator`: built once,
+//  the SAME instance across `production()` calls, and reachable from its
+//  consumers (MyBooksDownloadCenter → BookReturnService / BorrowOperation /
+//  TokenRefreshInterceptor / DownloadAuthRetryHandler). Coordinator behavior
+//  lives in `PalaceAuthTests/AuthCoordinatorTests.swift`; caller routing in
+//  the per-caller `<Site>AuthCoordinatorTests` suites.
 //
 
 import XCTest

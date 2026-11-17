@@ -18,7 +18,7 @@ final class BookDetailMetadataHydrationTests: XCTestCase {
 
     private let alternateURL = URL(string: "https://example.org/works/abc")!
 
-    /// Per-test isolated AppContainer (swarm_47883816 work package A).
+    /// Per-test isolated AppContainer.
     /// Replaces ~30 in-test reads of `AppContainer.production().*`.
     private var appContainer: AppContainer!
 

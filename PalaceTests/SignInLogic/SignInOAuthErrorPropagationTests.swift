@@ -1,22 +1,11 @@
-//
 //  SignInOAuthErrorPropagationTests.swift
-//  PalaceTests
 //
-//  HelpSpot 17870 — SAML "patron ID extraction" silent failure.
-//
-//  The OAuth/SAML universal-link redirect handler used to call
-//  `completion(nil, ...)` at three failure exits in
-//  `TPPSignInBusinessLogic+OAuth.swift`. The PalaceAuth consumer
-//  (`TPPSAMLHelper.swift:99-107`) guards `if let error, let errorTitle,
-//  let errorMessage { ... }` — so a nil error swallows the alert path
-//  even when title/message are present, and the patron sees "tap Login,
-//  nothing happens."
-//
-//  These tests pin the synthesised-error shape at each branch and the
-//  parsed-title field-order fix at the payload-error branch. Mutation-gate
-//  target: flipping `completion(error, ...)` back to `completion(nil, ...)`
-//  must fail at least one test per branch.
-//
+//  HelpSpot 17870: SAML patron-ID extraction failures showed no alert. Three
+//  failure exits in `TPPSignInBusinessLogic+OAuth.swift` called
+//  `completion(nil, ...)`, and `TPPSAMLHelper` shows the alert only when the
+//  error is non-nil, so the patron tapped Login and nothing happened. Pins the
+//  synthesised error at each exit (reverting to `completion(nil, ...)` fails a
+//  test per branch) and the parsed-title field order on the payload-error exit.
 
 import XCTest
 import PalaceCatalog

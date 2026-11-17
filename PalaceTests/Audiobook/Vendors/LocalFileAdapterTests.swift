@@ -2,8 +2,8 @@
 //  LocalFileAdapterTests.swift
 //  PalaceTests
 //
-//  Mutation-killing tests for `LocalFileAdapter` — the on-disk manifest
-//  carve-out from pre-swarm `AudiobookLoader.swift` lines 169-207.
+//  Branch tests for `LocalFileAdapter` — the on-disk manifest path carved
+//  out of the original `AudiobookLoader.swift`.
 //
 //  All three collaborators (download center, file reader, token refresher)
 //  are constructor-injected stubs. The test cases drive both branches of
@@ -85,32 +85,10 @@ final class LocalFileAdapterTests: XCTestCase {
         private(set) var callCount: Int = 0
         private(set) var receivedURLs: [URL] = []
 
-        func refreshToken(
-            from fulfillURL: URL,
-            completion: @escaping (MyBooksSimplifiedBearerToken?) -> Void
-        ) {
+        func refreshToken(from fulfillURL: URL) async -> MyBooksSimplifiedBearerToken? {
             callCount += 1
             receivedURLs.append(fulfillURL)
-            // Box the non-Sendable token AND the non-Sendable completion so
-            // both can cross the @Sendable dispatch closure. Test double: the
-            // box is created and consumed on the same serial test flow, so
-            // unchecked Sendable is safe.
-            let box = TokenBox(token: stubbedToken, completion: completion)
-            DispatchQueue.main.async {
-                box.completion(box.token)
-            }
-        }
-
-        /// Test-only carrier that lets a non-Sendable bearer token + completion
-        /// cross a `@Sendable` dispatch closure. Confined to the test's serial
-        /// usage.
-        private final class TokenBox: @unchecked Sendable {
-            let token: MyBooksSimplifiedBearerToken?
-            let completion: (MyBooksSimplifiedBearerToken?) -> Void
-            init(token: MyBooksSimplifiedBearerToken?, completion: @escaping (MyBooksSimplifiedBearerToken?) -> Void) {
-                self.token = token
-                self.completion = completion
-            }
+            return stubbedToken
         }
     }
 
@@ -171,20 +149,16 @@ final class LocalFileAdapterTests: XCTestCase {
 
     // MARK: - resolveManifest
 
-    func testResolveManifest_validJSON_succeeds() {
+    func testResolveManifest_validJSON_succeeds() async {
         let dc = StubDownloadCenter(); dc.stubbedFileURL = manifestURL
         let reader = StubFileReader()
         reader.existsResponse = true
         reader.dataResponse = .success(validManifestData(title: "Disk Book"))
         let adapter = makeAdapter(downloadCenter: dc, fileReader: reader)
 
-        let exp = expectation(description: "resolve from disk")
         var observed: (json: [String: Any], decryptor: DRMDecryptor?)?
-        adapter.resolveManifest(for: makeBook()) { result in
+        let result = await adapter.resolveManifest(for: makeBook())
             if case .success(let value) = result { observed = value }
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: 2.0)
 
         XCTAssertEqual(observed?.json["title"] as? String, "Disk Book",
                        "Parsed disk JSON must propagate through to caller")
@@ -194,7 +168,7 @@ final class LocalFileAdapterTests: XCTestCase {
                        "Adapter read from the URL the download center provided")
     }
 
-    func testResolveManifest_unreadableFile_failsWithManifestParseFailed() {
+    func testResolveManifest_unreadableFile_failsWithManifestParseFailed() async {
         let dc = StubDownloadCenter(); dc.stubbedFileURL = manifestURL
         let reader = StubFileReader()
         reader.existsResponse = true
@@ -204,13 +178,9 @@ final class LocalFileAdapterTests: XCTestCase {
         )
         let adapter = makeAdapter(downloadCenter: dc, fileReader: reader)
 
-        let exp = expectation(description: "unreadable file")
         var observed: AudiobookLoadError?
-        adapter.resolveManifest(for: makeBook()) { result in
+        let result = await adapter.resolveManifest(for: makeBook())
             if case .failure(let err) = result { observed = err }
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: 2.0)
 
         guard case .manifestParseFailed = observed else {
             XCTFail("Throwing reader must map to .manifestParseFailed, got \(String(describing: observed))")
@@ -219,13 +189,12 @@ final class LocalFileAdapterTests: XCTestCase {
     }
 
     /// Bearer-token fulfill URL set → refresher MUST be called BEFORE
-    /// completion. Mutation point: changing `if let fulfillURL = ...` to
-    /// the inverse would skip refresh; this test fails the mutant by
-    /// asserting `refresher.callCount > 0`.
+    /// completion. Inverting `if let fulfillURL = ...` would skip refresh;
+    /// this test catches that by asserting `refresher.callCount > 0`.
     ///
     /// Keychain-dependent because setting `book.bearerTokenFulfillURL`
     /// writes via TPPKeychainVariable. Skip on hosts without Keychain.
-    func testResolveManifest_bearerTokenFulfillURL_refreshesTokenBeforeReturn() throws {
+    func testResolveManifest_bearerTokenFulfillURL_refreshesTokenBeforeReturn() async throws {
         try KeychainAvailability.skipIfUnavailable()
 
         let dc = StubDownloadCenter(); dc.stubbedFileURL = manifestURL
@@ -244,13 +213,9 @@ final class LocalFileAdapterTests: XCTestCase {
         book.bearerTokenFulfillURL = fulfillURL
 
         let adapter = makeAdapter(downloadCenter: dc, fileReader: reader, tokenRefresher: refresher)
-        let exp = expectation(description: "refresh-before-complete")
         var observed: (json: [String: Any], decryptor: DRMDecryptor?)?
-        adapter.resolveManifest(for: book) { result in
+        let result = await adapter.resolveManifest(for: book)
             if case .success(let value) = result { observed = value }
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: 2.0)
 
         XCTAssertEqual(refresher.callCount, 1,
                        "Adapter must invoke token refresh exactly once when fulfill URL is set")
@@ -264,9 +229,9 @@ final class LocalFileAdapterTests: XCTestCase {
 
     /// Bearer-token fulfill URL NOT set → refresher MUST NOT be called.
     /// Companion to the above so the conditional's TRUE/FALSE bifurcation
-    /// is fully pinned. Without this, a mutation that ALWAYS calls
-    /// `refresher.refreshToken(...)` would not be killed.
-    func testResolveManifest_noBearerTokenFulfillURL_skipsRefresh() {
+    /// is fully pinned. Without this, ALWAYS calling
+    /// `refresher.refreshToken(...)` would go unnoticed.
+    func testResolveManifest_noBearerTokenFulfillURL_skipsRefresh() async {
         let dc = StubDownloadCenter(); dc.stubbedFileURL = manifestURL
         let reader = StubFileReader()
         reader.existsResponse = true
@@ -276,13 +241,9 @@ final class LocalFileAdapterTests: XCTestCase {
         // does not set it.
 
         let adapter = makeAdapter(downloadCenter: dc, fileReader: reader, tokenRefresher: refresher)
-        let exp = expectation(description: "no refresh path")
         var observed: (json: [String: Any], decryptor: DRMDecryptor?)?
-        adapter.resolveManifest(for: makeBook()) { result in
+        let result = await adapter.resolveManifest(for: makeBook())
             if case .success(let value) = result { observed = value }
-            exp.fulfill()
-        }
-        wait(for: [exp], timeout: 2.0)
 
         XCTAssertEqual(refresher.callCount, 0,
                        "Adapter must NOT invoke token refresh when fulfill URL is unset")

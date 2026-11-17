@@ -13,6 +13,12 @@ struct HoldsState {
     var isLoading: Bool
     var syncErrorMessage: String?
     var searchQuery: String
+    /// Whether a sync has answered (ended or failed) since this state was
+    /// created. The skeleton is only for the cold start: the registry syncs on
+    /// every visit to the tab, and `HoldsView` swaps the whole list for the
+    /// skeleton while `isLoading` is true, so a later sync must leave what is
+    /// on screen alone.
+    var hasSyncedOnce: Bool
 
     init(
         reservedBooks: [TPPBook] = [],
@@ -20,7 +26,8 @@ struct HoldsState {
         visibleBooks: [TPPBook] = [],
         isLoading: Bool = false,
         syncErrorMessage: String? = nil,
-        searchQuery: String = ""
+        searchQuery: String = "",
+        hasSyncedOnce: Bool = false
     ) {
         self.reservedBooks = reservedBooks
         self.heldBooks = heldBooks
@@ -28,6 +35,14 @@ struct HoldsState {
         self.isLoading = isLoading
         self.syncErrorMessage = syncErrorMessage
         self.searchQuery = searchQuery
+        self.hasSyncedOnce = hasSyncedOnce
+    }
+
+    /// True only when there is nothing to show yet: no holds on screen and no
+    /// sync has answered. `.registryChanged` does not count as an answer, since
+    /// the view model dispatches it from `init` before the registry has loaded.
+    var shouldShowSkeletonForSync: Bool {
+        !hasSyncedOnce && reservedBooks.isEmpty && heldBooks.isEmpty
     }
 }
 
@@ -40,6 +55,8 @@ enum HoldsAction {
     /// legacy `handleSyncFailure` enforced; the reducer keeps them explicit.
     case syncFailed(errorMessage: String?, cached: Bool, anonymous: Bool)
     case registryChanged(held: [TPPBook])
+    /// The current library changed; its first sync is a new first load.
+    case accountChanged
     case searchQueryChanged(String)
     case filterCompleted([TPPBook])
     case dismissSyncError
@@ -66,16 +83,18 @@ enum HoldsReducer {
         switch action {
 
         case .syncBegan:
-            state.isLoading = true
+            state.isLoading = state.shouldShowSkeletonForSync
             state.syncErrorMessage = nil
             return .none
 
         case .syncEnded:
             state.isLoading = false
+            state.hasSyncedOnce = true
             return .none
 
         case .syncFailed(let message, let cached, let anonymous):
             state.isLoading = false
+            state.hasSyncedOnce = true
             // Banner-suppression rules — see HoldsAction doc for context.
             guard !cached, !anonymous else { return .none }
             state.syncErrorMessage = message ?? Strings.HoldsView.syncFailedMessage
@@ -93,6 +112,10 @@ enum HoldsReducer {
             if state.searchQuery.isEmpty {
                 state.visibleBooks = reserved + active
             }
+            return .none
+
+        case .accountChanged:
+            state.hasSyncedOnce = false
             return .none
 
         case .searchQueryChanged(let query):

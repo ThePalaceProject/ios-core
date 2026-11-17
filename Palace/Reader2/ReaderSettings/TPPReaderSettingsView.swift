@@ -101,7 +101,7 @@ struct TPPReaderSettingsView: View {
             }
             .buttonStyle(SettingsButtonStyle(settings: settings))
             .disabled(!settings.canDecreaseFontSize)
-            .accessibility(label: Text("DecreaseFontSize"))
+            .accessibilityLabel(Strings.ReaderFontSize.decrease)
 
             Divider()
                 .frame(height: buttonHeight)
@@ -116,7 +116,7 @@ struct TPPReaderSettingsView: View {
             }
             .buttonStyle(SettingsButtonStyle(settings: settings))
             .disabled(!settings.canIncreaseFontSize)
-            .accessibility(label: Text("IncreaseFontSize"))
+            .accessibilityLabel(Strings.ReaderFontSize.increase)
         }
     }
 
@@ -128,8 +128,11 @@ struct TPPReaderSettingsView: View {
     /// - Returns: Text element
     @ViewBuilder
     func fontSizeText(size: Double) -> some View {
+        // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - the glyph size IS the
+        // control's meaning; scaling it would make small and large read alike.
         Text("A")
             .font(.system(size: size, weight: .medium, design: .rounded))
+            // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
             .accessibilityLabel(String(format: NSLocalizedString("Font size %g", comment: "Font size picker option"), size))
     }
 

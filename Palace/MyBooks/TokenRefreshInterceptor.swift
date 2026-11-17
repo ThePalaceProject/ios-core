@@ -35,29 +35,19 @@ protocol TokenRefreshInterceptorDelegate: AnyObject {
 /// Handles 401 detection, token refresh, SAML re-authentication,
 /// and request retry after credential refresh.
 ///
-/// `@unchecked Sendable` (Swift 6 Wave 1, app-target `targeted` slice): the
-/// interceptor is captured `[weak self]` by the `@Sendable` retry/clean-up
-/// Task closures below, so it must be `Sendable`. The conformance is honest,
-/// not a blanket silence — every stored property is immutable-after-init or
+/// `@unchecked Sendable` because the `@Sendable` retry/clean-up Tasks capture
+/// it `[weak self]`. Every stored property is immutable after init or
 /// main-actor-confined:
-///   • `delegate` — `weak var`, wired exactly once on the main actor right
-///     after construction (`MyBooksDownloadCenter` sets it post-`super.init()`)
-///     and read on the main actor at every live retry/clean-up site (inside
-///     `@MainActor` methods or `MainActor.run` bodies). The legacy nonisolated
-///     entry points (`handleProblem`, `handleBorrowInvalidCredentials`) read it
-///     synchronously off-main, but they have no production callers (the live
-///     path is `DownloadAuthRetryHandler.handleAuthFailureIfApplicable`) and are
-///     exercised only by `@MainActor` test classes; `weak var` loads/ARC-zeroing
-///     are runtime-serialized regardless. The crucial invariant: the non-Sendable
-///     `delegate`/`bookRegistry` values are NEVER captured directly by a
-///     `@Sendable` closure — they are re-resolved through `self.delegate` on the
-///     main actor at use time.
-///   • `reauthenticator` — `let` (immutable after init).
-///   • `userRetryTracker` / `authCoordinator` / `currentAccountHostsProvider`
-///     — `let`; `authCoordinator` is an `actor`, the host provider is `@Sendable`.
-///   • `hasAttemptedAuthentication` / `isRequestingCredentials` — `@MainActor`
-///     isolated (the only mutable scalar state; serialized by the main actor).
-/// `final`, so the assertion can't be defeated by a subclass.
+///   • `delegate` — `weak var`, set once on the main actor after construction
+///     and read on the main actor at every live site. The non-Sendable
+///     `delegate`/`bookRegistry` values are never captured by a `@Sendable`
+///     closure; they are re-resolved through `self.delegate` at use time. The
+///     nonisolated `handleProblem` / `handleBorrowInvalidCredentials` read it
+///     off-main but have no production callers.
+///   • The remaining `let`s are immutable; `authCoordinator` is an actor and the
+///     host provider is `@Sendable`.
+///   • `hasAttemptedAuthentication` / `isRequestingCredentials` are `@MainActor`.
+/// `final`, so a subclass cannot break the assertion.
 final class TokenRefreshInterceptor: @unchecked Sendable {
 
     // MARK: - Properties
@@ -70,28 +60,18 @@ final class TokenRefreshInterceptor: @unchecked Sendable {
     let reauthenticator: Reauthenticator
     private let userRetryTracker: UserRetryTracker
 
-    /// swarm_66819d80 Module C: auth-refresh coordinator. When non-nil,
-    /// the SAML-reauth + generic-browser-reauth dispatch sites inside
-    /// `handleDownloadFailureWithAuthCheck` and `handleProblem` route
-    /// through the coordinator's single seam instead of carrying
-    /// per-call-site SAML vs OIDC vs generic branching.
+    /// Auth-refresh coordinator. When non-nil, the SAML and generic-browser
+    /// reauth sites route through it instead of branching per call site.
     ///
-    /// **OIDC silent-reauth decision (Option A from the contract):** the
-    /// coordinator does NOT drive `ASWebAuthenticationSession.start()`
-    /// directly — that's an in-app system browser session, while the
-    /// coordinator presents the standard sign-in modal. To preserve the
-    /// silent-OIDC dance (which can succeed without user interaction
-    /// when the IdP session is still live), the OIDC branch keeps the
-    /// existing `triggerOIDCReauth` path AS-IS for the SUCCESS case.
-    /// Only the OIDC FAILURE fallback inside `triggerOIDCReauth` could
-    /// route through the coordinator, but the existing fallback already
-    /// hops back to `triggerBrowserReauth` which then routes through
-    /// the coordinator on the second pass — so no extra wiring is
-    /// needed at this layer for OIDC.
+    /// OIDC does not: the coordinator presents the sign-in modal and cannot
+    /// drive `ASWebAuthenticationSession`, which lets OIDC reauth succeed
+    /// silently while the IdP session is live. `triggerOIDCReauth`'s failure
+    /// fallback goes through `triggerBrowserReauth`, which reaches the
+    /// coordinator anyway.
     ///
-    /// Per-book download state-machine transitions (`.SAMLStarted`,
-    /// `.downloadNeeded`) and the `startDownload` retry stay at the call
-    /// site — the coordinator only owns credentials refresh.
+    /// Per-book state transitions (`.SAMLStarted`, `.downloadNeeded`) and the
+    /// `startDownload` retry stay at the call site; the coordinator only owns
+    /// credential refresh.
     private let authCoordinator: AuthCoordinator?
 
     /// Foreign-host guard provider. Returns the set of lowercased hosts
@@ -100,8 +80,7 @@ final class TokenRefreshInterceptor: @unchecked Sendable {
     /// short-circuits BEFORE marking credentials stale or dispatching
     /// the coordinator. `nil` provider disables the guard (legacy
     /// behavior). See `AuthErrorClassifier.currentAccountHostsProvider`
-    /// for rationale + wall-failure
-    /// 2026-06-05-pr1018-icarus-cross-host-logout.md.
+    /// for rationale (PR #1018 cross-host logout).
     private let currentAccountHostsProvider: (@Sendable () -> Set<String>?)?
 
     // MARK: - Init
@@ -138,17 +117,13 @@ final class TokenRefreshInterceptor: @unchecked Sendable {
         let originalURL = task.originalRequest?.url
         let httpResponse = task.response as? HTTPURLResponse
 
-        // Foreign-host guard (Bug A fix — PR #1018 cross-host regression).
-        // A 401 from a host outside the current account's auth surface
-        // is never an expiry of the current account's session — short-
-        // circuit BEFORE marking stale or dispatching the coordinator.
-        // The base-domain `isSameDomain` check inside
-        // `indicatesAuthenticationNeedsRefresh` does NOT catch this
-        // because two libraries can share base `palaceproject.io` (e.g.
-        // `gorgon.staging.palaceproject.io` vs
-        // `minotaur.dev.palaceproject.io`). Nil/empty hosts set = legacy
-        // behavior (cold launch). See wall-failure
-        // 2026-06-05-pr1018-icarus-cross-host-logout.md.
+        // Foreign-host guard (PR #1018 cross-host logout). A 401 from a host
+        // outside the current account's auth surface is never an expiry of
+        // this account's session, so short-circuit before marking stale or
+        // dispatching the coordinator. The base-domain `isSameDomain` check in
+        // `indicatesAuthenticationNeedsRefresh` misses this because libraries
+        // can share `palaceproject.io`. A nil/empty host set (cold launch)
+        // skips the guard.
         if httpResponse?.statusCode == 401,
            let host = originalURL?.host?.lowercased(),
            let hosts = currentAccountHostsProvider?(),
@@ -167,11 +142,9 @@ final class TokenRefreshInterceptor: @unchecked Sendable {
 
                 switch reauthStrategy {
                 case .browser:
-                    // swarm_66819d80 Module C: route SAML + generic
-                    // browser through the coordinator (modal-routing for
-                    // browser-mechanism). OIDC keeps its silent
-                    // ASWebAuthenticationSession dance as-is per Option A
-                    // — the coordinator can't drive that surface.
+                    // SAML and generic browser auth go through the coordinator;
+                    // OIDC keeps its silent ASWebAuthenticationSession path,
+                    // which the coordinator cannot drive.
                     if userAccount.authDefinition?.isOidc == true {
                         Log.info(#file, "OIDC session expired - attempting silent re-auth via ASWebAuthenticationSession")
                         triggerOIDCReauth(for: book, task: task)
@@ -220,8 +193,7 @@ final class TokenRefreshInterceptor: @unchecked Sendable {
         if let problemDoc = problemDoc, problemDoc.type == TPPProblemDocument.TypeNoActiveLoan {
             if reauthStrategy == .browser && hasCredentials {
                 userAccount.markCredentialsStale()
-                // swarm_66819d80 Module C: same coordinator routing as
-                // the 401 branch above. OIDC stays on its own silent path.
+                // Same routing as the 401 branch above.
                 if userAccount.authDefinition?.isOidc == true {
                     Log.info(#file, "OIDC: 'no-active-loan' treating as session expiry")
                     triggerOIDCReauth(for: book, task: task)
@@ -335,9 +307,7 @@ final class TokenRefreshInterceptor: @unchecked Sendable {
         }
         #endif
 
-        // swarm_d8f11437 Module A wave 4 — migrated to AppContainer-
-        // injected sheet presenter. Single-flight `isRequestingCredentials`
-        // dedupe at line 265 still owns the concurrent-401 guard.
+        // `isRequestingCredentials` above dedupes concurrent 401s.
         AppContainer.production().signInModalSheetPresenter
             .presentSignInModalForCurrentAccount { [weak self] in
             Task { @MainActor [weak self] in
@@ -410,20 +380,15 @@ final class TokenRefreshInterceptor: @unchecked Sendable {
 
         // For browser-based auth (SAML/OIDC) with expired session, trigger re-auth
         if authDef?.reauthStrategy == .browser && hasCredentials {
-            // swarm_66819d80 Module C: route SAML cookie-expiry + generic
-            // browser-expiry through the coordinator. OIDC stays out of
-            // scope here (the handleProblem flow doesn't dispatch OIDC
-            // separately like handleDownloadFailureWithAuthCheck does;
-            // OIDC inherits the SAML branch behavior pre-Module-C).
+            // SAML cookie expiry and generic browser expiry go through the
+            // coordinator. Unlike handleDownloadFailureWithAuthCheck, this flow
+            // does not special-case OIDC.
             if let coordinator = self.authCoordinator {
                 let isSaml = authDef?.isSaml == true
                 Log.info(#file, "handleProblem: browser-based reauth dispatched through AuthCoordinator (isSaml=\(isSaml))")
                 // `@MainActor` Task so the non-Sendable `delegate`/`bookRegistry`
-                // are re-resolved on the main actor (via `self.delegate`) rather
-                // than captured across the `@Sendable` Task boundary. The
-                // `await` hops to the state-manager actors and the coordinator
-                // actor suspend the main actor without blocking it — same
-                // observable ordering as the prior explicit `MainActor.run`.
+                // are re-resolved on the main actor rather than captured across
+                // the `@Sendable` Task boundary.
                 spawnAuthDispatch { [weak self] in
                     guard let self, let delegate = self.delegate else { return }
                     let bookRegistry = delegate.bookRegistry
@@ -522,7 +487,6 @@ final class TokenRefreshInterceptor: @unchecked Sendable {
 
     // MARK: - Private Helpers
 
-    /// swarm_66819d80 Module C: coordinator-routed reauth dispatch.
     // MARK: - Test-only deterministic-join seam for reauth dispatch
 
     /// XCTest-process detector (mirrors `AccountsManager`). Gates all retention
@@ -531,17 +495,13 @@ final class TokenRefreshInterceptor: @unchecked Sendable {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
 
     private let _authDispatchLock = NSLock()
-    /// Top-level reauth-dispatch `@MainActor` tasks, retained ONLY under XCTest so
-    /// a test can join the ACTUAL dispatch (coordinator refresh → modal present →
-    /// per-book state flip → retry) instead of a fixed actor-hop barrier that
-    /// starves under parallel-CI clones. Behavior-identical in RELEASE: the list
-    /// never populates off-XCTest and production never awaits it.
+    /// Reauth-dispatch tasks, retained only under XCTest so a test can join the
+    /// actual dispatch instead of a fixed actor-hop barrier that starves under
+    /// parallel CI. Never populated in production.
     private var _authDispatchTasks: [Task<Void, Never>] = []
 
-    /// Spawns a `@MainActor` reauth-dispatch task and — under XCTest only — retains
-    /// its handle for `_awaitAuthDispatchForTesting()`. Same `Task { @MainActor in
-    /// … }` spawn, same body, same timing as the bare spawn it replaces; the only
-    /// addition is the gated append, so RELEASE behavior is byte-identical.
+    /// Spawns a `@MainActor` reauth-dispatch task and, under XCTest only, retains
+    /// its handle for `_awaitAuthDispatchForTesting()`.
     @discardableResult
     private func spawnAuthDispatch(_ body: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
         let task = Task { @MainActor in await body() }

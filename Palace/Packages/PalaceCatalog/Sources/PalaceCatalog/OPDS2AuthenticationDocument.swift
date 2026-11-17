@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import PalaceNetwork
 
 public enum OPDS2LinkRel: String, Sendable {
     case passwordReset = "http://librarysimplified.org/terms/rel/patron-password-reset"
@@ -60,6 +61,6 @@ public struct OPDS2AuthenticationDocument: Codable, Sendable {
         let jsonDecoder = JSONDecoder()
         jsonDecoder.keyDecodingStrategy = .convertFromSnakeCase
 
-        return try jsonDecoder.decode(OPDS2AuthenticationDocument.self, from: data)
+        return try jsonDecoder.decodeGuarded(OPDS2AuthenticationDocument.self, from: data)
     }
 }

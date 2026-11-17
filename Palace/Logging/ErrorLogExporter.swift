@@ -26,10 +26,20 @@ actor ErrorLogExporter {
     private let defaultLogDays: Int = 7
     private let accountsManager: AccountsManager
     private let bookRegistry: TPPBookRegistryProvider
+    /// The library and hashed patron reference for the device-info block, the
+    /// same context the problem-report emails carry (PP-4818).
+    private let supportContext: @MainActor @Sendable () -> SupportReportContext
 
-    private init(accountsManager: AccountsManager = AppContainer.production().accountsManager, bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry) {
+    init(
+        accountsManager: AccountsManager = AppContainer.production().accountsManager,
+        bookRegistry: TPPBookRegistryProvider = AppContainer.production().bookRegistry,
+        supportContext: @escaping @MainActor @Sendable () -> SupportReportContext = {
+            AppContainer.production().accountsManager.problemReportContext(forLibrary: nil)
+        }
+    ) {
         self.accountsManager = accountsManager
         self.bookRegistry = bookRegistry
+        self.supportContext = supportContext
     }
 
     // MARK: - Public API
@@ -295,10 +305,8 @@ actor ErrorLogExporter {
 
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
         let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
-        let libraryName = accountsManager.currentAccount?.name ?? "No library selected"
-        let patronIdentifier = await MainActor.run {
-            AppContainer.production().accountsManager.currentUserAccount.authorizationIdentifier
-        }
+        let context = await supportContext()
+        let libraryName = context.libraryName ?? "No library selected"
 
         var deviceInfo = """
     ---
@@ -309,7 +317,7 @@ actor ErrorLogExporter {
     Palace Version: \(appVersion) (\(buildNumber))
     Library: \(libraryName)
     Device ID: \(deviceID)
-    Patron ID: \(patronIdentifier ?? "Not signed in")
+    \(context.patronReferenceLine ?? "Patron reference: not signed in")
     """
 
         // Add memory and storage info

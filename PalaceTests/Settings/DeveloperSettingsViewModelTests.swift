@@ -50,6 +50,21 @@ final class DeveloperSettingsEngineeringTierTests: XCTestCase {
             DeveloperSettingsViewModel.shouldShowEngineeringTools(receiptURL: url, fileExists: { _ in false }),
             "A 'receipt'-named URL whose file is absent is a dev/sim build — tools must show")
     }
+
+    /// PP-5382: staff check test-mode libraries in the App Store build, so that
+    /// build keeps the hidden-libraries toggle and nothing else.
+    func testLibrarySettingsRows_AppStoreBuild_ShowsOnlyHiddenLibraries() {
+        XCTAssertEqual(
+            DeveloperSettingsViewModel.librarySettingsRows(showEngineeringTools: false),
+            [.hiddenLibraries])
+    }
+
+    /// TestFlight, simulator and debug builds keep every library setting.
+    func testLibrarySettingsRows_EngineeringBuild_ShowsEveryLibrarySetting() {
+        XCTAssertEqual(
+            DeveloperSettingsViewModel.librarySettingsRows(showEngineeringTools: true),
+            [.hiddenLibraries, .lcpPassphraseManually])
+    }
 }
 
 @MainActor
@@ -60,11 +75,15 @@ final class DeveloperSettingsViewModelOverrideTests: XCTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
-        // Constructing the VM spins up the real settings/accounts graph via
-        // `.production()`, which can round-trip TPPKeychain — skip on CI hosts
-        // where SecItem returns -34018, same gate the sibling VM tests use. The
-        // feature-flag write-through is exercised where these DO run (local,
-        // where mutation is measured).
+        // `makeViewModel()` builds against a TEST container, not `.production()`,
+        // but `AccountsManager` can still round-trip TPPKeychain, so this guards
+        // against SecItem -34018.
+        //
+        // It is a safety net, NOT a CI carve-out: `b57b3af43` (PP-5058) signs
+        // the test host ad-hoc and `CODE_SIGNING_ALLOWED=YES`, so the keychain
+        // works on CI and these tests report real verdicts there. An earlier
+        // version of this comment said they only ran locally, which would have
+        // made the PP-4963 toggle gate below look unenforced on the board.
         try KeychainAvailability.skipIfUnavailable()
         suiteName = "test.DeveloperSettings.\(ProcessInfo.processInfo.globallyUniqueString)"
         testDefaults = UserDefaults(suiteName: suiteName)
@@ -75,11 +94,38 @@ final class DeveloperSettingsViewModelOverrideTests: XCTestCase {
         super.tearDown()
     }
 
+    /// Builds the VM against a TEST container, never `AppContainer.production()`.
+    ///
+    /// The init defaults four dependencies to `.production()` and `featureFlags`
+    /// to `.shared`. Taking those defaults constructs a real `AccountsManager`,
+    /// which starts the background `loadCatalogs` Task whenever
+    /// `deferInitialLoadCatalogsForTesting` is false — and
+    /// `AppContainerResetTests` sets it to false on purpose to exercise the
+    /// un-deferred path. Full-suite, that background fetch raced this class and
+    /// hung `AppContainerResetTests` for the full 120s timeout (CI run
+    /// 35355866267). `makeTestAppContainer()` pins the flag before building the
+    /// manager, so this class no longer contributes that race.
+    ///
+    /// Seeding from a test-scoped `RemoteFeatureFlags` also stops the `@Published`
+    /// mirrors being initialised from `UserDefaults.standard` while the assertions
+    /// read `testDefaults` — the write and the read now address one store.
+    private func makeViewModel(debugSettings: DebugSettings? = nil) -> DeveloperSettingsViewModel {
+        let container = makeTestAppContainer()
+        return DeveloperSettingsViewModel(
+            settings: container.settings,
+            accountsManager: container.accountsManager,
+            bookRegistry: container.bookRegistry,
+            debugSettings: debugSettings ?? container.debugSettings,
+            featureFlags: RemoteFeatureFlags(defaults: testDefaults),
+            overrideDefaults: testDefaults
+        )
+    }
+
     // Each feature-flag toggle must WRITE THROUGH to the RemoteFeatureFlags
     // local-override key in the injected store — the exact key the app reads.
 
     func testTriageBotToggle_writesThroughToLocalOverrideKey() {
-        let vm = DeveloperSettingsViewModel(overrideDefaults: testDefaults)
+        let vm = makeViewModel()
         let start = testDefaults.object(forKey: RemoteFeatureFlags.triageBotLocalOverrideKey) as? Bool
         vm.triageBotEnabled = !(vm.triageBotEnabled)
         XCTAssertEqual(
@@ -90,7 +136,7 @@ final class DeveloperSettingsViewModelOverrideTests: XCTestCase {
     }
 
     func testInAppPlaybackNavToggle_writesThroughToLocalOverrideKey() {
-        let vm = DeveloperSettingsViewModel(overrideDefaults: testDefaults)
+        let vm = makeViewModel()
         vm.inAppPlaybackNavEnabled = true
         XCTAssertEqual(
             testDefaults.object(forKey: RemoteFeatureFlags.inAppPlaybackNavLocalOverrideKey) as? Bool, true,
@@ -102,7 +148,7 @@ final class DeveloperSettingsViewModelOverrideTests: XCTestCase {
     }
 
     func testAppRatingForceEligibleToggle_writesThroughToLocalOverrideKey() {
-        let vm = DeveloperSettingsViewModel(overrideDefaults: testDefaults)
+        let vm = makeViewModel()
         vm.appRatingForceEligible = true
         XCTAssertEqual(
             testDefaults.object(forKey: RemoteFeatureFlags.appRatingForceEligibleLocalOverrideKey) as? Bool, true,
@@ -113,8 +159,103 @@ final class DeveloperSettingsViewModelOverrideTests: XCTestCase {
     // override outside tests, so the Settings section it gates was unreachable
     // in any build. These pin the toggle that makes it reachable.
 
+    /// PP-4963 — this `didSet` is the ONLY production writer of the flag the
+    /// position trace reads, and nulling its body left 121 tests green.
+    ///
+    /// Without it the instrument is unreachable in the field: the toggle moves,
+    /// nothing is stored, the recorder's `diagnosticsEnabled` closure keeps
+    /// reading false, and no trace is ever written. By this change's own thesis
+    /// an empty fleet reads as "no defect" — so the failure mode is the silent
+    /// false negative the whole instrument exists to remove, arriving at the
+    /// outermost layer where none of its own tests look.
+    ///
+    /// Side loading shipped dark in 3.3.0 for exactly this shape: an override
+    /// with no writer outside test.
+    func testAudiobookPositionTraceToggle_writesThroughToDebugSettings() {
+        let scoped = DebugSettings(defaults: testDefaults)
+        let vm = makeViewModel(debugSettings: scoped)
+
+        vm.audiobookPositionTraceEnabled = true
+        XCTAssertTrue(scoped.isAudiobookPositionTraceEnabled,
+                      "turning the trace ON must persist — otherwise a deliberate "
+                      + "trace run records nothing and reads as a clean result")
+
+        vm.audiobookPositionTraceEnabled = false
+        XCTAssertFalse(scoped.isAudiobookPositionTraceEnabled,
+                       "and turning it OFF must persist too; that write is what "
+                       + "triggers the purge of the positions it recorded")
+    }
+
+    /// The write-through only matters if it lands where the RECORDER looks.
+    /// Asserting the toggle alone would pass even against a writer aimed at a
+    /// key nothing consults — the original side-loading defect's shape.
+    ///
+    /// It calls `AudiobookPositionTraceRecorder.defaultDiagnosticsEnabled` —
+    /// the same function the shipped init defaults to — so gutting that reader
+    /// breaks this test. Asserting against a locally re-implemented copy does
+    /// not: that is what the first version of this test did, and it passed
+    /// against a production closure returning `false` unconditionally.
+    ///
+    /// What it does NOT cover, stated so the name is not read as more than it
+    /// is: both sides here are pointed at the same injected suite, so it pins
+    /// the WRITE-then-READ contract, not the production wiring that makes those
+    /// two stores the same one. `AppContainer.swift:776` hands Settings a
+    /// `DebugSettings()` over `.standard`, which is also what
+    /// `defaultDiagnosticsEnabled()` defaults to — repoint that and the toggle
+    /// stops reaching the recorder with every test here still green. Measured
+    /// in review. That layer needs its own test and does not have one.
+    func testAudiobookPositionTraceToggle_isTheFlagTheRecorderActuallyReads() {
+        let scoped = DebugSettings(defaults: testDefaults)
+        let vm = makeViewModel(debugSettings: scoped)
+        // The recorder's OWN reader, not a copy of it. Calling
+        // `AudiobookPositionTraceRecorder.defaultDiagnosticsEnabled` is what makes
+        // this test's name true: an earlier version re-implemented the same
+        // expression here and passed with the production closure gutted to
+        // `{ false }`.
+        let asTheRecorderReadsIt = {
+            AudiobookPositionTraceRecorder.defaultDiagnosticsEnabled(defaults: self.testDefaults)
+        }
+
+        vm.audiobookPositionTraceEnabled = true
+        XCTAssertTrue(asTheRecorderReadsIt(),
+                      "the recorder must see the toggle a tester just moved")
+
+        vm.audiobookPositionTraceEnabled = false
+        XCTAssertFalse(asTheRecorderReadsIt())
+    }
+
+    /// The row must show the stored state on open. Without the init read-back
+    /// the switch renders OFF over a trace that is ON, and a tester toggling it
+    /// to "turn it on" silently turns it off.
+    /// PP-5285: the cover-labels toggle persists to the setting the cover reads.
+    func testCoverLabelsToggle_writesThroughToDebugSettings() {
+        let scoped = DebugSettings(defaults: testDefaults)
+        let vm = makeViewModel(debugSettings: scoped)
+
+        vm.coverFormatAndDRMLabelsEnabled = true
+        XCTAssertTrue(scoped.showsCoverFormatAndDRMLabels)
+
+        vm.coverFormatAndDRMLabelsEnabled = false
+        XCTAssertFalse(scoped.showsCoverFormatAndDRMLabels)
+    }
+
+    func testCoverLabelsToggle_seedsFromStoredStateOnInit() {
+        let scoped = DebugSettings(defaults: testDefaults)
+        scoped.showsCoverFormatAndDRMLabels = true
+
+        XCTAssertTrue(makeViewModel(debugSettings: scoped).coverFormatAndDRMLabelsEnabled)
+    }
+
+    func testAudiobookPositionTraceToggle_seedsFromStoredStateOnInit() {
+        let scoped = DebugSettings(defaults: testDefaults)
+        scoped.isAudiobookPositionTraceEnabled = true
+
+        XCTAssertTrue(makeViewModel(debugSettings: scoped).audiobookPositionTraceEnabled,
+                      "the view model must read the stored value at init, not default to false")
+    }
+
     func testSideLoadingToggle_writesThroughToLocalOverrideKey() {
-        let vm = DeveloperSettingsViewModel(overrideDefaults: testDefaults)
+        let vm = makeViewModel()
         vm.sideLoadingEnabled = true
         XCTAssertEqual(
             testDefaults.object(forKey: RemoteFeatureFlags.sideLoadingLocalOverrideKey) as? Bool, true,
@@ -129,7 +270,7 @@ final class DeveloperSettingsViewModelOverrideTests: XCTestCase {
     /// `isSideLoadingEnabled` reads. Asserting the toggle alone would pass even
     /// if the VM wrote to a key nothing consults — the original defect's shape.
     func testSideLoadingToggle_isTheKeyTheFlagReaderConsults() {
-        let vm = DeveloperSettingsViewModel(overrideDefaults: testDefaults)
+        let vm = makeViewModel()
         let flags = RemoteFeatureFlags(defaults: testDefaults)
 
         vm.sideLoadingEnabled = true

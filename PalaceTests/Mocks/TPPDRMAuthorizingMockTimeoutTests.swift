@@ -1,32 +1,9 @@
 //
-//  TPPDRMAuthorizingMockTimeoutTests.swift
-//  PalaceTests
-//
-//  Proves the deauthorize wait ENDS instead of hanging.
-//
-//  This test exists because the guard was written three times and the first two
-//  could not report.
-//
-//  1. `_awaitDeauthorizeCalledForTesting` was originally an unbounded
-//     `withCheckedContinuation`. When a production change stopped reaching
-//     `deauthorize`, it held a run open for ten hours at 0% CPU.
-//  2. The first repair raced that continuation against `Task.sleep` inside a
-//     `withTaskGroup` — which cannot work, because the group awaits every child
-//     before returning and an unresumed `CheckedContinuation` does not observe
-//     cancellation. The timeout leg won, the group could not drain, and the call
-//     hung exactly as before with its `XCTFail` unreachable.
-//  3. The polling rewrite fixed the hang, but this test still could not prove
-//     it. It drove the ASSERTING wrapper under `XCTExpectFailure`, and that is
-//     order-dependent: `XCTExpectFailure` installs an issue matcher on the
-//     current execution context, while the `XCTFail` it is meant to absorb is
-//     reached after an `await` that may resume on another thread. Run alone the
-//     test passed; in a fifteen-suite run the same code failed with "Expected
-//     failure ... but none recorded". A proof with two verdicts is not a proof.
-//
-//  So the proof now drives `_awaitDeauthorizeCalledOrTimeout`, which RETURNS its
-//  verdict rather than reporting it. No expected-failure machinery, no thread
-//  affinity, and the assertion is about the value the wait produced.
-//
+//  Proves the deauthorize wait ends instead of hanging. An unbounded continuation
+//  once held a run open for hours when `deauthorize` stopped being reached, and a
+//  task-group timeout cannot cancel an unresumed continuation. An
+//  `XCTExpectFailure`-based proof was order-dependent across threads, so this
+//  drives `_awaitDeauthorizeCalledOrTimeout`, which returns its verdict.
 //  A regression hangs this test rather than the whole suite.
 //
 

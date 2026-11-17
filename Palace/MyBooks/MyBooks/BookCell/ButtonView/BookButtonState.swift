@@ -31,7 +31,7 @@ enum BookButtonState: Equatable, CaseIterable {
 }
 
 extension BookButtonState {
-    func buttonTypes(book: TPPBook, previewEnabled: Bool = true) -> [BookButtonType] {
+    func buttonTypes(book: TPPBook, previewEnabled: Bool = true, now: Date = Date()) -> [BookButtonType] {
         var buttons = [BookButtonType]()
 
         switch self {
@@ -46,7 +46,7 @@ extension BookButtonState {
                 buttons.append(book.isAudiobook ? .audiobookSample : .sample)
             }
         case .holding, .holdingFrontOfQueue:
-            if isHoldReady(book: book) {
+            if BookButtonMapper.isBorrowableReadyHold(book.defaultAcquisition?.availability, now: now) {
                 buttons = [.get, .cancelHold]
             } else {
                 buttons.append(.manageHold)
@@ -57,7 +57,7 @@ extension BookButtonState {
             }
 
         case .managingHold:
-            if isHoldReady(book: book) {
+            if BookButtonMapper.isBorrowableReadyHold(book.defaultAcquisition?.availability, now: now) {
                 buttons = [.get, .cancelHold]
             } else {
                 buttons = [.cancelHold]
@@ -126,25 +126,6 @@ extension BookButtonState {
         }
 
         return buttons
-    }
-
-    private func isHoldReady(book: TPPBook) -> Bool {
-        guard let availability = book.defaultAcquisition?.availability else { return false }
-
-        var isReady = false
-        availability.match(unavailable: { _ in
-            isReady = false
-        }, limited: { _ in
-            isReady = false
-        }, unlimited: { _ in
-            isReady = false
-        }, reserved: { _ in
-            isReady = false  // Still waiting in queue
-        }, ready: { _ in
-            isReady = true   // Hold is ready to borrow!
-        })
-
-        return isReady
     }
 }
 

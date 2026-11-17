@@ -21,7 +21,7 @@ struct FontPickerView: View {
                 ForEach(FontCategory.allCases, id: \.self) { category in
                     let fonts = availableFonts.filter { $0.category == category }
                     if !fonts.isEmpty {
-                        Section(header: Text(category.rawValue).accessibilityAddTraits(.isHeader)) {
+                        Section(header: Text(category.displayName).accessibilityAddTraits(.isHeader)) {
                             ForEach(fonts) { font in
                                 FontRow(
                                     font: font,
@@ -55,7 +55,7 @@ private struct FontRow: View {
     let isSelected: Bool
     let action: () -> Void
 
-    // accesslint:disable A11Y.SWIFTUI.DYNAMIC_TYPE - Intentional fixed size for font preview
+    // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - Intentional fixed size for font preview
     var body: some View {
         Button(action: action) {
             HStack {
@@ -68,6 +68,7 @@ private struct FontRow: View {
                         .font(Font(font.uiFont(size: 13)))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                        // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
                 }
 
                 Spacer()

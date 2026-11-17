@@ -5,7 +5,7 @@
 //  Tests the StreamingReaderViewModel state machine + progress-store wiring
 //  for the new WKWebView-based streaming reader (PP-4161).
 //
-//  Contract checks per .forgeos/swarms/swarm_c2b95c85/contracts/B-StreamingReader.md:
+//  Contract checks:
 //    1. progress save on dismiss
 //    2. progress restore on open
 //    3. malformed saved state safe handling
@@ -155,9 +155,8 @@ final class StreamingReaderViewModelTests: XCTestCase {
 
     // MARK: - State-machine round-trip
 
-    /// Drives the full lifecycle through the production seam — required by
-    /// CLAUDE.md "State-machine wiring tests must exercise round-trips, not
-    /// just transitions." The test seeds NO saved progress, opens the VM
+    /// Drives the full lifecycle through the production seam as a round-trip,
+    /// not a single transition. The test seeds NO saved progress, opens the VM
     /// (transitions through loading→ready), navigates + dismisses, then
     /// constructs a SECOND VM with the same store and asserts the persisted
     /// offset round-trips back through `read(forBookID:)`.

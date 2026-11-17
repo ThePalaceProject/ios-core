@@ -2,26 +2,12 @@
 //  TPPBookRegistryRebuildRefusalContractTests.swift
 //  PalaceTests
 //
-//  God-class decomposition Wave 2b — the INV-1 rebuild-window save-refusal
-//  contract for `BookRegistrySync.save(for:serverAuthoritative:)`.
-//
-//  INV-1 (Reliability WS-B): after a corrupt load leaves the in-memory shelf
-//  empty (quarantining the corrupt primary, `needsRebuildFromServer == true`), a
-//  NON-authoritative empty save MUST be REFUSED so it cannot overwrite the
-//  last-good `.bak` (and never materializes a valid-empty primary that erases the
-//  patron's shelf) before an authoritative server sync repopulates it. An
-//  AUTHORITATIVE empty save (the loans-feed reconciliation result) is ALLOWED and
-//  CLEARS the rebuild flag.
-//
-//  This pins the ordered DECISION sequence — refuse-then-allow — not just a single
-//  terminal outcome. The two decisions are recorded into a `CallLog` and snapshot;
-//  a mutant that inverts the guard (persists the non-authoritative empty, or
-//  refuses the authoritative one, or fails to clear/keep the flag) drifts the
-//  snapshot. Explicit disk/flag assertions back the snapshot up.
-//
-//  Distinct from the OUTCOME-level INV-1 tests already in BookRegistrySyncTests
-//  (which assert each half in isolation): this locks the SEQUENCE across a single
-//  rebuild window so a reorder or an early flag-clear is caught.
+//  Pins INV-1 for `BookRegistrySync.save(for:serverAuthoritative:)`: after a corrupt
+//  load (`needsRebuildFromServer == true`), a NON-authoritative empty save is refused
+//  so it cannot overwrite the last-good `.bak` and erase the patron's shelf; an
+//  AUTHORITATIVE empty save is allowed and clears the flag. Records the
+//  refuse-then-allow SEQUENCE across one rebuild window; BookRegistrySyncTests
+//  covers each half alone.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

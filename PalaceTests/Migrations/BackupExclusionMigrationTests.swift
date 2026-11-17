@@ -59,9 +59,8 @@ final class BackupExclusionMigrationTests: XCTestCase {
     func test_run_continuesAfterMissingRoot_doesNotPoisonSubsequentRoots() throws {
         // Multi-root call where the first root does not exist (e.g. a fresh
         // install with no audiobook downloads yet). The walk must skip the
-        // missing root cleanly AND still flag entries under the next root.
-        // This replaces a no-positive-assertion "doesn't crash" test that
-        // could not catch a mutant that stripped the missing-root guard.
+        // missing root cleanly AND still flag entries under the next root,
+        // so dropping the missing-root guard fails here.
         let missingRoot = sandbox.appendingPathComponent("does-not-exist-\(UUID())")
         let file = sandbox.appendingPathComponent("file.txt")
         try Data().write(to: file)
@@ -73,11 +72,9 @@ final class BackupExclusionMigrationTests: XCTestCase {
     }
 
     func test_run_flagsFilesAddedBetweenInvocations() throws {
-        // The thin "isIdempotent" assertion (run twice, check final state)
-        // had limited mutation surface because the flag is monotonic. This
-        // tightens it: add a NEW file between runs and verify the second
-        // run flags it. A mutant that cached "already done" state on the
-        // first invocation would leave the new file unflagged and fail.
+        // The flag is monotonic, so "run twice, check final state" proves
+        // little. Add a NEW file between runs and verify the second run
+        // flags it; caching "already done" state would leave it unflagged.
         // This is more reliable than clearing-and-reflagging because
         // setResourceValues(.isExcludedFromBackup = false) does not
         // consistently remove the underlying xattr across iOS versions.

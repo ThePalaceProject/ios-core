@@ -24,6 +24,11 @@ import PalaceLogging
   @objc public private(set) var updated: Date?
   @objc public private(set) var licensor: NSDictionary?
   @objc public private(set) var authorizationIdentifier: String?
+  /// One element per `entry` that `TPPOPDSEntry(xml:)` rejected: its `id`
+  /// text, or nil when the entry has none. A loans sync must not read a
+  /// rejected entry as a loan that ended (PP-5452).
+  // PUBLIC_INTENT: read by PalaceBookRegistry and the app target's loans sync.
+  public private(set) var unparsedEntryIdentifiers: [String?] = []
 
   /// Feed type, derived from `entries`. Computed once during init and never
   /// mutated afterward (the previous lazy `_type`/`typeIsCached` cache mutated
@@ -92,14 +97,18 @@ import PalaceLogging
     updated = updatedDate
 
     var parsedEntries = [TPPOPDSEntry]()
+    var rejectedEntryIdentifiers = [String?]()
     for entryXML in feedXML.childrenWithName("entry") {
       guard let entry = TPPOPDSEntry(xml: entryXML) else {
-        Log.log("Ignoring malformed 'entry' element.")
+        let rejectedID = entryXML.firstChild(withName: "id")?.value
+        Log.log("Ignoring malformed 'entry' element (id: \(rejectedID ?? "none")).")
+        rejectedEntryIdentifiers.append(rejectedID)
         continue
       }
       parsedEntries.append(entry)
     }
     entries = parsedEntries
+    unparsedEntryIdentifiers = rejectedEntryIdentifiers
     type = Self.computeType(from: entries)
 
     if let patronXML = feedXML.firstChild(withName: "patron"),

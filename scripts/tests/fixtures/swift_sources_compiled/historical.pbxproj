@@ -1,0 +1,377 @@
+// !$*UTF8*$!
+{
+	"archiveVersion" = "1";
+	"objectVersion" = "56";
+	"objects" = {
+		"0345BFD61DBF002E00398B6F" = {
+			"isa" = "PBXFileReference";
+			"fileEncoding" = "4";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "APIKeys.swift";
+			"sourceTree" = "<group>";
+		};
+		"0345BFE81DBF027200398B6F" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "0345BFD61DBF002E00398B6F";
+		};
+		"0DFA52843241739C5213AD8F" = {
+			"isa" = "PBXGroup";
+			"children" = (
+				"C61A8F5FC897F582128D45B7",
+			);
+			"path" = "Network";
+			"sourceTree" = "<group>";
+		};
+		"1020FD76B5E7EA7D89A58124" = {
+			"isa" = "PBXFileReference";
+			"includeInIndex" = "1";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "KeyboardNavigationHandlerTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"144BB5C0F2D1B2C0C398BD98" = {
+			"isa" = "PBXFileReference";
+			"includeInIndex" = "1";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "KeyboardNavigationHandler.swift";
+			"sourceTree" = "<group>";
+		};
+		"1FEA0A65803452A75BDC330E" = {
+			"isa" = "PBXFileReference";
+			"includeInIndex" = "1";
+			"lastKnownFileType" = "sourcecode.swift";
+			"name" = "KeyboardNavigationHandler.swift";
+			"path" = "Palace/Reader2/UI/KeyboardNavigationHandler.swift";
+			"sourceTree" = "<group>";
+		};
+		"246ED064D298281426FEF8D5" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "144BB5C0F2D1B2C0C398BD98";
+		};
+		"2D2B476E1D08F807007F7764" = {
+			"isa" = "PBXSourcesBuildPhase";
+			"files" = (
+				"B3BKLOC002F260300000001",
+				"B3BKAUT002F260300000001",
+				"7C412CCF4234E353860E7FAD",
+				"D8E3E2F8DB67110026272CFB",
+			);
+		};
+		"2D2B47711D08F807007F7764" = {
+			"isa" = "PBXNativeTarget";
+			"name" = "PalaceTests";
+			"buildPhases" = (
+				"2D2B476E1D08F807007F7764",
+			);
+		};
+		"32C1600B4C0D2A0999F8683D" = {
+			"isa" = "PBXSourcesBuildPhase";
+			"files" = (
+			);
+		};
+		"44B9D77A2797816A93F9D35B" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "PDFAccessibilityToolbarTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"4850933FCAED50067CAF87EB" = {
+			"isa" = "PBXGroup";
+			"children" = (
+				"CEA6C48C0DE6EFA7DA35EE74",
+			);
+			"path" = "Reader2";
+			"sourceTree" = "<group>";
+		};
+		"73225DE5250B46CE00EF1877" = {
+			"isa" = "PBXGroup";
+			"children" = (
+				"0345BFD61DBF002E00398B6F",
+			);
+			"path" = "AppInfrastructure";
+			"sourceTree" = "<group>";
+		};
+		"735771A6253763A000067CEA" = {
+			"isa" = "PBXGroup";
+			"children" = (
+				"A2A352697B589358F91035A1",
+				"F75B6896C9742C07208D935E",
+			);
+			"path" = "Mocks";
+			"sourceTree" = "<group>";
+		};
+		"73A22980240F26C6006B9EAD" = {
+			"isa" = "PBXGroup";
+			"children" = (
+				"73F7136D2417260700C63B81",
+			);
+			"path" = "Reader2";
+			"sourceTree" = "<group>";
+		};
+		"73EB0A6325821DF4006BC997" = {
+			"isa" = "PBXNativeTarget";
+			"name" = "Palace-noDRM";
+			"buildPhases" = (
+				"73EB0A6425821DF4006BC997",
+			);
+		};
+		"73EB0A6425821DF4006BC997" = {
+			"isa" = "PBXSourcesBuildPhase";
+			"files" = (
+				"73EB0A6925821DF4006BC997",
+				"7BAD9E66404EC74E86FF4FA9",
+			);
+		};
+		"73EB0A6925821DF4006BC997" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "0345BFD61DBF002E00398B6F";
+		};
+		"73F7136D2417260700C63B81" = {
+			"isa" = "PBXGroup";
+			"children" = (
+				"1FEA0A65803452A75BDC330E",
+				"144BB5C0F2D1B2C0C398BD98",
+			);
+			"path" = "UI";
+			"sourceTree" = "<group>";
+		};
+		"7BAD9E66404EC74E86FF4FA9" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "144BB5C0F2D1B2C0C398BD98";
+		};
+		"7C412CCF4234E353860E7FAD" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "1020FD76B5E7EA7D89A58124";
+		};
+		"8DD49518A593F93C52009D35" = {
+			"isa" = "PBXFileReference";
+			"includeInIndex" = "1";
+			"lastKnownFileType" = "sourcecode.swift";
+			"name" = "KeyboardNavigationHandlerTests.swift";
+			"path" = "PalaceTests/Reader/KeyboardNavigationHandlerTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"9DBC860BC4C3D6C0D59C6ECD" = {
+			"isa" = "PBXGroup";
+			"children" = (
+				"D76D4FC473DA9FC4F507B0B6",
+				"8DD49518A593F93C52009D35",
+				"1020FD76B5E7EA7D89A58124",
+			);
+			"path" = "Reader";
+			"sourceTree" = "<group>";
+		};
+		"A2A352697B589358F91035A1" = {
+			"isa" = "PBXFileReference";
+			"includeInIndex" = "1";
+			"lastKnownFileType" = "sourcecode.swift";
+			"name" = "MockVisualNavigator.swift";
+			"path" = "PalaceTests/Mocks/MockVisualNavigator.swift";
+			"sourceTree" = "<group>";
+		};
+		"A823D804192BABA400B55DE2" = {
+			"isa" = "PBXGroup";
+			"children" = (
+				"A823D816192BABA400B55DE2",
+				"A823D82F192BABA400B55DE2",
+			);
+			"indentWidth" = "2";
+			"sourceTree" = "<group>";
+			"tabWidth" = "2";
+		};
+		"A823D805192BABA400B55DE2" = {
+			"isa" = "PBXProject";
+			"mainGroup" = "A823D804192BABA400B55DE2";
+			"targets" = (
+				"A823D80C192BABA400B55DE2",
+				"73EB0A6325821DF4006BC997",
+				"2D2B47711D08F807007F7764",
+				"E7E96B9D2B0E82210036B23A",
+				"B47DCE5447DF509020BAD72B",
+			);
+		};
+		"A823D809192BABA400B55DE2" = {
+			"isa" = "PBXSourcesBuildPhase";
+			"files" = (
+				"0345BFE81DBF027200398B6F",
+				"246ED064D298281426FEF8D5",
+			);
+		};
+		"A823D80C192BABA400B55DE2" = {
+			"isa" = "PBXNativeTarget";
+			"name" = "Palace";
+			"buildPhases" = (
+				"A823D809192BABA400B55DE2",
+			);
+		};
+		"A823D816192BABA400B55DE2" = {
+			"isa" = "PBXGroup";
+			"children" = (
+				"73225DE5250B46CE00EF1877",
+				"73A22980240F26C6006B9EAD",
+			);
+			"path" = "Palace";
+			"sourceTree" = "<group>";
+		};
+		"A823D82F192BABA400B55DE2" = {
+			"isa" = "PBXGroup";
+			"children" = (
+				"735771A6253763A000067CEA",
+				"9DBC860BC4C3D6C0D59C6ECD",
+				"0DFA52843241739C5213AD8F",
+				"B3BOOKGRP001F260300000001",
+				"4850933FCAED50067CAF87EB",
+				"CA4865ECC354E69A4239478E",
+				"A836E40C0650480C83CB1C8A",
+				"FDF8747DDC245E6180FB8A81",
+			);
+			"path" = "PalaceTests";
+			"sourceTree" = "<group>";
+		};
+		"A836E40C0650480C83CB1C8A" = {
+			"isa" = "PBXGroup";
+			"children" = (
+				"BKTST00012F27000000FR01",
+				"BKTST00012F27000000FR03",
+			);
+			"path" = "Book";
+			"sourceTree" = "<group>";
+		};
+		"AFFE165E981F12929AF686D8" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "TypographyServiceIntegrationTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"B3BKAUT001F260300000001" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "TPPBookAuthorTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"B3BKAUT002F260300000001" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "B3BKAUT001F260300000001";
+		};
+		"B3BKLOC001F260300000001" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "TPPBookLocationTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"B3BKLOC002F260300000001" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "B3BKLOC001F260300000001";
+		};
+		"B3BOOKGRP001F260300000001" = {
+			"isa" = "PBXGroup";
+			"children" = (
+				"B3BKLOC001F260300000001",
+				"B3BKAUT001F260300000001",
+			);
+			"path" = "Book";
+			"sourceTree" = "<group>";
+		};
+		"B47DCE5447DF509020BAD72B" = {
+			"isa" = "PBXNativeTarget";
+			"name" = "PalaceUITests";
+			"buildPhases" = (
+				"32C1600B4C0D2A0999F8683D",
+			);
+		};
+		"BB1A9514BC04700FE8EF2480" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "TypographySettingsTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"BKTST00012F27000000FR01" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "TPPBookLocationTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"BKTST00012F27000000FR03" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "TPPBookAuthorTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"C4BD28685CFAA8815B0DE215" = {
+			"isa" = "PBXFileReference";
+			"includeInIndex" = "1";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "ExtensionCoverageTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"C61A8F5FC897F582128D45B7" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "NetworkClientTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"CA4865ECC354E69A4239478E" = {
+			"isa" = "PBXGroup";
+			"children" = (
+				"C4BD28685CFAA8815B0DE215",
+			);
+			"path" = "Utilities";
+			"sourceTree" = "<group>";
+		};
+		"CEA6C48C0DE6EFA7DA35EE74" = {
+			"isa" = "PBXGroup";
+			"children" = (
+				"AFFE165E981F12929AF686D8",
+				"BB1A9514BC04700FE8EF2480",
+			);
+			"path" = "Typography";
+			"sourceTree" = "<group>";
+		};
+		"D76D4FC473DA9FC4F507B0B6" = {
+			"isa" = "PBXFileReference";
+			"includeInIndex" = "1";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "ReaderSettingsTests.swift";
+			"sourceTree" = "<group>";
+		};
+		"D8E3E2F8DB67110026272CFB" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "F75B6896C9742C07208D935E";
+		};
+		"E7E96B9A2B0E82210036B23A" = {
+			"isa" = "PBXSourcesBuildPhase";
+			"files" = (
+			);
+		};
+		"E7E96B9D2B0E82210036B23A" = {
+			"isa" = "PBXNativeTarget";
+			"name" = "PalaceUIKit";
+			"buildPhases" = (
+				"E7E96B9A2B0E82210036B23A",
+			);
+		};
+		"F75B6896C9742C07208D935E" = {
+			"isa" = "PBXFileReference";
+			"includeInIndex" = "1";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "MockVisualNavigator.swift";
+			"sourceTree" = "<group>";
+		};
+		"FDF8747DDC245E6180FB8A81" = {
+			"isa" = "PBXGroup";
+			"children" = (
+				"FE2159403F0FCBE90CFC6858",
+				"44B9D77A2797816A93F9D35B",
+			);
+			"path" = "Accessibility";
+			"sourceTree" = "<group>";
+		};
+		"FE2159403F0FCBE90CFC6858" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "BookImageViewAccessibilityTests.swift";
+			"sourceTree" = "<group>";
+		};
+	};
+	"rootObject" = "A823D805192BABA400B55DE2";
+}

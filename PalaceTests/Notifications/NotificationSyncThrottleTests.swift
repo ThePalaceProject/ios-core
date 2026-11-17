@@ -41,7 +41,7 @@ final class NotificationSyncThrottleTests: XCTestCase {
     /// Throttle decision matrix for forceSync=false: synced too recently
     /// → blocked; synced past the threshold → allowed; never synced → also
     /// allowed. Plus boundary cases on either side of the 30s threshold so
-    /// a mutant that flips `>` to `>=` (or shifts the constant) fails.
+    /// `>=` in place of `>` (or a shifted constant) fails.
     func testThrottle_normalSync_blocksRecentAndAllowsAgedAndFirstSync() {
         let now = Date().timeIntervalSince1970
 
@@ -84,8 +84,8 @@ final class NotificationSyncThrottleTests: XCTestCase {
 
     /// `forceSync=true` must bypass the throttle in every history shape:
     /// no prior sync (zero), recent sync, AND a sync from "the future"
-    /// (clock skew). Pin all three so a mutant that conditions force-sync
-    /// on history fails on every row.
+    /// (clock skew). Pin all three so conditioning force-sync on history
+    /// fails.
     func testForceSync_proceedsRegardlessOfHistoryShape() {
         let now = Date().timeIntervalSince1970
 
@@ -131,8 +131,8 @@ final class HoldNotificationClassificationTests: XCTestCase {
 
     /// Hold-classification rule: a `type` field is hold-related iff its
     /// lowercased form contains "hold" OR "reservation". Lock both
-    /// keywords + the negative case in one body so a mutant that drops
-    /// either keyword fails on the missing-keyword input.
+    /// keywords + the negative case in one body so dropping either keyword
+    /// fails on the missing-keyword input.
     func testIsHoldRelated_returnsTrueForHoldOrReservationKeywords_falseOtherwise() {
         let cases: [(input: String, expected: Bool, label: String)] = [
             ("hold_ready",            true,  "exact 'hold' keyword"),

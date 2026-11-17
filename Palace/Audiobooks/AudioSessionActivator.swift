@@ -2,30 +2,12 @@
 //  AudioSessionActivator.swift
 //  Palace
 //
-//  WS-2 — CarPlay OpenAccess `.playerNotReady` crash (Crashlytics d45f5aa9).
-//
-//  WHAT THIS FIXES:
-//  During a CarPlay cold launch, `PlaybackBootstrapper.activateAudioSession()`
-//  issued a single `AVAudioSession.setActive(true)`. On a cold CarPlay connect
-//  the audio session can transiently refuse activation (observed OSStatus
-//  561015905, plus `-50` paramErr in the very-early-launch window). The old
-//  code swallowed that single failure and logged it — leaving the session
-//  inactive. The toolkit's `OpenAccessPlayer` then reports
-//  `playerIsReady != .readyToPlay` when CarPlay issues the play command, takes
-//  the default branch of `attemptToPlay` (`handlePlaybackError(.playerNotReady)`
-//  at `OpenAccessPlayer.swift:254`), and the `.playerNotReady` failure surfaces
-//  the CarPlay crash.
-//
-//  THE FIX (app-side, NO submodule changes):
-//  Retry the activation a bounded number of times with exponential backoff so
-//  the session has time to become active before the play command is issued.
-//  The retry MUST be async because activation runs on the MainActor during
-//  CarPlay cold launch — a synchronous retry/sleep would block main for up to
-//  ~1s (see `.forgeos/intent/3.2.0-crash-triage.md`). `AudioSessionActivator`
-//  is the pure, injectable unit so the bounded loop, the transient-vs-terminal
-//  classification, and the backoff schedule are unit-testable with no real
-//  `AVAudioSession` and no real sleeps. `PlaybackBootstrapper` wires the real
-//  session + `Task.sleep` and invokes it from a `Task { @MainActor }`.
+//  Bounded async retry-with-backoff for activating the audio session.
+//  On a cold CarPlay connect `AVAudioSession.setActive(true)` can transiently
+//  fail (OSStatus 561015905, or -50 very early); a single failed attempt left
+//  the session inactive and OpenAccessPlayer then failed with `.playerNotReady`
+//  (Crashlytics d45f5aa9). The retry is async because it runs on the main actor
+//  during launch, where a synchronous sleep would block for up to ~1s.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -115,7 +97,7 @@ struct AudioSessionActivator {
     ]
 
     /// Pure predicate: should an activation failure with this OSStatus be
-    /// retried? Static + pure so it is mutation-testable in isolation.
+    /// retried?
     static func isRetriable(errorCode: Int) -> Bool {
         retriableCodes.contains(errorCode)
     }

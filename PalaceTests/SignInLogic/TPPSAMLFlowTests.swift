@@ -381,7 +381,7 @@ final class TPPSAMLCookieExpirationTests: XCTestCase {
 
     // MARK: - Test 16: All expired (3 cookies) → filters to empty, helper cookies stay nil
     //
-    // Wave-3 swarm_18b0d071 Module B hardening — pins the contract that
+    // Pins the contract that
     // when ALL cached IdP cookies are expired, the filter strips them all
     // before presenting the WebView and the helper's own `cookies` storage
     // is NOT pre-populated from the expired set (only the post-redirect
@@ -412,11 +412,10 @@ final class TPPSAMLCookieExpirationTests: XCTestCase {
 
     // MARK: - Test 17: Mixed (2 expired + 2 valid) → only valid passed, valid names preserved
     //
-    // Wave-3 swarm_18b0d071 Module B hardening — pins both halves of the
+    // Pins both halves of the
     // filter behaviour for the mixed case: expired entries are stripped
     // AND valid entries are passed through unchanged with their names
-    // preserved. This is the test name's "filters expired + passes valid"
-    // claim verified literally (DoD #3 multi-step body check).
+    // preserved.
     // Kill cases:
     //   - removing the filter entirely → count == 4
     //   - flipping the predicate to `< Date()` → count == 2 but containing the WRONG (expired) names

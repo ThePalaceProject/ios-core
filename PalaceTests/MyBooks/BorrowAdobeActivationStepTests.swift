@@ -1,30 +1,9 @@
 //
-//  BorrowAdobeActivationStepTests.swift
-//  PalaceTests
-//
-//  Critical-path coverage for the Adobe activation step of a borrow (PP-5025).
-//
-//  This step is small but it is where three separate contracts now live, and
-//  review found all three defeatable with the suite green before these tests
-//  existed:
-//
-//    1. It opts into the licensor grace period. `ensureDeviceActivated`
-//       defaults to no wait, so deleting the budget here makes the PP-5025 fix
-//       inert in the only place it is active.
-//    2. It raises the processing spinner BEFORE activation. Moving that after
-//       the wait removes the file's whole reason to exist — `BookCellModel`
-//       sets no `isLoading`, so the Get button would sit unchanged and
-//       tappable for the duration.
-//    3. It clears the spinner if activation throws. Deleting that strands the
-//       spinner for the process lifetime — CLAUDE.md names this exact shape
-//       ("removing `registry.setProcessing(false)` mid-cleanup would leak
-//       forever") as a contract-test case.
-//
-//  Note there is deliberately no `#if FEATURE_DRM_CONNECTOR` here. PalaceTests
-//  does not define that flag, so a conditional in TEST source takes the `#else`
-//  and silently skips — which is why DRMAdversarialTests' Adobe coverage is
-//  dead. The symbols resolve regardless because the Palace module under test
-//  was built with the flag.
+//  PP-5025: the borrow's Adobe activation step must opt into the licensor grace
+//  period (`ensureDeviceActivated` defaults to no wait), raise the processing
+//  spinner before activation (BookCellModel sets no `isLoading` of its own), and
+//  clear the spinner if activation throws. No `#if FEATURE_DRM_CONNECTOR` here on
+//  purpose: PalaceTests does not define it, so the test would compile to `#else`.
 //
 
 import XCTest

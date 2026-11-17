@@ -1,26 +1,10 @@
-//
 //  TPPBookRegistryMigrationTests.swift
-//  PalaceTests
 //
-//  Deep, mutation-killing tests for the *format-migration* and *format-upgrade*
-//  paths in BookRegistrySync.load + TPPBookRegistryRecord(record:) +
-//  TPPBook(dictionary:). Each test plants a deliberately-shaped JSON corpus on
-//  disk and pins the load behavior of the current code: what survives, what
-//  defaults are filled, and what gets dropped.
-//
-//  These tests do NOT touch production code. They use a hermetic per-test
-//  account UUID — the on-disk registry file lives under
-//      <AppSupport>/<bundleId>/<test-uuid>/registry/registry.json
-//  and is removed in tearDown.
-//
-//  Companion files (separate test suites):
-//    - TPPBookRegistryAtomicWriteTests   — interrupted writes, atomic rename
-//    - TPPBookRegistryLargeCorpusTests   — 5000-book load/save scaling
-//    - TPPBookRegistryPersistenceTests   — basic save/load/corruption (owned
-//      by a sibling agent — do NOT duplicate)
-//
-//  Copyright 2026 The Palace Project. All rights reserved.
-//
+//  Pins format-migration behavior of BookRegistrySync.load,
+//  TPPBookRegistryRecord(record:) and TPPBook(dictionary:): each test plants a
+//  shaped JSON corpus and asserts what survives, what defaults fill in, and what
+//  is dropped. Uses a per-test account UUID removed in tearDown. Atomic writes,
+//  scale and basic persistence live in the sibling TPPBookRegistry*Tests files.
 
 import XCTest
 @testable import Palace
@@ -39,14 +23,6 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
         try super.setUpWithError()
         account = "test-migration-\(UUID().uuidString)"
         store = BookRegistryStore()
-        // FLAKE-003 fix: these migration tests drive `BookRegistrySync.load` with
-        // a random test-UUID account and never read the AccountsManager's account
-        // sets, so skip the on-disk cached-account preload — the >5s (1138-account)
-        // load that was the root of the `loadAndWait()` 30s timeout. Reset in
-        // tearDown to keep the flip scoped.
-        #if DEBUG
-        AccountsManager.deferDiskCachePreloadForTesting = true
-        #endif
         accountsManager = makeFreshAccountsManager()
         sync = BookRegistrySync(
             store: store,
@@ -64,9 +40,6 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
         store = nil
         sync = nil
         accountsManager = nil
-        #if DEBUG
-        AccountsManager.deferDiskCachePreloadForTesting = false
-        #endif
         try super.tearDownWithError()
     }
 
@@ -85,9 +58,8 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
         try! data.write(to: url, options: .atomic)
     }
 
-    /// Wave-2 (swarm_ad0b4c65): replaced the `wait(for:timeout:30.0)` +
-    /// `RunLoop.current.run(until:+0.1)` settle with a deterministic seam
-    /// join. `sync.load` drives its mutation through
+    /// Waits for the load with a deterministic seam join instead of a
+    /// wall-clock timeout. `sync.load` drives its mutation through
     /// `BookRegistryStore.mutateRegistry`, which enqueues on `store`'s
     /// barrier `syncQueue`; `_awaitPendingWritesForTesting()` drains that
     /// queue (bounded — one trailing barrier hop), which also guarantees the
@@ -142,7 +114,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
 
     /// Pin the current-version baseline. A registry written by the current
     /// app version must load — and round-trip — without losing books.
-    /// Kills mutants that swap the keys hard-coded in
+    /// Catches regressions that swap the keys hard-coded in
     /// `TPPBookRegistryKey` / `TPPBookRegistryData` from string literals to
     /// constants of different values.
     func testV2BaselineRoundTrip_LoadsAndPreservesIdentifierAndState() async {
@@ -169,7 +141,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
     /// `acquisition` (singular) key — present in `TPPBook.swift` only as a
     /// `Deprecated*Key` constant — must not crash and must NOT cause records
     /// with valid id+title to silently disappear. The current code ignores the
-    /// deprecated key on read; this test PINS that contract so a future mutant
+    /// deprecated key on read; this test PINS that contract so a future regression
     /// that "reactivates" the key (or hard-crashes on its presence) is caught.
     func testV1SingularAcquisitionKey_IsIgnoredButRecordIsPreserved() async {
         let id = "v1-singular-acq-\(UUID().uuidString)"
@@ -224,8 +196,8 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
 
     /// `audience` and `language` are fields TPPBook.swift reads from the dict
     /// via `as?` casts with no defaults: a record missing those fields must
-    /// still load successfully (the optional fields just stay nil). Kills
-    /// mutants that change `as? String` to a force-cast.
+    /// still load successfully (the optional fields just stay nil). Catches
+    /// a regression that changes `as? String` to a force-cast.
     func testRecordMissingAudienceAndLanguage_FillsNilDefaults() async {
         let id = "missing-audience-lang-\(UUID().uuidString)"
         // currentFormatBookDict already omits audience + language — perfect.
@@ -244,7 +216,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
 
     /// `categories` is read as `as? [String] ?? []`. A record where categories
     /// is missing entirely must default to empty, not nil — pinning the
-    /// `??` fallback path against a mutant that drops the default.
+    /// `??` fallback path against a regression that drops the default.
     func testRecordMissingCategoriesField_DefaultsToEmptyArray() async {
         let id = "missing-categories-\(UUID().uuidString)"
         var bookDict = currentFormatBookDict(id: id, title: "No Categories Field")
@@ -263,7 +235,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
 
     /// The `updated` field accepts both RFC 3339 (current writer) and ISO 8601
     /// date-only (legacy OPDS feeds). A record using the legacy date-only
-    /// shape must still load — kills mutant that drops the ISO 8601 fallback.
+    /// shape must still load — catches a regression that drops the ISO 8601 fallback.
     func testRecordWithLegacyISO8601DateOnlyUpdated_StillParses() async {
         let id = "iso8601-date-only-\(UUID().uuidString)"
         let bookDict = currentFormatBookDict(id: id, title: "ISO 8601 Date-Only",
@@ -341,7 +313,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
 
     /// A record with an unknown future *state* string (not in
     /// TPPBookState's known cases) must be dropped — current code logs and
-    /// returns nil from TPPBookRegistryRecord(record:). Kills mutants that
+    /// returns nil from TPPBookRegistryRecord(record:). Catches regressions that
     /// default unknown states to a real state (e.g. `.downloadNeeded`).
     func testRecordWithUnknownState_DroppedFromRegistry() async {
         let knownId = "known-state-\(UUID().uuidString)"
@@ -371,7 +343,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
     /// same identifier on disk — a malformed-registry state but a real one we
     /// have seen in production — MUST collapse to a single in-memory record.
     /// The current code uses dictionary assignment: last record wins.
-    /// Kills mutants that turn `newRegistry[record.book.identifier] = record`
+    /// Catches regressions that turn `newRegistry[record.book.identifier] = record`
     /// into an *append-or-skip-if-present*.
     func testDuplicateIdentifiersOnDisk_CollapseToOneRecord() async {
         let dupId = "duplicate-id-\(UUID().uuidString)"
@@ -399,7 +371,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
 
     /// book(forIdentifier:) lookups must be unique-by-identifier — after load,
     /// every record in `store.allBooks` must be findable by its identifier.
-    /// Kills mutants that change the keying field from `book.identifier` to
+    /// Catches regressions that change the keying field from `book.identifier` to
     /// something else (e.g. title), which would still load the books but
     /// would silently break lookup.
     func testLookupByIdentifier_IsUnique_AfterLoad() async {
@@ -429,7 +401,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
     // MARK: - On-disk shape after round-trip
 
     /// Saving an in-memory registry produces a JSON file whose top-level
-    /// shape is `{ "records": [ ... ] }`. Kills mutants that rename the
+    /// shape is `{ "records": [ ... ] }`. Catches regressions that rename the
     /// top-level key (or move records nested under a different key).
     func testSavedFile_TopLevelShape_IsRecordsArray() throws {
         let id = "save-shape-\(UUID().uuidString)"
@@ -453,7 +425,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
     }
 
     /// A record's stored state value uses the documented stringValue() — NOT
-    /// the raw Int enum. Kills mutants that swap stringValue for rawValue
+    /// the raw Int enum. Catches regressions that swap stringValue for rawValue
     /// (which would break legacy loaders and any cross-platform tooling).
     func testSavedFile_StateField_IsStringValueNotInteger() throws {
         let id = "state-string-\(UUID().uuidString)"
@@ -477,7 +449,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
 
     /// Load drops records whose `metadata` field is missing entirely (the
     /// init?(record:) guard at TPPBookRegistryRecord.swift:110). PIN this
-    /// behavior so a mutant that fabricates a placeholder book is caught.
+    /// behavior so a regression that fabricates a placeholder book is caught.
     func testRecordMissingMetadataField_Dropped() async {
         let goodId = "has-metadata-\(UUID().uuidString)"
         writeRegistryJSON([
@@ -522,7 +494,7 @@ class TPPBookRegistryMigrationTests: PalaceWiringTestCase {
 
     /// PIN: A record-level field outside `metadata`/`state` (e.g.
     /// `fulfillmentId`, `location`, `bookmarks`, `genericBookmarks`) IS
-    /// preserved across the round-trip. Kills mutants that change those keys.
+    /// preserved across the round-trip. Catches regressions that change those keys.
     func testRecordLevelFulfillmentId_IsPreservedAcrossLoad() async {
         let id = "fulfillment-roundtrip-\(UUID().uuidString)"
         let record = currentFormatRecord(

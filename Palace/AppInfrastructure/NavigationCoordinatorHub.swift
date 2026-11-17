@@ -1,7 +1,7 @@
 import Foundation
 
 /// Resolves "which navigation stack is on screen" for the non-view code that has
-/// to push a route — the reader services, `BookService`, the audiobook session
+/// to push a route — the reader services, `BookOpenRouter`, the audiobook session
 /// manager, the account-switch cleanup.
 ///
 /// PP-5022 — why this is a registry and not a single pointer. The hub used to
@@ -20,7 +20,7 @@ import Foundation
 /// open" alert), and a wrong-but-plausible answer is what made the failure silent.
 ///
 /// Invariant worth stating: `NavigationHostView` REGISTERS through the injected
-/// `\.appContainer`, while every consumer (`ReaderService`, `BookService`,
+/// `\.appContainer`, while every consumer (`ReaderService`, `BookOpenRouter`,
 /// `BookCellModel`, `BookDetailViewModel`, `AudiobookSessionManager`) RESOLVES
 /// through `AppContainer.production()`. Those agree only because the app injects
 /// `production()` at both scene entry points and `AppContainerKey.defaultValue`

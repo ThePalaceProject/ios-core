@@ -2,26 +2,14 @@
 //  TPPBookRegistryMutationContractTests.swift
 //  PalaceTests
 //
-//  Contract C (swarm_8ce6f5ae WS3) — Kill the registry dual-write + enforce
-//  `TPPBookState.allowedTransitions` at the single mutation seam.
-//
-//  What this pins:
-//   1. The THREE transitions Contract C added to `allowedTransitions`
-//      (.downloadSuccessful→.downloadNeeded, .used→.downloadNeeded,
-//      .holding→.downloading) are legal — both via the pure `canTransition`
-//      and through the REAL enforced `TPPBookRegistry.setState` seam.
-//   2. An illegal transition trips the injected violation handler (the DEBUG
-//      `assertionFailure` path, exercised here through an injected handler so the
-//      suite does not crash) AND the state is STILL applied (never dropped).
-//   3. The lifecycle `registryStatePublisher` is CREATED AND FED — the dead
-//      `syncStatePublisher` did not emit; this one does, on every state write.
-//   4. The empty-registry HANG guard: the SAML-sync (registry:455) and
-//      launch-reconciliation (MBDC:2076) observers key on the LIFECYCLE publisher
-//      and STILL FIRE on a fresh empty-registry load that emits ZERO per-book
-//      events — proving why routing them at `bookStatePublisher` would hang.
-//   5. The holds-badge lifecycle guard: the badge refreshes on a sync-complete
-//      lifecycle emission with zero per-book events, and on the hand-fired
-//      holds-changed trigger that replaced the deleted NotificationCenter post.
+//  Pins `TPPBookState.allowedTransitions` enforcement at the single `setState` seam:
+//   1. .downloadSuccessful→.downloadNeeded, .used→.downloadNeeded and
+//      .holding→.downloading are legal;
+//   2. an illegal transition trips the injected violation handler and is still applied;
+//   3. `registryStatePublisher` emits on every state write;
+//   4. SAML-sync and launch-reconciliation observers still fire on an empty-registry
+//      load with zero per-book events (keying them on `bookStatePublisher` would hang);
+//   5. the holds badge refreshes on sync-complete and on the holds-changed trigger.
 //
 //  Copyright 2026 The Palace Project. All rights reserved.
 //
@@ -64,7 +52,7 @@ final class TPPBookRegistryMutationContractTests: PalaceWiringTestCase {
 
     // MARK: - 1. Newly-legal transitions (pure canTransition)
 
-    /// Kills a mutant that drops any of the three added `allowedTransitions`
+    /// Catches a change that drops any of the three added `allowedTransitions`
     /// entries: each pair would flip to `false`.
     func testCanTransition_newlyLegalPairs_areAllowed() {
         XCTAssertTrue(TPPBookState.canTransition(from: .downloadSuccessful, to: .downloadNeeded),
@@ -75,17 +63,43 @@ final class TPPBookRegistryMutationContractTests: PalaceWiringTestCase {
                       "ready hold promoted straight to downloading at the concurrency cap")
     }
 
-    /// Kills a mutant that makes `canTransition` return a constant `true`.
+    /// Catches a change that makes `canTransition` return a constant `true`.
     func testCanTransition_illegalPairs_areRejected() {
         XCTAssertFalse(TPPBookState.canTransition(from: .unregistered, to: .downloadSuccessful))
         XCTAssertFalse(TPPBookState.canTransition(from: .downloadNeeded, to: .used))
         XCTAssertFalse(TPPBookState.canTransition(from: .used, to: .downloading))
     }
 
+    /// Content arriving for a book that reconciliation parked at
+    /// `.downloadNeeded` promotes it to `.downloadSuccessful`.
+    ///
+    /// Two production paths perform this pair. `LCPFulfillmentHandler`'s
+    /// audiobook completion arm marks the book successful once
+    /// `BackgroundDownloadHandler.storeBook` reports `.stored`, and
+    /// `LocalBookContentService`'s `.lcpa` re-download promotes the record on a
+    /// successful move, guarded on the state already being `.downloadNeeded`.
+    /// `BookRegistrySync` reaches the same conclusion for the same reason: its
+    /// `.downloadNeeded` + content-present cell reconciles to
+    /// `.downloadSuccessful`.
+    func testCanTransition_contentLandingOnAReconciledRecord_isAllowed() {
+        XCTAssertTrue(TPPBookState.canTransition(from: .downloadNeeded, to: .downloadSuccessful),
+                      "an LCP content transfer that lands after reconciliation parked the book at .downloadNeeded")
+    }
+
+    /// Legalizing the pair above must not legalize the rest of the
+    /// `.downloadNeeded` row. Catches a fix that widened the row, or that
+    /// replaced the pair-wise lookup with a `from == .downloadNeeded` wildcard.
+    func testCanTransition_downloadNeededRow_staysNarrow() {
+        for to: TPPBookState in [.used, .returning, .unsupported] {
+            XCTAssertFalse(TPPBookState.canTransition(from: .downloadNeeded, to: to),
+                           ".downloadNeeded -> \(to.stringValue()) is not a transition any caller makes")
+        }
+    }
+
     // MARK: - 2. Enforcement at the real setState seam
 
     /// Illegal transition → handler fires with the exact pair AND the write is
-    /// still applied. Kills: enforcement removed (handler never fires), the
+    /// still applied. Catches: enforcement removed (handler never fires), the
     /// `!canTransition` guard inverted (fires on legal), or the write dropped on
     /// violation (state would not reach `.used`).
     func testSetState_illegalTransition_invokesHandler_andStillApplies() {
@@ -108,7 +122,7 @@ final class TPPBookRegistryMutationContractTests: PalaceWiringTestCase {
         registry.removeBook(forIdentifier: id)
     }
 
-    /// Legal transition → handler must NOT fire. Kills the inverted-guard mutant.
+    /// Legal transition → handler must NOT fire. Catches the inverted-guard regression.
     func testSetState_legalTransition_doesNotInvokeHandler() {
         let recorder = TransitionRecorder()
         let registry = makeRegistry(onIllegal: { recorder.record($0, $1, $2) })
@@ -120,6 +134,36 @@ final class TPPBookRegistryMutationContractTests: PalaceWiringTestCase {
 
         XCTAssertTrue(recorder.calls.isEmpty, "a legal transition must not trip the handler")
         XCTAssertEqual(registry.state(for: id), .downloading)
+
+        registry.removeBook(forIdentifier: id)
+    }
+
+    /// The real seam: a fulfilment completing against a record reconciliation
+    /// moved to `.downloadNeeded` must not be reported as a violation, and the
+    /// book must end up `.downloadSuccessful`.
+    ///
+    /// This is the sequence the crash came from. The `.lcpl` license lands and
+    /// the book is `.downloading` while the multi-gigabyte `.lcpa` transfers on
+    /// Readium's own background session. The app is relaunched; that session
+    /// resumes but the in-memory content-transfer registration
+    /// (`isDownloadInFlight`) does not, so `load()` sees a license with no
+    /// content and reconciles `.downloading` to `.downloadNeeded`. The transfer
+    /// then completes and the content is written.
+    func testSetState_contentLandingAfterReconciliation_doesNotInvokeHandler() {
+        let recorder = TransitionRecorder()
+        let registry = makeRegistry(onIllegal: { recorder.record($0, $1, $2) })
+        let id = "reconciled-content-\(UUID().uuidString)"
+        registry.addBook(TPPBookMocker.mockBook(identifier: id, title: "Reconciled"),
+                         state: .downloading)
+
+        // Reconciliation's own move for a license with no content on disk.
+        registry.setState(.downloadNeeded, for: id)
+        // The resumed transfer lands and the content is stored.
+        registry.setState(.downloadSuccessful, for: id)
+
+        XCTAssertTrue(recorder.calls.isEmpty,
+                      "neither step of the reconcile-then-complete sequence is a violation; got \(recorder.calls.map { "\($0.from.stringValue())->\($0.to.stringValue())" })")
+        XCTAssertEqual(registry.state(for: id), .downloadSuccessful)
 
         registry.removeBook(forIdentifier: id)
     }
@@ -156,7 +200,7 @@ final class TPPBookRegistryMutationContractTests: PalaceWiringTestCase {
     /// MUST feed `registryStateSubject`. `dropFirst()` discards the seeded current
     /// value so only the setter-driven emission can satisfy the expectation.
     ///
-    /// Kills the mutant that removes `registryStateSubject.send(newValue)` from
+    /// Catches the regression that removes `registryStateSubject.send(newValue)` from
     /// the `state` setter: with it gone, nothing emits past the dropped seed and
     /// this expectation times out.
     func testRegistryStatePublisher_isFed_onStateWrite() {
@@ -254,7 +298,7 @@ final class TPPBookRegistryMutationContractTests: PalaceWiringTestCase {
     /// call `notifyHoldsChanged()`; the badge subscribes to
     /// `holdsDidChangePublisher`. This pins that hand-fired path end-to-end.
     ///
-    /// Kills a mutant where `notifyHoldsChanged()` stops sending into the subject.
+    /// Catches a regression where `notifyHoldsChanged()` stops sending into the subject.
     func testHoldsBadge_refreshesOnHoldsChangedTrigger() {
         let registry = TPPBookRegistryMock()
 
@@ -290,7 +334,7 @@ final class TPPBookRegistryMutationContractTests: PalaceWiringTestCase {
         registry.setState(.downloading, for: id)
         // downloading → downloadSuccessful (legal)
         registry.setState(.downloadSuccessful, for: id)
-        // downloadSuccessful → downloadNeeded (NEWLY legal — Contract C addition)
+        // downloadSuccessful → downloadNeeded (newly legal)
         registry.setState(.downloadNeeded, for: id)
         // downloadNeeded → used (illegal → report #1)
         registry.setState(.used, for: id)

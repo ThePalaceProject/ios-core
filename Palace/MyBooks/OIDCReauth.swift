@@ -3,34 +3,11 @@
 //  Palace
 //
 //  The borrow flow's OIDC silent re-auth: outcome classification, the retry
-//  decision, and the ASWebAuthenticationSession presentation.
-//
-//  Extracted from BorrowOperation.swift. Two SoD reviewers independently asked
-//  for this PR to be split, and the `godclass-loc` ratchet then said the same
-//  thing mechanically — BorrowOperation is a frozen god-class at a 575-code-line
-//  baseline, and this work pushed it past that. The ratchet only ever tightens
-//  by hand, so the remedy is to stop growing the hub, not to raise the number.
-//
-//  NOT a pure move. This header used to say "pure move: no behaviour change",
-//  which was true only against the intermediate commit that first extracted the
-//  file — not against `develop`, which is what a reader diffs. Independent SoD
-//  review measured five behaviour changes here, and asserting otherwise in a new
-//  critical-path file is the same unmeasured-docstring defect this PR exists to
-//  fix. What actually changed relative to develop:
-//
-//    1. Errors are CLASSIFIED and a presentation failure is retried once. Before:
-//       `if error != nil { resume(false) }` — no classification, no retry.
-//    2. `session.start()`'s return is checked. Before it was unchecked, so a
-//       refused presentation left the continuation un-resumed — a hang.
-//    3. `resumeOnce` guarantees the continuation resumes exactly once (new).
-//    4. The presentation anchor is `webAuthPresentationAnchor`, not
-//       `mainKeyWindow` — develop's shared resolver, already used by the two
-//       sibling OIDC paths and covered by its own tests.
-//    5. The completion handler is explicitly `@MainActor`.
-//
-//  What IS unchanged: `attemptOIDCSilentReauth` stays a static on
-//  BorrowOperation, so its cross-module caller (MyBooksDownloadCenter) is
-//  untouched.
+//  decision, and the ASWebAuthenticationSession presentation. Errors are
+//  classified and a presentation failure is retried once; `session.start()`'s
+//  return is checked so a refused presentation cannot leave the continuation
+//  hanging, and `resumeOnce` resumes it exactly once. The anchor is the shared
+//  `webAuthPresentationAnchor` used by the other OIDC paths.
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //
@@ -48,11 +25,6 @@ extension BorrowOperation {
     /// `attemptOIDCReauth` closure. Tests bypass this entirely by
     /// passing a stub closure. Returns `true` if a new token was
     /// obtained, `false` on failure/cancel/no-OIDC-config.
-    /// - Parameter present: injected presentation seam. Production passes nil and
-    ///   gets `presentOIDCReauthSession`; tests script a sequence of outcomes so
-    ///   the retry/consent behaviour is driven for real instead of spell-checked
-    ///   by a lint. SoD review's verdict was blunt: the fix is a seam, not more
-    ///   string assertions.
     static func attemptOIDCSilentReauth(userAccount: TPPUserAccount) async -> Bool {
         guard let authDef = userAccount.authDefinition,
               let oidcURL = authDef.oidcAuthenticationUrl else {
@@ -81,12 +53,8 @@ extension BorrowOperation {
                                        userAccount: userAccount)
     }
 
-    /// The retry loop, separated from URL-building so it can be DRIVEN.
-    ///
-    /// `attemptOIDCSilentReauth` returns early unless the account advertises an
-    /// OIDC URL, and no unit test can synthesize that — so a test aimed at the
-    /// whole function skips, and a skipped test is a silent pass. Splitting the
-    /// loop out is what makes the consent and retry behaviour observable.
+    /// The retry loop, separated from URL-building so tests can drive it: a
+    /// unit test cannot synthesize an account that advertises an OIDC URL.
     static func runOIDCReauthLoop(
         url: URL,
         callbackScheme: String,
@@ -114,9 +82,8 @@ extension BorrowOperation {
                 return true
 
             case let outcome where OIDCReauthAttempt.shouldRetry(outcome, attempt: attempt):
-                // iOS refused the anchor (code 3). That is our failure, not a
-                // decline: the patron never saw a sheet to decline. Settle and
-                // present once more against a freshly-resolved anchor.
+                // iOS refused the anchor (code 3); the patron never saw a sheet.
+                // Settle and present once more against a fresh anchor.
                 Log.warn(#file, "OIDC silent re-auth: iOS rejected the presentation anchor — retrying once")
                 try? await Task.sleep(nanoseconds: 300_000_000)
                 continue
@@ -140,9 +107,8 @@ extension BorrowOperation {
 
     /// Presents one OIDC re-auth sheet and classifies the outcome.
     ///
-    /// Split out from `attemptOIDCSilentReauth` so the attempt can be repeated
-    /// without re-deriving the URL, and so the outcome is a value the caller can
-    /// switch on rather than a bare `Bool` that erases WHY it failed.
+    /// Returns an outcome rather than a `Bool` so the caller can tell a decline
+    /// from a presentation failure.
     private static func presentOIDCReauthSession(
         url: URL,
         callbackScheme: String,
@@ -150,13 +116,9 @@ extension BorrowOperation {
     ) async -> OIDCReauthAttempt {
         await withCheckedContinuation { continuation in
             Task { @MainActor in
-                // `session.start()` returns false when iOS refuses to present,
-                // and in that case the completion handler is NEVER invoked. Without
-                // this the continuation would never resume and the borrow would
-                // await forever — a hang, worse than the bug being fixed. The guard
-                // makes resume one-shot: whichever path arrives first wins and the
-                // other is a no-op, so handling the start failure cannot double-resume.
-                // MainActor-confined, so a plain flag is sufficient.
+                // `session.start()` returns false when iOS refuses to present, and
+                // then the completion never fires; that path resumes instead. The
+                // flag makes resume one-shot. Main-actor-confined, so a plain Bool.
                 var didResume = false
                 func resumeOnce(_ outcome: OIDCReauthAttempt) {
                     guard !didResume else { return }
@@ -168,30 +130,17 @@ extension BorrowOperation {
                     url: url,
                     callbackURLScheme: callbackScheme
                 ) { @MainActor callbackURL, error in
-                    // Explicitly @MainActor rather than relying on inference.
-                    // `ASWebAuthenticationSessionCompletionHandler` is NOT
-                    // annotated in the SDK, so the closure would inherit
-                    // MainActor only by Swift 6 inference over a non-Sendable
-                    // parameter. Off-main delivery would race `didResume` and
-                    // double-resume a CHECKED continuation — which traps. The
-                    // The siblings HOP at runtime (TokenRefreshInterceptor uses
-                    // `Task { @MainActor in }`, TPPSignInBusinessLogic+OIDC uses
-                    // `TPPMainThreadRun.asyncIfNeeded`). This does NOT — review
-                    // measured the SIL and found the annotation emitted then
-                    // erased at the block boundary, adding no `hop_to_executor`.
-                    // It is a compile-time isolation contract, not a hop, so it
-                    // fails fast instead of racing. Do not describe it as
-                    // matching the siblings; it does not.
+                    // Explicitly @MainActor: the SDK completion handler is not
+                    // annotated, and off-main delivery would race `didResume`
+                    // and double-resume a checked continuation (a trap). This is
+                    // a compile-time isolation contract, not a runtime hop; the
+                    // SIL shows no `hop_to_executor`. The sibling OIDC paths hop
+                    // explicitly instead.
                     if let error {
-                        // Classify rather than collapsing every error to `false`.
                         // `.canceledLogin` (1) is the patron declining;
-                        // `.presentationContextInvalid` (3) is US failing to put
-                        // the sheet on screen. Those demand opposite responses,
-                        // and reading 3 as a decline is what produced the
-                        // re-auth loop on build 499. The two sibling
-                        // implementations of this dance already discriminate
-                        // (`TokenRefreshInterceptor`, `TPPSignInBusinessLogic+OIDC`);
-                        // this was the drifted third copy.
+                        // `.presentationContextInvalid` (3) is the app failing to
+                        // show the sheet. Treating 3 as a decline caused the
+                        // reauth loop on build 499.
                         let outcome = OIDCReauthAttempt.classify(error: error)
                         Log.info(#file, "OIDC silent re-auth session ended: \(outcome) (\(error.localizedDescription))")
                         resumeOnce(outcome)
@@ -224,19 +173,11 @@ extension BorrowOperation {
                 session.presentationContextProvider = OIDCBorrowPresentationContext.shared
                 session.prefersEphemeralWebBrowserSession = false
 
-                // F-016: defer the session start so any prior SignInModalHostingController
-                // (or the previous SFAuthenticationViewController) has time to finish
-                // deallocating. Without this, calling session.start() while a previous
-                // auth modal is still in its dealloc cycle produces the runtime warning
-                // "Attempting to load the view of a view controller while it is
-                // deallocating" and iOS cancels the new session with
-                // ASWebAuthenticationSession error 3.
-                //
-                // Error 3 is `.presentationContextInvalid`, NOT a user cancellation
-                // (that is code 1, `.canceledLogin`) — this comment previously said
-                // otherwise, which is how the loop stayed misread as a benign decline.
-                // The 150ms is an empirical guess rather than synchronization, so the
-                // caller also retries once on a code-3 outcome.
+                // F-016: defer the start so a previous auth modal can finish
+                // deallocating; starting during its dealloc makes iOS cancel the
+                // session with error 3 (`.presentationContextInvalid`, not a user
+                // cancel). 150ms is empirical, not synchronization, so the caller
+                // also retries once on code 3.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                     // A false return means the session never presented and the
                     // completion will not fire. Classify it as our presentation
@@ -254,12 +195,9 @@ extension BorrowOperation {
 
 /// How one `ASWebAuthenticationSession` attempt ended.
 ///
-/// Exists because collapsing every error to `false` erased the one distinction
-/// that decides what to do next. `.canceledLogin` (code 1) is the patron
-/// declining — respect it. `.presentationContextInvalid` (code 3) is US failing
-/// to put the sheet on screen; the patron never saw anything to decline, so
-/// giving up strands them with `.credentialsStale` credentials and a sign-in
-/// sheet that re-presents on every later interaction until relaunch.
+/// `.canceledLogin` (code 1) is the patron declining. `.presentationContextInvalid`
+/// (code 3) is the app failing to show the sheet; giving up there strands the
+/// patron with stale credentials and a sign-in sheet on every interaction.
 enum OIDCReauthAttempt: Equatable {
     case succeeded
     /// The patron dismissed the sheet. Do NOT re-present it.
@@ -271,23 +209,13 @@ enum OIDCReauthAttempt: Equatable {
     /// Only our own presentation failures are worth another attempt.
     var isRetryable: Bool { self == .presentationFailed }
 
-    /// Whether to present again. THE retry decision, as a value.
-    ///
-    /// This is a function rather than a `switch` pattern because SoD review
-    /// defeated the pattern form three times: a `case` pattern can only be
-    /// pinned by a source-text lint, and `XCTAssertTrue(code.contains(...))` is
-    /// MONOTONE — it detects deletion but never ADDITION or reordering. So
-    /// inserting `case .patronCancelled where attempt == 0: continue` after the
-    /// retry case re-presented a dismissed sheet with every test green, and
-    /// narrowing `0...1` to `0...0` deleted the retry entirely with every test
-    /// green. As a pure function both are ordinary mutants that a table test
-    /// kills. `maxAttempts` is a parameter for the same reason — so the bound
-    /// itself is asserted rather than spelled into a loop header.
-    /// The ONE bound. Previously duplicated as a `let` in the loop and a
-    /// defaulted parameter here, which production never passed — two constants
-    /// that could silently disagree.
+    /// The single presentation-attempt bound, shared by the loop and
+    /// `shouldRetry`.
     static let maxPresentationAttempts = 2
 
+    /// Whether to present again. A pure function rather than a `switch` in the
+    /// loop so a table test can pin the decision and the bound; a pattern in the
+    /// loop could gain a case (re-presenting a dismissed sheet) unnoticed.
     static func shouldRetry(_ outcome: OIDCReauthAttempt,
                             attempt: Int,
                             maxAttempts: Int = OIDCReauthAttempt.maxPresentationAttempts) -> Bool {
@@ -315,16 +243,10 @@ private final class OIDCBorrowPresentationContext: NSObject, ASWebAuthentication
     static let shared = OIDCBorrowPresentationContext()
 
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        // `mainKeyWindow` needs a window currently reporting `isKeyWindow`, and
-        // during a modal dealloc or a tab transition none does. The old fallback
-        // fabricated a bare `ASPresentationAnchor()` — a UIWindow with NO scene,
-        // which is exactly what iOS rejects with `.presentationContextInvalid`
-        // (code 3). So the fallback manufactured the very failure it was meant
-        // to avoid. Prefer any real window from the active scene; keep the bare
-        // anchor only as a last resort so the signature stays total.
-        // Shared resolver, so the three OIDC paths cannot drift apart again.
-        // It filters out keyboard/hidden/non-normal-level windows, which
-        // `windows.first` alone would happily return.
+        // No window may report `isKeyWindow` during a modal dealloc or tab
+        // transition, and a scene-less `ASPresentationAnchor()` is rejected with
+        // code 3. The shared resolver picks a real, normal-level window from the
+        // active scene; the bare anchor is only a last resort.
         UIApplication.shared.webAuthPresentationAnchor ?? ASPresentationAnchor()
     }
 }

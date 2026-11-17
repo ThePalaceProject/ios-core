@@ -2,8 +2,7 @@
 //  AccountsManagerHelpersTests.swift
 //  PalaceTests
 //
-//  F-013 follow-up: kills surviving mutants in AccountsManager by exercising
-//  the pure helpers extracted from `currentAccount.didSet`,
+//  Pins the pure AccountsManager helpers extracted from `currentAccount.didSet`,
 //  `cleanupActiveContentBeforeAccountSwitch`, and `isCacheStale`.
 //
 
@@ -17,7 +16,7 @@ final class AccountsManagerHelpersTests: XCTestCase {
     //
     // Mirrors the previous L171 condition:
     //   `if previousAccountId == newAccountId || previousAccountId == nil`
-    // Kills the `==` ↔ `!=` mutants on the comparison + the `||` ↔ `&&` mutant.
+    // Covers both operands of the `==` comparison and the `||`.
 
     func test_shouldFinishSwitchingImmediately_sameAccount_returnsTrue() {
         let result = AccountsManager.shouldFinishSwitchingImmediately(
@@ -53,8 +52,7 @@ final class AccountsManagerHelpersTests: XCTestCase {
 
     func test_shouldFinishSwitchingImmediately_newNilWithExistingPrevious_returnsFalse() {
         // previous=abc, new=nil → not the same, not previous=nil → false.
-        // Kills the `||` → `&&` mutant: under `&&` this would still return
-        // false too, but combined with the bothNil/previousNil tests above,
+        // Under `&&` this would still return false too, but combined with the bothNil/previousNil tests above,
         // an `&&` swap fails the previousNil case which expects true.
         let result = AccountsManager.shouldFinishSwitchingImmediately(
             previousAccountId: "abc",
@@ -82,8 +80,7 @@ final class AccountsManagerHelpersTests: XCTestCase {
     // MARK: - isCacheStale (pure variant)
 
     func test_isCacheStale_nilMetadata_returnsTrue() {
-        // Kills the `return true` → `return false` mutant on the
-        // nil-metadata path.
+        // Nil metadata must always read as stale.
         XCTAssertTrue(CatalogCacheMetadata.isCacheStale(metadata: nil, serverMaxAge: nil))
     }
 

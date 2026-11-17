@@ -79,8 +79,8 @@ final class BookButtonMapperTests: XCTestCase {
         XCTAssertEqual(result, .returning)
     }
 
-    /// Phase 7 siblings audit fix: `.SAMLStarted` was previously falling through
-    /// the if-cascade to `.unsupported` silently. The exhaustive switch now maps
+    /// `.SAMLStarted` used to fall through the if-cascade to `.unsupported`.
+    /// The exhaustive switch now maps
     /// it to `.downloadInProgress`, matching the parallel `BookButtonState.init?`
     /// mapper (BookButtonState.swift) which treats SAML as part of the download
     /// flow. A user mid-SAML must NOT see "unsupported" — they must see progress.
@@ -144,12 +144,9 @@ final class BookButtonMapperTests: XCTestCase {
     /// future contributor adds a new `TPPBookState` case, the production
     /// switch will fail to compile until they map it, AND this test will
     /// fail until they pin the expected button-state result here. The pair
-    /// makes the "silent fall-through to .unsupported" trap impossible.
-    ///
-    /// Reference: Phase 7 siblings audit
-    /// (`.forgeos/audits/phase7-synthesis-2026-05-26.md`). The same trap
+    /// makes a fall-through to .unsupported impossible. The same trap
     /// produced F-011 (audiobook first-open hang) when a `default:` arm
-    /// swallowed `.downloadNeeded` silently.
+    /// swallowed `.downloadNeeded`.
     func testMap_coversAllTPPBookStates_withNeutralInputs() {
         let expected: [TPPBookState: BookButtonState] = [
             .unregistered:       .unsupported,        // nil availability → no signal → unsupported
@@ -199,7 +196,7 @@ final class BookButtonMapperTests: XCTestCase {
     }
 
     // MARK: - stateForAvailability(.limited(...)) — kills the only surviving
-    // mutants on BookButtonMapper.swift:83 (the copiesAvailable predicate).
+    // regressions in BookButtonMapper's copiesAvailable predicate.
     //
     // The line `limited.copiesAvailable == TPPOPDSAcquisitionAvailabilityCopiesUnknown
     // || limited.copiesAvailable > 0` decides whether a `.limited` availability
@@ -226,8 +223,8 @@ final class BookButtonMapperTests: XCTestCase {
     // (which falls through to availability) so the predicate runs.
 
     /// `.limited` with `copiesAvailable == TPPOPDSAcquisitionAvailabilityCopiesUnknown`
-    /// (the sentinel value, currently -1) must route to `.canBorrow`. Kills the
-    /// `==` → `!=` mutant on line 83 (the sentinel-equality clause).
+    /// (the sentinel value, currently -1) must route to `.canBorrow`. Catches a
+    /// `==` → `!=` flip in the sentinel-equality clause.
     func testMap_unregistered_limitedWithUnknownCopies_returnsCanBorrow() {
         let limited = TPPOPDSAcquisitionAvailabilityLimited(
             copiesAvailable: TPPOPDSAcquisitionAvailabilityCopiesUnknown,
@@ -245,9 +242,8 @@ final class BookButtonMapperTests: XCTestCase {
     }
 
     /// `.limited` with positive `copiesAvailable` must route to `.canBorrow`.
-    /// Kills the `>` → `<` mutant, the `>` → `>=` mutant (3 > 0 is true; 3 >=
-    /// 0 is also true so this is a partial discriminator — see the zero test
-    /// below for the other side), and the `||` → `&&` mutant on line 83.
+    /// Catches `>` → `<` and `||` → `&&` flips in the predicate; `>` → `>=` is
+    /// only caught by the zero-copies test below (3 >= 0 is also true).
     func testMap_unregistered_limitedWithPositiveCopies_returnsCanBorrow() {
         let limited = TPPOPDSAcquisitionAvailabilityLimited(
             copiesAvailable: 3,
@@ -264,9 +260,8 @@ final class BookButtonMapperTests: XCTestCase {
                        "Copies available > 0 must route to canBorrow — flipping > to < would route this to canHold")
     }
 
-    /// `.limited` with `copiesAvailable == 0` must route to `.canHold`. Kills
-    /// the `>` → `>=` mutant on line 83 — that mutant would route zero copies
-    /// to canBorrow because 0 >= 0 is true.
+    /// `.limited` with `copiesAvailable == 0` must route to `.canHold`. A
+    /// `>` → `>=` regression would route zero copies to canBorrow.
     func testMap_unregistered_limitedWithZeroCopies_returnsCanHold() {
         let limited = TPPOPDSAcquisitionAvailabilityLimited(
             copiesAvailable: 0,
@@ -286,12 +281,10 @@ final class BookButtonMapperTests: XCTestCase {
     // MARK: - Exhaustive-switch META-regression
     //
     // Source-level invariant pin: `BookButtonMapper.map(...)` MUST remain an
-    // exhaustive `switch registryState` with no `default:` clause. This is the
-    // F-011-shape regression net referenced in
-    // `.forgeos/audits/phase7-synthesis-2026-05-26.md` and the
-    // `phase7_borrow_path_regressions_2026_05_14` memory pin.
+    // exhaustive `switch registryState` with no `default:` clause, as a guard
+    // against F-011-shaped regressions.
     //
-    // A `default:` clause would silently swallow any future `TPPBookState`
+    // A `default:` clause would swallow any future `TPPBookState`
     // case — that is the exact trap that produced F-011 (audiobook first-open
     // hang). The exhaustive switch makes adding a `TPPBookState` case a
     // compile error until the mapping is decided.
@@ -365,9 +358,7 @@ final class BookButtonMapperTests: XCTestCase {
     // These tests pin the Option (c) presentation-layer semantic: a streaming-
     // HTML book in `.downloadNeeded` maps to `[.readStreaming, .return]`
     // (skipping the normal Download phase), and in `.downloadSuccessful` also
-    // surfaces `.readStreaming` (legacy state carryover). The contract for
-    // these tests lives in `.forgeos/swarms/swarm_c2b95c85/contracts/C-BookButton-Presenter-Wiring.md`
-    // test contracts #1-#3.
+    // surfaces `.readStreaming` (legacy state carryover).
 
     /// Helper: build a streaming-HTML-only book (single acquisition leaf with
     /// the streaming-media MIME). Matches the canonical OPDS chain used in
@@ -416,7 +407,7 @@ final class BookButtonMapperTests: XCTestCase {
     /// Contract test #1: streaming-HTML book in `.downloadNeeded` must map to
     /// `[.readStreaming, .return]` — NOT `[.download, .return]`. This pins
     /// the entire "streaming = no download" semantic at the presentation
-    /// layer. A mutant that flips the inner switch's `case .streamingHTML`
+    /// layer. A regression that flips the inner switch's `case .streamingHTML`
     /// arm to fall through to the EPUB/PDF branch would yield `[.download,
     /// .return]` and this test fails.
     func testBookButtonState_buttonTypes_streamingHTMLDownloadNeeded_yieldsReadStreamingAndReturn() {
@@ -438,7 +429,7 @@ final class BookButtonMapperTests: XCTestCase {
 
     /// Contract test #2: streaming-HTML book in `.downloadSuccessful` (legacy
     /// state from a prior session) still uses the streaming reader — there's
-    /// no local asset to read. Catches a mutant that drops the streamingHTML
+    /// no local asset to read. Catches a regression that drops the streamingHTML
     /// arm from the `.downloadSuccessful, .used` switch.
     func testBookButtonState_buttonTypes_streamingHTMLDownloadSuccessful_yieldsReadStreaming() {
         let book = makeStreamingHTMLBook()

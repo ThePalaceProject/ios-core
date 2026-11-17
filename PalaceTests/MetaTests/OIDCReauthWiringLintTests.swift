@@ -4,11 +4,9 @@
 //
 //  Pins the WIRING of the borrow flow's OIDC re-auth recovery.
 //
-//  `OIDCReauthAttempt` is a pure value type and fully unit-tested, but the
-//  same SoD review that blocked this PR measured the matching failure one
-//  level up: a classifier nothing consults, or a retry nothing performs, is
-//  a guard protected by nothing while its own tests stay green. The
-//  session completion and the presentation anchor both live behind
+//  `OIDCReauthAttempt` is a pure value type and fully unit-tested, but a
+//  classifier nothing consults, or a retry nothing performs, leaves those
+//  tests green. The session completion and the presentation anchor both live behind
 //  `ASWebAuthenticationSession`, which no unit test can drive, so the
 //  structure is asserted instead — same shape and same reasoning as
 //  `FCMRegistrationReadinessLintTests` and `AccountProfileGateLintTests`.
@@ -76,11 +74,8 @@ final class OIDCReauthWiringLintTests: XCTestCase {
 
     /// The retry decision must route through the pure `shouldRetry` function.
     ///
-    /// DEMOTED, deliberately. SoD review established that
-    /// `XCTAssertTrue(code.contains(...))` is MONOTONE in the source text — it
-    /// detects deletion but never ADDITION or reordering. Three rounds of this
-    /// lint were beaten by inserting a case after the one it pinned. The real
-    /// guard is now `OIDCReauthRetryBehaviorTests`, which drives the loop through
+    /// `XCTAssertTrue(code.contains(...))` detects deletion but never an
+    /// inserted or reordered case. The real guard is `OIDCReauthRetryBehaviorTests`, which drives the loop through
     /// an injected seam and counts presentations, so an inserted case fails on an
     /// OBSERVED fact. This assertion remains only to catch the decision being
     /// inlined back into a `case` pattern, where it would again be unreachable by

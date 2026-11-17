@@ -6,9 +6,8 @@
 //  AudiobookPlaytimesLifecycleTests can assert the cross-account scope
 //  guard prevents foreign-host uploads. Distinct from
 //  MockNetworkExecutorForSync (private in AudiobookDataManagerSyncTests):
-//  this one is a shared Mock targeting the playtimes-lifecycle scope guard
-//  introduced by swarm_162a3219 / Bug B, with a focus on URL-level
-//  observation rather than response stubbing.
+//  this one is a shared Mock targeting the playtimes-lifecycle scope guard,
+//  with a focus on URL-level observation rather than response stubbing.
 //
 //  Copyright (c) 2026 The Palace Project. All rights reserved.
 //

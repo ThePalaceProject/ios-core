@@ -201,7 +201,7 @@ This document defines functional and non-functional testing requirements for the
 - `Reachability.swift:*` - Connectivity monitor
 - `TPPCaching.swift:*` - Cache configuration
 
-**Existing Tests:** `NetworkClientTests.swift`, `TPPCachingTests.swift`, `URLRequest+NYPLTests.swift`
+**Existing Tests:** `TPPNetworkExecutorTests.swift`, `URLSessionNetworkClientCancellationTests.swift`, `TPPCachingTests.swift`, `URLRequest+NYPLTests.swift`
 
 ---
 

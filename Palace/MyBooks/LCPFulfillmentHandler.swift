@@ -1,4 +1,5 @@
 import PalaceBookRegistry
+import PalaceUtilities
 //
 //  LCPFulfillmentHandler.swift
 //  Palace
@@ -110,7 +111,7 @@ final class LCPFulfillmentHandler: @unchecked Sendable {
             TPPErrorLogger.logError(error, summary: "Error renaming LCP license file", metadata: [
                 "fileUrl": fileUrl.absoluteString,
                 "licenseUrl": licenseUrl.absoluteString,
-                "book": book.loggableDictionary
+                "book": book.loggableDictionary()
             ])
             alertPresenter.failDownloadWithAlert(for: book, withMessage: error.localizedDescription)
             return
@@ -126,7 +127,34 @@ final class LCPFulfillmentHandler: @unchecked Sendable {
         // through to the unchanged download-first path below (behavior identical
         // to today, which is what keeps this mergeable ahead of the product flip).
         if streamingEnabledProvider(), book.defaultBookContentType == .audiobook {
+            // This arm short-circuits before `storeBook`, so the
+            // `.discardedNotHeld` outcome that guards the download-first path
+            // below never reaches it. Asked here, before the fulfilment ID and
+            // the license copy, because both write for a book the patron may
+            // already have given back: a Return leaves the record at
+            // `.unregistered` rather than removing it, so every lookup in this
+            // arm still succeeds and `markDownloadSuccessful` would take
+            // `.unregistered` to `.downloadSuccessful`.
+            //
+            // `accountUnchanged: true` because this handler carries no record
+            // of the account fulfilment started under. The residual is the one
+            // named on the predicate: a library switch mid-fulfilment reads as
+            // a discard and costs a re-borrow to stream.
+            let registryState = bookRegistry.state(for: book.identifier)
+            guard LocalBookContentService.mayStoreFetchedContent(
+                registryState: registryState,
+                accountUnchanged: true
+            ) else {
+                // Nothing to clean up: the short-circuit happens before the
+                // progress cue and the content-transfer registration, so no
+                // cue is left un-cleared and no transfer is left open.
+                Log.info(#file, "License arrived after the loan ended (state: \(registryState.stringValue())) — not streaming or marking successful: \(book.identifier)")
+                return
+            }
+
             if let license = TPPLCPLicense(url: licenseUrl) {
+                // Before the new ID and licence overwrite the record of the old one.
+                removeArchiveFromAnotherLicense(book: book, newLicenseId: license.identifier)
                 bookRegistry.setFulfillmentId(license.identifier, for: book.identifier)
             } else {
                 Log.error(#file, "🔑 ❌ PP-4957 streaming: failed to read license for fulfillment ID: \(book.identifier)")
@@ -176,7 +204,7 @@ final class LCPFulfillmentHandler: @unchecked Sendable {
             if let error = error {
                 let summary = "\(String(describing: book.distributor)) LCP license fulfillment error"
                 TPPErrorLogger.logError(error, summary: summary, metadata: [
-                    "book": book.loggableDictionary,
+                    "book": book.loggableDictionary(),
                     "licenseURL": licenseUrl.absoluteString,
                     "localURL": localUrl?.absoluteString ?? "N/A"
                 ])
@@ -242,7 +270,19 @@ final class LCPFulfillmentHandler: @unchecked Sendable {
             }
             self.bookRegistry.setFulfillmentId(license.identifier, for: book.identifier)
 
-            if !self.backgroundDownloadHandler.replaceBook(book, withFileAtURL: localUrl, forDownloadTask: downloadTask) {
+            // Switched on the outcome, not a Bool. `storeBook` leaves the
+            // success state to this caller for an LCP audiobook and PDF, so
+            // "did not fail" and "is on disk" are different claims: a download
+            // finishing after a Return writes nothing, and marking it
+            // successful would take `.unregistered` to `.downloadSuccessful`
+            // and announce a completed download for a book the patron gave
+            // back.
+            let outcome = self.backgroundDownloadHandler.storeBook(book, withFileAtURL: localUrl, forDownloadTask: downloadTask)
+            if outcome == .discardedNotHeld {
+                Log.info(#file, "Content arrived after the loan ended — not marking download successful: \(book.identifier)")
+                return
+            }
+            if outcome == .failed {
                 // Storing the content failed, so there is no playable audio on
                 // disk and (with streaming broken) nothing to fall back to.
                 // This used to warn and continue, leaving the book in the
@@ -259,9 +299,8 @@ final class LCPFulfillmentHandler: @unchecked Sendable {
                 self.delegate?.markDownloadSuccessful(for: book)
             }
 
-            // PDF fulfillment: Readium's PDFNavigator streams decrypted
-            // pages on demand via the shared GCDHTTPServer, so no eager
-            // zip→temp extract is needed here. Just mark the book
+            // PDF fulfillment: the decrypted PDF is extracted to disk on
+            // first open (`LCPPDFDiskExtract`), not here. Mark the book
             // successful once the LCP container + license are on disk.
             if book.defaultBookContentType == .pdf {
                 self.delegate?.markDownloadSuccessful(for: book)
@@ -332,6 +371,40 @@ final class LCPFulfillmentHandler: @unchecked Sendable {
         }
     }
 
+    // MARK: - Earlier loan's package
+
+    /// Removes an `.lcpa` left by an earlier loan of this book (PP-5440).
+    ///
+    /// This arm fetches no package, and a package opens on the licence embedded
+    /// in it, so one left by a loan that ended without an in-app Return would
+    /// keep opening on that loan's returned or expired licence. The earlier
+    /// licence is known from the `.lcpl` beside the package, else from the
+    /// registry; a re-borrow's `addBook` clears the registry ID, so the file is
+    /// read first. With neither, the package stays.
+    private func removeArchiveFromAnotherLicense(book: TPPBook, newLicenseId: String) {
+        guard let contentURL = bookFileManager.fileUrl(for: book.identifier),
+              fileManager.fileExists(atPath: contentURL.path)
+        else {
+            return
+        }
+        let siblingLicenseURL = contentURL.deletingPathExtension().appendingPathExtension("lcpl")
+        guard let earlierLicenseId = TPPLCPLicense(url: siblingLicenseURL)?.identifier
+                ?? bookRegistry.fulfillmentId(forIdentifier: book.identifier),
+              earlierLicenseId != newLicenseId
+        else {
+            return
+        }
+        Log.info(#file, "Removing the package of an earlier loan before streaming the new licence: \(book.identifier)")
+        if fileManager.fileExists(atPath: siblingLicenseURL.path) {
+            LCPAudiobooks.removeArchiveStore(forLicenseAt: siblingLicenseURL)
+        }
+        do {
+            try fileManager.removeItem(at: contentURL)
+        } catch {
+            Log.error(#file, "Could not remove the earlier loan's package for \(book.identifier): \(error.localizedDescription)")
+        }
+    }
+
     // MARK: - Streaming license copy
 
     /// Copies the LCP license file to the content directory for streaming
@@ -353,7 +426,7 @@ final class LCPFulfillmentHandler: @unchecked Sendable {
             try fileManager.copyItem(at: sourceLicenseUrl, to: streamingLicenseUrl)
         } catch {
             TPPErrorLogger.logError(error, summary: "Failed to copy LCP license for streaming", metadata: [
-                "book": book.loggableDictionary,
+                "book": book.loggableDictionary(),
                 "sourceLicenseUrl": sourceLicenseUrl.absoluteString,
                 "targetLicenseUrl": streamingLicenseUrl.absoluteString
             ])

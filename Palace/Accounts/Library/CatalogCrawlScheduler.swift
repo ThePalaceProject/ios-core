@@ -2,20 +2,9 @@
 //  CatalogCrawlScheduler.swift
 //  Palace
 //
-//  Owned-task infrastructure for AccountsManager's background catalog-crawl
-//  work (PP-4754 root-cause de-flake). Splits two collaborators out of the
-//  AccountsManager god class:
-//
-//   - `CrawlTaskScheduler`: the injectable spawn seam. Production spawns real
-//     structured/detached Tasks; tests inject a recording scheduler to pin the
-//     scheduling contract (site order + priority + detachedness) that a refactor
-//     could otherwise silently drift.
-//   - `OwnedCrawlTaskRegistry`: a self-pruning registry that gives every
-//     background crawl Task a real owner. ALWAYS populated (production included)
-//     so the test-boundary drain is COMPLETE — no fire-and-forget write channel
-//     survives a test to pollute the next one (the systemic flake class this
-//     change closes). Bounded because each task removes its own token on
-//     completion.
+//  Owned-task infrastructure for AccountsManager's background catalog crawl
+//  (PP-4754): an injectable spawn seam, and a registry that gives every crawl
+//  Task an owner that can be cancelled and drained.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -28,9 +17,7 @@ import Foundation
 /// priority: the init / first-run / slim-refresh sites spawn `detached` at
 /// `.utility`; the `fetchFromNetwork` crawl spawns an inheriting `Task` at
 /// `.userInitiated`; pagination / refresh / preload spawn inheriting `Task`s at
-/// `.utility`. `production` is the live implementation; a test can substitute a
-/// recording scheduler that captures `(priority, detached)` per spawn to assert
-/// the cold-launch scheduling contract.
+/// `.utility`.
 struct CrawlTaskScheduler: Sendable {
   /// Spawn an inheriting `Task` at `priority`.
   var spawn: @Sendable (TaskPriority, @escaping @Sendable () async -> Void) -> Task<Void, Never>
@@ -51,35 +38,21 @@ struct CrawlTaskScheduler: Sendable {
 ///
 /// Every background Task the manager spawns is registered here under a fresh
 /// token and self-removes on completion (the caller wraps the operation in a
-/// `defer { registry.complete(token) }`). The registry is populated in
-/// production too — this is the ownership change at the heart of PP-4754: a
-/// crawl that used to be fire-and-forget now has an owner that
+/// `defer { registry.complete(token) }`), in production too, so
 /// `cancelBackgroundWork()` can cancel and `cancelAndDrainBackgroundWork()` can
-/// await. Growth is bounded because each task prunes its own token, so the live
-/// set only ever holds genuinely in-flight work.
+/// await every crawl.
 ///
-/// `@unchecked Sendable` invariant: the only mutable state (`tasks`,
-/// `completedBeforeInsert`) is read and written exclusively under `lock` (an
-/// immutable `NSLock`); the wrapped `Task<Void, Never>` handles are themselves
-/// `Sendable`.
+/// `@unchecked Sendable`: all mutable state is guarded by `lock`.
 ///
-/// Insert-vs-complete race: a spawned Task can finish — and run its
-/// `complete(_:)` defer — BEFORE the spawning code calls `register(_:_:)` (the
-/// task is created, then registered). A naive registry would then insert a
-/// handle for an already-finished task and never prune it. The `completedBeforeInsert`
-/// tombstone set closes this: if `complete` runs first it records the token as a
-/// tombstone; `register` then sees the tombstone, clears it, and skips the
-/// insert. Even if this guard were absent the leak would be benign for the join
-/// (awaiting a finished task returns immediately) — the tombstone only bounds
-/// memory, which is why it is safe and cheap.
+/// A spawned Task can finish before `register(_:_:)` runs. `complete` then
+/// leaves a tombstone in `completedBeforeInsert` and `register` skips the
+/// insert, so finished tasks are never left in the map.
 final class OwnedCrawlTaskRegistry: @unchecked Sendable {
   private let lock = NSLock()
   private var tasks: [UUID: Task<Void, Never>] = [:]
   private var completedBeforeInsert: Set<UUID> = []
 
-  /// Register a freshly-spawned task under `token`. Called AFTER the task is
-  /// created, so it must reconcile with a `complete(_:)` that may already have
-  /// run (see the tombstone rationale on the type).
+  /// Called after the task is created, so `complete(_:)` may already have run.
   func register(_ token: UUID, _ task: Task<Void, Never>) {
     lock.lock(); defer { lock.unlock() }
     if completedBeforeInsert.remove(token) != nil {

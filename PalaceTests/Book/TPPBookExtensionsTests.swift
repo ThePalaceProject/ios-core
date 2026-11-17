@@ -91,7 +91,7 @@ final class TPPBookExtensionsTests: XCTestCase {
     /// `format` is a localized user-facing label. Lock both the
     /// non-emptiness invariant AND a couple of distinct content-type
     /// outputs in one body — the localized strings differ between
-    /// ePub/Audiobook/PDF, so a mutant that always returns a constant
+    /// ePub/Audiobook/PDF, so a regression that always returns a constant
     /// fails the inequality cross-check.
     func test_format_isNonEmptyAndDistinguishableAcrossContentTypes() {
         let epub = TPPBookMocker.mockBook(distributorType: .EpubZip)
@@ -103,7 +103,7 @@ final class TPPBookExtensionsTests: XCTestCase {
         XCTAssertFalse(audiobook.format.isEmpty, "audiobook.format must be non-empty")
 
         // Distinct content types must yield distinct labels — guards a
-        // mutant that returns the same constant from every branch.
+        // regression that returns the same constant from every branch.
         let formats = Set([epub.format, pdf.format, audiobook.format])
         XCTAssertGreaterThanOrEqual(formats.count, 2,
                                     "At least two of (epub, pdf, audiobook) must yield distinct format strings")
@@ -113,7 +113,7 @@ final class TPPBookExtensionsTests: XCTestCase {
 
     /// `hasSample` is true iff the book has a usable preview path. Lock
     /// both branches (no sample, with sample) in one body and pin the
-    /// hasAudiobookSample distinction so a mutant that conflates the two
+    /// hasAudiobookSample distinction so a regression that conflates the two
     /// flags is caught.
     func test_hasSample_returnsTrueOnlyWhenSampleIsPresent_andDistinguishesAudiobook() {
         let plainEpub = makeBook()
@@ -197,7 +197,7 @@ final class TPPBookExtensionsTests: XCTestCase {
     }
 
     /// `sample` factory yields nil when there's nothing to play. Pair the
-    /// no-preview case with the no-acquisition case so a mutant that
+    /// no-preview case with the no-acquisition case so a regression that
     /// short-circuits the wrong branch is caught.
     func test_sample_returnsNilWhenNoSampleIsAvailable() {
         // Plain book — no preview link.

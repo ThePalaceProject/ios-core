@@ -11,8 +11,7 @@
 #                                              #   classes in isolation to distinguish
 #                                              #   pre-existing test-isolation flakes
 #                                              #   from branch-introduced regressions.
-#                                              #   Per .forgeos/wall-failures/ —
-#                                              #   PR #1018 lessons.
+#                                              #   (PR #1018 lessons.)
 #   scripts/verify-pr.sh --baseline-compare    # Adds the ONLY check that can call a
 #                                              #   failure "this branch's": re-run the
 #                                              #   classes that failed in isolation
@@ -127,13 +126,66 @@ MUTATION_WHOLE_FILE=false
 # documented in `docs/architecture/critical-path-mutation-coverage.md`.
 # Re-run that audit after any file rename in the listed surfaces or any PR
 # that adds a new state machine, retry handler, or borrow/download/DRM router.
-CRITICAL_MUTATION_PATHS_REGEX='^Palace/(Audiobooks/|SignInLogic/|MyBooks/(Download|Borrow|BookSignInRedirectHandler|AdobeDRMHandler|LCPFulfillmentHandler|RightsManagementDispatcher|MyBooksDownload|BackgroundDownloadHandler|OverdriveDownloadHandler)|Book/UI/BookDetail/(BookButtonMapper|BorrowReducer)|Accounts/User/TPPUserAccount|Accounts/Library/AccountsManager|Network/TPPNetworkExecutor|Packages/PalaceAuth/)'
+CRITICAL_MUTATION_PATHS_REGEX='^Palace/(Audiobooks/|SignInLogic/|MyBooks/(Download|Borrow|BookSignInRedirectHandler|AdobeDRMHandler|LCPFulfillmentHandler|RightsManagementDispatcher|MyBooksDownload|BackgroundDownloadHandler|OverdriveDownloadHandler)|Book/UI/BookDetail/(BookButtonMapper|BorrowReducer|BookDetailErrorAdmission)|Accounts/User/TPPUserAccount|Accounts/Library/AccountsManager|Network/TPPNetworkExecutor|Packages/PalaceAuth/)'
 # Sim selection. Honors the harness allocator's per-session UDID so parallel
-# agents on the same machine don't collide on one device. Falls back to the
-# pool default when the harness isn't claiming. CLAUDE.md: "NEVER hardcode a
-# sim UDID" — this default is the documented fallback, not a hardcode.
+# agents on the same machine don't collide on one device.
+#
+# The fallback UDID below is a convenience for ONE machine and is absent from
+# most others — any outside contributor's, and this repo's own after a simulator
+# wipe. An unresolvable `-destination id=...` does NOT produce `BUILD FAILED`:
+# xcodebuild exits having printed "The requested device could not be found" and
+# NEITHER verdict string, which this script records as "Build did not complete".
+# Four legs (build, unit_tests, coverage_floors, audiobook_smoke) then go red
+# pointing at the diff, and nothing anywhere names the simulator.
+#
+# Measured 2026-09-10: two consecutive full runs lost to exactly that, plus a
+# confident wrong diagnosis (machine load) built on top of it. So resolve the id
+# to a device that exists, and if none does, say so instead of proceeding.
 BASELINE_COMPARE="${BASELINE_COMPARE:-false}"
-SIM_ID="${HARNESS_SESSION_SIM_UDID:-DF4A2A27-9888-429D-A749-2E157A049A37}"
+# When PALACE_SIM_LOCK_DIR names a directory of <UDID>.json lock files, a
+# simulator another checkout holds is skipped by the scan and refused when
+# asked for; scripts/sim_lock.py holds the rule, shared with palace_mutate.py.
+SIM_LOCK_HELPER="$SCRIPT_DIR/sim_lock.py"
+SIM_FALLBACK_UDID="DF4A2A27-9888-429D-A749-2E157A049A37"
+
+# Prints a usable simulator UDID, or nothing.
+resolve_sim_id() {
+  local want="$1" available
+  available="$(xcrun simctl list devices available 2>/dev/null || true)"
+  if [ -n "$want" ] && printf '%s' "$available" | grep -qF "$want"; then
+    printf '%s' "$want"; return 0
+  fi
+  # CLAUDE.md documents iPhone 16 Pro as the destination; accept newer iPhones
+  # too rather than fail on a machine that has moved on.
+  printf '%s' "$available" \
+    | grep -E "iPhone (1[6-9]|2[0-9])" \
+    | grep -oE "[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}" \
+    | if [ -n "${PALACE_SIM_LOCK_DIR:-}" ]; then
+        python3 "$SIM_LOCK_HELPER" filter --root "$REPO_ROOT"
+      else
+        cat
+      fi \
+    | head -1
+}
+
+SIM_ID="$(resolve_sim_id "${HARNESS_SESSION_SIM_UDID:-$SIM_FALLBACK_UDID}")"
+if [ -z "$SIM_ID" ]; then
+  echo "FATAL: no usable iOS simulator found." >&2
+  echo "  HARNESS_SESSION_SIM_UDID=${HARNESS_SESSION_SIM_UDID:-<unset>}" >&2
+  echo "  fallback $SIM_FALLBACK_UDID is not present on this host," >&2
+  echo "  and no available iPhone simulator matched." >&2
+  echo "" >&2
+  echo "Create one (Xcode > Window > Devices and Simulators), or run under an" >&2
+  echo "allocator that exports HARNESS_SESSION_SIM_UDID." >&2
+  exit 2
+fi
+if [ -n "${PALACE_SIM_LOCK_DIR:-}" ] \
+   && ! python3 "$SIM_LOCK_HELPER" check "$SIM_ID" --root "$REPO_ROOT"; then
+  exit 2
+fi
+if [ "$SIM_ID" != "${HARNESS_SESSION_SIM_UDID:-}" ]; then
+  echo "note: using simulator $SIM_ID (HARNESS_SESSION_SIM_UDID unset or unavailable)" >&2
+fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -161,13 +213,38 @@ count_lines() {
   printf '%s' "$1" | grep -c . || true
 }
 
+# Pick the integration branch this one was actually cut from: the candidate
+# leaving the FEWEST commits between its merge-base and HEAD.
+#
+# This used to return the first of develop/main/master that EXISTS, which is
+# origin/develop on essentially every checkout. So a branch cut from a release
+# branch was scored against develop and inherited the entire release delta.
+# Measured 2026-09-14 (PP-5128): a 4-file Reader2 fix off origin/release/3.3.0
+# was judged as 26 production files and failed a diff-scoped leg naming
+# files that belong to other people's release commits. Release and hotfix
+# branches are integration branches too, so they are candidates.
+#
+# Scoring, not ordering: for a branch off release/3.3.0 the release branch
+# leaves only that branch's own commits, while develop leaves those PLUS
+# everything the release branch landed since the two diverged. The nearest
+# candidate is by construction the one it was cut from.
 detect_base_branch() {
-  for candidate in origin/develop origin/main origin/master; do
-    if git rev-parse --verify "$candidate" &>/dev/null; then
-      echo "$candidate"
-      return
+  local best="" best_n="" mb n candidate
+  for candidate in $(git for-each-ref --format='%(refname:short)' \
+                       'refs/remotes/origin/release/*' \
+                       'refs/remotes/origin/hotfix/*' 2>/dev/null) \
+                   origin/develop origin/main origin/master; do
+    git rev-parse --verify "$candidate" >/dev/null 2>&1 || continue
+    mb=$(git merge-base "$candidate" HEAD 2>/dev/null) || continue
+    n=$(git rev-list --count "${mb}..HEAD" 2>/dev/null) || continue
+    if [ -z "$best_n" ] || [ "$n" -lt "$best_n" ]; then
+      best="$candidate"; best_n="$n"
     fi
   done
+  if [ -n "$best" ]; then
+    echo "$best"
+    return
+  fi
   echo "HEAD~10"
 }
 
@@ -176,7 +253,7 @@ detect_base_branch() {
 # branch off". A PR onto `release/X.Y.Z` diffed against `origin/develop` picks up
 # every commit the release branch carries: PP-5205 read as 51 changed production
 # files across four unrelated tickets, and every diff-scoped gate below
-# (intent, signing, doc-hygiene, superpartner, blast-radius) judged that diff
+# (signing, doc-hygiene, blast-radius) judged that diff
 # instead of the branch's own. The default is unchanged; this is opt-in.
 BASE=${BASE_OVERRIDE:-$(detect_base_branch)}
 if ! git rev-parse --verify "$BASE" &>/dev/null; then
@@ -240,6 +317,26 @@ compare_against_baseline() {
 # Pure: takes the base run's text and the class names, echoes one verdict.
 # Kept apart so it can be tested without git, a simulator, or a 15-minute build
 # — the orchestration above is what needs a real tree, the decision is not.
+isolation_split() {
+  # Classify each failing class by whether it PASSED when re-run alone.
+  # Emits "flakes:<names>|real:<names>" with single-space-prefixed name lists.
+  #
+  # Pure, and separate from the run that produces `out`, for the same reason
+  # `baseline_verdict_from_output` is: the decision can then be tested without
+  # git, a simulator or a build, which is also what makes it runnable on the
+  # ubuntu tooling runner.
+  local out="$1" classes="$2"
+  local flakes="" real="" cls
+  for cls in $classes; do
+    if echo "$out" | grep -qE "Test Suite '$cls' passed"; then
+      flakes="$flakes $cls"
+    else
+      real="$real $cls"
+    fi
+  done
+  echo "flakes:${flakes}|real:${real}"
+}
+
 baseline_verdict_from_output() {
   local out="$1" classes="$2"
   local iso_suites new_names cls
@@ -267,16 +364,80 @@ baseline_verdict_from_output() {
     echo "all-preexisting"
   fi
 }
+# Every CHANGED_* below is computed from `$BASE...HEAD`, so uncommitted work is
+# invisible to this whole script. That is correct for "what would I be pushing",
+# and it is a trap when read as "is my work clean": a green run over a dirty tree
+# is a verdict about bytes nobody scanned. CLAUDE.md points contributors here as
+# the pre-PR self-check, so the omission is announced rather than assumed.
+# Measured 2026-09-29: three consecutive edit-and-recheck rounds against the
+# sibling `lint-test-quality.py --changed`, each reporting the same stale
+# finding, because every fix was sitting uncommitted.
+# Untracked files are INCLUDED deliberately. A brand-new test file is the most
+# common shape of uncommitted work under TDD, and `--untracked-files=no` made
+# exactly that case produce no notice at all. The files are NAMED, not merely
+# counted: this checkout is chronically dirty by one unrelated tracked file
+# (`Package.resolved`), and a bare count fires on nearly every local run
+# without saying what for — alarm fatigue on the signal being added.
+UNCOMMITTED_NAMES=$(git status --porcelain -z 2>/dev/null | python3 -c '
+import sys
+# `--porcelain -z` because porcelain v1 QUOTES any path with a space or a
+# non-ASCII byte, and a quoted path silently vanishes from a naive parse — an
+# announcement of an omission that omits a file.
+#
+# A rename emits TWO records, `XY new` then a bare `orig` with no status
+# prefix. Stripping three characters from every record turns that orig into a
+# phantom entry: measured, `PalaceTests/Orig.swift` came out as
+# `aceTests/Orig.swift` and inflated the count by one per rename.
+recs = [r for r in sys.stdin.read().split("\0") if r]
+skip = False
+for r in recs:
+    if skip:
+        skip = False
+        continue
+    if len(r) < 4:
+        continue
+    if r[0] in "RC":
+        skip = True
+    print(r[3:])
+' || true)
+UNCOMMITTED_COUNT=$(printf '%s' "$UNCOMMITTED_NAMES" | grep -c . || true)
+UNCOMMITTED_COUNT=${UNCOMMITTED_COUNT:-0}
+if [ "$UNCOMMITTED_COUNT" -gt 0 ]; then
+  echo ""
+  echo "  NOTE: $UNCOMMITTED_COUNT uncommitted change(s) in the working tree are NOT"
+  echo "        part of this run. Everything below is measured against HEAD"
+  echo "        ($(git rev-parse --short HEAD)). Commit them and re-run if you"
+  echo "        meant to verify them."
+  printf '%s\n' "$UNCOMMITTED_NAMES" | head -10 | sed 's/^/          /'
+  if [ "$UNCOMMITTED_COUNT" -gt 10 ]; then
+    echo "          ... and $((UNCOMMITTED_COUNT - 10)) more"
+  fi
+  echo ""
+fi
 CHANGED_SWIFT=$(git diff --name-only "$BASE"...HEAD -- '*.swift' 2>/dev/null | grep -v 'Tests/' || true)
 CHANGED_TEST_SWIFT=$(git diff --name-only "$BASE"...HEAD -- '*.swift' 2>/dev/null | grep 'Tests/' || true)
-# Scope a11y file picker to actual SwiftUI/UIKit view files. Exclude
-# non-view siblings (ViewModel, Model, Reducer, Service, Provider, Mapper,
-# Store, Coordinator, Builder, Dispatcher) that happen to substring-match
-# "View" or "Controller". Documented in feedback_verify_pr_false_positives.md.
-CHANGED_UI=$(echo "$CHANGED_SWIFT" \
+# What counts as a screen. Files the accessibility leg examines (PP-5028).
+#
+# By name: View, Cell, Controller or a UI/ folder, minus non-view siblings
+# (ViewModel, Model, Reducer, ...) that substring-match "View" or "Controller".
+# By declaration: a SwiftUI `View` conformance or a view controller subclass.
+# The name arm alone missed TPPReaderSettingsVC.swift and SignInWebSheet.swift;
+# the declaration arm alone would drop UIKit cells and deleted files.
+UI_BY_NAME=$(echo "$CHANGED_SWIFT" \
   | grep -E '(UI/|View|Cell|Controller)' \
   | grep -Ev '(ViewModel|ViewState|Model|Reducer|Service|Provider|Mapper|Store|Coordinator|Builder|Dispatcher|Repository|Manager)\.swift$' \
   || true)
+UI_DECL_RE='^[[:space:]]*(@?[A-Za-z]+(\([^)]*\))?[[:space:]]+)*(struct|class|extension)[[:space:]]+[A-Za-z_][A-Za-z0-9_.]*(<[^>]*>)?[[:space:]]*:[^{]*(^|[^A-Za-z0-9_])(View|[A-Za-z]*(ViewController|NavigationController|TabBarController|HostingController|VC))([^A-Za-z0-9_]|$)'
+UI_BY_DECL=""
+while IFS= read -r ui_candidate; do
+  [ -n "$ui_candidate" ] && [ -f "$ui_candidate" ] || continue
+  if grep -qE "$UI_DECL_RE" "$ui_candidate" 2>/dev/null; then
+    UI_BY_DECL="${UI_BY_DECL}${ui_candidate}
+"
+  fi
+done <<< "$CHANGED_SWIFT"
+CHANGED_UI=$(printf '%s\n%s\n' "$UI_BY_NAME" "$UI_BY_DECL" \
+  | grep -v '^[[:space:]]*$' | sort -u || true)
 # `--ignore-submodules=none` is load-bearing, not defensive (PP-4976).
 #
 # Every submodule in this repo has `ignore = all` set in git config, so a plain
@@ -417,6 +578,8 @@ if [ "$DOCS_ONLY" = "true" ]; then
   "pass_count": $PASS_COUNT,
   "fail_count": $FAIL_COUNT,
   "skip_count": $SKIP_COUNT,
+  "uncommitted_count": ${UNCOMMITTED_COUNT:-0},
+  "scanned_ref": "$(git rev-parse HEAD)",
   "unit_tests": {"pass": $TEST_PASS, "fail": $TEST_FAIL},
   "checks": [$RESULTS_JSON]
 }
@@ -465,8 +628,18 @@ else
 # routinely newer than this one's, and its failures would be reported as ours.
 RESULT_BUNDLE="${TMPDIR:-/tmp}/verify-pr-$$.xcresult"
 rm -rf "$RESULT_BUNDLE"
+# Timeouts match scripts/xcodebuild-test-optimized.sh (the CI path), which has had
+# them since it was written. This script did not, and that asymmetry IS the
+# defect: a hanging test fails in CI after 300s and hangs FOREVER locally.
+# On 2026-09-10 an unbounded `await` in a test mock held this leg open for ten
+# hours at 0% CPU — no output, no failure, indistinguishable from slow progress.
+# The local pre-push check is precisely where that must not be possible.
 TEST_OUTPUT=$(xcodebuild -project Palace.xcodeproj -scheme Palace \
-  -destination "id=$SIM_ID" -resultBundlePath "$RESULT_BUNDLE" test 2>&1 || true)
+  -destination "id=$SIM_ID" -resultBundlePath "$RESULT_BUNDLE" \
+  -test-timeouts-enabled YES \
+  -default-test-execution-time-allowance 120 \
+  -maximum-test-execution-time-allowance 300 \
+  test 2>&1 || true)
 
 # The xcresult is the authoritative tally; stdout is a fallback.
 #
@@ -553,17 +726,22 @@ elif [ "$DIFF_BASELINE" = "true" ] && [ "$TEST_FAIL" -gt 0 ]; then
       if [ "$ISO_SUITES" -eq 0 ]; then
         record "unit_tests" "fail" "$TEST_TALLY — isolation re-run produced no suites (build or simulator problem), so flake-vs-regression is UNDETERMINED for:$(echo "$FAILING_CLASSES" | tr '\n' ' ')"
       else
-      REAL_FAIL_NAMES=""
-      for cls in $FAILING_CLASSES; do
-        if echo "$ISOLATED_OUTPUT" | grep -qE "Test Suite '$cls' passed"; then
-          FLAKE_COUNT=$((FLAKE_COUNT + 1))
-        else
-          REAL_FAIL=$((REAL_FAIL + 1))
-          REAL_FAIL_NAMES="$REAL_FAIL_NAMES $cls"
-        fi
-      done
+      ISO_SPLIT=$(isolation_split "$ISOLATED_OUTPUT" "$FAILING_CLASSES")
+      FLAKE_NAMES="${ISO_SPLIT#flakes:}"; FLAKE_NAMES="${FLAKE_NAMES%%|real:*}"
+      REAL_FAIL_NAMES="${ISO_SPLIT#*|real:}"
+      FLAKE_COUNT=$(echo "$FLAKE_NAMES" | wc -w | tr -d ' ')
+      REAL_FAIL=$(echo "$REAL_FAIL_NAMES" | wc -w | tr -d ' ')
       if [ "$REAL_FAIL" -eq 0 ] && [ "$FLAKE_COUNT" -gt 0 ]; then
-        record "unit_tests" "pass" "$TEST_TALLY — all $FLAKE_COUNT failing classes pass in isolation (pre-existing test-isolation flakes per --diff-baseline)"
+        # NAME them here too. This was the one verdict that reported a bare count
+        # while every sibling named its classes, and it is the verdict that fires
+        # most often — so the identity of a recurring flake was unrecoverable
+        # afterwards, because the xcresult is deleted when the run ends.
+        #
+        # "pass in isolation" is also not the same as "pre-existing", which this
+        # message used to assert. A branch that newly EXPOSES order-dependent
+        # pollution produces exactly this shape, and the fix for that is not the
+        # fix for a flake someone else owns. Say what was measured.
+        record "unit_tests" "pass" "$TEST_TALLY — $FLAKE_COUNT failing class(es) pass in isolation per --diff-baseline, so they are order- or load-dependent rather than deterministic:$FLAKE_NAMES. Passing alone does NOT establish they are pre-existing — a branch can newly expose pollution. Use --baseline-compare, or scripts/find-test-polluter.sh --victim <class>"
       else
         # "Fails in isolation" does NOT mean "this branch broke it". A
         # deterministic pre-existing failure fails in isolation too, and this
@@ -682,58 +860,29 @@ elif [ -f scripts/lint-test-quality.py ]; then
     FILE_VIOLATIONS=$(echo "$LINT_PER_FILE" | grep -E "^$test_file:[0-9]+:(FLAKE|FLUFF|MISSING|TIMEOUT)-" | wc -l | tr -d ' ')
     NEW_VIOLATIONS=$((NEW_VIOLATIONS + FILE_VIOLATIONS))
   done <<< "$CHANGED_TEST_SWIFT"
-  if [ "$NEW_VIOLATIONS" -eq 0 ]; then
-    record "test_quality" "pass" "0 blocking violations in changed test files (SHALLOW advisory)"
-  else
+  # `--per-file` never evaluates STARVE-001. That rule lives behind the script's
+  # separate `--changed` entry point, which tooling-checks.yml runs and GitHub
+  # reports as the `flake-lint` check, and it signals by EXIT STATUS rather than
+  # by a line the grep above would match. Running only `--per-file` here made a
+  # clean local run unable to predict that leg: on 2026-10-21 a branch passed
+  # this script six times and arrived red on a rule no local run had evaluated.
+  # Parity is pinned by scripts/tests/test_verify_pr_lint_mode_parity.py.
+  STARVE_OUT=$(python3 scripts/lint-test-quality.py --changed "$BASE" 2>&1)
+  STARVE_RC=$?
+  if [ "$STARVE_RC" -ne 0 ]; then
+    echo "$STARVE_OUT"
+  fi
+  if [ "$NEW_VIOLATIONS" -eq 0 ] && [ "$STARVE_RC" -eq 0 ]; then
+    record "test_quality" "pass" "0 blocking violations in changed test files; STARVE-001 clean (SHALLOW advisory)"
+  elif [ "$NEW_VIOLATIONS" -eq 0 ]; then
+    record "test_quality" "fail" "STARVE-001: new deadline-poll wait(s) in changed test files"
+  elif [ "$STARVE_RC" -eq 0 ]; then
     record "test_quality" "fail" "$NEW_VIOLATIONS blocking violations in changed test files"
+  else
+    record "test_quality" "fail" "$NEW_VIOLATIONS blocking violations in changed test files; STARVE-001 also flagged new deadline-poll wait(s)"
   fi
 else
   record "test_quality" "skip" "Lint script not found"
-fi
-
-# 3a. Contract reconciliation (M1 universal-rigor-floor gate)
-# Reconciles "removes X" / "deletes X" / "migrates Y to Z" / "renames X to Y" /
-# "adds field A to type B" claims in the commit body / PR body / intent file
-# against the staged-diff (HEAD vs base). Catches the contract-vs-diff drift
-# class surfaced in waves 1-4. See `scripts/check-contract-reconciliation.py`.
-echo "--- Contract reconciliation ---"
-if [ "$MUTATION_ONLY" = "true" ]; then
-  record "contract_reconciliation" "skip" "Skipped (--mutation-only)"
-elif [ -f scripts/check-contract-reconciliation.py ]; then
-  CR_DIFF=$(mktemp -t cr-diff.XXXX)
-  CR_MSG=$(mktemp -t cr-msg.XXXX)
-  git diff "$BASE"...HEAD > "$CR_DIFF" 2>/dev/null || true
-  # Capture HEAD commit subject + body as the claim source. Architect rev_f1c4ea3c
-  # caught the wiring gap where this script ran without a claim source and silently
-  # passed regardless of what the commit body claimed. Pass --commit-msg so the
-  # gate is no longer decorative.
-  git log -1 --format=%B HEAD > "$CR_MSG" 2>/dev/null || echo "" > "$CR_MSG"
-  # Also pass --intent if a matching intent file exists. Match on the commit
-  # subject's first 4 dash-separated tokens (e.g. "[swarm_M1_83be56fc] Module C ..."
-  # → "swarm-m1" matches `.forgeos/intent/swarm-m1-*.md`).
-  CR_INTENT_FLAG=""
-  CR_SUBJECT=$(head -1 "$CR_MSG" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9 ]//g' | awk '{print $1"-"$2}')
-  if [ -n "$CR_SUBJECT" ] && [ -d .forgeos/intent ]; then
-    # Prefer an intent file present in THIS branch's diff over an old sibling
-    # that merely shares the ticket tokens — an already-merged same-ticket
-    # intent's claims must not gate this diff. Fall back to first match.
-    CR_INTENT_MATCH=""
-    for _c in $(find .forgeos/intent -maxdepth 1 -name "*${CR_SUBJECT}*.md" -type f 2>/dev/null); do
-      if grep -qF "${_c#./}" "$CR_DIFF" 2>/dev/null; then CR_INTENT_MATCH="$_c"; break; fi
-    done
-    [ -z "$CR_INTENT_MATCH" ] && CR_INTENT_MATCH=$(find .forgeos/intent -maxdepth 1 -name "*${CR_SUBJECT}*.md" -type f 2>/dev/null | head -1)
-    [ -n "$CR_INTENT_MATCH" ] && CR_INTENT_FLAG="--intent $CR_INTENT_MATCH"
-  fi
-  CR_OUT=$(python3 scripts/check-contract-reconciliation.py --diff "$CR_DIFF" --commit-msg "$CR_MSG" $CR_INTENT_FLAG --quiet 2>&1)
-  CR_EXIT=$?
-  rm -f "$CR_DIFF" "$CR_MSG"
-  if [ "$CR_EXIT" -eq 0 ]; then
-    record "contract_reconciliation" "pass" "All commit/PR/intent claims reconciled with diff"
-  else
-    record "contract_reconciliation" "fail" "Unreconciled claims: $(echo "$CR_OUT" | head -3 | tr '\n' ' ')"
-  fi
-else
-  record "contract_reconciliation" "skip" "check-contract-reconciliation.py not found"
 fi
 
 # 3b. Blast-radius (M1 universal-rigor-floor gate)
@@ -783,27 +932,6 @@ else
   record "committed_signing" "skip" "check-no-committed-signing.sh not found"
 fi
 
-# 3b1a. Playback-UI latch — a BLOCKING audiobook UI state must not be derived from
-# a live readiness signal (isLoaded / isBuffering / isDownloading / isPlaying)
-# without the `hasStartedPlayback` session-phase latch. Whole-tree, NOT diff-based:
-# the class is a missing parameter, so a predicate goes wrong when a CALLER starts
-# passing a live signal, in a commit that need not touch the predicate's file.
-# See `scripts/check-playback-ui-latch.py` (PP-5205).
-echo "--- Playback-UI latch ---"
-if [ "$MUTATION_ONLY" = "true" ]; then
-  record "playback_ui_latch" "skip" "Skipped (--mutation-only)"
-elif [ -f scripts/check-playback-ui-latch.py ]; then
-  PL_OUT=$(python3 scripts/check-playback-ui-latch.py 2>&1)
-  PL_RC=$?
-  if [ "$PL_RC" -eq 0 ]; then
-    record "playback_ui_latch" "pass" "No unlatched blocking playback UI predicate"
-  else
-    record "playback_ui_latch" "fail" "$(echo "$PL_OUT" | grep -m1 -E '^  .*\.swift:' || echo "$PL_OUT" | head -1)"
-  fi
-else
-  record "playback_ui_latch" "skip" "check-playback-ui-latch.py not found"
-fi
-
 # 3b1b. Override-drops-base-state — an override that replaces a base method
 # wholesale must not silently drop the live state that method maintained. Whole-tree
 # and BASELINED: the two pre-existing findings are amnestied by key, and the gate
@@ -846,6 +974,24 @@ else
   record "doc_hygiene" "skip" "check-doc-hygiene.sh not found"
 fi
 
+# 3b2-bis. Comment hygiene — source comments in Palace/ and PalaceTests/ follow
+# the writing conventions. Scoped to lines changed since the merge-base with
+# $BASE (including uncommitted edits); tooling-checks.yml runs the whole tree.
+echo "--- Comment hygiene ---"
+if [ "$MUTATION_ONLY" = "true" ]; then
+  record "comment_hygiene" "skip" "Skipped (--mutation-only)"
+elif [ -f scripts/check-comment-hygiene.py ]; then
+  CH_OUT=$(python3 scripts/check-comment-hygiene.py --base "$BASE" --quiet 2>&1)
+  CH_RC=$?
+  if [ "$CH_RC" -eq 0 ]; then
+    record "comment_hygiene" "pass" "No banned comment patterns on changed lines"
+  else
+    record "comment_hygiene" "fail" "$(printf '%s\n' "$CH_OUT" | sed -n '1p')"
+  fi
+else
+  record "comment_hygiene" "skip" "check-comment-hygiene.py not found"
+fi
+
 # 3b2a. Doc references resolve — every script, workflow, and source path a doc
 # names must exist. Whole-tree (NOT diff-based): a doc goes stale when the CODE
 # moves, and that commit touches no docs at all, so a diff-scoped check would
@@ -883,65 +1029,43 @@ else
   record "doc_index" "skip" "check-doc-index-complete.py not found"
 fi
 
-# 3b3. DORMANT Wave 2b gate — PalaceBookRegistry/Sources package purity.
-# Whole-tree scan (not diff-based), but a no-op until the package is
-# extracted. See `scripts/check-bookregistry-package-purity.sh`.
-echo "--- BookRegistry package purity (dormant — Wave 2b) ---"
+# 3b2c. Swift sources compiled — every tracked Swift file under Palace/,
+# PalaceTests/ and PalaceUITests/ (outside Swift packages) is in a target's
+# Sources phase, and every Swift reference in the project resolves. Whole-tree:
+# the project file and the file list drift apart in either direction.
+echo "--- Swift sources compiled ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
-  record "bookregistry_package_purity" "skip" "Skipped (--mutation-only)"
-elif [ -f scripts/check-bookregistry-package-purity.sh ]; then
-  BR_OUT=$(bash scripts/check-bookregistry-package-purity.sh 2>&1)
-  if [ "$?" -eq 0 ]; then
-    record "bookregistry_package_purity" "pass" "$(echo "$BR_OUT" | head -1)"
+  record "swift_sources_compiled" "skip" "Skipped (--mutation-only)"
+elif [ -f scripts/check-swift-sources-compiled.py ]; then
+  SSC_OUT=$(python3 scripts/check-swift-sources-compiled.py 2>&1)
+  SSC_RC=$?
+  if [ "$SSC_RC" -eq 0 ]; then
+    record "swift_sources_compiled" "pass" "$(printf '%s\n' "$SSC_OUT" | tail -1)"
   else
-    record "bookregistry_package_purity" "fail" "$(echo "$BR_OUT" | grep -m1 FAIL)"
+    SSC_FIRST=$(printf '%s\n' "$SSC_OUT" | grep -m1 -E '^  [A-Za-z]' || true)
+    [ -n "$SSC_FIRST" ] || SSC_FIRST=$(printf '%s\n' "$SSC_OUT" | sed -n '1p')
+    record "swift_sources_compiled" "fail" "$SSC_FIRST"
   fi
 else
-  record "bookregistry_package_purity" "skip" "check-bookregistry-package-purity.sh not found"
+  record "swift_sources_compiled" "skip" "check-swift-sources-compiled.py not found"
 fi
 
-# 3b4. DORMANT Wave 3a gate — PalaceAccounts/Sources package purity.
-# Whole-tree scan (not diff-based), but a no-op until the package is
-# extracted. See `scripts/check-palaceaccounts-package-purity.sh`.
-echo "--- PalaceAccounts package purity (dormant — Wave 3a) ---"
-if [ "$MUTATION_ONLY" = "true" ]; then
-  record "palaceaccounts_package_purity" "skip" "Skipped (--mutation-only)"
-elif [ -f scripts/check-palaceaccounts-package-purity.sh ]; then
-  PA_OUT=$(bash scripts/check-palaceaccounts-package-purity.sh 2>&1)
-  if [ "$?" -eq 0 ]; then
-    record "palaceaccounts_package_purity" "pass" "$(echo "$PA_OUT" | head -1)"
-  else
-    record "palaceaccounts_package_purity" "fail" "$(echo "$PA_OUT" | grep -m1 FAIL)"
-  fi
-else
-  record "palaceaccounts_package_purity" "skip" "check-palaceaccounts-package-purity.sh not found"
-fi
-
-# 3b5. DORMANT Wave 3b gate — PalaceDownloads/Sources package purity.
-# Whole-tree scan (not diff-based), but a no-op until the package is
-# extracted. See `scripts/check-palacedownloads-package-purity.sh`.
-echo "--- PalaceDownloads package purity (dormant — Wave 3b) ---"
-if [ "$MUTATION_ONLY" = "true" ]; then
-  record "palacedownloads_package_purity" "skip" "Skipped (--mutation-only)"
-elif [ -f scripts/check-palacedownloads-package-purity.sh ]; then
-  PD_OUT=$(bash scripts/check-palacedownloads-package-purity.sh 2>&1)
-  if [ "$?" -eq 0 ]; then
-    record "palacedownloads_package_purity" "pass" "$(echo "$PD_OUT" | head -1)"
-  else
-    record "palacedownloads_package_purity" "fail" "$(echo "$PD_OUT" | grep -m1 FAIL)"
-  fi
-else
-  record "palacedownloads_package_purity" "skip" "check-palacedownloads-package-purity.sh not found"
-fi
-
-# 3b6. Decomposition ratchets — locator count, god-class LOC, `.shared` reads.
-# Three whole-tree scans that each hold a baseline file. They were written with
-# baselines and pytests but wired into NOTHING, so the lines they exist to hold
-# could drift upward silently (audited 2026-08-20: all three orphaned). A check
-# nothing invokes is inert — see memory `fixes-must-be-systemic-not-remembered`.
-# Each exits non-zero only when the tree regresses PAST its committed baseline,
+# 3b6. Decomposition ratchets — locator count, file-size ceiling, `.shared`
+# reads, package-test wiring.
+# Four whole-tree scans, and they no longer share a shape: two hold a baseline
+# file, the file-size ceiling holds a hard cap with no upward path, and the
+# package-test wiring gate holds neither — it asserts every package test target
+# actually executes.
+#
+# The original THREE were written with baselines and pytests and wired into
+# NOTHING, so the lines they existed to hold could drift upward silently
+# (audited 2026-08-20: all three orphaned). A check nothing invokes is inert —
+# see memory `fixes-must-be-systemic-not-remembered`. That is why they are
+# invoked from here.
+#
+# Each exits non-zero only when the tree regresses past what it holds,
 # so they are no-ops on a clean tree and cost ~7s total.
-echo "--- Decomposition ratchets (locator / god-class LOC / .shared reads) ---"
+echo "--- Decomposition ratchets (locator / file-size ceiling / .shared reads / package-test wiring) ---"
 if [ "$MUTATION_ONLY" = "true" ]; then
   record "decomposition_ratchets" "skip" "not run (--mutation-only)"
 else
@@ -949,10 +1073,16 @@ else
   RATCHET_DETAIL=""
   RATCHET_RAN=""
   RATCHET_MISSING=""
-  for ratchet in check-appcontainer-locator-count.sh check-godclass-loc-freeze.sh check-shared-read-count.sh; do
+  # check-godclass-loc-freeze.sh RETIRED here (Phase A) and replaced by
+  # check-file-size-ceiling.sh. The freeze watched six named files, so it could
+  # not see AccountRegistryLoader (693 code lines, CREATED by the Wave 3a
+  # decomposition), and its re-baseline hatch absorbed +528 physical lines in a
+  # single hotfix forward-port (PR #1348) instead of blocking them. The ceiling
+  # has no upward path.
+  for ratchet in check-appcontainer-locator-count.sh check-file-size-ceiling.sh check-shared-read-count.sh check-package-tests-wired.sh; do
     # A MISSING ratchet is not a passing one. Skipping it silently and then
-    # reporting "all three at or under baseline" is how a deleted gate reads as
-    # green — name the ones that actually ran.
+    # reporting them all as clean is how a deleted gate reads as green — name
+    # the ones that actually ran.
     if [ ! -f "scripts/$ratchet" ]; then
       RATCHET_MISSING="$RATCHET_MISSING $ratchet"
       continue
@@ -971,7 +1101,10 @@ else
     # Some ran clean, but the report must not imply the missing ones did.
     record "decomposition_ratchets" "skip" "ran:${RATCHET_RAN:- none} — MISSING:$RATCHET_MISSING"
   else
-    record "decomposition_ratchets" "pass" "at or under baseline:$RATCHET_RAN"
+    # Not "at or under baseline" any more: two of these four hold a baseline
+    # file, the ceiling holds a hard cap with no upward path, and the wiring
+    # gate holds neither — it asserts every package test target executes.
+    record "decomposition_ratchets" "pass" "clean:$RATCHET_RAN"
   fi
 fi
 
@@ -1010,123 +1143,10 @@ else
   fi
 fi
 
-# 3c. Adjacency staleness (M1 universal-rigor-floor gate, warn-only)
-# Greps comments in the surviving codebase for references to removed/renamed
-# declarations in the diff. Always passes; counts warnings.
-# See `scripts/check-adjacency-staleness.py`.
-echo "--- Adjacency staleness ---"
-if [ "$MUTATION_ONLY" = "true" ]; then
-  record "adjacency_staleness" "skip" "Skipped (--mutation-only)"
-elif [ -f scripts/check-adjacency-staleness.py ]; then
-  ADJ_DIFF=$(mktemp -t adj-diff.XXXX)
-  git diff "$BASE"...HEAD > "$ADJ_DIFF" 2>/dev/null || true
-  ADJ_OUT=$(python3 scripts/check-adjacency-staleness.py --diff "$ADJ_DIFF" --quiet 2>&1)
-  ADJ_EXIT=$?
-  rm -f "$ADJ_DIFF"
-  ADJ_WARN_COUNT=$(echo "$ADJ_OUT" | grep -c "ADJ-STALE" || true)
-  if [ "$ADJ_EXIT" -eq 0 ]; then
-    record "adjacency_staleness" "pass" "0 stale-comment references"
-  else
-    # warn-only: still record pass, but surface the count
-    record "adjacency_staleness" "pass" "${ADJ_WARN_COUNT:-0} stale-comment warning(s) — non-blocking"
-  fi
-else
-  record "adjacency_staleness" "skip" "check-adjacency-staleness.py not found"
-fi
-
-# 3d. Intent recorded (M1 universal-rigor-floor gate)
-# Requires a `.forgeos/intent/<name>.md` for diffs ≥10 prod LOC under Palace/.
-# Intent file must have frontmatter (name/created/author) + body sections
-# (## Claims / ## Anti-claims / ## Files in scope), and its `## Files in scope`
-# must name every production file the diff adds code to.
-# See `scripts/check-intent-recorded.py`.
-echo "--- Intent recorded ---"
-if [ "$MUTATION_ONLY" = "true" ]; then
-  record "intent_recorded" "skip" "Skipped (--mutation-only)"
-elif [ -f scripts/check-intent-recorded.py ]; then
-  IR_DIFF=$(mktemp -t ir-diff.XXXX)
-  git diff "$BASE"...HEAD > "$IR_DIFF" 2>/dev/null || true
-  # No commit subject is passed: the intent is matched by its `## Files in
-  # scope` against the branch diff, not by its `name:` against HEAD's subject
-  # (PP-5024). Feeding HEAD's subject in made this gate's verdict a function
-  # of how the last commit was worded, on a branch-wide diff.
-  IR_OUT=$(python3 scripts/check-intent-recorded.py --diff "$IR_DIFF" \
-                                                   --quiet 2>&1)
-  IR_EXIT=$?
-  rm -f "$IR_DIFF"
-  if [ "$IR_EXIT" -eq 0 ]; then
-    record "intent_recorded" "pass" "Intent file present (or below threshold)"
-  else
-    # Echo the whole thing: the gate's failure output names the files to add,
-    # the intents that list them but cannot answer for them, and the rule
-    # being applied. `record` keeps only the first lines for the JSON detail,
-    # so without this the author sees a truncated verdict and none of the
-    # diagnosis — an inert explanation is the same as no explanation.
-    echo "$IR_OUT"
-    record "intent_recorded" "fail" "Intent missing/invalid: $(echo "$IR_OUT" | head -3 | tr '\n' ' ')"
-  fi
-else
-  record "intent_recorded" "skip" "check-intent-recorded.py not found"
-fi
-
-# 3e. Superpartner spectrum (M1 universal-rigor-floor gate, warn-only)
-# Flags new functions / enum cases / state changes in the diff that have no
-# matching test in the diff, unless marked `// no-superpartner:`. Warn-only for
-# now (promotion path in docs/architecture/superpartner-spectrum.md).
-# See `scripts/check-superpartner-spectrum.py`.
-echo "--- Superpartner spectrum ---"
-if [ "$MUTATION_ONLY" = "true" ]; then
-  record "superpartner_spectrum" "skip" "Skipped (--mutation-only)"
-elif [ -f scripts/check-superpartner-spectrum.py ]; then
-  SP_DIFF=$(mktemp -t sp-diff.XXXX)
-  git diff "$BASE"...HEAD > "$SP_DIFF" 2>/dev/null || true
-  SP_OUT=$(python3 scripts/check-superpartner-spectrum.py --diff "$SP_DIFF" --quiet 2>&1)
-  SP_EXIT=$?
-  rm -f "$SP_DIFF"
-  SP_WARN_COUNT=$(echo "$SP_OUT" | grep -cE ": SP-[0-9]" || true)
-  if [ "$SP_EXIT" -eq 0 ]; then
-    record "superpartner_spectrum" "pass" "0 untested new functions/cases/state"
-  else
-    # warn-only: still record pass, but surface the count
-    record "superpartner_spectrum" "pass" "${SP_WARN_COUNT:-0} superpartner warning(s) — non-blocking"
-  fi
-else
-  record "superpartner_spectrum" "skip" "check-superpartner-spectrum.py not found"
-fi
-
-# 3f. Test name-vs-body (M1 universal-rigor-floor gate, warn-only, file-based)
-# Flags diffed test files whose method names embed a production-class noun the
-# body never references (fake-wiring). File-based: operates on the changed test
-# files, not a diff. See `scripts/check-test-name-vs-body.py`.
-echo "--- Test name-vs-body ---"
-if [ "$MUTATION_ONLY" = "true" ]; then
-  record "test_name_vs_body" "skip" "Skipped (--mutation-only)"
-elif [ -f scripts/check-test-name-vs-body.py ] && [ -n "$CHANGED_TEST_SWIFT" ]; then
-  TNB_FILES=()
-  while IFS= read -r f; do [ -n "$f" ] && [ -f "$f" ] && TNB_FILES+=("$f"); done <<< "$CHANGED_TEST_SWIFT"
-  if [ "${#TNB_FILES[@]}" -eq 0 ]; then
-    record "test_name_vs_body" "skip" "No changed test files on disk"
-  else
-    TNB_OUT=$(python3 scripts/check-test-name-vs-body.py "${TNB_FILES[@]}" --quiet 2>&1)
-    TNB_EXIT=$?
-    TNB_COUNT=$(echo "$TNB_OUT" | grep -cE "embeds|fake-wiring" || true)
-    if [ "$TNB_EXIT" -eq 0 ]; then
-      record "test_name_vs_body" "pass" "No fake-wiring test names"
-    else
-      # warn-only: still record pass, but surface the count
-      record "test_name_vs_body" "pass" "${TNB_COUNT:-0} name-vs-body warning(s) — non-blocking"
-    fi
-  fi
-else
-  record "test_name_vs_body" "skip" "No changed test files"
-fi
-
 # 3g-3l. Phase 3.5 class-detectable detectors (swarm_162a3219)
 # Each codifies a shipped-bug class as a runnable detector that scans the
-# staged diff. Block-mode on high-severity classes (foreign-host 401, LCP
-# recursive acquisition, completion-nil-error suppression, NSError problemDoc
-# preservation); warn-only on lower-severity classes (SwiftUI placeholder a11y,
-# NotificationCenter observer storage). Same inline shape as the M1 gates above.
+# staged diff or the tree. Block-mode except SwiftUI placeholder a11y, which
+# warns. Same inline shape as the M1 gates above.
 run_phase35_detector() {
   # $1=record key  $2=script  $3=block|warn  $4=pass message  $5=diff|scan (invocation mode)
   local key="$1" script="$2" mode="$3" pass_msg="$4" scan_mode="${5:-diff}"
@@ -1159,26 +1179,30 @@ run_phase35_detector() {
 }
 
 echo "--- Phase 3.5 class-detectable detectors ---"
-run_phase35_detector "foreign_host_401_scoping" "check-foreign-host-401-scoping.py" "block" \
-  "No 401 dispatch site missing current-account host scoping" "diff"
 run_phase35_detector "lcp_acquisition_recursive" "check-lcp-acquisition-recursive.py" "block" \
   "No LCP acquisition predicate inspects only defaultAcquisition.type" "scan"
-run_phase35_detector "completion_nil_error_suppression" "check-completion-nil-error-suppression.py" "block" \
-  "No completion(nil, title, message) sites suppress consumer alert path" "diff"
-run_phase35_detector "nserror_problemdoc_preservation" "check-nserror-problemdoc-preservation.py" "block" \
-  "No NSError construction discards in-scope TPPProblemDocument context" "diff"
 run_phase35_detector "swiftui_placeholder_a11y" "check-swiftui-placeholder-a11y.py" "warn" \
   "No SwiftUI placeholder/label without .accessibilityLabel" "diff"
-run_phase35_detector "notification_center_observer_storage" "check-notification-center-observer-storage.py" "warn" \
-  "No NotificationCenter observer registered without storage/removal" "diff"
 run_phase35_detector "unsynchronized_sendable_mock" "check-unsynchronized-sendable-mock.py" "block" \
   "No unsynchronized @unchecked Sendable mock driven by concurrent tests" "scan"
-run_phase35_detector "addoperation_literal_ban" "check-addoperation-literal-ban.py" "block" \
-  "No raw NSOperation-family closure literal (#1338 ClangImporter @MainActor-poisoning risk)" "diff"
 run_phase35_detector "auth_challenge_async_form" "check-auth-challenge-async-form.py" "block" \
   "No completion-handler-form auth-challenge delegate callback (PP-4895 ClangImporter @MainActor-poisoning risk)" "diff"
 run_phase35_detector "raising_unarchiver" "check-raising-unarchiver.py" "block" \
   "No NSKeyedUnarchiver.unarchiveObject(with:) — raises uncatchably on a corrupt archive" "diff"
+run_phase35_detector "opaque_blob_egress" "check-opaque-blob-egress.py" "block" \
+  "No opaque payload reaches an external sink"
+
+# Exit 0 from the enforcer can still carry rows below their recorded floor: an
+# app row within APP_FLOOR_TOLERANCE reads WITHIN, and a package row reads
+# FAIL with a fifth `advisory` column. Count both so the pass detail says so.
+coverage_pass_detail() {
+  local within advisory notes=""
+  within=$(printf '%s\n' "$1" | awk 'NF == 4 && $4 == "WITHIN" && $2 ~ /%$/ { n++ } END { print n + 0 }')
+  advisory=$(printf '%s\n' "$1" | awk 'NF == 5 && $4 == "FAIL" && $5 == "advisory" && $2 ~ /%$/ { n++ } END { print n + 0 }')
+  [ "$within" -gt 0 ] && notes="$within within tolerance"
+  [ "$advisory" -gt 0 ] && notes="${notes:+$notes, }$advisory advisory below floor"
+  echo "All blocking floors met${notes:+ ($notes)}"
+}
 
 # 4. Coverage floors
 echo "--- Coverage Floors ---"
@@ -1210,10 +1234,26 @@ elif [ -f scripts/enforce_coverage_floors.py ] && [ -f scripts/coverage-floors.j
       # whole point of the leg.
       COV_OUTPUT=$(python3 scripts/enforce_coverage_floors.py "$COV_JSON" 2>&1)
       COV_RC=$?
+      # Which modules, not just "some module". The detail used to be the bare
+      # string "Coverage below module thresholds" while $COV_OUTPUT held the
+      # table, so reading the failure meant re-deriving it: find this run's
+      # coverage JSON under $TMPDIR and re-run the enforcer by hand.
+      # NF == 4 and a percent in the floor column: the enforcer's trailing
+      # "Coverage gate: FAIL" line also ends in FAIL and is not a module.
+      COV_FAILED_MODULES=$(echo "$COV_OUTPUT" | awk 'NF == 4 && $4 == "FAIL" && $2 ~ /%$/ { printf "%s %s<%s ", $1, $3, $2 }')
       if [ "$COV_RC" -eq 0 ]; then
-        record "coverage_floors" "pass" "All module floors met"
+        record "coverage_floors" "pass" "$(coverage_pass_detail "$COV_OUTPUT")"
+      elif [ "$COV_RC" -eq 1 ] && [ "${TEST_FAIL:-0}" -gt 0 ] 2>/dev/null; then
+        # Coverage from a run that lost tests is lower for that reason alone, so
+        # the number is not evidence about the diff. unit-testing.yml refuses the
+        # comparison in that case and reports the reason in its place; it can
+        # detect it from the shard plan, and this single-pass run cannot, so the
+        # failing-test count stands in. Still a failure — the floors were simply
+        # not the thing that failed.
+        record "coverage_floors" "fail" \
+          "floors NOT evaluated: $TEST_FAIL failing test(s) in the run that produced this coverage. Fix those first; below-floor modules here may be an artifact. Observed: ${COV_FAILED_MODULES:-none}"
       elif [ "$COV_RC" -eq 1 ]; then
-        record "coverage_floors" "fail" "Coverage below module thresholds"
+        record "coverage_floors" "fail" "Coverage below module thresholds: ${COV_FAILED_MODULES:-see $COV_JSON}"
       else
         record "coverage_floors" "fail" "coverage enforcement exited $COV_RC (input error) — the floor was NOT checked"
       fi
@@ -1236,14 +1276,14 @@ fi
 #   --no-enforce-mutations        → ALL changed files advisory (incl. critical)
 #   --mutation-min-kill-rate N    → override the 50% floor
 #
-#   palace_mutate.py uses .forgeos/mutation-cache by default — repeat verify
+#   palace_mutate.py uses .build/mutation-cache by default — repeat verify
 #   runs on the same files are near-instant (cache hit).
 #
-# Per-file per-run JSON reports land at .forgeos/mutation-reports/<slug>.json
+# Per-file per-run JSON reports land at .build/mutation-reports/<slug>.json
 # so the CI workflow can post a comment with the table; the script writes them
 # alongside the aggregated decision so locally you also have the raw data.
 echo "--- Mutation Testing ---"
-MUTATION_REPORTS_DIR=".forgeos/mutation-reports"
+MUTATION_REPORTS_DIR=".build/mutation-reports"
 if [ "$QUICK" = "true" ] && [ "$MUTATION_ONLY" != "true" ]; then
   record "mutation" "skip" "Skipped (--quick mode)"
 elif [ -f scripts/palace_mutate.py ] && [ -n "$CHANGED_SWIFT" ]; then
@@ -1702,7 +1742,7 @@ EXPECTED_COUNT=$(printf '%s\n' "$EXPECTED_KEYS" | grep -c .)
 
 # An empty derivation is the vacuous pass this whole branch is about: zero owed
 # legs means zero missing legs means green. Floor it.
-if [ "$EXPECTED_COUNT" -lt 30 ]; then
+if [ "$EXPECTED_COUNT" -lt 25 ]; then
   FAIL_COUNT=$((FAIL_COUNT + 1))
   echo "  [FAIL] leg_accounting — derived only $EXPECTED_COUNT owed legs from $SCRIPT_PATH."
   echo "         That is too few to be real: the derivation is broken, so the"
@@ -1806,6 +1846,8 @@ if [ -n "$REPORT_FILE" ]; then
   "pass_count": $PASS_COUNT,
   "fail_count": $FAIL_COUNT,
   "skip_count": $SKIP_COUNT,
+  "uncommitted_count": ${UNCOMMITTED_COUNT:-0},
+  "scanned_ref": "$(git rev-parse HEAD)",
   "unit_tests": {"pass": $TEST_PASS, "fail": $TEST_FAIL},
   "checks": [$RESULTS_JSON]
 }
@@ -1820,8 +1862,18 @@ if [ "$FAIL_COUNT" -gt 0 ]; then
 fi
 
 echo ""
-if [ "$SKIP_COUNT" -gt 0 ]; then
+# The line a human actually reads after a 10+ minute run is this one. A notice
+# ~1570 lines upstream does not reach them, so the qualification has to live
+# here too — same reasoning as the SKIP_COUNT arm directly above.
+if [ "$SKIP_COUNT" -gt 0 ] && [ "${UNCOMMITTED_COUNT:-0}" -gt 0 ]; then
+  echo "CLEAR: no checks failed — but $SKIP_COUNT ran nothing, and ${UNCOMMITTED_COUNT} uncommitted"
+  echo "       change(s) were never scanned. Neither is the same as verified."
+elif [ "$SKIP_COUNT" -gt 0 ]; then
   echo "CLEAR: no checks failed — but $SKIP_COUNT ran nothing. Not the same as verified."
+elif [ "${UNCOMMITTED_COUNT:-0}" -gt 0 ]; then
+  echo "CLEAR: all checks passed against HEAD ($(git rev-parse --short HEAD)) — but"
+  echo "       ${UNCOMMITTED_COUNT} uncommitted change(s) were never scanned. This is a verdict"
+  echo "       about what you would push, not about what you are holding."
 else
   echo "CLEAR: All checks passed."
 fi

@@ -4,6 +4,8 @@ import UIKit
 import PalaceNetwork
 import PalaceCatalog
 import PalaceBookModel
+import PalaceBookRegistry
+import PalaceUtilities
 
 // MARK: - Accessibility focus target
 // PP-4641: after a search completes, VoiceOver focus must remain on the search
@@ -41,39 +43,41 @@ struct CatalogSearchView: View {
     let books: [TPPBook]
     let onBookSelected: (TPPBook) -> Void
     let downloadCenter: MyBooksDownloadCenter
+    private let bookRegistry: TPPBookRegistryProvider
 
     init(
         repository: CatalogRepositoryProtocol,
         baseURL: @escaping () -> URL?,
         books: [TPPBook],
         onBookSelected: @escaping (TPPBook) -> Void,
-        downloadCenter: MyBooksDownloadCenter = AppContainer.production().downloadCenter
+        appContainer: AppContainer
     ) {
         self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(
             repository: repository,
             baseURL: baseURL,
-            bookCellModelCache: AppContainer.production().bookCellModelCache
+            bookRegistry: appContainer.bookRegistry,
+            bookCellModelCache: appContainer.bookCellModelCache
         ))
         self.books = books
         self.onBookSelected = onBookSelected
-        self.downloadCenter = downloadCenter
+        self.downloadCenter = appContainer.downloadCenter
+        self.bookRegistry = appContainer.bookRegistry
     }
 
+    /// Searches through `appContainer`'s catalog repository, so results share
+    /// the feed cache of the catalog screens built from the same container.
     init(
         books: [TPPBook],
-        onBookSelected: @escaping (TPPBook) -> Void
+        onBookSelected: @escaping (TPPBook) -> Void,
+        appContainer: AppContainer
     ) {
-
-        // Use AppContainer's shared, cached CatalogRepository rather than a
-        // throwaway per-init instance (swarm_27c181b5 A5).
-        self._viewModel = StateObject(wrappedValue: CatalogSearchViewModel(
-            repository: AppContainer.production().catalogRepository,
+        self.init(
+            repository: appContainer.catalogRepository,
             baseURL: { nil },
-            bookCellModelCache: AppContainer.production().bookCellModelCache
-        ))
-        self.books = books
-        self.onBookSelected = onBookSelected
-        self.downloadCenter = AppContainer.production().downloadCenter
+            books: books,
+            onBookSelected: onBookSelected,
+            appContainer: appContainer
+        )
     }
 
     var body: some View {
@@ -110,13 +114,17 @@ struct CatalogSearchView: View {
 
     // MARK: - Publishers
 
-    private var registryChangePublisher: AnyPublisher<String, Never> {
-        // Migrated off `.TPPBookRegistryStateDidChange` to the registry's per-book
-        // `bookStatePublisher` (swarm_8ce6f5ae WS3); emit the changed identifier so
-        // just the affected result row refreshes. Resolved from the shared graph to
-        // match this view's existing `AppContainer.production()` defaults.
-        AppContainer.production().bookRegistry.bookStatePublisher
+    /// Identifier of each book whose registry state changes, unthrottled.
+    var registryChanges: AnyPublisher<String, Never> {
+        bookRegistry.bookStatePublisher
             .map { $0.0 }
+            .eraseToAnyPublisher()
+    }
+
+    private var registryChangePublisher: AnyPublisher<String, Never> {
+        // Emit the changed identifier so just the affected result row
+        // refreshes.
+        registryChanges
             .throttle(for: .milliseconds(350), scheduler: DispatchQueue.main, latest: true)
             .eraseToAnyPublisher()
     }
@@ -194,10 +202,12 @@ private extension CatalogSearchView {
     /// against the loading and "no query yet" cases — see BUG-003.
     var noResultsEmptyState: some View {
         VStack(spacing: 12) {
+            // accesslint:disable A11Y.SWIFTUI.FIXED_FONT - sizes a decorative SF Symbol glyph (accessibilityHidden below), not text, so Dynamic Type does not apply
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 44, weight: .light))
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
+                // accesslint:enable A11Y.SWIFTUI.FIXED_FONT
             Text(Strings.SearchAnnouncements.noResultsTitle)
                 .font(.headline)
                 .multilineTextAlignment(.center)
@@ -210,6 +220,7 @@ private extension CatalogSearchView {
         .padding(.horizontal, 24)
         .padding(.vertical, 48)
         .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
         .accessibilityIdentifier(AccessibilityID.Search.noResultsView)
     }
 

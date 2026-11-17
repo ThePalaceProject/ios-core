@@ -5,12 +5,8 @@
 //  Main-target conformance to PalaceAuth's `AuthDecisionRecording`
 //  protocol. Wraps `Crashlytics.crashlytics().record(error:)` so PalaceAuth
 //  stays Firebase-free; AppContainer wires this single instance into the
-//  classifier + coordinator at construction time.
-//
-//  The recorder is intentionally `final` (this IS a leaf type — no tests
-//  need to subclass it; tests use `SpyAuthDecisionRecorder` from
-//  PalaceTests/Mocks/) and `Sendable` so the actor-isolated coordinator
-//  can hold it.
+//  classifier + coordinator at construction time. `Sendable` so the
+//  actor-isolated coordinator can hold it.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //

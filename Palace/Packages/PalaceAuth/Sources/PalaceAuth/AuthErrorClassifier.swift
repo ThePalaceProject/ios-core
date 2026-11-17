@@ -2,22 +2,10 @@
 //  AuthErrorClassifier.swift
 //  PalaceAuth
 //
-//  Pure function: HTTP response tuple → discrete `AuthOutcome`. IdP-agnostic.
-//
-//  This file EXTENDS the existing boolean classifier in
-//  `URLResponse+TPPAuthentication.swift` — it does NOT duplicate the
-//  recoverable/unrecoverable/cross-domain logic. The legacy extension
-//  returns "should I re-auth?" as a single bool; this classifier converts
-//  that bool into the typed `AuthOutcome` and adds discrimination on:
-//    - 5xx → .serverError(status:)
-//    - nil response → .networkError
-//    - 403 + problem-doc → .forbidden(specific reason)
-//    - 401 + problem-doc type → .reauthRequired(specific reason)
-//
-//  The `AuthCoordinator` consumes the outcome and dispatches the actual
-//  re-auth mechanism based on the current IdP — the classifier never
-//  knows which IdP is active. See `docs/3.2.0-auth-idp-catalog.md` for
-//  the full truth table this implementation is fuzzed against.
+//  Pure, IdP-agnostic mapping from an HTTP response to a typed `AuthOutcome`.
+//  Builds on the boolean classifier in `URLResponse+TPPAuthentication.swift`
+//  and adds 5xx, transport, 403 and 401 problem-doc discrimination. The truth
+//  table is in `docs/3.2.0-auth-idp-catalog.md`.
 //
 //  Copyright © 2026 The Palace Project. All rights reserved.
 //
@@ -65,8 +53,7 @@ public struct AuthErrorClassifier: Sendable {
     /// active account is on `minotaur.dev.palaceproject.io`) was
     /// mis-attributed to the current OIDC/SAML account. The existing
     /// base-domain `isSameDomain` guard does not catch this — both hosts
-    /// share `palaceproject.io`. See
-    /// `.forgeos/wall-failures/2026-06-05-pr1018-icarus-cross-host-logout.md`.
+    /// share `palaceproject.io` (PR #1018).
     private let currentAccountHostsProvider: @Sendable () -> Set<String>?
 
     // PUBLIC_INTENT: enables current-account host scoping to prevent cross-host 401
@@ -185,8 +172,7 @@ public struct AuthErrorClassifier: Sendable {
         // never an expiry of the current account's session; classify
         // as `.ok` so the responder + sibling sites short-circuit
         // before marking the current account stale or dispatching the
-        // coordinator. PR #1018 regression fix; see wall-failure
-        // 2026-06-05-pr1018-icarus-cross-host-logout.md.
+        // coordinator (PR #1018).
         //
         // Empty set is treated like a nil provider (legacy behavior):
         // during cold launch the auth document is still loading, so

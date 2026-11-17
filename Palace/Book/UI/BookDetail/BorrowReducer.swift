@@ -61,9 +61,14 @@ enum BorrowAction {
     /// processing immediately for instant feedback; the network call follows.
     case returnStartConfirmed
 
-    /// User chose Cancel — clear progress (the cancel side effect is fired
-    /// by the VM since it holds the download center reference).
-    case cancelTapped
+    /// User chose Cancel. The cancel side effect is fired by the VM (it holds
+    /// the download center reference); `registryState` is the registry's
+    /// authoritative truth at the time of the tap. `DownloadCancellationHandler`
+    /// declines a cancel for a book with no download task whose state is not in
+    /// flight, so an optimistic `.downloading` set by `startDownloadAfterAuth`
+    /// has to be resolved from the registry here or Cancel resolves nothing
+    /// (PP-5407).
+    case cancelTapped(registryState: TPPBookState, registryProcessing: Bool)
 
     /// User chose Manage Hold — flip to managing-hold UI.
     case manageHoldTapped
@@ -199,8 +204,55 @@ enum BorrowReducer {
             state.processingButtons.insert(.returning)
             return .none
 
-        case .cancelTapped:
+        case .cancelTapped(let registryState, let registryProcessing):
+            // A borrow still in flight also reads `.unregistered`: the registry
+            // only learns of the loan when the request returns. Resolving from
+            // the state alone would subtract `.get` and close the sheet while
+            // that request runs, re-arming Get so a second tap could race the
+            // first. The registry's processing flag separates the two. It means
+            // "any registry work in flight for this book", not just a borrow —
+            // `BorrowOperation`, `BorrowAdobeActivationStep` and
+            // `BookReturnService` all raise it — and each clears it on every
+            // terminal path, so it is down at every `showBorrowError` site and
+            // up only mid-request. Leave the sheet as it is while it is up; a
+            // failure arrives separately on `downloadErrorPublisher`.
+            guard !registryProcessing else { return .none }
             state.downloadProgress = 0.0
+            // Deliberately NOT gated on `localBookStateOverride`, unlike the
+            // registry path above. Two reasons, and the second is the load-bearing
+            // one. The flag is unreliable: `BookDetailViewModel.applyBorrowState`
+            // writes `bookState` first, whose `didSet` nils the override on
+            // `.unregistered`, then mirrors the snapshot's stale value straight
+            // back — so it can stay armed indefinitely. And the window it would
+            // protect renders no Cancel at all: `isProcessingDownload` reads
+            // `bookState == .downloading` and the acquire buttons, and a return
+            // raises neither. Gating on it stranded Cancel on exactly the
+            // `.downloading` sheet this case exists to resolve.
+            state.bookState = registryState
+            state.processingButtons.subtract(downloadRelatedButtons)
+            // Exhaustive (no `default:`) for the same reason the registry
+            // transition above is: a new TPPBookState must not pick an arm by
+            // falling off the end. That silent default is what let F-011 strand
+            // the half-sheet, and an `if registryState == .unregistered` here
+            // would be the same shape wearing an if.
+            switch registryState {
+            case .unregistered:
+                // The declined-cancel case: the borrow never reached the
+                // registry, so there is no loan to show and nothing to cancel.
+                // Close the sheet rather than leave it on a dead button, and
+                // drop the return-side flags the sheet would otherwise reopen
+                // onto.
+                state.isManagingHold = false
+                state.showHalfSheet = false
+                state.processingButtons.subtract([.returning, .cancelHold, .return, .remove])
+
+            // Everything else still has something to render — a transfer in
+            // flight, a failed one, or a loan — so the sheet stays open and
+            // the registry's own transition drives what it shows next.
+            case .downloading, .downloadFailed, .downloadNeeded, .downloadSuccessful,
+                 .used, .holding, .returning, .unsupported, .SAMLStarted:
+                break
+            }
             return .none
 
         case .manageHoldTapped:

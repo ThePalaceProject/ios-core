@@ -1,20 +1,9 @@
-//
 //  AccountRegistryStoreSeamTests.swift
-//  PalaceTests
 //
-//  Pins the Wave 3 / 3a-2 `AccountRegistryStore` seam: the account-registry state and
-//  its concurrency now live in an injected store, and `AccountsManager`'s retrieval
-//  facades delegate to it.
-//
-//  Two lenses:
-//   1. Concurrency (real store) — the index-coherence-under-barrier invariant, no
-//      torn reads, and slim-fallback isolation. These are the guarantees the
-//      extraction MUST preserve; each kills a specific locking-model mutant.
-//   2. Routing (hub delegation) — inject a store, drive state through it, assert the
-//      hub `account(_:)` / `accounts()` / `accountsHaveLoaded` facades reflect it.
-//
-//  Copyright © 2026 The Palace Project. All rights reserved.
-//
+//  Pins `AccountRegistryStore`, which now holds account-registry state and its
+//  locking. On the real store: index coherence under the barrier, no torn reads,
+//  and slim-fallback isolation. Through the hub: `account(_:)`, `accounts()` and
+//  `accountsHaveLoaded` reflect an injected store.
 
 import XCTest
 import PalaceCatalog
@@ -29,7 +18,7 @@ final class AccountRegistryStoreSeamTests: PalaceWiringTestCase {
     /// Contract: `accountByUUID` is rebuilt inside the SAME barrier as `accountSets`,
     /// so a concurrent reader never observes a stale index.
     ///
-    /// Kill case: rebuild the index in a SEPARATE barrier (or async) after the mutate
+    /// Regression caught: rebuild the index in a SEPARATE barrier (or async) after the mutate
     /// → a sampler lands in the window with updated sets + stale index → `_coherentSnapshot`
     /// returns false.
     func testMutate_indexStaysCoherentUnderConcurrentChurn() {
@@ -59,7 +48,7 @@ final class AccountRegistryStoreSeamTests: PalaceWiringTestCase {
     /// Contract: `account(_:)` under concurrent reseeds never returns a phantom (an
     /// Account whose uuid differs from the one requested) and never crashes.
     ///
-    /// Kill case: read `accountByUUID` outside `performRead` (unsynchronized) → torn
+    /// Regression caught: read `accountByUUID` outside `performRead` (unsynchronized) → torn
     /// read / phantom / crash under churn.
     func testAccount_concurrentMutate_neverReturnsPhantom() {
         let store = AccountRegistryStore(currentHash: "h")
@@ -85,7 +74,7 @@ final class AccountRegistryStoreSeamTests: PalaceWiringTestCase {
     /// `currentBucketIsLoaded` (which reflects the FULL list only — a truncated-picker
     /// guard); a full `mutate` DOES flip it.
     ///
-    /// Kill case: let slim writes touch `accountSets`/`accountByUUID` → the ~2-account
+    /// Regression caught: let slim writes touch `accountSets`/`accountByUUID` → the ~2-account
     /// slim set reports the picker as loaded.
     func testSlim_backsFallbackButDoesNotFlipCurrentBucketIsLoaded() {
         let store = AccountRegistryStore(currentHash: "h")
@@ -103,7 +92,7 @@ final class AccountRegistryStoreSeamTests: PalaceWiringTestCase {
     /// reflect the CURRENT hash's bucket — following `setCurrentHash`, the reads track
     /// the new hash (barrier FIFO makes the sync read observe the barrier-write seed).
     ///
-    /// Kill case: a mutant that reads a hardcoded/other hash instead of `_currentHash`,
+    /// Regression caught: a change that reads a hardcoded/other hash instead of `_currentHash`,
     /// or that never re-reads the hash after a switch → the assertions below (which
     /// flip between a loaded and an empty bucket as the current hash moves) fail.
     ///
@@ -134,7 +123,7 @@ final class AccountRegistryStoreSeamTests: PalaceWiringTestCase {
     /// Robustness: under concurrent switching + reads, `accountsForCurrentHash` never
     /// crashes and never returns a TORN bucket (a mix of two libraries' accounts). Both
     /// buckets are seeded distinctly, so a torn read would surface a foreign/mixed uuid
-    /// set. Kills an unsynchronized bucket read (outside `performRead`).
+    /// set. Catches an unsynchronized bucket read (outside `performRead`).
     func testCurrentHashReads_neverTearUnderConcurrentSwitch() {
         let store = AccountRegistryStore(currentHash: "A")
         let a = Self.makeAccount("a-1"), b = Self.makeAccount("b-1") // pre-create on main
@@ -162,7 +151,7 @@ final class AccountRegistryStoreSeamTests: PalaceWiringTestCase {
     /// facades delegate to the injected store — data placed in the store post-construction
     /// is observable through the manager.
     ///
-    /// Kill case: a facade that reads hub-local state instead of the store → the
+    /// Regression caught: a facade that reads hub-local state instead of the store → the
     /// store-injected data is invisible.
     func testManagerFacades_delegateToInjectedStore() {
         let store = AccountRegistryStore()

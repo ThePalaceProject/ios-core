@@ -2,15 +2,10 @@
 //  NetworkTransport.swift
 //  The Palace Project
 //
-//  Pure-transport HTTP layer. Owns the URLSession, manages active tasks
-//  (pause / resume / cancel-on-account-switch), and exposes send/download
-//  primitives. Knows nothing about credentials, tokens, or sign-in modals —
-//  those concerns live in TPPNetworkExecutor (the auth-aware client) which
-//  wraps a Transport.
-//
-//  The split exists so the transport half is portable into the PalaceNetwork
-//  SPM module, while the auth half stays in the app target where it can
-//  reach AccountsManager / TPPUserAccount / SignInModalPresenter.
+//  Pure-transport HTTP layer: owns the URLSession and active tasks
+//  (cancelled on account switch) and exposes download.
+//  Credentials and sign-in live in the app target's TPPNetworkExecutor,
+//  which wraps a Transport and can reach AccountsManager / TPPUserAccount.
 //
 
 import Foundation
@@ -23,37 +18,25 @@ import PalaceLogging
 /// proceeds — a fire-and-forget `Task { await actor.… }` would silently break
 /// that invariant and let in-flight requests complete against the wrong
 /// account's credentials.
+///
+/// A task stays registered until it is removed, either by `cancelNonEssential`
+/// or by the owner when the task's completion is delivered; the store does not
+/// observe completion itself.
 public final class ActiveTasksStore {
     private var tasks: [URLSessionTask] = []
+    private var addedCount = 0
     private let lock = NSLock()
 
     public func add(_ task: URLSessionTask) {
         lock.lock(); defer { lock.unlock() }
         tasks.append(task)
+        addedCount += 1
     }
 
-    public func remove(_ task: URLSessionTask) {
+    // PUBLIC_INTENT: called by TPPNetworkExecutor in the Palace app target to release a request together with its token-refresh retries.
+    public func removeAll(where shouldRemove: (URLSessionTask) -> Bool) {
         lock.lock(); defer { lock.unlock() }
-        if let index = tasks.firstIndex(of: task) {
-            tasks.remove(at: index)
-        }
-    }
-
-    public func pauseNonAudioTasks() {
-        lock.lock(); defer { lock.unlock() }
-        for task in tasks {
-            if let url = task.originalRequest?.url,
-               Self.isAudiobookRelated(url: url) {
-                Log.info(#function, "Preserving audiobook network task: \(url.absoluteString)")
-                continue
-            }
-            task.suspend()
-        }
-    }
-
-    public func resumeAll() {
-        lock.lock(); defer { lock.unlock() }
-        tasks.forEach { $0.resume() }
+        tasks.removeAll(where: shouldRemove)
     }
 
     /// Number of registered tasks that are not yet finished or cancelling.
@@ -72,6 +55,23 @@ public final class ActiveTasksStore {
                 break
             }
         }
+    }
+
+    /// Number of tasks currently held, in any state, including ones already
+    /// cancelling, which `liveTaskCount` skips. Pure observation.
+    // PUBLIC_INTENT: read by TPPNetworkExecutor in the Palace app target, outside this package.
+    public var heldTaskCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return tasks.count
+    }
+
+    /// Number of tasks ever added, never decremented by removal. Lets a test
+    /// assert that no task was created at all without racing the removal that
+    /// follows a task's completion. Pure observation.
+    // PUBLIC_INTENT: read by TPPNetworkExecutor in the Palace app target, outside this package.
+    public var registeredTaskCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return addedCount
     }
 
     @discardableResult
@@ -178,16 +178,6 @@ public final class ActiveTasksStore {
 
     // MARK: - Send / download
 
-    /// Create + resume a data task. The task is auto-registered in the active
-    /// tasks store so it participates in pause/resume/cancel.
-    @discardableResult
-    public func send(_ request: URLRequest) -> URLSessionDataTask {
-        let task = urlSession.dataTask(with: request)
-        activeTasksStore.add(task)
-        task.resume()
-        return task
-    }
-
     /// Create + resume a download task. Not added to the active-tasks store
     /// today — historical behavior; callers manage download lifecycle directly.
     @discardableResult
@@ -198,14 +188,6 @@ public final class ActiveTasksStore {
     }
 
     // MARK: - Active tasks control
-
-    @objc public func pauseAllTasks() {
-        activeTasksStore.pauseNonAudioTasks()
-    }
-
-    @objc public func resumeAllTasks() {
-        activeTasksStore.resumeAll()
-    }
 
     /// Cancels all active tasks not related to audiobook streaming. Called
     /// during account switches to prevent in-flight requests from completing

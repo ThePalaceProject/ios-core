@@ -7,6 +7,7 @@
 
 import XCTest
 import PalaceCatalog
+import PalaceNetwork
 @testable import Palace
 
 @MainActor
@@ -50,6 +51,42 @@ final class OPDS2AuthenticationDocumentTests: XCTestCase {
         // A non-JSON payload must also throw
         XCTAssertThrowsError(try OPDS2AuthenticationDocument.fromData(Data("not json at all".utf8)),
                              "Non-JSON bytes must throw a parsing error")
+    }
+
+    /// An authentication document carrying mangled Unicode in a field this app
+    /// ignores still parses.
+    ///
+    /// The screen that stops `JSONDecoder` trapping on a malformed KEY
+    /// (PP-5412) is stricter than the decoder about values, and the difference
+    /// shows only in fields the model does not read, which an authentication
+    /// document has many of. Screening unconditionally would cost the patron
+    /// the whole sign-in surface for a library over one character the app never
+    /// displays.
+    func testFromData_withALoneSurrogateInAnIgnoredField_followsTheRuntime() throws {
+        let data = Data(#"{"id":"urn:uuid:1","title":"A Library","authentication":[],"vendor_note":"\uD800"}"#.utf8)
+
+        if JSONDecoder.prescreensExternalJSON {
+            // The documented price on a trapping runtime: the screen parses the
+            // whole document, so it refuses bytes the decoder would have
+            // skipped. Measured on iOS 18.0.
+            XCTAssertThrowsError(try OPDS2AuthenticationDocument.fromData(data))
+        } else {
+            let doc = try OPDS2AuthenticationDocument.fromData(data)
+            XCTAssertEqual(doc.id, "urn:uuid:1",
+                           "a document the decoder accepts must not be refused before it reaches the decoder")
+        }
+    }
+
+    /// A malformed object key is reported, not fatal.
+    ///
+    /// On iOS 18.0 through 18.3 this traps inside `JSONDecoder` below the
+    /// throwing boundary, so neither this `catch` nor
+    /// `Account.loadAuthenticationDocument`'s could save the sign-in. On a
+    /// runtime that throws it records that the failure stays an ordinary error.
+    func testFromData_whenAnObjectKeyIsMalformed_isReportedNotFatal() {
+        let data = Data(#"{"id":"x","title":"y","a\qb":1}"#.utf8)
+
+        XCTAssertThrowsError(try OPDS2AuthenticationDocument.fromData(data))
     }
 
     func testFromData_withEmptyData_throwsError() {

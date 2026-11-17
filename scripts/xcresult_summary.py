@@ -73,6 +73,23 @@ def tally_label(summary: dict) -> str:
     return f"{total} tests ({', '.join(parts)})"
 
 
+def gate(summary: dict) -> tuple[bool, str]:
+    """(ok, message): a run passes only if tests executed, one passed, none failed.
+
+    xcodebuild exits 0 when the scheme selects no tests, so a CI step that
+    trusts the exit status alone reports an empty run as green.
+    """
+    total, passed, failed, _, _ = totals(summary)
+    label = tally_label(summary)
+    if total == 0:
+        return False, f"no tests executed: {label}"
+    if failed:
+        return False, f"{failed} failed: {label}"
+    if passed == 0:
+        return False, f"no test passed (all skipped?): {label}"
+    return True, label
+
+
 def failing_test_names(summary: dict) -> list[str]:
     """Test names from the summary's `testFailures`, in the order reported."""
     return [f.get("testName", "") for f in (summary.get("testFailures") or []) if f.get("testName")]
@@ -134,7 +151,7 @@ def _xcresulttool(kind: str, path: str) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--path", required=True, help="Path to the .xcresult bundle")
-    ap.add_argument("--mode", choices=["tally", "totals", "label", "classes", "names"], default="tally")
+    ap.add_argument("--mode", choices=["tally", "totals", "label", "gate", "classes", "names"], default="tally")
     args = ap.parse_args()
 
     if args.mode == "classes":
@@ -152,6 +169,10 @@ def main() -> int:
     if args.mode == "label":
         print(tally_label(summary))
         return 0
+    if args.mode == "gate":
+        ok, message = gate(summary)
+        print(message)
+        return 0 if ok else 1
 
     passed, failed = tally(summary)
     print(f"{passed} {failed}")

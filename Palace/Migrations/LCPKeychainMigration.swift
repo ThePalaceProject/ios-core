@@ -4,13 +4,9 @@
 //
 //  One-time migration of LCP licenses + passphrases from the deprecated
 //  Readium `ReadiumAdapterLCPSQLite` repositories (Readium ≤ 3.7) to the
-//  built-in Keychain repositories introduced in Readium 3.8.0. The Keychain
-//  store is more secure, survives app reinstalls, and is iCloud-syncable.
-//
-//  The migration is idempotent and gated by a `UserDefaults` flag so it runs
-//  at most once per install. It degrades gracefully: a license that hasn't
-//  been migrated yet is simply re-validated from its stored `.lcpl` the next
-//  time the book is opened, so a missed or delayed run never loses access.
+//  built-in Keychain repositories introduced in Readium 3.8.0. Idempotent and
+//  gated by a `UserDefaults` flag. A license not yet migrated is re-validated
+//  from its stored `.lcpl` on next open, so a missed run never loses access.
 //
 
 #if LCP
@@ -25,6 +21,35 @@ enum LCPKeychainMigration {
     /// completed successfully. Once set, the migration is never re-run.
     static let didMigrateKey = "TPP.lcpKeychainMigrationCompleted"
 
+    /// Serializes concurrent `runIfNeeded` callers onto a single migration, **per
+    /// store**.
+    ///
+    /// The flag is written only after the copy finishes, and
+    /// `TPPMigrationManager.migrate` does not await the run, so overlapping calls
+    /// would otherwise make concurrent passes over the Keychain. A late caller
+    /// waits for the running migration instead of proceeding over a
+    /// half-populated store.
+    ///
+    /// Keyed by `UserDefaults` object identity so a caller with a different store
+    /// is not absorbed into an unrelated flight. Production only passes
+    /// `.standard`. (PP-5091)
+    private static let singleFlight = SingleFlight()
+
+    private actor SingleFlight {
+        private var inFlight: [ObjectIdentifier: Task<Void, Never>] = [:]
+
+        func run(for store: ObjectIdentifier, _ body: @escaping @Sendable () async -> Void) async {
+            if let existing = inFlight[store] {
+                await existing.value
+                return
+            }
+            let task = Task(operation: body)
+            inFlight[store] = task
+            await task.value
+            inFlight[store] = nil
+        }
+    }
+
     /// Runs the migration once, if it hasn't already completed.
     ///
     /// The actual repository copy is injected as `migrate` so the gating
@@ -32,10 +57,35 @@ enum LCPKeychainMigration {
     ///
     /// - The flag is set **only on success**. If the copy throws (e.g. a
     ///   transient Keychain error) the flag is left unset so the next launch
-    ///   retries — the underlying Readium `migrate(to:)` is idempotent.
+    ///   retries — the underlying Readium `migrate(to:)` is idempotent. A copy
+    ///   that failed half way is left in place for the same reason.
+    /// - A caller that joined a flight which then failed returns without
+    ///   retrying in that launch; the unset flag means the next launch tries
+    ///   again (an immediate retry usually hits the same locked Keychain).
+    /// - Note: `defaults` deliberately has no default value. This layer writes
+    ///   the completion flag whenever the copy it was handed succeeds, so with
+    ///   `= .standard` a test's `runIfNeeded(migrate: { })` would mark the real
+    ///   migration done having copied nothing.
     static func runIfNeeded(
-        defaults: UserDefaults = .standard,
-        migrate: (() async throws -> Void)? = nil
+        defaults: UserDefaults,
+        migrate: (@Sendable () async throws -> Void)? = nil
+    ) async {
+        guard !defaults.bool(forKey: didMigrateKey) else { return }
+
+        let defaultsBox = MigrationDefaultsBox(defaults)
+        await singleFlight.run(for: ObjectIdentifier(defaults)) {
+            await performIfStillNeeded(defaults: defaultsBox.wrapped, migrate: migrate)
+        }
+    }
+
+    /// The copy itself, run at most once at a time by `singleFlight`.
+    ///
+    /// The gate is re-read here and not only in `runIfNeeded`: several callers can
+    /// pass the outer check before any of them writes the flag, and only the one
+    /// that wins the single flight may copy.
+    private static func performIfStillNeeded(
+        defaults: UserDefaults,
+        migrate: (@Sendable () async throws -> Void)?
     ) async {
         guard !defaults.bool(forKey: didMigrateKey) else { return }
 

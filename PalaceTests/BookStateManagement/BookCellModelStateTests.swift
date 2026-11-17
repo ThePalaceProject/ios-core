@@ -16,7 +16,7 @@ final class BookCellModelStateTests: XCTestCase {
     var mockRegistry: TPPBookRegistryMock!
     var mockImageCache: MockImageCache!
     var cancellables: Set<AnyCancellable>!
-    /// Per-test isolated AppContainer (swarm_47883816 work package A).
+    /// Per-test isolated AppContainer.
     /// Replaces ~17 in-test reads of `AppContainer.production().*` with a
     /// fresh-per-test graph. BookCellModel takes downloadCenter +
     /// accountsManager + samplePreviewManager + readerService as required
@@ -273,7 +273,7 @@ final class BookCellModelStateTests: XCTestCase {
             )
         )
 
-        // Wave-2 (swarm_ad0b4c65): the publish is synchronous, but
+        // The publish is synchronous, but
         // BookCellModel's subscription uses `.receive(on: DispatchQueue.main)`
         // before assigning `showAlert` — no BookRegistry seam involved here
         // (this is a plain Combine main-queue hop), so `drainMainQueueAsync()`
@@ -301,7 +301,7 @@ final class BookCellModelStateTests: XCTestCase {
             )
         )
 
-        // Wave-2 (swarm_ad0b4c65): same plain Combine main-queue hop as
+        // Same plain Combine main-queue hop as
         // above — `drainMainQueueAsync()` flushes it deterministically.
         await drainMainQueueAsync()
 

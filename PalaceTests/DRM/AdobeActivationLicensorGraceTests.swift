@@ -1,28 +1,10 @@
 //
-//  AdobeActivationLicensorGraceTests.swift
-//  PalaceTests
-//
-//  Regression coverage for the borrow-vs-licensor-save race observed while
-//  validating the Wipro 2.0 DRM connector (PP-5025).
-//
-//  Observed on device and simulator, in this order:
-//
-//      12:09:38.942  No Adobe DRM licensor credentials stored — cannot activate
-//      12:09:38.942  Borrow failed: Device not activated
-//      12:09:51.885  Saving DRM licensor credentials (activation deferred to borrow time)
-//
-//  The licensor arrives on the user-profile-document leg of sign-in, which can
-//  land AFTER the auth gate has already released the queued borrow. The borrow
-//  read `userAccount.licensor`, found nil, and failed outright — thirteen
-//  seconds before the credentials it needed actually arrived. Borrowing again
-//  afterwards worked, which is what made this look like a DRM/connector fault
-//  rather than an ordering bug: it is neither, and it reproduces regardless of
-//  which connector is installed.
-//
-//  The fix gives the licensor a bounded grace period instead of failing on the
-//  first read. These tests pin both halves of that: a licensor that shows up
-//  late is waited for, and a licensor that never shows up still fails with
-//  `.noActivation` — so the guard is delayed, never deleted.
+//  PP-5025: the licensor arrives on the user-profile leg of sign-in, which can
+//  land after the auth gate has released a queued borrow. The borrow read a nil
+//  licensor and failed with "Device not activated" seconds before the credentials
+//  arrived. The fix waits a bounded grace period for the licensor. These pin both
+//  halves: a late licensor is waited for, and one that never arrives still fails
+//  with `.noActivation`.
 //
 
 import XCTest
@@ -32,8 +14,7 @@ final class AdobeActivationLicensorGraceTests: XCTestCase {
 
     /// In-memory account whose `licensor` can start absent and appear later,
     /// mimicking the profile-document leg completing after the borrow begins.
-    /// Deliberately not a real `TPPUserAccount` — CLAUDE.md forbids tests
-    /// touching keychain state.
+    /// Deliberately not a real `TPPUserAccount`, so tests stay off the keychain.
     private final class LateLicensorAccount: AdobeActivationAccount, @unchecked Sendable {
         private let lock = NSLock()
         private var _userID: String?
@@ -49,11 +30,13 @@ final class AdobeActivationLicensorGraceTests: XCTestCase {
              licensor: [String: Any]? = ["vendor": "palace-vendor",
                                          "clientToken": "token-user|token-password"],
              userID: String? = nil,
-             deviceID: String? = nil) {
+             deviceID: String? = nil,
+             generation: Int? = nil) {
             self.readsUntilAvailable = appearsAfterReads
             self._licensor = licensor
             self._userID = userID
             self._deviceID = deviceID
+            self._generation = generation
         }
 
         var userID: String? { lock.withLock { _userID } }
@@ -69,8 +52,11 @@ final class AdobeActivationLicensorGraceTests: XCTestCase {
         }
 
         var reads: Int { lock.withLock { licensorReadCount } }
-        func setUserID(_ id: String) { lock.withLock { _userID = id } }
-        func setDeviceID(_ id: String) { lock.withLock { _deviceID = id } }
+        private var _generation: Int?
+        var adobeActivationConnectorGeneration: Int? { lock.withLock { _generation } }
+        func setAdobeActivation(userID: String, deviceID: String, generation: Int) {
+            lock.withLock { _userID = userID; _deviceID = deviceID; _generation = generation }
+        }
         // PP-3649: activation re-mints the licensor before use, so the double
         // must accept the write.
         func setLicensor(_ licensor: [String: Any]) { lock.withLock { _licensor = licensor } }
@@ -216,7 +202,13 @@ final class AdobeActivationLicensorGraceTests: XCTestCase {
     func test_ensureDeviceActivated_whenAlreadyAuthorized_neverReadsLicensor() async throws {
         let account = LateLicensorAccount(appearsAfterReads: Int.max,
                                           userID: "user-1",
-                                          deviceID: "device-1")
+                                          deviceID: "device-1",
+                                          // PP-5251: "already authorized" now also
+                                          // requires the recorded connector to match,
+                                          // so a record stamped with an older
+                                          // generation re-activates and this
+                                          // test stops measuring the skip path.
+                                          generation: AdobeConnectorGeneration.current)
 
         try await service.ensureDeviceActivated(
             authorizer: { [drm] in drm },

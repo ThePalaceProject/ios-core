@@ -2,6 +2,13 @@
      PP-4822 / #1314 / #1316 / #1313 references taken from those PRs' own bodies in the review corpus -->
 # The PR Report Contract
 
+> **Superseded for the authored layer.** PR bodies and commit messages now follow
+> the short What / Why / How verified format in `.github/PULL_REQUEST_TEMPLATE.md`
+> and the "Writing conventions" section of `CLAUDE.md`, enforced by
+> `scripts/check-pr-hygiene.py`. The Evidence / Repro / Class / Obligations sections
+> described below are no longer part of the template. The principles still apply to
+> the CI-generated comments (test report, ledger).
+
 > The pull request is not a formality on the way to a merge. For a codebase whose
 > changes are increasingly **authored by AI agents and orchestrated by a human**, the
 > PR **is** the durable record and the fleet's telemetry surface. This document is the
