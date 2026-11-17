@@ -247,6 +247,38 @@ final class CatalogRepositoryFeedLimitTests: XCTestCase {
         }
     }
 
+    // MARK: - Background refresh tracking
+
+    /// With refresh tracking armed, facet preloads run at the tracked priority,
+    /// not `.background`. The mock reads base priority, which waiting on the
+    /// preload does not raise.
+    func testTrackedPreloads_RunAtTheTrackedPriority() async throws {
+        let repository = makeRepository()
+
+        try await loadGroup(repository, 0)
+
+        let priorities = (0..<5).compactMap { api.fetchPriorities[facetURL(group: 0, $0)] }
+        XCTAssertEqual(priorities.count, 5, "precondition: every facet was preloaded")
+        for priority in priorities {
+            XCTAssertGreaterThanOrEqual(priority.rawValue, TaskPriority.utility.rawValue)
+        }
+    }
+
+    /// A join that times out names the tracked tasks still running, so a hung
+    /// test reports what it waited on.
+    func testJoinTimeout_ReportsTheUnfinishedRefresh() async throws {
+        let repository = makeRepository()
+        try await load(repository, 0..<1)
+        await repository._awaitAllBackgroundRefreshesForTesting()
+        testNow.value = testNow.value.addingTimeInterval(601)
+        api.simulatedDelay = 5
+
+        _ = try await repository.loadTopLevelCatalog(at: url(0))
+        let pending = await repository._awaitAllBackgroundRefreshesForTesting(timeout: 0.2)
+
+        XCTAssertEqual(pending, ["refresh \(url(0).absoluteString)"])
+    }
+
     // MARK: - Preloaded facets
 
     /// Preloading facets of a feed never drops a feed the patron has read.
