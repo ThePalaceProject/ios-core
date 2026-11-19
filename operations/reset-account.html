@@ -1,0 +1,1099 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reset Library Account — Palace iOS Support Console</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --surface: #ffffff;
+    --surface-alt: #fafbfc;
+    --border: #e1e4e8;
+    --border-strong: #d0d7de;
+    --text: #1f2328;
+    --text-dim: #57606a;
+    --muted: #8b949e;
+    --accent: #0969da;
+    --accent-dim: #ddf4ff;
+    --accent-strong: #0550ae;
+    --success: #1a7f37;
+    --success-bg: #dafbe1;
+    --success-border: #aceebb;
+    --warning: #9a6700;
+    --warning-bg: #fff8c5;
+    --danger: #cf222e;
+    --danger-bg: #ffebe9;
+    --code-bg: #f6f8fa;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 2px 8px rgba(0,0,0,0.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface-alt: #1c2128;
+      --border: #30363d;
+      --border-strong: #444c56;
+      --text: #e6edf3;
+      --text-dim: #b1bac4;
+      --muted: #768390;
+      --accent: #2f81f7;
+      --accent-dim: #0d2d5c;
+      --accent-strong: #4493f8;
+      --success: #3fb950;
+      --success-bg: #033a16;
+      --success-border: #1f6f33;
+      --warning: #d29922;
+      --warning-bg: #4d3a0f;
+      --danger: #f85149;
+      --danger-bg: #67060c;
+      --code-bg: #0d1117;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 88px; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    margin: 0;
+    line-height: 1.55;
+    font-size: 15px;
+  }
+
+  /* ─────── Sticky top bar ─────── */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    box-shadow: var(--shadow-sm);
+  }
+  .topbar-inner {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .topbar-title {
+    flex: 1;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .topbar-title small {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 400;
+    margin-top: 2px;
+  }
+  .progress-pill {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .progress-pill-bar {
+    width: 80px;
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .progress-pill-fill {
+    height: 100%;
+    background: var(--success);
+    transition: width 0.3s ease;
+    width: 0%;
+  }
+
+  /* ─────── Layout ─────── */
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 28px 24px 80px;
+  }
+  .hero {
+    margin-bottom: 24px;
+  }
+  .hero h1 {
+    margin: 0 0 8px;
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .hero p {
+    margin: 0;
+    color: var(--text-dim);
+    font-size: 15px;
+  }
+  .hero .badge {
+    display: inline-block;
+    background: var(--accent-dim);
+    color: var(--accent-strong);
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-left: 8px;
+    vertical-align: middle;
+  }
+
+  /* ─────── Triage callout ─────── */
+  .triage {
+    background: var(--accent-dim);
+    border: 1px solid var(--accent);
+    border-left-width: 4px;
+    border-radius: 8px;
+    padding: 16px 18px;
+    margin-bottom: 28px;
+  }
+  .triage h2 {
+    margin: 0 0 8px;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--accent-strong);
+  }
+  .triage p { margin: 6px 0; font-size: 14px; }
+  .triage ul { margin: 8px 0 0 0; padding-left: 20px; font-size: 14px; }
+  .triage ul li { margin: 3px 0; }
+  .triage code { background: rgba(0,0,0,0.06); padding: 1px 5px; border-radius: 3px; font-size: 0.9em; }
+
+  /* ─────── Step cards ─────── */
+  .step {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-bottom: 16px;
+    overflow: hidden;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .step.current {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-dim);
+  }
+  .step.done {
+    background: var(--surface-alt);
+    border-color: var(--success-border);
+  }
+  .step-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 20px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .step-num {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--surface-alt);
+    border: 2px solid var(--border-strong);
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 14px;
+    transition: all 0.2s;
+  }
+  .step.current .step-num {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+  }
+  .step.done .step-num {
+    background: var(--success);
+    border-color: var(--success);
+    color: white;
+  }
+  .step.done .step-num::before { content: '✓'; }
+  .step.done .step-num-label { display: none; }
+  .step-title {
+    flex: 1;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .step.done .step-title {
+    color: var(--text-dim);
+    text-decoration: line-through;
+    text-decoration-color: var(--muted);
+  }
+  .step-toggle {
+    color: var(--muted);
+    font-size: 12px;
+    transition: transform 0.2s;
+  }
+  .step.collapsed .step-toggle { transform: rotate(-90deg); }
+  .step-body {
+    padding: 0 20px 20px 66px;
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+  }
+  .step.collapsed .step-body { display: none; }
+  .step-body p { margin: 8px 0; color: var(--text-dim); font-size: 14px; }
+  .step-body p:first-child { margin-top: 0; }
+  .step-body ol, .step-body ul { margin: 8px 0; padding-left: 22px; font-size: 14px; }
+  .step-body li { margin: 4px 0; color: var(--text-dim); }
+  .step-body li strong { color: var(--text); }
+  .step-body strong { color: var(--text); }
+  .step-body code {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 0.88em;
+  }
+  .step-action {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--border);
+  }
+  .step-mark-done {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--success);
+    color: white;
+    border: none;
+    padding: 7px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.05s;
+  }
+  .step-mark-done:hover { opacity: 0.92; }
+  .step-mark-done:active { transform: scale(0.97); }
+  .step.done .step-mark-done {
+    background: var(--surface-alt);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+  }
+  .step.done .step-mark-done::before { content: '↻ '; }
+  .step.done .step-mark-done .label-pending { display: none; }
+  .step .step-mark-done .label-done { display: none; }
+  .step.done .step-mark-done .label-done { display: inline; }
+
+  /* ─────── Inline tools ─────── */
+  .tool {
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin: 12px 0;
+  }
+  .tool-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .tool h4 {
+    margin: 0 0 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-dim);
+  }
+  .tool input[type="text"], .tool textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text);
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 13px;
+  }
+  .tool textarea {
+    font-family: inherit;
+    line-height: 1.5;
+    resize: vertical;
+    min-height: 110px;
+  }
+  .tool input[type="text"]:focus, .tool textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-dim);
+  }
+  .tool .field { margin: 8px 0 12px; }
+  .tool .field label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+    font-weight: 500;
+  }
+  .output-box {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-top: 4px;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 13px;
+    word-break: break-all;
+    color: var(--text);
+  }
+  .output-box.empty { color: var(--muted); font-style: italic; font-family: inherit; }
+  .output-box.success { background: var(--success-bg); border-color: var(--success-border); }
+  .output-box.preview {
+    white-space: pre-wrap;
+    font-family: inherit;
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 14px 16px;
+    color: var(--text);
+  }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.05s;
+  }
+  .btn:hover { opacity: 0.92; }
+  .btn:active { transform: scale(0.97); }
+  .btn.ghost {
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--border-strong);
+  }
+  .btn.ghost:hover { background: var(--surface-alt); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+
+  /* Reference (collapsible) */
+  .reference {
+    margin-top: 32px;
+    padding-top: 24px;
+    border-top: 2px solid var(--border);
+  }
+  .reference > h2 {
+    margin: 0 0 12px;
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--muted);
+  }
+  details.ref-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin: 8px 0;
+  }
+  details.ref-block[open] { background: var(--surface); }
+  details.ref-block > summary {
+    padding: 14px 18px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 15px;
+    list-style: none;
+    position: relative;
+    padding-left: 40px;
+  }
+  details.ref-block > summary::-webkit-details-marker { display: none; }
+  details.ref-block > summary::before {
+    content: '›';
+    position: absolute;
+    left: 18px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    font-size: 16px;
+    font-weight: 400;
+    transition: transform 0.15s;
+  }
+  details.ref-block[open] > summary::before {
+    transform: translateY(-50%) rotate(90deg);
+  }
+  .ref-body {
+    padding: 0 18px 18px 40px;
+    color: var(--text-dim);
+    font-size: 14px;
+  }
+  .ref-body h3 {
+    margin: 16px 0 6px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .ref-body code {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 0.88em;
+  }
+  .ref-body pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 12px;
+  }
+  .ref-body pre code { padding: 0; border: none; background: transparent; }
+  .ref-body table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+  .ref-body table th, .ref-body table td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+  .ref-body table th { font-weight: 600; color: var(--text-dim); }
+
+  /* FAQ items */
+  details.faq {
+    margin: 6px 0;
+    padding: 0;
+  }
+  details.faq summary {
+    padding: 8px 0 8px 20px;
+    cursor: pointer;
+    font-weight: 500;
+    color: var(--text);
+    list-style: none;
+    position: relative;
+  }
+  details.faq summary::-webkit-details-marker { display: none; }
+  details.faq summary::before {
+    content: '+';
+    position: absolute;
+    left: 0;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  details.faq[open] summary::before { content: '−'; }
+  details.faq .faq-answer { padding: 4px 0 8px 20px; color: var(--text-dim); }
+
+  /* Log output */
+  .log-output {
+    background: #0d1117;
+    color: #e6edf3;
+    border-radius: 6px;
+    padding: 12px;
+    font-family: 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    max-height: 280px;
+    overflow-y: auto;
+    margin-top: 8px;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+  .log-output .ok { color: #3fb950; }
+  .log-output .miss { color: #f85149; font-style: italic; }
+  .log-output .summary { font-weight: 600; }
+
+  /* Toast */
+  .copy-toast {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--text);
+    color: var(--bg);
+    padding: 10px 18px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    opacity: 0;
+    transition: opacity 0.2s, transform 0.2s;
+    pointer-events: none;
+    z-index: 1000;
+  }
+  .copy-toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* Inline tag */
+  .pill {
+    display: inline-block;
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 500;
+    vertical-align: middle;
+  }
+  .pill.danger { background: var(--danger-bg); border-color: var(--danger); color: var(--danger); }
+
+  footer.page-footer {
+    margin-top: 40px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 12px;
+    text-align: center;
+  }
+  footer.page-footer code { background: transparent; border: none; padding: 0; }
+
+  @media print {
+    .topbar, .copy-toast, .btn, .step-mark-done, .step-toggle { display: none !important; }
+    .step.collapsed .step-body { display: block !important; }
+    .step { border: 1px solid #ccc !important; box-shadow: none !important; page-break-inside: avoid; }
+    details { open: true; }
+    body { background: white; color: black; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ─────── Sticky topbar with progress ─────── -->
+<div class="topbar">
+  <div class="topbar-inner">
+    <div class="topbar-title">
+      Reset Library Account — Support Console
+      <small>Palace iOS 3.1.0+ · workflow for stuck-state recovery</small>
+    </div>
+    <div class="progress-pill">
+      <div class="progress-pill-bar"><div class="progress-pill-fill" id="progressFill"></div></div>
+      <span id="progressText">0 / 6</span>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- ─────── Hero ─────── -->
+  <div class="hero">
+    <h1>Stuck-state recovery</h1>
+    <p>A patron's app is in a state that sign-out + uninstall + reinstall does not fix. This console walks you through the six-step recovery workflow.</p>
+  </div>
+
+  <!-- ─────── Triage callout ─────── -->
+  <div class="triage">
+    <h2>When to use this workflow</h2>
+    <p>Use this whenever a patron's app is in a stuck state that ordinary sign-out and reinstall does not clear. Typical signals:</p>
+    <ul>
+      <li>A book loaded once, then refuses to load on every subsequent open.</li>
+      <li>The patron has already tried sign-out → uninstall → reinstall and the failure persists.</li>
+      <li>The same credentials work on a different device — i.e. the failure is tied to the device, not the patron or the title.</li>
+      <li>The patron sees a recurring error overlay or alert that retrying does not clear.</li>
+      <li>"It's hit or miss" / "sometimes it works, sometimes it doesn't" on the same checkout.</li>
+    </ul>
+    <p style="margin-top: 10px; font-size: 13px;">Reset Account is a general-purpose local-state recovery for one library — it is not targeted at a specific bug. Use it as the first recovery step whenever ordinary sign-out has not been enough.</p>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- ─────── STEP 1: Confirm version ─────── -->
+  <!-- ═══════════════════════════════════════════ -->
+  <div class="step" data-step="version">
+    <div class="step-header" onclick="toggleStep(this)">
+      <div class="step-num"><span class="step-num-label">1</span></div>
+      <div class="step-title">Confirm patron is on Palace 3.1.0 or later</div>
+      <div class="step-toggle">▼</div>
+    </div>
+    <div class="step-body">
+      <p>Reset Account ships in Palace iOS 3.1.0 — it does not exist on 3.0.3 or earlier.</p>
+      <p><strong>Ask the patron:</strong> open the Palace app → Settings → scroll to the bottom. The version is shown as <code>"Palace 3.1.0 (build n)"</code>.</p>
+      <ul>
+        <li>If 3.1.0+ → continue to Step 2.</li>
+        <li>If 3.0.3 or earlier → ask them to update from the App Store first, then come back.</li>
+      </ul>
+      <div class="step-action">
+        <button class="step-mark-done" onclick="markStepDone(this)">
+          <span class="label-pending">Mark step done</span>
+          <span class="label-done">Step complete · click to reopen</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- ─────── STEP 2: Get Device ID ─────── -->
+  <!-- ═══════════════════════════════════════════ -->
+  <div class="step" data-step="device-id">
+    <div class="step-header" onclick="toggleStep(this)">
+      <div class="step-num"><span class="step-num-label">2</span></div>
+      <div class="step-title">Get the patron's Device ID</div>
+      <div class="step-toggle">▼</div>
+    </div>
+    <div class="step-body">
+      <p><strong>Tell the patron:</strong></p>
+      <p style="background: var(--surface-alt); padding: 12px 14px; border-radius: 6px; border-left: 3px solid var(--accent);">Open the Palace app, then go to <strong>Settings → Developer Settings → Send Error Logs</strong>. You'll see a Device ID near the top — it looks like <code style="font-size: 0.85em;">12345678-90AB-CDEF-1234-567890ABCDEF</code>. Tap <strong>Copy Device ID</strong> and paste it into your reply.</p>
+      <p style="font-size: 13px;"><em>If they don't see "Developer Settings": ask them to go to <strong>Settings</strong>, scroll to the bottom, and long-press the Palace version label until Developer Settings appears.</em></p>
+
+      <div class="tool">
+        <div class="tool-label">Inline tool</div>
+        <h4>Paste the Device ID — auto-generates the Firebase parameter name</h4>
+        <div class="field">
+          <label for="deviceIdInput">Device ID from patron (with dashes)</label>
+          <input type="text" id="deviceIdInput" placeholder="12345678-90AB-CDEF-1234-567890ABCDEF" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>Sanitized (dashes stripped)</label>
+          <div class="output-box empty" id="sanitizedOutput">Paste a Device ID above</div>
+        </div>
+        <div class="field" style="margin-bottom: 0;">
+          <label>Firebase Remote Config parameter name <span class="pill">copy this</span></label>
+          <div class="output-box empty" id="firebaseParamOutput">Paste a Device ID above</div>
+        </div>
+        <div class="btn-row">
+          <button class="btn" onclick="copyText('firebaseParamOutput')" id="copyFirebaseBtn" disabled>Copy parameter name</button>
+        </div>
+      </div>
+
+      <div class="step-action">
+        <button class="step-mark-done" onclick="markStepDone(this)">
+          <span class="label-pending">Mark step done</span>
+          <span class="label-done">Step complete · click to reopen</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- ─────── STEP 3: Enable in Firebase ─────── -->
+  <!-- ═══════════════════════════════════════════ -->
+  <div class="step" data-step="firebase">
+    <div class="step-header" onclick="toggleStep(this)">
+      <div class="step-num"><span class="step-num-label">3</span></div>
+      <div class="step-title">Enable the Reset flag in Firebase Remote Config</div>
+      <div class="step-toggle">▼</div>
+    </div>
+    <div class="step-body">
+      <ol>
+        <li>Open <strong>Firebase Console → palace-iOS project → Remote Config</strong>.</li>
+        <li>Click <strong>Add parameter</strong>.</li>
+        <li><strong>Parameter name:</strong> paste the one from Step 2's tool (starts with <code>reset_account_enabled_device_</code>).</li>
+        <li><strong>Data type:</strong> Boolean.</li>
+        <li><strong>Default value:</strong> <code>true</code>.</li>
+        <li><strong>Description:</strong> <em>Reset Account enabled for HelpSpot ticket #&lt;NNNNN&gt;</em> — include the ticket number so we can audit later.</li>
+        <li>Click <strong>Publish changes</strong>. Propagation: usually under 5 minutes, up to 1 hour worst case.</li>
+      </ol>
+      <p style="font-size: 13px; color: var(--text-dim);"><strong>Tip:</strong> double-check that the parameter is actually <em>Published</em> — Firebase has a "save draft" state that looks similar but won't fetch on the patron's device.</p>
+      <div class="step-action">
+        <button class="step-mark-done" onclick="markStepDone(this)">
+          <span class="label-pending">Mark step done</span>
+          <span class="label-done">Step complete · click to reopen</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- ─────── STEP 4: Walk patron through Reset ─────── -->
+  <!-- ═══════════════════════════════════════════ -->
+  <div class="step" data-step="reset">
+    <div class="step-header" onclick="toggleStep(this)">
+      <div class="step-num"><span class="step-num-label">4</span></div>
+      <div class="step-title">Walk the patron through the Reset</div>
+      <div class="step-toggle">▼</div>
+    </div>
+    <div class="step-body">
+      <p><strong>Tell the patron:</strong></p>
+      <p style="background: var(--surface-alt); padding: 12px 14px; border-radius: 6px; border-left: 3px solid var(--accent);">Force-quit Palace (swipe up + flick the card away), then re-open it. Within an hour you should see a red <strong>Reset This Library Account</strong> button at the bottom of <strong>Settings → Accounts → [your library name]</strong>. Tap it and confirm. The app signs you out and returns to the library selection screen (5–10 seconds). Sign back in with your card + PIN and try the failing audiobook again.</p>
+
+      <p style="font-size: 13px; color: var(--text-dim);"><strong>If they don't see the red button:</strong> Remote Config hasn't fetched yet. Have them force-quit + re-open one more time. Worst case, give it 30 more minutes.</p>
+      <div class="step-action">
+        <button class="step-mark-done" onclick="markStepDone(this)">
+          <span class="label-pending">Mark step done</span>
+          <span class="label-done">Step complete · click to reopen</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- ─────── STEP 5: Verify ─────── -->
+  <!-- ═══════════════════════════════════════════ -->
+  <div class="step" data-step="verify">
+    <div class="step-header" onclick="toggleStep(this)">
+      <div class="step-num"><span class="step-num-label">5</span></div>
+      <div class="step-title">Verify the reset succeeded</div>
+      <div class="step-toggle">▼</div>
+    </div>
+    <div class="step-body">
+      <p><strong>Primary check:</strong> ask the patron whether the previously-failing book now plays / downloads after they re-signed in.</p>
+      <ul>
+        <li><strong>Yes →</strong> success. Continue to Step 6.</li>
+        <li><strong>No, but the error is different now →</strong> partial fix. Note the new error string and check the "If Reset didn't fix it" section below.</li>
+        <li><strong>No, exact same symptom →</strong> the failure is below the local-state layer. See the escalation reference below.</li>
+      </ul>
+
+      <p style="margin-top: 14px;"><strong>Optional deep check</strong> — if the patron is comfortable sending a sysdiagnose, paste it below to verify every reset step actually ran.</p>
+
+      <div class="tool">
+        <div class="tool-label">Inline tool · optional</div>
+        <h4>Sysdiagnose log verifier</h4>
+        <div class="field" style="margin-bottom: 8px;">
+          <label for="logInput">Paste any log text containing <code>[RESET_ACCOUNT]</code> lines</label>
+          <textarea id="logInput" placeholder="Drag a sysdiagnose .txt here, or paste the relevant lines."></textarea>
+        </div>
+        <div class="btn-row">
+          <button class="btn" onclick="verifyLogs()">Verify reset steps</button>
+          <button class="btn ghost" onclick="document.getElementById('logInput').value=''; document.getElementById('logOutput').innerHTML='Paste log text above and click <strong>Verify reset steps</strong>.';">Clear</button>
+        </div>
+        <div class="log-output" id="logOutput">Paste log text above and click <strong>Verify reset steps</strong>.</div>
+      </div>
+
+      <div class="step-action">
+        <button class="step-mark-done" onclick="markStepDone(this)">
+          <span class="label-pending">Mark step done</span>
+          <span class="label-done">Step complete · click to reopen</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- ─────── STEP 6: Cleanup ─────── -->
+  <!-- ═══════════════════════════════════════════ -->
+  <div class="step" data-step="cleanup">
+    <div class="step-header" onclick="toggleStep(this)">
+      <div class="step-num"><span class="step-num-label">6</span></div>
+      <div class="step-title">Cleanup — disable the per-device flag</div>
+      <div class="step-toggle">▼</div>
+    </div>
+    <div class="step-body">
+      <p>If Step 5 succeeded, turn the flag back off so the Reset button is hidden again on that device.</p>
+      <ol>
+        <li>Firebase Console → Remote Config.</li>
+        <li>Find your <code>reset_account_enabled_device_…</code> parameter.</li>
+        <li>Either <strong>delete</strong> the parameter or change its value to <code>false</code>.</li>
+        <li>Click <strong>Publish changes</strong>.</li>
+      </ol>
+      <p style="font-size: 13px;">If Step 5 did <strong>not</strong> succeed and you're escalating to engineering: <strong>leave the flag on</strong>. Engineering may need to ask the patron to retry on a diagnostic build.</p>
+      <p style="font-size: 13px;">Tag the HelpSpot ticket with <code>reset-account</code> and note the outcome (fixed / partial / no change) so we can track effectiveness.</p>
+      <div class="step-action">
+        <button class="step-mark-done" onclick="markStepDone(this)">
+          <span class="label-pending">Mark step done</span>
+          <span class="label-done">Workflow complete</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- ─────── Reference (collapsed) ─────── -->
+  <!-- ═══════════════════════════════════════════ -->
+  <div class="reference">
+    <h2>Reference</h2>
+
+    <details class="ref-block">
+      <summary>If Reset didn't fix the patron — escalation tree</summary>
+      <div class="ref-body">
+        <h3>1. iCloud-restored bad state?</h3>
+        <p>If iCloud Backup is enabled and the bad state lives in the backup, every reset gets clobbered by the next restore. Ask the patron to temporarily disable iCloud Backup for Palace (Settings → [name] → iCloud → Manage Account Storage → Backups → [device] → Palace → toggle off), do another Reset, then re-enable after the next successful checkout.</p>
+
+        <h3>2. IdP-side session (SAML/OIDC libraries only)</h3>
+        <p>The library's identity provider still has the patron's session active. Ask the patron to clear Safari cookies (Settings → Safari → Clear History and Website Data) and try again.</p>
+
+        <h3>3. CM-side state corruption</h3>
+        <p>Device-token rows or license fulfillment cache out of sync server-side. Ask the CM team to inspect the patron's account. Provide Device ID + library + failing book IDs.</p>
+
+        <h3>4. A real client bug we haven't yet identified</h3>
+        <p>Escalate to iOS engineering with: Device ID, failing book IDs, sysdiagnose if available, screenshots, and the verified log output from Step 5. <strong>Leave the per-device Firebase flag ON</strong> — engineering may ship a diagnostic build and ask the patron to retry.</p>
+      </div>
+    </details>
+
+    <details class="ref-block">
+      <summary>What the patron loses when they Reset</summary>
+      <div class="ref-body">
+        <h3>Cleared on this device</h3>
+        <ul>
+          <li>Sign-in (will need to re-enter library card + PIN)</li>
+          <li>Downloaded book files (re-download from My Books after sign-in)</li>
+          <li>Local reading positions / bookmarks <em>for any book that hasn't synced to the server yet</em> — server-synced positions come back on sign-in</li>
+          <li>Adobe DRM device activation (re-activates automatically on next protected ebook open)</li>
+        </ul>
+        <h3>Not affected</h3>
+        <ul>
+          <li>The patron's library checkouts / holds (live on the server)</li>
+          <li>Server-synced bookmarks and reading positions</li>
+          <li>Other libraries the patron has added (Reset only touches the one selected library)</li>
+          <li>The patron's account at the library itself</li>
+        </ul>
+      </div>
+    </details>
+
+    <details class="ref-block">
+      <summary>Frequently asked questions</summary>
+      <div class="ref-body">
+        <details class="faq">
+          <summary>The patron is on Palace 3.0.3. Can I still help them?</summary>
+          <div class="faq-answer">Not with this workflow. Reset Account ships in 3.1.0+ only. Ask them to update from the App Store first. If they say the update isn't available, give it a day — it may still be rolling out to their region.</div>
+        </details>
+        <details class="faq">
+          <summary>The patron doesn't see the red "Reset This Library Account" button after the flag was published.</summary>
+          <div class="faq-answer">
+            Confirm: (1) they're on Palace 3.1.0+ — check Settings → version label; (2) you used the <em>sanitized</em> Device ID in the parameter name (no dashes); (3) they force-quit Palace and re-opened (Remote Config fetches on launch); (4) they're on Wi-Fi or stable LTE; (5) Firebase says <strong>Published</strong>, not Draft. Worst-case propagation is 1 hour.
+          </div>
+        </details>
+        <details class="faq">
+          <summary>Will the patron lose other libraries they've added?</summary>
+          <div class="faq-answer">No — Reset only touches the one library you walk them through. If they have multiple libraries, the others are untouched.</div>
+        </details>
+        <details class="faq">
+          <summary>The patron sees "A Problem Has Occurred" overlay in the player — is this the same bug?</summary>
+          <div class="faq-answer">Likely yes. That overlay is the toolkit's generic mapping for unmapped playback errors and is one of the three known surfaces of the stuck-state pattern. Reset is the same recommendation.</div>
+        </details>
+        <details class="faq">
+          <summary>Is the Device ID personally identifiable?</summary>
+          <div class="faq-answer">No. It's a random UUID generated on first launch and stored in app UserDefaults — not the iOS identifierForVendor, not tied to the Apple ID. It rotates if the patron uninstalls and reinstalls.</div>
+        </details>
+        <details class="faq">
+          <summary>The patron got disconnected mid-reset. What now?</summary>
+          <div class="faq-answer">Reset proceeds unconditionally — every step runs regardless of whether the previous one's network call succeeded. Local state IS cleared even if the network dropped. They should just sign back in and try the failing book.</div>
+        </details>
+        <details class="faq">
+          <summary>Reset worked once but the patron is back a week later. Re-run it?</summary>
+          <div class="faq-answer">Yes, safely. The flag stays in Firebase Remote Config until you disable it — if the patron is recurring, leave the flag on and they can self-recover. If the pattern repeats, that's a strong signal of an underlying client bug — escalate to iOS engineering with the timeline + Device ID + book IDs.</div>
+        </details>
+      </div>
+    </details>
+
+    <details class="ref-block">
+      <summary>Technical detail (for engineering hand-off)</summary>
+      <div class="ref-body">
+        <p>Full implementation: <code>Palace/SignInLogic/TPPSignInBusinessLogic+ForceReset.swift</code>.</p>
+
+        <h3>What Reset Account clears, in order</h3>
+        <ol>
+          <li>FCM device token DELETE on the Circulation Manager (best-effort, never gates)</li>
+          <li><code>bookDownloadsCenter</code> + <code>bookRegistry</code> state for the selected library</li>
+          <li>Adobe DRM device deauthorize (RMSDK clears local activation files regardless of network result)</li>
+          <li>Keychain credentials (<code>userAccount.removeAll</code>), <code>selectedIDP</code>, <code>samlHelper.clearState</code></li>
+          <li><code>NetworkExecutor</code> cache + <code>URLCache.shared.removeAllCachedResponses()</code> — addresses CFNetwork-cached stale fulfillment URLs surviving uninstall</li>
+          <li>One-shot flag for next OIDC sign-in to force <code>prefersEphemeralWebBrowserSession = true</code></li>
+          <li><code>WKWebsiteDataStore.default()</code> — every data type, from epoch</li>
+        </ol>
+
+        <h3>What Reset Account does NOT touch</h3>
+        <ul>
+          <li>CM-side device-token rows (CM team intervention needed)</li>
+          <li>IdP-side session</li>
+          <li>iCloud-backup-restored stale state on next launch</li>
+          <li>Server-synced bookmark / position records (intentional — patron keeps their place)</li>
+        </ul>
+
+        <h3>Expected log signature</h3>
+        <pre><code>[RESET_ACCOUNT] start — libraryAccountID=&lt;uuid&gt;
+[RESET_ACCOUNT] step 1 ok — FCM token DELETE dispatched
+[RESET_ACCOUNT] step 2 ok — bookDownloadsCenter + bookRegistry reset
+[RESET_ACCOUNT] step 2.5 — dispatching DRM deauthorize
+[RESET_ACCOUNT] step 3 ok — userAccount.removeAll, selectedIDP=nil
+[RESET_ACCOUNT] step 4 ok — networkExecutor cache + URLCache cleared
+[RESET_ACCOUNT] step 5 ok — nextOIDCSessionEphemeral flag set
+[RESET_ACCOUNT] step 6 ok — WKWebsiteDataStore wiped
+[RESET_ACCOUNT] complete</code></pre>
+
+        <h3>Gating</h3>
+        <table>
+          <tr><th>Mechanism</th><th>Firebase parameter</th><th>Default</th></tr>
+          <tr><td>Per-device (support)</td><td><code>reset_account_enabled_device_&lt;id&gt;</code></td><td>n/a</td></tr>
+          <tr><td>Global rollout</td><td><code>reset_account_enabled</code></td><td><code>false</code></td></tr>
+          <tr><td>QA local override</td><td><code>RemoteFeatureFlags.resetAccountLocalOverride</code> UserDefault</td><td>unset</td></tr>
+        </table>
+      </div>
+    </details>
+  </div>
+
+  <footer class="page-footer">
+    Source markdown: <code>docs/Operations/reset-account-stuck-state-workflow.md</code>
+    · Implementation: <code>Palace/SignInLogic/TPPSignInBusinessLogic+ForceReset.swift</code>
+    · Linked: HelpSpot 17716, 17929, 17964, 17981 · JIRA PP-4282
+  </footer>
+
+</div>
+
+<div class="copy-toast" id="copyToast">Copied</div>
+
+<script>
+'use strict';
+
+// ─────── Step state ───────
+const STATE_KEY = 'palace-reset-workflow-v2';
+const steps = Array.from(document.querySelectorAll('.step'));
+
+function loadState() {
+  let state = {};
+  try { state = JSON.parse(localStorage.getItem(STATE_KEY) || '{}'); } catch (_) {}
+  steps.forEach(stepEl => {
+    const key = stepEl.dataset.step;
+    if (state[key]) {
+      stepEl.classList.add('done');
+      stepEl.classList.add('collapsed');
+    }
+  });
+  highlightCurrentStep();
+  updateProgress();
+}
+
+function saveState() {
+  const state = {};
+  steps.forEach(stepEl => {
+    state[stepEl.dataset.step] = stepEl.classList.contains('done');
+  });
+  localStorage.setItem(STATE_KEY, JSON.stringify(state));
+}
+
+function highlightCurrentStep() {
+  steps.forEach(s => s.classList.remove('current'));
+  const firstUndone = steps.find(s => !s.classList.contains('done'));
+  if (firstUndone) firstUndone.classList.add('current');
+}
+
+function updateProgress() {
+  const total = steps.length;
+  const done = steps.filter(s => s.classList.contains('done')).length;
+  const pct = total > 0 ? (done / total) * 100 : 0;
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressText').textContent = `${done} / ${total}`;
+}
+
+function toggleStep(headerEl) {
+  // Don't toggle when the click was on the mark-done button
+  if (event.target.closest('.step-mark-done')) return;
+  headerEl.parentElement.classList.toggle('collapsed');
+}
+
+function markStepDone(btnEl) {
+  event.stopPropagation();
+  const stepEl = btnEl.closest('.step');
+  const wasDone = stepEl.classList.contains('done');
+  stepEl.classList.toggle('done');
+  if (!wasDone) {
+    // Just marked done — collapse and scroll to next pending
+    stepEl.classList.add('collapsed');
+    const next = stepEl.nextElementSibling;
+    if (next && next.classList.contains('step') && !next.classList.contains('done')) {
+      next.classList.remove('collapsed');
+    }
+  } else {
+    // Reopened — expand
+    stepEl.classList.remove('collapsed');
+  }
+  highlightCurrentStep();
+  updateProgress();
+  saveState();
+}
+
+// ─────── Device ID sanitizer ───────
+const deviceIdInput = document.getElementById('deviceIdInput');
+const sanitizedOutput = document.getElementById('sanitizedOutput');
+const firebaseParamOutput = document.getElementById('firebaseParamOutput');
+const copyFirebaseBtn = document.getElementById('copyFirebaseBtn');
+
+function updateDeviceId() {
+  const raw = deviceIdInput.value.trim();
+  if (!raw) {
+    sanitizedOutput.textContent = 'Paste a Device ID above';
+    sanitizedOutput.classList.add('empty'); sanitizedOutput.classList.remove('success');
+    firebaseParamOutput.textContent = 'Paste a Device ID above';
+    firebaseParamOutput.classList.add('empty'); firebaseParamOutput.classList.remove('success');
+    copyFirebaseBtn.disabled = true;
+    return;
+  }
+  const sanitized = raw.replace(/-/g, '');
+  sanitizedOutput.textContent = sanitized;
+  sanitizedOutput.classList.remove('empty'); sanitizedOutput.classList.add('success');
+  firebaseParamOutput.textContent = 'reset_account_enabled_device_' + sanitized;
+  firebaseParamOutput.classList.remove('empty'); firebaseParamOutput.classList.add('success');
+  copyFirebaseBtn.disabled = false;
+}
+deviceIdInput.addEventListener('input', updateDeviceId);
+
+// ─────── Log verifier ───────
+function verifyLogs() {
+  const text = document.getElementById('logInput').value;
+  const out = document.getElementById('logOutput');
+  if (!text.trim()) {
+    out.innerHTML = '<span class="miss">No log text to verify.</span>';
+    return;
+  }
+  const expected = [
+    { key: 'start',     label: 'start — libraryAccountID' },
+    { key: 'step 1',    label: 'step 1 (FCM token DELETE)' },
+    { key: 'step 2 ok', label: 'step 2 (bookDownloadsCenter + bookRegistry reset)' },
+    { key: 'step 2.5',  label: 'step 2.5 (DRM deauthorize)' },
+    { key: 'step 3',    label: 'step 3 (userAccount.removeAll)' },
+    { key: 'step 4',    label: 'step 4 (networkExecutor + URLCache cleared)' },
+    { key: 'step 5',    label: 'step 5 (nextOIDCSessionEphemeral flag set)' },
+    { key: 'step 6',    label: 'step 6 (WKWebsiteDataStore wiped)' },
+    { key: 'complete',  label: 'complete' }
+  ];
+  const resetLines = text.split('\n').filter(l => l.includes('[RESET_ACCOUNT]'));
+  const results = expected.map(e => {
+    const example = resetLines.find(l => l.includes('[RESET_ACCOUNT] ' + e.key));
+    return { ...e, found: !!example, example };
+  });
+  const foundCount = results.filter(r => r.found).length;
+
+  let html = `<span class="summary">Found ${resetLines.length} [RESET_ACCOUNT] lines · ${foundCount} of ${expected.length} expected steps present</span>\n\n`;
+  results.forEach(r => {
+    if (r.found) {
+      html += `<span class="ok">✓ ${r.label}</span>\n  ${escapeHtml(r.example.trim())}\n\n`;
+    } else {
+      html += `<span class="miss">✗ ${r.label} — MISSING</span>\n\n`;
+    }
+  });
+  if (foundCount === expected.length) {
+    html += '<span class="ok summary">━━━ All steps present — reset ran end-to-end ━━━</span>';
+  } else if (foundCount === 0) {
+    html += '<span class="miss summary">━━━ No reset signature found. Either reset never ran, or this log is from a different session ━━━</span>';
+  } else {
+    html += '<span class="miss summary">━━━ Partial run — investigate the missing steps above ━━━</span>';
+  }
+  out.innerHTML = html;
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ─────── Copy to clipboard ───────
+function copyText(elementId) {
+  event.stopPropagation();
+  const el = document.getElementById(elementId);
+  const text = el.textContent || el.value || '';
+  if (!text || el.classList.contains('empty')) return;
+  navigator.clipboard.writeText(text)
+    .then(() => showToast('Copied to clipboard'))
+    .catch(() => showToast('Copy failed — select manually'));
+}
+
+function showToast(msg) {
+  const t = document.getElementById('copyToast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(window._toastTimer);
+  window._toastTimer = setTimeout(() => t.classList.remove('show'), 1800);
+}
+
+// ─────── Initial render ───────
+loadState();
+updateDeviceId();
+</script>
+
+</body>
+</html>
