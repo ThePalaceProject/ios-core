@@ -43,3 +43,5 @@ e892160da PP-5450 is on develop as 59c926524 (#1775)
 #1871   waiver list for this hotfix only; develop has no 3.4.2 waivers to receive
 #1702   3.3.2-line copy of #1701, which develop and this hotfix already carry (same code lines)
 #1870   PP-5558 held for the next release from develop
+# 3.4.3: the Findaway rate fix on the 3.4.x toolkit line; develop takes the fix through its own toolkit pin.
+#1908   version 3.4.3 build 522, the 3.4.x-line toolkit pin and this waiver list; develop keeps its own version
